@@ -22,7 +22,6 @@ type metrics struct {
 	ShardFragmentation     *prometheus.GaugeVec
 	LastAllocatedShardSlot *prometheus.GaugeVec
 	LastReleasedShardSlot  *prometheus.GaugeVec
-	HeldSlots              prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -110,12 +109,6 @@ between actual lengths of chunks and the length of slot.
 			},
 			[]string{"shard_slot_no"},
 		),
-		HeldSlots: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "held_slots",
-			Help:      "Number of released slots kept out of reuse by an open hold.",
-		}),
 	}
 }
 

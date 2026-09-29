@@ -39,11 +39,6 @@ type Store struct {
 	quit        chan struct{}   // quit channel
 	metrics     metrics
 
-	holdMu sync.Mutex // guards holds, held and closed
-	holds  int        // number of open holds
-	held   []Location // slots released while a hold was open
-	closed bool
-
 	watchMu  sync.Mutex                 // serializes changes to watchers
 	watchers atomic.Pointer[[]*watcher] // replaced on change, read by Release
 }
@@ -77,11 +72,6 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 
 // Close closes each shard and return incidental errors from each shard
 func (s *Store) Close() error {
-	s.holdMu.Lock()
-	s.closed = true
-	s.freeHeldLocked()
-	s.holdMu.Unlock()
-
 	close(s.quit)
 	err := new(multierror.Error)
 	for _, sh := range s.shards {
@@ -233,45 +223,9 @@ func (s *Store) updateWatchers(update func([]*watcher) []*watcher) {
 	s.watchers.Store(&ws)
 }
 
-// Hold keeps slots released from now on out of reuse until the returned
-// function is called. A location read from an index snapshot taken after
-// Hold therefore keeps its content while the hold is open, because the index
-// entry is always committed away before its slot is released. Holds nest:
-// held slots are freed when the last one ends. The returned function is
-// idempotent.
-func (s *Store) Hold() (release func()) {
-	s.holdMu.Lock()
-	s.holds++
-	s.holdMu.Unlock()
-
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			s.holdMu.Lock()
-			defer s.holdMu.Unlock()
-			s.holds--
-			if s.holds == 0 && !s.closed {
-				s.freeHeldLocked()
-			}
-		})
-	}
-}
-
-// freeHeldLocked gives the held slots back to their shards. It runs under
-// holdMu so that Close cannot shut the shards while slots are being freed.
-func (s *Store) freeHeldLocked() {
-	for _, loc := range s.held {
-		// release fails only when its context is done; this one never is.
-		_ = s.release(context.Background(), loc)
-	}
-	s.metrics.HeldSlots.Sub(float64(len(s.held)))
-	s.held = nil
-}
-
 // Release gives back the slot to the shard
+// From here on the slot can be reused and overwritten
 // Watchers are notified before the slot is freed.
-// From here on the slot can be reused and overwritten, unless a Hold is open,
-// in which case the slot is freed when the last hold ends.
 // Release is meant to be called when an entry in the upstream db is removed
 // Note that releasing is not safe for obfuscating earlier content, since
 // even after reuse, the slot may be used by a very short blob and leaves the
@@ -287,19 +241,6 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 		}
 	}
 
-	s.holdMu.Lock()
-	if s.holds > 0 {
-		s.held = append(s.held, loc)
-		s.metrics.HeldSlots.Inc()
-		s.holdMu.Unlock()
-		return nil
-	}
-	s.holdMu.Unlock()
-
-	return s.release(ctx, loc)
-}
-
-func (s *Store) release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
 	err := sh.release(ctx, loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()
