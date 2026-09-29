@@ -379,8 +379,8 @@ func TestChunkBidirectionalStream_UploadAndDownload(t *testing.T) {
 		if resp.Status != pb.Status_STATUS_OK {
 			t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp.Status, resp.Error)
 		}
-		if !chanStorer.Has(ch.Address()) {
-			t.Fatalf("chunk %s not pushed", ch.Address())
+		if err := spinlock.Wait(streamTestTimeout, func() bool { return chanStorer.Has(ch.Address()) }); err != nil {
+			t.Fatalf("chunk %s not pushed: %v", ch.Address(), err)
 		}
 		uploaded[string(resp.Address)] = true
 	}
