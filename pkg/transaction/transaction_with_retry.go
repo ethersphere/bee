@@ -591,10 +591,3 @@ func (t *transactionService) resumeRetryTransactions() error {
 	}
 	return nil
 }
-
-func addressForLog(addr *common.Address) string {
-	if addr == nil {
-		return ""
-	}
-	return addr.Hex()
-}
