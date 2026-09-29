@@ -40,30 +40,23 @@ message GetRequest {
   CacheOption Cache = 2;
 }
 
-// ChunkType states whether an uploaded chunk is a CAC or a SOC.
-enum ChunkType {
-  // CHUNK_TYPE_UNSPECIFIED is the proto3 zero value; uploads with it are rejected.
-  CHUNK_TYPE_UNSPECIFIED = 0;
-  // CHUNK_TYPE_CAC is a content-addressed chunk.
-  CHUNK_TYPE_CAC = 1;
-  // CHUNK_TYPE_SOC is a single-owner chunk.
-  CHUNK_TYPE_SOC = 2;
-}
-
-// PutRequest stores a chunk and pushes it to the network.
+// PutRequest stores a chunk and pushes it to the network. Uploads are always
+// direct: STATUS_OK means the chunk was pushed to its neighbourhood.
 message PutRequest {
   // Address is the 32-byte address of the chunk. It must match the address the
-  // node computes from Data, otherwise the upload is rejected.
+  // node computes from Data, and it settles whether Data is a CAC or a SOC:
+  // only one reading of the data can produce the address.
   bytes Address = 1;
   // Data is the serialised chunk.
   // CAC: span (8 bytes) + payload (up to 4096 bytes).
   // SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
   bytes Data = 2;
-  // Stamp is a serialised pre-signed postage stamp. Optional when the
-  // connection was opened with a Swarm-Postage-Batch-Id.
+  // Stamp is a serialised pre-signed postage stamp. When set, it is used as is
+  // and BatchId is ignored.
   bytes Stamp = 3;
-  // Type states whether the chunk is a CAC or a SOC.
-  ChunkType Type = 4;
+  // BatchId has the node stamp the chunk with this 32-byte postage batch. When
+  // empty, the connection's Swarm-Postage-Batch-Id is used.
+  bytes BatchId = 4;
 }
 
 // Response is sent by the node in reply to each Request, with the same body type.
@@ -100,14 +93,14 @@ message PutResponse {
 enum Status {
   // STATUS_UNSPECIFIED is the proto3 zero value; never sent by the node.
   STATUS_UNSPECIFIED = 0;
-  // STATUS_OK: the chunk was retrieved, or pushed (direct) / stored (tagged).
+  // STATUS_OK: the chunk was retrieved, or pushed to the network.
   STATUS_OK = 1;
   // STATUS_NOT_FOUND: the chunk is not in the reserve and no peer could serve it.
   STATUS_NOT_FOUND = 2;
   // STATUS_ERROR: an internal or storage failure.
   STATUS_ERROR = 3;
   // STATUS_BAD_REQUEST: invalid client input, such as malformed data, an invalid
-  // stamp, or an address that does not match the chunk.
+  // stamp or batch, or an address that does not match the chunk.
   STATUS_BAD_REQUEST = 4;
   // STATUS_BUSY: the request queue is full; retry with backoff.
   STATUS_BUSY = 5;

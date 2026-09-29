@@ -7,9 +7,11 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
+	"math/big"
 	"net/http"
-	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -294,18 +296,18 @@ func getRequest(address []byte, cache pb.CacheOption) *pb.Request {
 	return &pb.Request{Body: &pb.Request_Get{Get: &pb.GetRequest{Address: address, Cache: cache}}}
 }
 
-func putRequest(address, data, stamp []byte, typ pb.ChunkType) *pb.Request {
+func putRequest(address, data, stamp, batchID []byte) *pb.Request {
 	return &pb.Request{Body: &pb.Request_Put{Put: &pb.PutRequest{
 		Address: address,
 		Data:    data,
 		Stamp:   stamp,
-		Type:    typ,
+		BatchId: batchID,
 	}}}
 }
 
-// cacPut uploads ch as a CAC under its own address, stamped by the connection.
-func cacPut(ch swarm.Chunk) *pb.Request {
-	return putRequest(ch.Address().Bytes(), ch.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC)
+// chunkPut uploads ch under its own address, stamped with the connection's batch.
+func chunkPut(ch swarm.Chunk) *pb.Request {
+	return putRequest(ch.Address().Bytes(), ch.Data(), nil, nil)
 }
 
 // readGet reads the next response and fails unless it is a download reply.
@@ -364,7 +366,7 @@ func TestChunkBidirectionalStream_UploadAndDownload(t *testing.T) {
 		if err := cs.Put(context.Background(), ch); err != nil {
 			t.Fatal(err)
 		}
-		sendPBRequest(t, wsConn, cacPut(ch))
+		sendPBRequest(t, wsConn, chunkPut(ch))
 	}
 
 	uploaded := make(map[string]bool, numChunks)
@@ -436,7 +438,7 @@ func TestChunkBidirectionalStream_Interleaved(t *testing.T) {
 		p := testingc.GenerateTestRandomChunk()
 		putChunks[p.Address().ByteString()] = p
 
-		sendPBRequest(t, wsConn, cacPut(p))
+		sendPBRequest(t, wsConn, chunkPut(p))
 		sendPBRequest(t, wsConn, getRequest(g.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 	}
 
@@ -486,7 +488,7 @@ func TestChunkBidirectionalStream_SameAddressGetAndPut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sendPBRequest(t, wsConn, cacPut(ch))
+	sendPBRequest(t, wsConn, chunkPut(ch))
 	sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 
 	var gotGet, gotPut bool
@@ -553,33 +555,27 @@ func TestChunkBidirectionalStream_PerRequestErrors(t *testing.T) {
 		},
 		{
 			name:    "put with a short address",
-			req:     putRequest([]byte("too-short"), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			req:     putRequest([]byte("too-short"), validChunk.Data(), nil, nil),
 			status:  pb.Status_STATUS_BAD_REQUEST,
 			errText: "invalid chunk address length",
 		},
 		{
 			name:    "put with too little data",
-			req:     putRequest(validChunk.Address().Bytes(), []byte{1, 2, 3}, nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			req:     putRequest(validChunk.Address().Bytes(), []byte{1, 2, 3}, nil, nil),
 			status:  pb.Status_STATUS_BAD_REQUEST,
 			errText: "insufficient data for chunk",
 		},
 		{
-			name:    "put with an unspecified chunk type",
-			req:     putRequest(validChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_UNSPECIFIED),
-			status:  pb.Status_STATUS_BAD_REQUEST,
-			errText: "unspecified or invalid chunk type",
-		},
-		{
-			name:    "put with an unknown chunk type",
-			req:     putRequest(validChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType(99)),
-			status:  pb.Status_STATUS_BAD_REQUEST,
-			errText: "unspecified or invalid chunk type",
-		},
-		{
 			name:    "put whose address does not match its data",
-			req:     putRequest(otherChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			req:     putRequest(otherChunk.Address().Bytes(), validChunk.Data(), nil, nil),
 			status:  pb.Status_STATUS_BAD_REQUEST,
 			errText: "address does not match chunk data",
+		},
+		{
+			name:    "put with a short batch id",
+			req:     putRequest(validChunk.Address().Bytes(), validChunk.Data(), nil, []byte("short")),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "invalid batch id",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -615,7 +611,7 @@ func TestChunkBidirectionalStream_PerRequestErrors(t *testing.T) {
 	}
 
 	// The connection is still alive after all of the above.
-	sendPBRequest(t, wsConn, cacPut(validChunk))
+	sendPBRequest(t, wsConn, chunkPut(validChunk))
 	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK after errors, got %v (err: %s)", resp.Status, resp.Error)
 	}
@@ -663,7 +659,7 @@ func TestChunkBidirectionalStream_DirectUploadFailure(t *testing.T) {
 	})
 
 	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, cacPut(ch))
+	sendPBRequest(t, wsConn, chunkPut(ch))
 	resp := readPut(t, wsConn)
 	if !bytes.Equal(resp.Address, ch.Address().Bytes()) {
 		t.Fatalf("expected reply for %s, got %x", ch.Address(), resp.Address)
@@ -737,7 +733,7 @@ func TestChunkBidirectionalStream_Fairness(t *testing.T) {
 	// strictly ruling out a single shared pool of workers.
 	numPuts := 2*api.DefaultStreamSubWorkers + 4
 	for range numPuts {
-		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
 	}
 
 	// Brief pause to ensure all upload workers have picked up the Puts and are blocked
@@ -790,12 +786,12 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 	// Fill the upload workers and the putQueue buffer behind them.
 	capacity := api.MaxStreamQueueSize + api.DefaultStreamSubWorkers
 	for range capacity {
-		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
 	}
 
 	// One more is rejected straight away, with its own address.
 	overflow := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, cacPut(overflow))
+	sendPBRequest(t, wsConn, chunkPut(overflow))
 
 	busyResp := readPut(t, wsConn)
 	if !bytes.Equal(busyResp.Address, overflow.Address().Bytes()) {
@@ -855,14 +851,16 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 		})
 	)
 
-	// Without a stamp, and no batch on the connection, the upload is rejected.
-	sendPBRequest(t, wsConn, cacPut(ch))
-	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST {
+	// Without a stamp, a batch on the request, or a batch on the connection, the
+	// upload is rejected.
+	sendPBRequest(t, wsConn, chunkPut(ch))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "missing postage stamp or batch id" {
 		t.Fatalf("expected STATUS_BAD_REQUEST without stamp, got %v (err: %s)", resp.Status, resp.Error)
 	}
 
-	// With a valid pre-signed stamp it succeeds.
-	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, pb.ChunkType_CHUNK_TYPE_CAC))
+	// With a valid pre-signed stamp it succeeds, and the stamp outranks a
+	// BatchId the node could not use anyway.
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, []byte("not-a-batch")))
 	resp := readPut(t, wsConn)
 	if resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK with stamp, got %v (err: %s)", resp.Status, resp.Error)
@@ -894,7 +892,7 @@ func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
 	t.Cleanup(func() { _ = wsConn.Close() })
 
 	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, cacPut(ch))
+	sendPBRequest(t, wsConn, chunkPut(ch))
 	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK via ?mode=stream, got %v (err: %s)", resp.Status, resp.Error)
 	}
@@ -993,7 +991,7 @@ func TestChunkBidirectionalStream_Shutdown(t *testing.T) {
 		DirectUpload: true,
 	})
 
-	sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
+	sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
 	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v", resp.Status)
 	}
@@ -1044,15 +1042,9 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 	}
 	socAddress := socChunk.Address().Bytes()
 
-	// A small SOC parses as a CAC too, so declared as a CAC it would be stored
-	// under its BMT hash. The address check rejects that instead.
-	sendPBRequest(t, wsConn, putRequest(socAddress, socChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC))
-	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "address does not match chunk data" {
-		t.Fatalf("expected a SOC declared as CAC to be rejected, got %v (err: %s)", resp.Status, resp.Error)
-	}
-
-	// Declared as a SOC, it is stored under its SOC address.
-	sendPBRequest(t, wsConn, putRequest(socAddress, socChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_SOC))
+	// Small SOC data also parses as a valid CAC. The address settles which one
+	// it is, so the SOC is stored under its SOC address, not its BMT hash.
+	sendPBRequest(t, wsConn, putRequest(socAddress, socChunk.Data(), nil, nil))
 	resp := readPut(t, wsConn)
 	if resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
@@ -1075,63 +1067,134 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 		t.Fatalf("retrieved SOC data does not match uploaded SOC data")
 	}
 
+	// SOC data under an address it does not produce is rejected.
+	unrelated := testingc.GenerateTestRandomChunk().Address().Bytes()
+	sendPBRequest(t, wsConn, putRequest(unrelated, socChunk.Data(), nil, nil))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "address does not match chunk data" {
+		t.Fatalf("expected SOC data under the wrong address to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+	}
+
 	// Corrupted SOC data (an invalid signature recovery byte) is rejected.
 	corruptedData := make([]byte, len(socChunk.Data()))
 	copy(corruptedData, socChunk.Data())
 	corruptedData[swarm.HashSize+swarm.SocSignatureSize-1] = 99
-	sendPBRequest(t, wsConn, putRequest(socAddress, corruptedData, nil, pb.ChunkType_CHUNK_TYPE_SOC))
+	sendPBRequest(t, wsConn, putRequest(socAddress, corruptedData, nil, nil))
 	if badResp := readPut(t, wsConn); badResp.Status != pb.Status_STATUS_BAD_REQUEST {
 		t.Fatalf("expected STATUS_BAD_REQUEST for corrupted SOC, got %v", badResp.Status)
 	}
 }
 
+// Uploads on the stream are always direct, so a tag is rejected at the
+// handshake rather than silently ignored.
+//
 // nolint:paralleltest
-func TestChunkBidirectionalStream_TagWithPerChunkStamp(t *testing.T) {
-	key, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(key)
-	owner, err := signer.EthereumAddress()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	batchStore := mockbatchstore.New(
-		mockbatchstore.WithAcceptAllExistsFunc(),
-		mockbatchstore.WithBatch(&postage.Batch{
-			Owner: owner.Bytes(),
-		}),
-	)
-
-	storerMock := mockstorer.New()
-	tagSession, err := storerMock.NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// No batch on the connection: this checks the tag works with per-chunk stamps.
-	wsHeaders := streamHeaders(false)
-	wsHeaders.Set(api.SwarmTagHeader, strconv.FormatUint(tagSession.TagID, 10))
-
-	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:     storerMock,
-		Post:       mockpost.New(mockpost.WithAcceptAll()),
-		BatchStore: batchStore,
-		WsPath:     "/chunks/stream",
-		WsHeaders:  wsHeaders,
+func TestChunkBidirectionalStream_TagRejected(t *testing.T) {
+	_, _, addr, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
 
-	ch := testingc.GenerateTestRandomChunk()
-	stamp := testingpostage.MustNewValidStamp(signer, ch.Address())
-	stampBytes, err := stamp.MarshalBinary()
-	if err != nil {
+	for _, tc := range []struct {
+		name   string
+		query  string
+		header bool
+	}{
+		{name: "tag header", header: true},
+		{name: "tag query parameter", query: "&swarm-tag=1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := streamHeaders(true)
+			if tc.header {
+				h.Set(api.SwarmTagHeader, "1")
+			}
+			conn, resp, err := websocket.DefaultDialer.Dial("ws://"+addr+"/chunks/stream?mode=stream"+tc.query, h)
+			if err == nil {
+				_ = conn.Close()
+				t.Fatal("expected the handshake to be rejected")
+			}
+			if resp == nil || resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %v (err: %v)", resp, err)
+			}
+		})
+	}
+}
+
+// One connection can stamp with several batches: a request's BatchId outranks
+// the connection's Swarm-Postage-Batch-Id, which applies when a request names
+// none. The stamp on each pushed chunk shows which batch the node used.
+//
+// nolint:paralleltest
+func TestChunkBidirectionalStream_BatchPerRequest(t *testing.T) {
+	batchA := bytes.Repeat([]byte{0xaa}, swarm.HashSize)
+	batchB := bytes.Repeat([]byte{0xbb}, swarm.HashSize)
+	unknown := bytes.Repeat([]byte{0xcc}, swarm.HashSize)
+
+	post := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("a", "a", batchA, big.NewInt(3), 24, 6, 1000, false)))
+	if err := post.Add(postage.NewStampIssuer("b", "b", batchB, big.NewInt(3), 24, 6, 1000, false)); err != nil {
 		t.Fatal(err)
 	}
 
-	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, pb.ChunkType_CHUNK_TYPE_CAC))
+	h := streamHeaders(false)
+	h.Set(api.SwarmPostageBatchIdHeader, hex.EncodeToString(batchA))
+
+	_, wsConn, _, chanStorer, _ := newTestServer(t, testServerOptions{
+		Storer:       mockstorer.New(),
+		Post:         post,
+		WsPath:       "/chunks/stream",
+		WsHeaders:    h,
+		DirectUpload: true,
+	})
+
+	var (
+		mu         sync.Mutex
+		stampBatch = make(map[string][]byte)
+	)
+	chanStorer.Subscribe(func(ch swarm.Chunk) {
+		mu.Lock()
+		stampBatch[ch.Address().ByteString()] = ch.Stamp().BatchID()
+		mu.Unlock()
+	})
+
+	for _, tc := range []struct {
+		name      string
+		batchID   []byte
+		wantBatch []byte
+	}{
+		{name: "no batch on the request uses the connection's", wantBatch: batchA},
+		{name: "a batch on the request overrides it", batchID: batchB, wantBatch: batchB},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := testingc.GenerateTestRandomChunk()
+			sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), nil, tc.batchID))
+			if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+				t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp.Status, resp.Error)
+			}
+			err := spinlock.Wait(streamTestTimeout, func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				return stampBatch[ch.Address().ByteString()] != nil
+			})
+			if err != nil {
+				t.Fatal("chunk was not pushed")
+			}
+			mu.Lock()
+			got := stampBatch[ch.Address().ByteString()]
+			mu.Unlock()
+			if !bytes.Equal(got, tc.wantBatch) {
+				t.Fatalf("stamped with batch %x, want %x", got, tc.wantBatch)
+			}
+		})
+	}
+
+	// A batch the node has no issuer for is rejected for that request only.
+	ch := testingc.GenerateTestRandomChunk()
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), nil, unknown))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found" {
+		t.Fatalf("expected an unknown batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+	}
+	sendPBRequest(t, wsConn, chunkPut(ch))
 	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+		t.Fatalf("expected the connection to stay usable, got %v (err: %s)", resp.Status, resp.Error)
 	}
 }
 
@@ -1165,7 +1228,7 @@ func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 
 	// Send several Puts that block in the storer
 	for range 5 {
-		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
 	}
 
 	// Trigger node shutdown while upload workers are actively blocked

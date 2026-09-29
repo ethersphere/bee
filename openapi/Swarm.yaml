@@ -383,7 +383,8 @@ paths:
         Clients and server exchange binary Protobuf messages defined by `pkg/api/pb/chunkstream.proto`, one message per WebSocket binary message. Downloads (`GetRequest`) and uploads (`PutRequest`) can be mixed on the same connection.
         - Correlation: requests carry no identifier; the chunk address is the key. Each reply echoes the address of its request, and its type (`GetResponse` or `PutResponse`) tells a download reply from an upload reply for the same chunk. A client must not have two requests of the same type for the same address in flight on one connection.
         - `GetRequest`: retrieves a chunk by `Address`, with an optional `CacheOption` (`CACHE_DEFAULT = 0`, `CACHE_DISABLE = 1`, `CACHE_ENABLE = 2`). Answered by a `GetResponse` carrying the chunk in `Data` on success.
-        - `PutRequest`: uploads a chunk given its `Address`, `Data`, optional `Stamp`, and required `Type` (`CHUNK_TYPE_UNSPECIFIED = 0` is rejected, `CHUNK_TYPE_CAC = 1`, `CHUNK_TYPE_SOC = 2`). The `Address` must match the address the node computes from `Data`, otherwise the upload is rejected with `STATUS_BAD_REQUEST`. Answered by a `PutResponse`; `STATUS_OK` confirms that the chunk was pushed to network peers (direct upload) or stored in the local reserve (tagged deferred upload).
+        - `PutRequest`: uploads a chunk given its `Address` and `Data`. The `Address` must match the address the node computes from `Data`, otherwise the upload is rejected with `STATUS_BAD_REQUEST`; it also settles whether the data is a CAC or a SOC, so no chunk type is sent. Stamping, in order of precedence: a pre-signed `Stamp` on the request, the request's `BatchId`, then the connection's `Swarm-Postage-Batch-Id`. Answered by a `PutResponse`.
+        - Uploads are always direct: `STATUS_OK` confirms that the chunk was pushed to network peers. Unlike HTTP uploads, which default to deferred, there is no deferred mode on the stream, so `Swarm-Tag` / `swarm-tag` is rejected with `400` at the handshake.
         - `Status`: `STATUS_UNSPECIFIED = 0` (never sent), `STATUS_OK = 1`, `STATUS_NOT_FOUND = 2`, `STATUS_ERROR = 3`, `STATUS_BAD_REQUEST = 4`, `STATUS_BUSY = 5` (queue full — retry with backoff). Failed replies carry a sanitized `Error` message.
         - Frame size limit: 64 KiB maximum per WebSocket message.
         - WebSocket Close Codes:
@@ -419,7 +420,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: false
-          description: "Associate upload with an existing Tag UID (use when WebSocket client cannot set custom headers)"
+          description: "Associate upload with an existing Tag UID (use when WebSocket client cannot set custom headers). Legacy upload mode only; rejected in stream mode, where uploads are always direct."
         - in: header
           name: swarm-postage-batch-id
           description: "ID of Postage Batch that is used to upload data with. Optional when chunks include pre-signed postage stamps."

@@ -413,55 +413,30 @@ func (s *Service) chunkBidirectionalStreamHandler(w http.ResponseWriter, r *http
 	logger := s.logger.WithName("chunks_stream_bidirectional").Build()
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id"` // Optional
-		SwarmTag uint64 `map:"Swarm-Tag"`
-		Cache    *bool  `map:"Swarm-Cache"`
+		// Optional: the batch the node stamps uploads with when a request names
+		// neither a pre-signed stamp nor a batch of its own.
+		BatchID []byte `map:"Swarm-Postage-Batch-Id"`
+		Cache   *bool  `map:"Swarm-Cache"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
-	if headers.SwarmTag == 0 {
-		if qTag := r.URL.Query().Get("swarm-tag"); qTag != "" {
-			parsed, err := strconv.ParseUint(qTag, 10, 64)
-			if err != nil {
-				logger.Debug("invalid swarm-tag query parameter", "value", qTag, "error", err)
-				jsonhttp.BadRequest(w, "invalid swarm-tag query parameter")
-				return
-			}
-			headers.SwarmTag = parsed
-		}
+	// Uploads on the stream are always direct, so a tag would have no effect.
+	// Reject it rather than ignore it, so a client expecting deferred uploads
+	// finds out at the handshake.
+	if r.Header.Get(SwarmTagHeader) != "" || r.URL.Query().Get("swarm-tag") != "" {
+		logger.Debug("chunk bidirectional stream: swarm-tag is not supported")
+		jsonhttp.BadRequest(w, "swarm-tag is not supported on the chunk stream")
+		return
 	}
 
-	var (
-		tag uint64
-		err error
-	)
-	if headers.SwarmTag > 0 {
-		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
-		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
-			switch {
-			case errors.Is(err, storage.ErrNotFound):
-				jsonhttp.NotFound(w, "tag not found")
-			default:
-				jsonhttp.InternalServerError(w, "cannot get or create tag")
-			}
-			return
-		}
-	}
-
-	var (
-		connStamper    postage.Stamper
-		connStampSave  func() error
-		deferredPutter storer.PutterSession
-	)
-
+	stampers := newStreamStampers(s)
 	if len(headers.BatchID) > 0 {
-		stamper, save, err := s.getStamper(headers.BatchID)
-		if err != nil {
+		// Resolve the connection default up front, so a bad batch fails the
+		// handshake instead of every upload that relies on it.
+		if _, _, err := stampers.get(headers.BatchID); err != nil {
 			logger.Debug("get stamper failed", "error", err)
 			switch {
 			case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -473,18 +448,6 @@ func (s *Service) chunkBidirectionalStreamHandler(w http.ResponseWriter, r *http
 			}
 			return
 		}
-		connStamper = stamper
-		connStampSave = save
-	}
-
-	// If a tag was specified, set up a deferred putter session for the connection
-	if tag > 0 {
-		deferredPutter, err = s.storer.Upload(context.Background(), false, tag)
-		if err != nil {
-			logger.Debug("create deferred putter failed", "error", err)
-			jsonhttp.InternalServerError(w, "cannot create upload session")
-			return
-		}
 	}
 
 	defaultCache := true
@@ -492,9 +455,6 @@ func (s *Service) chunkBidirectionalStreamHandler(w http.ResponseWriter, r *http
 		c, err := strconv.ParseBool(qCache)
 		if err != nil {
 			logger.Debug("invalid cache query parameter", "value", qCache, "error", err)
-			if deferredPutter != nil {
-				_ = deferredPutter.Cleanup()
-			}
 			jsonhttp.BadRequest(w, "invalid cache query parameter")
 			return
 		}
@@ -517,15 +477,44 @@ func (s *Service) chunkBidirectionalStreamHandler(w http.ResponseWriter, r *http
 		s.wsWg.Done()
 		logger.Debug("chunk bidirectional stream: upgrade failed", "error", err)
 		logger.Error(nil, "chunk bidirectional stream: upgrade failed")
-		if deferredPutter != nil {
-			if err := deferredPutter.Cleanup(); err != nil {
-				logger.Debug("chunk bidirectional stream: deferred putter cleanup failed", "error", err)
-			}
-		}
 		return
 	}
 
-	go s.handleBidirectionalStream(logger, wsConn, connStamper, connStampSave, deferredPutter, defaultCache)
+	go s.handleBidirectionalStream(logger, wsConn, stampers, headers.BatchID, defaultCache)
+}
+
+// streamStampers resolves the node-side stamper for each postage batch used on
+// one stream, so a batch is looked up once per connection rather than once per
+// chunk. Failed lookups are not cached: a batch that is not usable yet may
+// become usable while the connection is open.
+type streamStampers struct {
+	s       *Service
+	mu      sync.Mutex
+	byBatch map[string]streamStamper
+}
+
+type streamStamper struct {
+	stamper postage.Stamper
+	save    func() error
+}
+
+func newStreamStampers(s *Service) *streamStampers {
+	return &streamStampers{s: s, byBatch: make(map[string]streamStamper)}
+}
+
+func (st *streamStampers) get(batchID []byte) (postage.Stamper, func() error, error) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	if e, ok := st.byBatch[string(batchID)]; ok {
+		return e.stamper, e.save, nil
+	}
+	stamper, save, err := st.s.getStamper(batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+	st.byBatch[string(batchID)] = streamStamper{stamper: stamper, save: save}
+	return stamper, save, nil
 }
 
 // getResponse builds a download reply. The address is echoed from the request,
@@ -552,9 +541,8 @@ func putResponse(address []byte, status pb.Status, errMsg string) *pb.Response {
 func (s *Service) handleBidirectionalStream(
 	logger log.Logger,
 	conn *websocket.Conn,
-	connStamper postage.Stamper,
-	connStampSave func() error,
-	deferredPutter storer.PutterSession,
+	stampers *streamStampers,
+	defaultBatchID []byte,
 	defaultCache bool,
 ) {
 	defer s.wsWg.Done()
@@ -574,12 +562,6 @@ func (s *Service) handleBidirectionalStream(
 		close(getQueue)
 		close(putQueue)
 		workersWg.Wait()
-
-		if deferredPutter != nil {
-			if err := deferredPutter.Done(swarm.ZeroAddress); err != nil {
-				logger.Debug("chunk bidirectional stream: deferred putter done failed", "error", err)
-			}
-		}
 	}()
 
 	conn.SetReadLimit(maxStreamFrameSize)
@@ -665,7 +647,7 @@ func (s *Service) handleBidirectionalStream(
 					if !ok {
 						return
 					}
-					s.processStreamPutRequest(ctx, logger, req, connStamper, connStampSave, deferredPutter, batchCache, &batchCacheMu, sendResponse)
+					s.processStreamPutRequest(ctx, logger, req, stampers, defaultBatchID, batchCache, &batchCacheMu, sendResponse)
 				}
 			}
 		}()
@@ -802,13 +784,31 @@ func (s *Service) processStreamGetRequest(
 	reply(getResponse(req.Address, pb.Status_STATUS_OK, chunk.Data(), ""))
 }
 
+// chunkForAddress rebuilds an uploaded chunk and checks that it is the chunk the
+// request names. The address also settles the chunk type: small SOC data parses
+// as a valid CAC too, but only one reading of the data produces the address.
+func chunkForAddress(address, data []byte) (swarm.Chunk, bool) {
+	want := swarm.NewAddress(address)
+	if ch, err := cac.NewWithDataSpan(data); err == nil && ch.Address().Equal(want) {
+		return ch, true
+	}
+	sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
+	if err != nil {
+		return nil, false
+	}
+	ch, err := sch.Chunk()
+	if err != nil || !soc.Valid(ch) || !ch.Address().Equal(want) {
+		return nil, false
+	}
+	return ch, true
+}
+
 func (s *Service) processStreamPutRequest(
 	streamCtx context.Context,
 	logger log.Logger,
 	req *pb.PutRequest,
-	connStamper postage.Stamper,
-	connStampSave func() error,
-	deferredPutter storer.PutterSession,
+	stampers *streamStampers,
+	defaultBatchID []byte,
 	batchCache map[string]*postage.Batch,
 	batchCacheMu *sync.RWMutex,
 	sendResponse func(*pb.Response) error,
@@ -833,49 +833,30 @@ func (s *Service) processStreamPutRequest(
 		return
 	}
 
-	var chunk swarm.Chunk
-	switch req.Type {
-	case pb.ChunkType_CHUNK_TYPE_SOC:
-		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, req.Data))
-		if err != nil {
-			reply(pb.Status_STATUS_BAD_REQUEST, "invalid soc chunk data")
-			return
-		}
-		chunk, err = sch.Chunk()
-		if err != nil || !soc.Valid(chunk) {
-			reply(pb.Status_STATUS_BAD_REQUEST, "invalid soc chunk")
-			return
-		}
-	case pb.ChunkType_CHUNK_TYPE_CAC:
-		var err error
-		chunk, err = cac.NewWithDataSpan(req.Data)
-		if err != nil {
-			reply(pb.Status_STATUS_BAD_REQUEST, "invalid chunk data")
-			return
-		}
-	default:
-		reply(pb.Status_STATUS_BAD_REQUEST, "unspecified or invalid chunk type")
-		return
-	}
-
-	// The address is the client's key for this request, so it must name the
-	// chunk actually being stored. This also rejects data declared as the wrong
-	// chunk type, which would otherwise be stored under a different address.
-	if !chunk.Address().Equal(swarm.NewAddress(req.Address)) {
+	chunk, ok := chunkForAddress(req.Address, req.Data)
+	if !ok {
 		reply(pb.Status_STATUS_BAD_REQUEST, "address does not match chunk data")
 		return
 	}
 
-	var stampedChunk swarm.Chunk
+	idAddr, err := storage.IdentityAddress(chunk)
+	if err != nil {
+		reply(pb.Status_STATUS_BAD_REQUEST, "cannot compute identity address")
+		return
+	}
 
-	if len(req.Stamp) > 0 {
-		stamp := &postage.Stamp{}
-		if err := stamp.UnmarshalBinary(req.Stamp); err != nil {
+	// Stamping, in order of precedence: a pre-signed stamp on the request, the
+	// request's own batch, then the connection's batch.
+	var stamp *postage.Stamp
+	switch {
+	case len(req.Stamp) > 0:
+		presigned := &postage.Stamp{}
+		if err := presigned.UnmarshalBinary(req.Stamp); err != nil {
 			reply(pb.Status_STATUS_BAD_REQUEST, "invalid postage stamp")
 			return
 		}
 
-		batchID := stamp.BatchID()
+		batchID := presigned.BatchID()
 		batchIDKey := string(batchID)
 
 		batchCacheMu.RLock()
@@ -883,7 +864,6 @@ func (s *Service) processStreamPutRequest(
 		batchCacheMu.RUnlock()
 
 		if !exists {
-			var err error
 			storedBatch, err = s.batchStore.Get(batchID)
 			if err != nil {
 				logger.Debug("chunk bidirectional stream: batch validation failed", "batch_id", batchID, "error", err)
@@ -895,25 +875,40 @@ func (s *Service) processStreamPutRequest(
 			batchCacheMu.Unlock()
 		}
 
-		stamper := postage.NewPresignedStamper(stamp, storedBatch.Owner)
-		idAddr, err := storage.IdentityAddress(chunk)
-		if err != nil {
-			reply(pb.Status_STATUS_BAD_REQUEST, "cannot compute identity address")
-			return
-		}
-		stamp, err = stamper.Stamp(chunk.Address(), idAddr)
+		stamp, err = postage.NewPresignedStamper(presigned, storedBatch.Owner).Stamp(chunk.Address(), idAddr)
 		if err != nil {
 			reply(pb.Status_STATUS_BAD_REQUEST, "invalid postage stamp")
 			return
 		}
-		stampedChunk = chunk.WithStamp(stamp)
-	} else if connStamper != nil {
-		idAddr, err := storage.IdentityAddress(chunk)
-		if err != nil {
-			reply(pb.Status_STATUS_BAD_REQUEST, "cannot compute identity address")
+	default:
+		batchID := req.BatchId
+		if len(batchID) == 0 {
+			batchID = defaultBatchID
+		}
+		if len(batchID) == 0 {
+			reply(pb.Status_STATUS_BAD_REQUEST, "missing postage stamp or batch id")
 			return
 		}
-		stamp, err := connStamper.Stamp(chunk.Address(), idAddr)
+		if len(batchID) != swarm.HashSize {
+			reply(pb.Status_STATUS_BAD_REQUEST, "invalid batch id")
+			return
+		}
+
+		stamper, save, err := stampers.get(batchID)
+		if err != nil {
+			logger.Debug("chunk bidirectional stream: get stamper failed", "batch_id", batchID, "error", err)
+			switch {
+			case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+				reply(pb.Status_STATUS_BAD_REQUEST, "postage batch not usable")
+			case errors.Is(err, postage.ErrNotFound):
+				reply(pb.Status_STATUS_BAD_REQUEST, "postage batch not found")
+			default:
+				reply(pb.Status_STATUS_ERROR, "failed to stamp chunk")
+			}
+			return
+		}
+
+		stamp, err = stamper.Stamp(chunk.Address(), idAddr)
 		if err != nil {
 			logger.Debug("chunk bidirectional stream: stamp failed", "error", err)
 			errMsg := "failed to stamp chunk"
@@ -923,49 +918,31 @@ func (s *Service) processStreamPutRequest(
 			reply(pb.Status_STATUS_ERROR, errMsg)
 			return
 		}
-		if connStampSave != nil {
-			if err := connStampSave(); err != nil {
-				logger.Debug("chunk bidirectional stream: save stamp state failed", "error", err)
-			}
+		if err := save(); err != nil {
+			logger.Debug("chunk bidirectional stream: save stamp state failed", "error", err)
 		}
-		stampedChunk = chunk.WithStamp(stamp)
-	} else {
-		reply(pb.Status_STATUS_BAD_REQUEST, "missing postage stamp and no batch ID specified for stream")
-		return
 	}
 
+	// Uploads are always direct: the reply waits for the push to complete.
 	putCtx, cancel := context.WithTimeout(streamCtx, chunkUploadRequestTimeout)
 	defer cancel()
 
-	if deferredPutter != nil {
-		// Tagged deferred upload: writes directly to local storage
-		if err := deferredPutter.Put(putCtx, stampedChunk); err != nil {
-			if streamCtx.Err() != nil {
-				return
-			}
-			logger.Debug("chunk bidirectional stream: deferred write chunk failed", "address", chunk.Address(), "error", err)
-			reply(pb.Status_STATUS_ERROR, "chunk write error")
+	session := s.storer.DirectUpload()
+	if err := session.Put(putCtx, chunk.WithStamp(stamp)); err != nil {
+		if streamCtx.Err() != nil {
 			return
 		}
-	} else {
-		// Direct upload: chunk is pushed to network peers, and we await push confirmation
-		session := s.storer.DirectUpload()
-		if err := session.Put(putCtx, stampedChunk); err != nil {
-			if streamCtx.Err() != nil {
-				return
-			}
-			logger.Debug("chunk bidirectional stream: direct upload put failed", "address", chunk.Address(), "error", err)
-			reply(pb.Status_STATUS_ERROR, "chunk write error")
+		logger.Debug("chunk bidirectional stream: direct upload put failed", "address", chunk.Address(), "error", err)
+		reply(pb.Status_STATUS_ERROR, "chunk write error")
+		return
+	}
+	if err := session.Done(swarm.ZeroAddress); err != nil {
+		if streamCtx.Err() != nil {
 			return
 		}
-		if err := session.Done(swarm.ZeroAddress); err != nil {
-			if streamCtx.Err() != nil {
-				return
-			}
-			logger.Debug("chunk bidirectional stream: direct upload push failed", "address", chunk.Address(), "error", err)
-			reply(pb.Status_STATUS_ERROR, "chunk push failed")
-			return
-		}
+		logger.Debug("chunk bidirectional stream: direct upload push failed", "address", chunk.Address(), "error", err)
+		reply(pb.Status_STATUS_ERROR, "chunk push failed")
+		return
 	}
 
 	reply(pb.Status_STATUS_OK, "")
