@@ -8,6 +8,7 @@ import "context"
 
 type mockSyncer struct{ rate float64 }
 
-func NewMockRateReporter(r float64) *mockSyncer { return &mockSyncer{r} }
-func (m *mockSyncer) SyncRate() float64         { return m.rate }
-func (m *mockSyncer) Start(context.Context)     {}
+func NewMockRateReporter(r float64) *mockSyncer  { return &mockSyncer{r} }
+func (m *mockSyncer) SyncRate() float64          { return m.rate }
+func (m *mockSyncer) IsReserveSynced(uint8) bool { return m.rate == 0 }
+func (m *mockSyncer) Start(context.Context)      {}
