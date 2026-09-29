@@ -1,6 +1,6 @@
 # Design Spec: Sampling View (Snapshot Location Table + Release Invalidation)
 
-**Status:** Revised 2026-09-29. Sharky Hold quarantine replaced by release invalidation; not yet implemented  
+**Status:** Implemented 2026-09-29 (release invalidation); testnet numbers below are from the Hold revision  
 **Base:** `master` (replaces PR #5615)  
 
 ---
@@ -108,14 +108,14 @@ return n
 ## 4. Testing
 
 - **Sharky:** an observer is called with the released location before any `Write` can reuse the slot; `stop` removes it; `Release` with no observers is unchanged.
-- **View:** a slot released and overwritten between `Lookup` and the post-read check falls back to the live store (drive the interleaving with a sharky test hook or `synctest`, not a spinlock); a slot released during the table scan is honored after the bitmaps are published; the view does not leak its observer on build error or `Close`.
-- **Sampler:** a `ReserveSample` test that replaces a SOC in the neighborhood mid-round and checks that every `SampleItem`'s `TransformedAddress` matches its `ChunkData`. `TestReserveSampler` asserts sample correctness only, not that the table was used.
+- **View:** a slot released and overwritten between `Lookup` and the post-read check falls back to the live store (drive the interleaving with a sharky test hook or `synctest`, not a spinlock); a slot released during the table scan is honored after the bitmaps are published; a canceled context fails NewSamplingView cleanly; observer removal is covered by the sharky Watch tests.
+- **Sampler:** a ReserveSample test replaces a SOC after the view opens (test hook between opening the view and reading chunks) and checks that the sample item's ChunkData is the new version and its TransformedAddress matches it. TestReserveSampler asserts sample correctness only, not that the table was used.
 
 ---
 
 ## 5. Empirical Testnet Verification
 
-Benchmarked on `bee-light-testnet` (`bee-2-0` with Sampling View vs `bee-2-1` on `master`, 2.1M chunks). These numbers were measured with the Hold quarantine revision and must be re-measured after the switch to release invalidation; the read path cost per hit is expected to be the same plus two atomic loads.
+Benchmarked on `bee-light-testnet` (`bee-2-0` with Sampling View vs `bee-2-1` on `master`, 2.1M chunks). These numbers were measured with the Hold quarantine revision and must be re-measured after the switch to release invalidation. Locally (Apple M4 Pro, BenchmarkSamplingViewGetInto, interleaved A/B with benchstat), the hit path showed no regression from the switch (-3.6%) and got 12% faster from dropping the per-read metric, with 0 allocations per read before and after.
 
 | Benchmark Scenario | Metric | Master (`bee-2-1`) | Sampling View (`bee-2-0`) | Improvement |
 | :--- | :--- | :--- | :--- | :--- |

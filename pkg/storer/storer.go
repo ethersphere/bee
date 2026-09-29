@@ -450,7 +450,8 @@ type DB struct {
 
 	pinIntegrity *PinIntegrity
 
-	samplingViewDisabled bool // set by tests to exercise the retrieval index read path
+	samplingViewDisabled bool   // set by tests to exercise the retrieval index read path
+	samplingViewOpened   func() // set by tests to act between opening the view and reading chunks
 }
 
 type reserveOpts struct {
