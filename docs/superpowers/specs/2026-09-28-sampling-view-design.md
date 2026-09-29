@@ -1,6 +1,6 @@
-# Design Spec: Sampling View (Snapshot Location Table + Sharky Quarantine)
+# Design Spec: Sampling View (Snapshot Location Table + Release Invalidation)
 
-**Status:** Implemented & Verified  
+**Status:** Revised 2026-09-29. Sharky Hold quarantine replaced by release invalidation; not yet implemented  
 **Base:** `master` (replaces PR #5615)  
 
 ---
@@ -19,11 +19,19 @@ PR #5615 stored `Location` inside `ChunkBinItem`. While faster, it introduced cr
 - **Silent data corruption:** Reading a reused Sharky slot returns valid bytes from a different chunk, corrupting sample calculations silently.
 - **Breaking migration:** Required a 47-second blocking migration (4.19M items) and made downgrading impossible without breaking the reserve.
 
+### Why not Sharky Hold quarantine (first revision of this spec)?
+The first revision kept every slot released during the round out of reuse until the last hold ended. Code review of `bca179d8` found that this costs more than it saves:
+- **Store-wide effect:** every `Release` is deferred while a hold is open, including cache eviction, upload cleanup and unpins, not only reserve chunks in the table. Writes during the round must extend shard files instead of reusing freed slots. Shard files never shrink at runtime (only offline `bee db compact` truncates them), so the round leaves a higher high-water mark and can hit ENOSPC on a nearly full disk.
+- **Nested holds:** overlapping `ReserveSample` calls (agent round plus rchash with a different anchor) keep the hold count above zero, so held slots may never return.
+- **Drain under lock:** freeing held slots runs under `holdMu`, stalling every concurrent `Release` (and the commits holding multex locks behind it) for up to about a second.
+- **Close and panic hazards:** `Close` frees held slots while a hold is open; a panic during the table build leaves the hold open for the life of the process.
+- **Stale SOC reads:** a SOC replaced during the round stays readable at its old slot, so phase 2 hashes v1 while phase 3 loads v2 from the live store, producing a `SampleItem` whose `TransformedAddress` does not match its `ChunkData`.
+
 ---
 
 ## 2. Architecture & Design
 
-Sampling View replaces random database lookups with a transient, in-memory snapshot view backed by slot quarantine in Sharky.
+Sampling View replaces random database lookups with a transient, in-memory snapshot of locations. Instead of preventing slot reuse, the view is told about every released slot and stops trusting it. Reads that cannot be trusted fall back to the live chunk store, which is what `master` does for every read.
 
 ```
                     ┌─────────────────────────┐
@@ -32,46 +40,82 @@ Sampling View replaces random database lookups with a transient, in-memory snaps
                                 │
                       view.GetInto(addr, buf)
                                 │
-               ┌────────────────┴────────────────┐
-          Table Hit                         Table Miss
-               │                                 │
-     Direct Sharky Read                Fallback chunkStore.GetInto
- (No LevelDB, no mutex lock)           (Standard LevelDB lookup)
+               ┌────────────────┴──────────────────┐
+     Table hit, slot not released        Table miss, or slot released
+               │                           (before or after the read)
+     Direct Sharky Read                            │
+ (No LevelDB, no mutex lock)             Fallback chunkStore.GetInto
+                                         (Standard LevelDB lookup)
 ```
 
-### 2.1 Sharky Slot Quarantine (`pkg/sharky/store.go`)
-- **`Hold() (release func())`**: While at least one hold is active, `Release(loc)` appends freed slots to a `limbo` list instead of making them reusable in the free list.
-- When the last hold ends, `limbo` is drained back into the free list.
-- `Close()` drains limbo before flushing `free_NNN` bitmasks, ensuring clean shutdown without leaking slots.
-- **Correctness Guarantee:** Any chunk existing when the view opens remains untouched in its Sharky slot for the duration of the sample, even if concurrent deletions or evictions occur.
+### 2.1 Sharky Release Observer (`pkg/sharky/store.go`)
+- **`Watch(fn func(Location)) (stop func())`** registers an observer. `stop` is idempotent.
+- `Release(loc)` calls every registered observer **before** handing the slot back to its shard (`sh.release`). Observers must be fast and must not block or call back into the store.
+- The observer list is an `atomic.Pointer` to an immutable slice (copy on write in `Watch`/`stop`), so `Release` with no active view costs one atomic load.
+- Sharky behavior is otherwise unchanged: slots are reused immediately, no quarantine, no extra disk usage, no changes to `Close`. The `Hold` API and its `held` list, `holdMu` and `HeldSlots` metric are removed.
 
 ### 2.2 In-Memory Location Table (`pkg/storer/internal/chunkstore/locationtable.go`)
 - Built via **a single sequential range scan** over `RetrievalIndexItem` for addresses matching the target proximity depth.
 - Stored as compact parallel slices:
   - `keys []addrKey`: 16-byte address prefixes, already sorted by LevelDB key iteration order (zero sort overhead).
-  - `locs []sharky.Location`: 8-byte Sharky slot coordinates.
-- **Binary search lookup:** O(log N) lookup in memory (~50 MB RAM for 1.1M entries, ~52 bytes/entry).
+  - `locs []sharky.Location`: Sharky slot coordinates.
+- **Binary search lookup:** O(log N) lookup in memory.
 - Unusable duplicates fall back to LevelDB.
+- Unchanged by this revision.
 
-### 2.3 Sampling View API & Sampler Integration (`pkg/storer/`)
-- `db.storage.NewSamplingView(ctx, anchor, depth)`: Acquires the Sharky hold, runs the range scan to build the table, and returns a `SamplingView` (`GetterInto` + `io.Closer`).
+### 2.3 Released-Slot Set (`pkg/storer/internal/transaction/samplingview.go`)
+Each view owns a record of slots released since it started watching.
+
+- **Build phase:** `NewSamplingView` calls `sharky.Watch` **before** the table scan. Releases that arrive during the scan go into a small mutex-protected pending list.
+- **Read phase:** after the scan, the view allocates one bitmap per shard (`[]atomic.Uint64`), sized to the highest slot in the table for that shard. It then takes the pending lock, applies the pending entries, publishes the bitmaps through an `atomic.Pointer` and releases the lock. From then on the observer sets bits with atomic `Or`; no locks, no allocations.
+- **Out-of-range slots:** a released slot beyond a shard's bitmap cannot be in the table and is ignored. A table entry whose slot is beyond its bitmap cannot exist by construction.
+- **Size:** one bit per slot up to each shard's highest slot in the table, i.e. at most (total slots)/8 bytes, a few hundred KB for a reserve of a few million chunks.
+
+### 2.4 Read Protocol
+```
+loc, ok := table.Lookup(addr)
+if !ok || released(loc) { return fallback(addr) }   // miss
+n := sharky.Read(loc, buf)
+if released(loc)       { return fallback(addr) }    // released during the read
+return n
+```
+
+**Why the second check is sufficient.** Let the observer mark `loc` at time T1. The slot enters the free list after T1, so any write of new data into it starts at T2 > T1. If the post-read check at T3 sees the bit clear, then T1 > T3, so T2 > T3 and the read finished before any overwrite began: the bytes are the ones indexed when the table was built. If the check sees the bit set, the bytes may be mixed and are discarded. This is a seqlock with the released bit as the sequence number. It relies on the atomic bit operations and the channel hand-off in `sh.release` for ordering, and on the kernel ordering `pread`/`pwrite` on the same file.
+
+**Why the scan-time ordering is safe.** It relies on two existing invariants: a retrieval index entry is committed away before its slot is released (`transaction.Commit`), and the scan iterator's implicit LevelDB snapshot is taken after `Watch` returns. So the scan cannot see an entry whose slot was released before `Watch`. The watcher is registered before the scan, so a slot released at any point after the scan starts is recorded. A location the scan reads was either still live when read, or was released after `Watch` and is recorded. A slot released and reused by a new chunk that the scan then indexes produces a spurious fallback for that chunk: a cost, not a correctness problem.
+
+**Replaced SOCs.** `chunkstore.Replace` releases the old slot, so a SOC replaced during the round falls back to the live store and phase 2 reads the same version phase 3 loads. The only remaining window is a replacement between the phase-2 read and the phase-3 load, the same as on `master`.
+
+### 2.5 Sampling View API & Sampler Integration (`pkg/storer/`)
+- `db.storage.NewSamplingView(ctx, anchor, depth)`: registers the release observer, runs the range scan to build the table, publishes the released-slot bitmaps and returns a `SamplingView` (`GetterInto` + `io.Closer`).
+- `Close` calls the observer's `stop`. `NewSamplingView` must stop the observer on every non-success exit, including a panic during the table build (`defer` guarded by a success flag).
 - Phase 2 workers read through `view.GetInto()`. Hits bypass LevelDB and per-chunk locking entirely.
 - **Graceful degradation:** If table build fails, the sampler logs the warning and falls back to standard `chunkStore.GetInto`. A failure in the optimization never fails the sampling round.
-- Metrics added to `SampleStats`: `LocationTableSize`, `LocationTableBuildDuration`, and `LocationTableMisses`.
+- Overlapping views are independent: each has its own observer, table and bitmaps. There is no shared counter to leak.
+- Metrics in `SampleStats`: `LocationTableSize`, `LocationTableBuildDuration`, and `LocationTableMisses`. Misses now include released-slot fallbacks. Under heavy churn the miss rate rises, but results stay correct.
 
 ---
 
 ## 3. Key Benefits
 
 - **Zero on-disk changes:** No schema changes, no migrations, trivial rollback to master.
-- **Safe by construction:** Quarantine prevents slot reuse during the round; no stale pointer risks.
-- **100% Hash Equivalence:** Evaluates to the exact same sample hash as `master`.
+- **No effect on Sharky space:** slots are reused as on `master`; shard files do not grow because of a sampling round.
+- **Safe by construction:** a read is returned only if its slot was not released before the read finished; otherwise the live store is used.
+- **Hash equivalence with `master`:** every returned chunk is either the indexed content that was still live when read, or comes from the same live-store path `master` uses.
 
 ---
 
-## 4. Empirical Testnet Verification
+## 4. Testing
 
-Benchmarked on `bee-light-testnet` (`bee-2-0` with Sampling View vs `bee-2-1` on `master`, 2.1M chunks):
+- **Sharky:** an observer is called with the released location before any `Write` can reuse the slot; `stop` removes it; `Release` with no observers is unchanged.
+- **View:** a slot released and overwritten between `Lookup` and the post-read check falls back to the live store (drive the interleaving with a sharky test hook or `synctest`, not a spinlock); a slot released during the table scan is honored after the bitmaps are published; the view does not leak its observer on build error or `Close`.
+- **Sampler:** a `ReserveSample` test that replaces a SOC in the neighborhood mid-round and checks that every `SampleItem`'s `TransformedAddress` matches its `ChunkData`. `TestReserveSampler` asserts sample correctness only, not that the table was used.
+
+---
+
+## 5. Empirical Testnet Verification
+
+Benchmarked on `bee-light-testnet` (`bee-2-0` with Sampling View vs `bee-2-1` on `master`, 2.1M chunks). These numbers were measured with the Hold quarantine revision and must be re-measured after the switch to release invalidation; the read path cost per hit is expected to be the same plus two atomic loads.
 
 | Benchmark Scenario | Metric | Master (`bee-2-1`) | Sampling View (`bee-2-0`) | Improvement |
 | :--- | :--- | :--- | :--- | :--- |
@@ -82,3 +126,9 @@ Benchmarked on `bee-light-testnet` (`bee-2-0` with Sampling View vs `bee-2-1` on
 | **Table Metrics** | Build Duration | N/A | 469 ms (1.09M entries) | < 0.5s overhead |
 | | Miss Rate | N/A | 0 misses (100% hit rate) | Perfect hit rate |
 | **Hash Verification** | Sample Hash | Identical | Identical | **100% Match** |
+
+---
+
+## 6. Out of Scope
+
+Other review findings on `bca179d8` that this revision does not address: 16-byte table keys (prefix collision on addresses added after the build), per-miss `ChunkStore()` allocations, table pre-sizing and `Location` padding, the `SamplingViewer` type assertion, dead `SampleStats.add` lines, and the warning logged on a canceled context.
