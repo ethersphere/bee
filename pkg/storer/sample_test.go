@@ -858,7 +858,10 @@ func TestReserveSamplerReplacedSOC(t *testing.T) {
 			if len(sample.Items) != 1 {
 				t.Fatalf("got %d sample items, want 1", len(sample.Items))
 			}
-			if sample.Stats.LocationTableSize > 0 && sample.Stats.LocationTableMisses < 1 {
+			if sample.Stats.LocationTableSize == 0 {
+				t.Fatal("no sampling view was opened")
+			}
+			if sample.Stats.LocationTableMisses < 1 {
 				t.Fatal("the replace did not happen during the round: no location table miss")
 			}
 

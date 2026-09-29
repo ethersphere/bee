@@ -15,8 +15,8 @@ import (
 // open. Releases seen before publish are buffered; publish moves them into
 // per-shard bitmaps, after which releases set bits without locking.
 type releasedSlots struct {
-	mu      sync.Mutex // guards pending and the switch to bitmaps
-	pending []sharky.Location
+	mu      sync.Mutex                        // guards pending and the switch to bitmaps
+	pending []sharky.Location                 // only the releases that happen during the table scan
 	bitmaps atomic.Pointer[[][]atomic.Uint64] // by shard, then slot/64
 }
 

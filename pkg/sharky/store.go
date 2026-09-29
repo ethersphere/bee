@@ -188,6 +188,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	}
 }
 
+// watcher wraps fn because func values are not comparable; the pointer gives stop an identity.
 type watcher struct {
 	fn func(Location)
 }
@@ -220,6 +221,10 @@ func (s *Store) updateWatchers(update func([]*watcher) []*watcher) {
 		ws = slices.Clone(*cur)
 	}
 	ws = update(ws)
+	if len(ws) == 0 {
+		s.watchers.Store(nil)
+		return
+	}
 	s.watchers.Store(&ws)
 }
 
@@ -235,6 +240,8 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 		return ErrShardNotFound
 	}
 
+	// Must run before the slot is freed: the sampling view relies on seeing
+	// the release before any Write can reuse the slot.
 	if ws := s.watchers.Load(); ws != nil {
 		for _, w := range *ws {
 			w.fn(loc)
