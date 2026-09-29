@@ -104,6 +104,9 @@ func (db *DB) ReserveSample(
 	if view != nil {
 		defer func() { _ = view.Close() }()
 	}
+	if db.samplingViewOpened != nil {
+		db.samplingViewOpened()
+	}
 
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 

@@ -54,3 +54,9 @@ func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkTyp
 func (db *DB) DisableSamplingView() {
 	db.samplingViewDisabled = true
 }
+
+// OnSamplingViewOpened makes ReserveSample call fn after it opens its sampling
+// view and before it starts reading chunks.
+func (db *DB) OnSamplingViewOpened(fn func()) {
+	db.samplingViewOpened = fn
+}
