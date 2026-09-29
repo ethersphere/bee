@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -75,7 +76,8 @@ func TestPrestage(t *testing.T) {
 		if !bytes.Equal(b, newBinary) {
 			t.Fatal("staged binary differs")
 		}
-		if fi, err := os.Stat(staged); err != nil || fi.Mode().Perm() != 0o755 {
+		// Windows has no execute bits; bee-runner is Linux only anyway.
+		if fi, err := os.Stat(staged); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755) {
 			t.Fatalf("staged binary mode: %v, %v", fi.Mode(), err)
 		}
 		if got := cacheEntries(t, cache); len(got) != 1 {
