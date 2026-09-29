@@ -5,6 +5,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -162,3 +164,17 @@ func NewParseError(entry, value string, cause error) error {
 const RootPath = rootPath
 
 func (s *Service) Router() *mux.Router { return s.router }
+
+const (
+	BPSCloseInvalidClaim   = bpsCloseInvalidClaim
+	BPSCloseInvalidMessage = bpsCloseInvalidMessage
+	BPSCloseBrokerGone     = bpsCloseBrokerGone
+)
+
+// SetBPSClaimTimeout overrides the claim timeout and returns a restore func.
+// Callers must not run in parallel with other bps tests.
+func SetBPSClaimTimeout(d time.Duration) func() {
+	prev := bpsClaimTimeout
+	bpsClaimTimeout = d
+	return func() { bpsClaimTimeout = prev }
+}
