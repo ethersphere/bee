@@ -31,8 +31,9 @@ func keyOf(addr []byte) (k locationKey) {
 // locations the retrieval index held when the table was built. It is
 // read-only after BuildLocationTable returns and safe for concurrent use.
 type LocationTable struct {
-	keys []locationKey // ascending, as the index is ordered by address
-	locs []sharky.Location
+	keys   []locationKey // ascending, as the index is ordered by address
+	locs   []sharky.Location
+	limits []uint32 // by shard, above every slot in locs
 }
 
 // BuildLocationTable scans the retrieval index over every address with
@@ -76,6 +77,7 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 		}
 		t.keys = append(t.keys, k)
 		t.locs = append(t.locs, item.Location)
+		t.coverSlot(item.Location)
 		return false, nil
 	})
 	if err != nil {
@@ -111,4 +113,18 @@ func (t *LocationTable) Lookup(addr swarm.Address) (sharky.Location, bool) {
 // Len returns the number of addresses in the table.
 func (t *LocationTable) Len() int {
 	return len(t.keys)
+}
+
+// SlotLimits returns, indexed by shard, a bound above every slot in the
+// table. Entries dropped as duplicates may leave a bound higher than needed.
+func (t *LocationTable) SlotLimits() []uint32 {
+	return t.limits
+}
+
+// coverSlot raises the limit of loc's shard to cover loc.
+func (t *LocationTable) coverSlot(loc sharky.Location) {
+	if n := int(loc.Shard) + 1; n > len(t.limits) {
+		t.limits = append(t.limits, make([]uint32, n-len(t.limits))...)
+	}
+	t.limits[loc.Shard] = max(t.limits[loc.Shard], loc.Slot+1)
 }

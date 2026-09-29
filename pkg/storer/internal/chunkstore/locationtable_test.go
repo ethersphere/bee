@@ -130,3 +130,27 @@ func TestLocationTableCanceledContext(t *testing.T) {
 		t.Fatalf("got %v, want context.Canceled", err)
 	}
 }
+
+func TestLocationTableSlotLimits(t *testing.T) {
+	t.Parallel()
+
+	st := newTableIndex(t)
+	addrs := make([]swarm.Address, 10)
+	for i := range addrs {
+		addrs[i] = swarm.RandAddress(t)
+	}
+	locs := putRetrievalItems(t, st, addrs) // shard i%4, slot i
+
+	table, err := chunkstore.BuildLocationTable(context.Background(), st, swarm.ZeroAddress.Bytes(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := make([]uint32, 4)
+	for _, loc := range locs {
+		want[loc.Shard] = max(want[loc.Shard], loc.Slot+1)
+	}
+	if got := table.SlotLimits(); !slices.Equal(got, want) {
+		t.Fatalf("slot limits: got %v, want %v", got, want)
+	}
+}
