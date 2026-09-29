@@ -93,6 +93,78 @@ func TestSyncOutsideDepth(t *testing.T) {
 	waitSyncCalledBins(t, pullsync, addr2, 0)
 }
 
+func TestSyncRates(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr    = swarm.RandAddress(t)
+		addr2   = swarm.RandAddress(t)
+		cursors = []uint64{1000, 1000, 1000, 1000}
+	)
+
+	newRatesPuller := func(t *testing.T, replies ...mockps.SyncReply) (*puller.Puller, *kadMock.Mock) {
+		t.Helper()
+		p, _, kad, _ := newPuller(t, opts{
+			kad: []kadMock.Option{
+				kadMock.WithEachPeerRevCalls(
+					kadMock.AddrTuple{Addr: addr, PO: 2},
+					kadMock.AddrTuple{Addr: addr2, PO: 0},
+				),
+			},
+			pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
+			bins:     4,
+			rs:       resMock.NewReserve(resMock.WithRadius(2)),
+		})
+		return p, kad
+	}
+
+	t.Run("outside radius only", func(t *testing.T) {
+		t.Parallel()
+
+		p, kad := newRatesPuller(t, mockps.SyncReply{Bin: 0, Start: 1, Topmost: 1000, Count: 100, Peer: addr2})
+		if !p.IsReserveSynced(2) {
+			t.Fatal("expected reserve to be synced before any syncing")
+		}
+		kad.Trigger()
+
+		err := spinlock.Wait(time.Second, func() bool {
+			return p.SyncRateOutsideRadius() > 0
+		})
+		if err != nil {
+			t.Fatal("expected a non-zero sync rate outside radius")
+		}
+		if within := p.SyncRateWithinRadius(); within != 0 {
+			t.Fatalf("got sync rate within radius %v, want 0", within)
+		}
+		if !p.IsReserveSynced(2) {
+			t.Fatal("expected reserve to be synced when only bins outside radius are syncing")
+		}
+	})
+
+	t.Run("within radius", func(t *testing.T) {
+		t.Parallel()
+
+		p, kad := newRatesPuller(t, mockps.SyncReply{Bin: 2, Start: 1, Topmost: 1000, Count: 100, Peer: addr})
+		kad.Trigger()
+
+		err := spinlock.Wait(time.Second, func() bool {
+			return p.SyncRateWithinRadius() > 0
+		})
+		if err != nil {
+			t.Fatal("expected a non-zero sync rate within radius")
+		}
+		if outside := p.SyncRateOutsideRadius(); outside != 0 {
+			t.Fatalf("got sync rate outside radius %v, want 0", outside)
+		}
+		if p.IsReserveSynced(2) {
+			t.Fatal("expected reserve not to be synced at depth 2 when bin 2 is syncing")
+		}
+		if !p.IsReserveSynced(3) {
+			t.Fatal("expected reserve to be synced at depth 3 when only bin 2 is syncing")
+		}
+	})
+}
+
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
 
