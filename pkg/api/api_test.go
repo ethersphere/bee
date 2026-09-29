@@ -96,6 +96,7 @@ type testServerOptions struct {
 	Resolver                    resolver.Interface
 	Pss                         pss.Interface
 	Gsoc                        gsoc.Listener
+	Bps                         api.BPSService
 	WsPath                      string
 	WsPingPeriod                time.Duration
 	ChunkDeliveryWriteDeadline  time.Duration
@@ -216,6 +217,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Resolver:        o.Resolver,
 		Pss:             o.Pss,
 		Gsoc:            o.Gsoc,
+		Bps:             o.Bps,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
 		AccessControl:   o.AccessControl,

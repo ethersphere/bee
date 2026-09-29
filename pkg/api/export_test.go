@@ -203,3 +203,17 @@ func (s *Service) SetChunkStreamTimeouts(writeDeadline, downloadTimeout, readTim
 		s.chunkStreamReadTimeout = readTimeout
 	}
 }
+
+const (
+	BPSCloseInvalidClaim   = bpsCloseInvalidClaim
+	BPSCloseInvalidMessage = bpsCloseInvalidMessage
+	BPSCloseBrokerGone     = bpsCloseBrokerGone
+)
+
+// SetBPSClaimTimeout overrides the claim timeout and returns a restore func.
+// Callers must not run in parallel with other bps tests.
+func SetBPSClaimTimeout(d time.Duration) func() {
+	prev := bpsClaimTimeout
+	bpsClaimTimeout = d
+	return func() { bpsClaimTimeout = prev }
+}
