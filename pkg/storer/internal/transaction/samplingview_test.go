@@ -262,7 +262,6 @@ func BenchmarkSamplingViewGetInto(b *testing.B) {
 	ctx := context.Background()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		if _, err := view.GetInto(ctx, chs[i].Address(), buf); err != nil {
