@@ -979,6 +979,10 @@ components:
           type: integer
         pullsyncRate:
           type: number
+        pullsyncRateOutsideRadius:
+          type: number
+          nullable: true
+          description: Rate of historical syncing of bins outside the storage radius. Only reported for the local node.
         storageRadius:
           type: integer
         connectedPeers:
