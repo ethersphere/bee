@@ -36,10 +36,11 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 
 	var (
 		t       = new(LocationTable)
+		item    = new(RetrievalIndexItem) // reused: the callback copies what it keeps
 		scanned int
 	)
 	err := r.Iterate(storage.Query{
-		Factory:       func() storage.Item { return new(RetrievalIndexItem) },
+		Factory:       func() storage.Item { return item },
 		Prefix:        string(rangeStart(anchor, depth)),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
@@ -50,7 +51,6 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 			}
 		}
 
-		item := res.Entry.(*RetrievalIndexItem)
 		if swarm.Proximity(item.Address.Bytes(), anchor) < depth {
 			return true, nil // past the end of the range
 		}
@@ -81,11 +81,8 @@ func rangeStart(anchor []byte, depth uint8) []byte {
 // Lookup returns the location recorded for addr, or false if addr was not in
 // the range when the table was built.
 func (t *LocationTable) Lookup(addr swarm.Address) (sharky.Location, bool) {
-	if len(addr.Bytes()) != swarm.HashSize {
-		return sharky.Location{}, false
-	}
-	i, found := slices.BinarySearchFunc(t.keys, [swarm.HashSize]byte(addr.Bytes()), func(a, b [swarm.HashSize]byte) int {
-		return bytes.Compare(a[:], b[:])
+	i, found := slices.BinarySearchFunc(t.keys, addr.Bytes(), func(k [swarm.HashSize]byte, target []byte) int {
+		return bytes.Compare(k[:], target)
 	})
 	if !found {
 		return sharky.Location{}, false

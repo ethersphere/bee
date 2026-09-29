@@ -346,7 +346,9 @@ func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, 
 	start := time.Now()
 	view, err := transaction.NewSamplingView(ctx, db.sharky, db.storage, anchor, depth)
 	if err != nil {
-		db.logger.Warning("reserve sampler reading chunks through the retrieval index", "error", err)
+		if ctx.Err() == nil {
+			db.logger.Warning("reserve sampler reading chunks through the retrieval index", "error", err)
+		}
 		return nil
 	}
 	stats.LocationTableBuildDuration = time.Since(start)
@@ -446,9 +448,6 @@ func (s *SampleStats) add(other SampleStats) {
 	s.AssemblyChunkLoadFailed += other.AssemblyChunkLoadFailed
 	s.StampLoadFailed += other.StampLoadFailed
 	s.TotalIterated += other.TotalIterated
-	s.LocationTableSize += other.LocationTableSize
-	s.LocationTableBuildDuration += other.LocationTableBuildDuration
-	s.LocationTableMisses += other.LocationTableMisses
 }
 
 // RandSample returns Sample with random values.
