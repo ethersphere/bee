@@ -337,15 +337,14 @@ func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
 }
 
 // openSamplingView returns a view that reads chunks without an index lookup
-// each, or nil when the storage cannot provide one; the workers then read
-// through the chunk store.
-func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, stats *SampleStats) transaction.SamplingView {
-	viewer, ok := db.storage.(transaction.SamplingViewer)
-	if !ok || db.samplingViewDisabled {
+// each, or nil if it cannot be opened; the workers then read through the
+// chunk store.
+func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, stats *SampleStats) *transaction.SamplingView {
+	if db.samplingViewDisabled {
 		return nil
 	}
 	start := time.Now()
-	view, err := viewer.NewSamplingView(ctx, anchor, depth)
+	view, err := transaction.NewSamplingView(ctx, db.sharky, db.storage, anchor, depth)
 	if err != nil {
 		db.logger.Warning("reserve sampler reading chunks through the retrieval index", "error", err)
 		return nil
