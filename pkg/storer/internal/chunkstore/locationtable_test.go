@@ -86,17 +86,17 @@ func TestLocationTableRange(t *testing.T) {
 	}
 }
 
-func TestLocationTableKeyCollision(t *testing.T) {
+func TestLocationTableSharedPrefix(t *testing.T) {
 	t.Parallel()
 
 	st := newTableIndex(t)
 	a := swarm.RandAddress(t)
-	twin := slices.Clone(a.Bytes())
-	twin[swarm.HashSize-1] ^= 1 // same first 16 bytes as a
-	triplet := slices.Clone(a.Bytes())
-	triplet[swarm.HashSize-2] ^= 1
-	other := swarm.RandAddress(t)
-	addrs := []swarm.Address{a, swarm.NewAddress(twin), swarm.NewAddress(triplet), other}
+	withPrefix := func(i int) swarm.Address {
+		b := slices.Clone(a.Bytes())
+		b[swarm.HashSize-1-i] ^= 1 // same first 16 bytes as a
+		return swarm.NewAddress(b)
+	}
+	addrs := []swarm.Address{a, withPrefix(0), withPrefix(1)}
 	locs := putRetrievalItems(t, st, addrs)
 
 	table, err := chunkstore.BuildLocationTable(context.Background(), st, a.Bytes(), 0)
@@ -104,16 +104,14 @@ func TestLocationTableKeyCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, colliding := range addrs[:3] {
-		if _, ok := table.Lookup(colliding); ok {
-			t.Fatalf("colliding address %s must miss the table", colliding)
+	for _, addr := range addrs {
+		if loc, ok := table.Lookup(addr); !ok || loc != locs[addr.ByteString()] {
+			t.Fatalf("address %s: got %v %v, want %v", addr, loc, ok, locs[addr.ByteString()])
 		}
 	}
-	if loc, ok := table.Lookup(other); !ok || loc != locs[other.ByteString()] {
-		t.Fatalf("other address: got %v %v, want %v", loc, ok, locs[other.ByteString()])
-	}
-	if table.Len() != 1 {
-		t.Fatalf("table size %d, want 1", table.Len())
+	// An address added after the build must not match an entry that shares its prefix.
+	if loc, ok := table.Lookup(withPrefix(2)); ok {
+		t.Fatalf("address missing from the index found at %v", loc)
 	}
 }
 

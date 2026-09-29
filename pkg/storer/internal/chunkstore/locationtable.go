@@ -18,20 +18,11 @@ import (
 // locationTableCtxCheck is how many index entries are scanned between context checks.
 const locationTableCtxCheck = 4096
 
-// locationKey is the first half of a chunk address. Two addresses in one
-// table share it only if they agree on 128 bits; such pairs are left out.
-type locationKey [swarm.HashSize / 2]byte
-
-func keyOf(addr []byte) (k locationKey) {
-	copy(k[:], addr)
-	return k
-}
-
 // LocationTable maps the addresses of one proximity range to the sharky
 // locations the retrieval index held when the table was built. It is
 // read-only after BuildLocationTable returns and safe for concurrent use.
 type LocationTable struct {
-	keys   []locationKey // ascending, as the index is ordered by address
+	keys   [][swarm.HashSize]byte // ascending, as the index is ordered by address
 	locs   []sharky.Location
 	limits []uint32 // by shard, above every slot in locs
 }
@@ -45,8 +36,6 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 
 	var (
 		t       = new(LocationTable)
-		dupKey  locationKey
-		hasDup  bool
 		scanned int
 	)
 	err := r.Iterate(storage.Query{
@@ -66,16 +55,7 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 			return true, nil // past the end of the range
 		}
 
-		k := keyOf(item.Address.Bytes())
-		switch last := len(t.keys) - 1; {
-		case hasDup && k == dupKey:
-			return false, nil
-		case last >= 0 && t.keys[last] == k:
-			t.keys, t.locs = t.keys[:last], t.locs[:last]
-			dupKey, hasDup = k, true
-			return false, nil
-		}
-		t.keys = append(t.keys, k)
+		t.keys = append(t.keys, [swarm.HashSize]byte(item.Address.Bytes()))
 		t.locs = append(t.locs, item.Location)
 		t.coverSlot(item.Location)
 		return false, nil
@@ -101,7 +81,10 @@ func rangeStart(anchor []byte, depth uint8) []byte {
 // Lookup returns the location recorded for addr, or false if addr was not in
 // the range when the table was built.
 func (t *LocationTable) Lookup(addr swarm.Address) (sharky.Location, bool) {
-	i, found := slices.BinarySearchFunc(t.keys, keyOf(addr.Bytes()), func(a, b locationKey) int {
+	if len(addr.Bytes()) != swarm.HashSize {
+		return sharky.Location{}, false
+	}
+	i, found := slices.BinarySearchFunc(t.keys, [swarm.HashSize]byte(addr.Bytes()), func(a, b [swarm.HashSize]byte) int {
 		return bytes.Compare(a[:], b[:])
 	})
 	if !found {
@@ -115,8 +98,8 @@ func (t *LocationTable) Len() int {
 	return len(t.keys)
 }
 
-// SlotLimits returns, indexed by shard, a bound above every slot in the
-// table. Entries dropped as duplicates may leave a bound higher than needed.
+// SlotLimits returns, indexed by shard, one more than the highest slot in the
+// table.
 func (t *LocationTable) SlotLimits() []uint32 {
 	return t.limits
 }
