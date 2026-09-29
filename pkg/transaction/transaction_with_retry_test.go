@@ -67,7 +67,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil,
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, nil,
 		)
 
 		require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		require.NoError(t, err)
@@ -101,12 +101,41 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
 		assert.Nil(t, gasFeeCap)
 		assert.Nil(t, gasTipCap)
+	})
+
+	t.Run("fee cap floor is 15 percent above the pending cap", func(t *testing.T) {
+		t.Parallel()
+
+		const pendingFeeCap = int64(5000)
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, big.NewInt(pendingFeeCap),
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, marketTip, gasTipCap.Int64())
+		assert.Equal(t, pendingFeeCap*115/100, gasFeeCap.Int64())
+	})
+
+	t.Run("natural fee cap wins when it already clears the floor", func(t *testing.T) {
+		t.Parallel()
+
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, big.NewInt(1000),
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, marketTip, gasTipCap.Int64())
+		assert.Equal(t, baseFeeCap+marketTip, gasFeeCap.Int64())
 	})
 }
 
@@ -585,8 +614,8 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	escalatedTip := transaction.ApplyMempoolBump(marketTip)
 	assert.Equal(t, escalatedTip.Int64(), broadcasts[1].GasTipCap.Int64(),
 		"second attempt must use escalated tip (MarketTip * 1.15)")
-	assert.Equal(t, s.expectedGasFeeCap(escalatedTip).Int64(), broadcasts[1].GasFeeCap.Int64(),
-		"second attempt gasFeeCap = baseFee*2 + escalated tip")
+	assert.Equal(t, transaction.ApplyMempoolBump(s.expectedGasFeeCap(marketTip)).Int64(), broadcasts[1].GasFeeCap.Int64(),
+		"second attempt gasFeeCap must be 15% above the pending fee cap")
 
 	assert.Equal(t, int32(2), feeHistoryCalls.Load(),
 		"fee history is called for each attempt")
@@ -827,7 +856,8 @@ func TestSendWithRetry_TierEscalation(t *testing.T) {
 	assert.Equal(t, aggressiveTip.Int64(), broadcasts[1].GasTipCap.Int64(),
 		"second broadcast must use aggressive tier tip")
 	assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), broadcasts[0].GasFeeCap.Int64())
-	assert.Equal(t, s.expectedGasFeeCap(aggressiveTip).Int64(), broadcasts[1].GasFeeCap.Int64())
+	assert.Equal(t, transaction.ApplyMempoolBump(s.expectedGasFeeCap(marketTip)).Int64(), broadcasts[1].GasFeeCap.Int64(),
+		"aggressive tip still has to clear 15% above the pending fee cap")
 }
 
 // Underpriced replacement keeps watching the pending tx hash instead of switching to the rejected one.
@@ -884,6 +914,70 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 	assert.Equal(t, int32(1), watchCount.Load(), "rejected replacement must not be registered")
 }
 
+// An underpriced replacement still raises the next fee-cap floor. The mempool
+// refused that cap, so the following attempt must clear 15% above it.
+func TestSendWithRetry_FeeCapFloorFollowsLastAttempt(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcasts []capturedBroadcast
+		doneC      = make(chan struct{}, 1)
+	)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				switch len(broadcasts) {
+				case 2:
+					return errors.New("replacement transaction underpriced")
+				case 3:
+					doneC <- struct{}{}
+				}
+				return nil
+			}),
+			receiptFound(),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	_, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 3)
+
+	marketTip := s.expectedMarketTip()
+	acceptedCap := s.expectedGasFeeCap(marketTip)
+	floor := transaction.ApplyMempoolBump(acceptedCap)
+	rejectedTip := transaction.ApplyMempoolBump(marketTip)
+
+	assert.Equal(t, acceptedCap.Int64(), broadcasts[0].GasFeeCap.Int64())
+	assert.Equal(t, floor.Int64(), broadcasts[1].GasFeeCap.Int64())
+	assert.Equal(t, transaction.ApplyMempoolBump(floor).Int64(), broadcasts[2].GasFeeCap.Int64(),
+		"underpriced replacement must raise the fee-cap floor")
+	assert.Equal(t, rejectedTip.Int64(), broadcasts[1].GasTipCap.Int64())
+	assert.Equal(t, transaction.ApplyMempoolBump(rejectedTip).Int64(), broadcasts[2].GasTipCap.Int64())
+}
+
 // All attempts exhausted, receipt never found → error.
 // Verifies compound escalation chain, nonce immutability, and gasFeeCap on every attempt.
 func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
@@ -938,13 +1032,17 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	tip0 := s.expectedMarketTip()              // tipBase*2 = 200
 	tip1 := transaction.ApplyMempoolBump(tip0) // 230
 	tip2 := transaction.ApplyMempoolBump(tip1) // 264
+	cap0 := s.expectedGasFeeCap(tip0)
+	cap1 := transaction.ApplyMempoolBump(cap0)
+	cap2 := transaction.ApplyMempoolBump(cap1)
 	expectedTips := []*big.Int{tip0, tip1, tip2}
+	expectedCaps := []*big.Int{cap0, cap1, cap2}
 
 	for i, expectedTip := range expectedTips {
 		assert.Equal(t, expectedTip.Int64(), broadcasts[i].GasTipCap.Int64(),
 			"attempt %d: tip must match compound escalation chain", i)
-		assert.Equal(t, s.expectedGasFeeCap(expectedTip).Int64(), broadcasts[i].GasFeeCap.Int64(),
-			"attempt %d: gasFeeCap must be baseFee*2 + tip", i)
+		assert.Equal(t, expectedCaps[i].Int64(), broadcasts[i].GasFeeCap.Int64(),
+			"attempt %d: gasFeeCap must be 15%% above the previous accepted cap", i)
 	}
 
 	assert.Equal(t, int32(3), feeHistoryCalls.Load(),
@@ -1142,15 +1240,15 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 	})
 }
 
-// Resume after node restart — transaction is re-sent starting from persisted attempt.
-// Verifies nonce, escalated tip, gasFeeCap, and that fee history is NOT called.
+// Resume after node restart — the next attempt floors tip and fee cap at 15%
+// above the stored transaction.
 func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	t.Parallel()
 	s := newRetryTestSetup()
 	store := storemock.NewStateStore()
 	testutil.CleanupCloser(t, store)
 
-	previousTip := new(big.Int).Set(s.tipBase)
+	storedTip := big.NewInt(1000)
 	firstTxHash := common.HexToHash("0xaaaa")
 	secondTxHash := common.HexToHash("0xbbbb")
 	lastTxHash := common.HexToHash("0xdeadbeef")
@@ -1170,7 +1268,7 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 			GasLimit:    s.gasLimit,
 			Value:       s.value,
 			Nonce:       s.nonce,
-			GasTipCap:   previousTip,
+			GasTipCap:   storedTip,
 			GasFeeCap:   big.NewInt(5000),
 			GasPrice:    big.NewInt(0),
 			Created:     time.Now().Unix(),
@@ -1246,12 +1344,11 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 
 	assert.Equal(t, s.nonce, resumedNonce, "resumed transaction must use the same nonce")
 
-	expectedTip := s.expectedMarketTip()
-	assert.Equal(t, expectedTip.Int64(), gasTipCap.Int64(),
-		"resumed transaction should use market tip from fresh fee history")
+	assert.Equal(t, transaction.ApplyMempoolBump(storedTip).Int64(), gasTipCap.Int64(),
+		"resumed gas tip is 15% above the stored transaction tip")
 
-	assert.Equal(t, s.expectedGasFeeCap(expectedTip).Int64(), gasFeeCap.Int64(),
-		"resumed gasFeeCap must be baseFee*2 + escalated tip")
+	assert.Equal(t, transaction.ApplyMempoolBump(big.NewInt(5000)).Int64(), gasFeeCap.Int64(),
+		"resumed gasFeeCap is 15% above the stored transaction fee cap")
 
 	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
 		"fee history should be called on resume")
