@@ -290,13 +290,58 @@ func readPBResponse(t *testing.T, conn *websocket.Conn) *pb.Response {
 	return resp
 }
 
+func getRequest(address []byte, cache pb.CacheOption) *pb.Request {
+	return &pb.Request{Body: &pb.Request_Get{Get: &pb.GetRequest{Address: address, Cache: cache}}}
+}
+
+func putRequest(address, data, stamp []byte, typ pb.ChunkType) *pb.Request {
+	return &pb.Request{Body: &pb.Request_Put{Put: &pb.PutRequest{
+		Address: address,
+		Data:    data,
+		Stamp:   stamp,
+		Type:    typ,
+	}}}
+}
+
+// cacPut uploads ch as a CAC under its own address, stamped by the connection.
+func cacPut(ch swarm.Chunk) *pb.Request {
+	return putRequest(ch.Address().Bytes(), ch.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC)
+}
+
+// readGet reads the next response and fails unless it is a download reply.
+func readGet(t *testing.T, conn *websocket.Conn) *pb.GetResponse {
+	t.Helper()
+	resp := readPBResponse(t, conn)
+	g := resp.GetGet()
+	if g == nil {
+		t.Fatalf("expected a GetResponse, got %T", resp.GetBody())
+	}
+	return g
+}
+
+// readPut reads the next response and fails unless it is an upload reply.
+func readPut(t *testing.T, conn *websocket.Conn) *pb.PutResponse {
+	t.Helper()
+	resp := readPBResponse(t, conn)
+	p := resp.GetPut()
+	if p == nil {
+		t.Fatalf("expected a PutResponse, got %T", resp.GetBody())
+	}
+	return p
+}
+
+func streamHeaders(withBatch bool) http.Header {
+	h := http.Header{}
+	h.Set(api.ContentTypeHeader, "application/octet-stream")
+	if withBatch {
+		h.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
+	}
+	h.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
+	return h
+}
+
 // nolint:paralleltest
 func TestChunkBidirectionalStream_UploadAndDownload(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	var (
 		cs                          = inmemchunkstore.New()
 		storerMock                  = mockstorer.NewWithChunkStore(cs)
@@ -304,99 +349,69 @@ func TestChunkBidirectionalStream_UploadAndDownload(t *testing.T) {
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
+			WsHeaders:    streamHeaders(true),
 			DirectUpload: true,
 		})
 	)
 
-	// 1. Upload chunks via PutRequest
+	// 1. Upload chunks; replies are correlated by the address they carry.
 	const numChunks = 10
-	chunks := make([]swarm.Chunk, numChunks)
-	for i := range numChunks {
-		chunks[i] = testingc.GenerateTestRandomChunk()
-		// Seed in cs for subsequent Get assertions
-		if err := cs.Put(context.Background(), chunks[i]); err != nil {
+	chunks := make(map[string]swarm.Chunk, numChunks)
+	for range numChunks {
+		ch := testingc.GenerateTestRandomChunk()
+		chunks[ch.Address().ByteString()] = ch
+		// Seed in cs for the downloads below.
+		if err := cs.Put(context.Background(), ch); err != nil {
 			t.Fatal(err)
 		}
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(i + 1),
-			Body: &pb.Request_Put{
-				Put: &pb.PutRequest{
-					Data: chunks[i].Data(),
-					Type: pb.ChunkType_CHUNK_TYPE_CAC,
-				},
-			},
-		})
+		sendPBRequest(t, wsConn, cacPut(ch))
 	}
 
-	// Collect Put responses
-	putResponses := make(map[uint64]*pb.Response)
+	uploaded := make(map[string]bool, numChunks)
 	for range numChunks {
-		resp := readPBResponse(t, wsConn)
-		putResponses[resp.Id] = resp
-	}
-
-	for i := range numChunks {
-		reqId := uint64(i + 1)
-		resp, ok := putResponses[reqId]
+		resp := readPut(t, wsConn)
+		ch, ok := chunks[string(resp.Address)]
 		if !ok {
-			t.Fatalf("missing response for put request id %d", reqId)
+			t.Fatalf("put reply for an address that was never uploaded: %x", resp.Address)
 		}
 		if resp.Status != pb.Status_STATUS_OK {
 			t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp.Status, resp.Error)
 		}
-		if !bytes.Equal(resp.Address, chunks[i].Address().Bytes()) {
-			t.Fatalf("put response address mismatch: got %x, want %x", resp.Address, chunks[i].Address().Bytes())
+		if !chanStorer.Has(ch.Address()) {
+			t.Fatalf("chunk %s not pushed", ch.Address())
 		}
-		if !chanStorer.Has(chunks[i].Address()) {
-			t.Fatalf("chunk %s not found in chan store", chunks[i].Address())
-		}
+		uploaded[string(resp.Address)] = true
+	}
+	if len(uploaded) != numChunks {
+		t.Fatalf("expected %d distinct put replies, got %d", numChunks, len(uploaded))
 	}
 
-	// 2. Download chunks via GetRequest on the SAME connection
-	for i := range numChunks {
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(100 + i + 1),
-			Body: &pb.Request_Get{
-				Get: &pb.GetRequest{
-					Address: chunks[i].Address().Bytes(),
-				},
-			},
-		})
+	// 2. Download them on the same connection.
+	for _, ch := range chunks {
+		sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 	}
-
-	// Collect Get responses
-	getResponses := make(map[uint64]*pb.Response)
+	downloaded := make(map[string]bool, numChunks)
 	for range numChunks {
-		resp := readPBResponse(t, wsConn)
-		getResponses[resp.Id] = resp
-	}
-
-	for i := range numChunks {
-		reqId := uint64(100 + i + 1)
-		resp, ok := getResponses[reqId]
+		resp := readGet(t, wsConn)
+		ch, ok := chunks[string(resp.Address)]
 		if !ok {
-			t.Fatalf("missing response for get request id %d", reqId)
+			t.Fatalf("get reply for an address that was never requested: %x", resp.Address)
 		}
 		if resp.Status != pb.Status_STATUS_OK {
 			t.Fatalf("expected STATUS_OK for get, got %v (err: %s)", resp.Status, resp.Error)
 		}
-		if !bytes.Equal(resp.Address, chunks[i].Address().Bytes()) {
-			t.Fatalf("get response address mismatch: got %x, want %x", resp.Address, chunks[i].Address().Bytes())
+		if !bytes.Equal(resp.Data, ch.Data()) {
+			t.Fatalf("get response data mismatch for %s", ch.Address())
 		}
-		if !bytes.Equal(resp.Data, chunks[i].Data()) {
-			t.Fatalf("get response data mismatch")
-		}
+		downloaded[string(resp.Address)] = true
+	}
+	if len(downloaded) != numChunks {
+		t.Fatalf("expected %d distinct get replies, got %d", numChunks, len(downloaded))
 	}
 }
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_Interleaved(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	var (
 		cs                 = inmemchunkstore.New()
 		storerMock         = mockstorer.NewWithChunkStore(cs)
@@ -404,83 +419,101 @@ func TestChunkBidirectionalStream_Interleaved(t *testing.T) {
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
+			WsHeaders:    streamHeaders(true),
 			DirectUpload: true,
 		})
 	)
 
-	// Pre-seed 10 chunks to get
 	const count = 10
-	getChunks := make([]swarm.Chunk, count)
-	for i := range count {
-		getChunks[i] = testingc.GenerateTestRandomChunk()
-		if err := cs.Put(context.Background(), getChunks[i]); err != nil {
+	getChunks := make(map[string]swarm.Chunk, count)
+	putChunks := make(map[string]swarm.Chunk, count)
+	for range count {
+		g := testingc.GenerateTestRandomChunk()
+		if err := cs.Put(context.Background(), g); err != nil {
 			t.Fatal(err)
 		}
+		getChunks[g.Address().ByteString()] = g
+		p := testingc.GenerateTestRandomChunk()
+		putChunks[p.Address().ByteString()] = p
+
+		sendPBRequest(t, wsConn, cacPut(p))
+		sendPBRequest(t, wsConn, getRequest(g.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 	}
 
-	// Prepare 10 chunks to put
-	putChunks := make([]swarm.Chunk, count)
-	for i := range count {
-		putChunks[i] = testingc.GenerateTestRandomChunk()
-	}
-
-	// Interleave Get and Put requests
-	for i := range count {
-		// Send Put
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(1000 + i),
-			Body: &pb.Request_Put{
-				Put: &pb.PutRequest{
-					Data: putChunks[i].Data(),
-					Type: pb.ChunkType_CHUNK_TYPE_CAC,
-				},
-			},
-		})
-		// Send Get
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(2000 + i),
-			Body: &pb.Request_Get{
-				Get: &pb.GetRequest{
-					Address: getChunks[i].Address().Bytes(),
-				},
-			},
-		})
-	}
-
-	// Collect all 20 responses
-	responses := make(map[uint64]*pb.Response)
+	gets, puts := 0, 0
 	for range count * 2 {
 		resp := readPBResponse(t, wsConn)
-		responses[resp.Id] = resp
+		switch body := resp.GetBody().(type) {
+		case *pb.Response_Get:
+			ch, ok := getChunks[string(body.Get.Address)]
+			if !ok || body.Get.Status != pb.Status_STATUS_OK || !bytes.Equal(body.Get.Data, ch.Data()) {
+				t.Fatalf("unexpected get reply: %+v", body.Get)
+			}
+			gets++
+		case *pb.Response_Put:
+			if _, ok := putChunks[string(body.Put.Address)]; !ok || body.Put.Status != pb.Status_STATUS_OK {
+				t.Fatalf("unexpected put reply: %+v", body.Put)
+			}
+			puts++
+		default:
+			t.Fatalf("response with no body")
+		}
+	}
+	if gets != count || puts != count {
+		t.Fatalf("expected %d gets and %d puts, got %d and %d", count, count, gets, puts)
+	}
+}
+
+// A download and an upload of the same address can be in flight together: the
+// response type tells them apart, since the address alone does not.
+//
+// nolint:paralleltest
+func TestChunkBidirectionalStream_SameAddressGetAndPut(t *testing.T) {
+	var (
+		cs                 = inmemchunkstore.New()
+		storerMock         = mockstorer.NewWithChunkStore(cs)
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:       storerMock,
+			Post:         mockpost.New(mockpost.WithAcceptAll()),
+			WsPath:       "/chunks/stream",
+			WsHeaders:    streamHeaders(true),
+			DirectUpload: true,
+		})
+	)
+
+	ch := testingc.GenerateTestRandomChunk()
+	if err := cs.Put(context.Background(), ch); err != nil {
+		t.Fatal(err)
 	}
 
-	for i := range count {
-		putResp := responses[uint64(1000+i)]
-		if putResp == nil || putResp.Status != pb.Status_STATUS_OK {
-			t.Fatalf("put request %d failed: %v", 1000+i, putResp)
-		}
-		if !bytes.Equal(putResp.Address, putChunks[i].Address().Bytes()) {
-			t.Fatalf("put address mismatch for %d", 1000+i)
-		}
+	sendPBRequest(t, wsConn, cacPut(ch))
+	sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 
-		getResp := responses[uint64(2000+i)]
-		if getResp == nil || getResp.Status != pb.Status_STATUS_OK {
-			t.Fatalf("get request %d failed: %v", 2000+i, getResp)
+	var gotGet, gotPut bool
+	for range 2 {
+		resp := readPBResponse(t, wsConn)
+		switch body := resp.GetBody().(type) {
+		case *pb.Response_Get:
+			if !bytes.Equal(body.Get.Address, ch.Address().Bytes()) || body.Get.Status != pb.Status_STATUS_OK || !bytes.Equal(body.Get.Data, ch.Data()) {
+				t.Fatalf("unexpected get reply: %+v", body.Get)
+			}
+			gotGet = true
+		case *pb.Response_Put:
+			if !bytes.Equal(body.Put.Address, ch.Address().Bytes()) || body.Put.Status != pb.Status_STATUS_OK {
+				t.Fatalf("unexpected put reply: %+v", body.Put)
+			}
+			gotPut = true
+		default:
+			t.Fatalf("response with no body")
 		}
-		if !bytes.Equal(getResp.Data, getChunks[i].Data()) {
-			t.Fatalf("get data mismatch for %d", 2000+i)
-		}
+	}
+	if !gotGet || !gotPut {
+		t.Fatalf("expected one get and one put reply, got get=%v put=%v", gotGet, gotPut)
 	}
 }
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_PerRequestErrors(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	var (
 		cs                 = inmemchunkstore.New()
 		storerMock         = mockstorer.NewWithChunkStore(cs)
@@ -488,119 +521,107 @@ func TestChunkBidirectionalStream_PerRequestErrors(t *testing.T) {
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
+			WsHeaders:    streamHeaders(true),
 			DirectUpload: true,
 		})
 	)
 
-	// 1. Get non-existent chunk -> STATUS_NOT_FOUND
-	nonExistentAddr := testingc.GenerateTestRandomChunk().Address()
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: nonExistentAddr.Bytes(),
-			},
-		},
-	})
-	resp1 := readPBResponse(t, wsConn)
-	if resp1.Id != 1 || resp1.Status != pb.Status_STATUS_NOT_FOUND {
-		t.Fatalf("expected STATUS_NOT_FOUND, got %v (err: %s)", resp1.Status, resp1.Error)
-	}
-
-	// 2. Get with bad address length -> STATUS_BAD_REQUEST
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 2,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: []byte("too-short"),
-			},
-		},
-	})
-	resp2 := readPBResponse(t, wsConn)
-	if resp2.Id != 2 || resp2.Status != pb.Status_STATUS_BAD_REQUEST {
-		t.Fatalf("expected STATUS_BAD_REQUEST, got %v (err: %s)", resp2.Status, resp2.Error)
-	}
-
-	// 3. Put with insufficient data (< span size) -> STATUS_BAD_REQUEST
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 3,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: []byte{1, 2, 3},
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp3 := readPBResponse(t, wsConn)
-	if resp3.Id != 3 || resp3.Status != pb.Status_STATUS_BAD_REQUEST {
-		t.Fatalf("expected STATUS_BAD_REQUEST, got %v (err: %s)", resp3.Status, resp3.Error)
-	}
-
-	// 4. Put with unspecified chunk type -> STATUS_BAD_REQUEST
 	validChunk := testingc.GenerateTestRandomChunk()
 	if err := cs.Put(context.Background(), validChunk); err != nil {
 		t.Fatal(err)
 	}
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 4,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: validChunk.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_UNSPECIFIED,
-			},
+	otherChunk := testingc.GenerateTestRandomChunk()
+
+	// Each failure must come back as a reply to that request, echoing its
+	// address, and leave the connection usable.
+	for _, tc := range []struct {
+		name    string
+		req     *pb.Request
+		status  pb.Status
+		errText string
+	}{
+		{
+			name:   "get of a missing chunk",
+			req:    getRequest(otherChunk.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT),
+			status: pb.Status_STATUS_NOT_FOUND,
 		},
-	})
-	resp4 := readPBResponse(t, wsConn)
-	if resp4.Id != 4 || resp4.Status != pb.Status_STATUS_BAD_REQUEST {
-		t.Fatalf("expected STATUS_BAD_REQUEST for unspecified chunk type, got %v (err: %s)", resp4.Status, resp4.Error)
-	}
-	if resp4.Error != "unspecified or invalid chunk type" {
-		t.Fatalf("expected 'unspecified or invalid chunk type', got %q", resp4.Error)
+		{
+			name:    "get with a short address",
+			req:     getRequest([]byte("too-short"), pb.CacheOption_CACHE_DEFAULT),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "invalid chunk address length",
+		},
+		{
+			name:    "put with a short address",
+			req:     putRequest([]byte("too-short"), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "invalid chunk address length",
+		},
+		{
+			name:    "put with too little data",
+			req:     putRequest(validChunk.Address().Bytes(), []byte{1, 2, 3}, nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "insufficient data for chunk",
+		},
+		{
+			name:    "put with an unspecified chunk type",
+			req:     putRequest(validChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_UNSPECIFIED),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "unspecified or invalid chunk type",
+		},
+		{
+			name:    "put with an unknown chunk type",
+			req:     putRequest(validChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType(99)),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "unspecified or invalid chunk type",
+		},
+		{
+			name:    "put whose address does not match its data",
+			req:     putRequest(otherChunk.Address().Bytes(), validChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC),
+			status:  pb.Status_STATUS_BAD_REQUEST,
+			errText: "address does not match chunk data",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sendPBRequest(t, wsConn, tc.req)
+
+			var (
+				address []byte
+				status  pb.Status
+				errText string
+			)
+			if tc.req.GetGet() != nil {
+				resp := readGet(t, wsConn)
+				address, status, errText = resp.Address, resp.Status, resp.Error
+			} else {
+				resp := readPut(t, wsConn)
+				address, status, errText = resp.Address, resp.Status, resp.Error
+			}
+
+			wantAddress := tc.req.GetGet().GetAddress()
+			if tc.req.GetPut() != nil {
+				wantAddress = tc.req.GetPut().GetAddress()
+			}
+			if !bytes.Equal(address, wantAddress) {
+				t.Fatalf("reply must echo the request address: got %x, want %x", address, wantAddress)
+			}
+			if status != tc.status {
+				t.Fatalf("expected %v, got %v (err: %s)", tc.status, status, errText)
+			}
+			if tc.errText != "" && errText != tc.errText {
+				t.Fatalf("expected error %q, got %q", tc.errText, errText)
+			}
+		})
 	}
 
-	// 5. Empty request (neither get nor put) -> STATUS_BAD_REQUEST
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 5,
-	})
-	resp5 := readPBResponse(t, wsConn)
-	if resp5.Id != 5 || resp5.Status != pb.Status_STATUS_BAD_REQUEST {
-		t.Fatalf("expected STATUS_BAD_REQUEST, got %v (err: %s)", resp5.Status, resp5.Error)
+	// The connection is still alive after all of the above.
+	sendPBRequest(t, wsConn, cacPut(validChunk))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK after errors, got %v (err: %s)", resp.Status, resp.Error)
 	}
-
-	// 6. CRITICAL: Connection is STILL ALIVE. A valid Put succeeds!
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 6,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: validChunk.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp6 := readPBResponse(t, wsConn)
-	if resp6.Id != 6 || resp6.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp6.Status, resp6.Error)
-	}
-	if !bytes.Equal(resp6.Address, validChunk.Address().Bytes()) {
-		t.Fatalf("address mismatch: got %x, want %x", resp6.Address, validChunk.Address().Bytes())
-	}
-
-	// 7. And valid Get succeeds!
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 7,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: validChunk.Address().Bytes(),
-			},
-		},
-	})
-	resp7 := readPBResponse(t, wsConn)
-	if resp7.Id != 7 || resp7.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp7.Status, resp7.Error)
-	}
-	if !bytes.Equal(resp7.Data, validChunk.Data()) {
-		t.Fatalf("data mismatch on get after error recovery")
+	sendPBRequest(t, wsConn, getRequest(validChunk.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
+	if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK || !bytes.Equal(resp.Data, validChunk.Data()) {
+		t.Fatalf("expected the chunk after errors, got %v (err: %s)", resp.Status, resp.Error)
 	}
 }
 
@@ -628,38 +649,24 @@ func (f *failingPutterSession) Done(swarm.Address) error {
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_DirectUploadFailure(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
-	injectedErr := errors.New("network push failed")
 	storerMock := &failingDirectUploadStorer{
 		Storer:  mockstorer.New(),
-		failErr: injectedErr,
+		failErr: errors.New("network push failed"),
 	}
 
 	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		DirectUpload: true,
 	})
 
 	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 101,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: ch.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != 101 {
-		t.Fatalf("expected id 101, got %d", resp.Id)
+	sendPBRequest(t, wsConn, cacPut(ch))
+	resp := readPut(t, wsConn)
+	if !bytes.Equal(resp.Address, ch.Address().Bytes()) {
+		t.Fatalf("expected reply for %s, got %x", ch.Address(), resp.Address)
 	}
 	if resp.Status != pb.Status_STATUS_ERROR {
 		t.Fatalf("expected STATUS_ERROR when push fails, got %v", resp.Status)
@@ -698,11 +705,6 @@ func (b *blockingPutterSession) Put(ctx context.Context, ch swarm.Chunk) error {
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_Fairness(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	blockCh := make(chan struct{})
 	defer func() {
 		select {
@@ -722,7 +724,7 @@ func TestChunkBidirectionalStream_Fairness(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		DirectUpload: true,
 	})
 
@@ -731,66 +733,37 @@ func TestChunkBidirectionalStream_Fairness(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Send Put requests that will be blocked in DirectUpload().Put
-	// numPuts saturates all upload workers and queues in putQueue,
-	// while strictly ruling out a single shared pool of workers.
+	// numPuts saturates all upload workers and queues in putQueue, while
+	// strictly ruling out a single shared pool of workers.
 	numPuts := 2*api.DefaultStreamSubWorkers + 4
-	for i := range numPuts {
-		ch := testingc.GenerateTestRandomChunk()
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(i + 1),
-			Body: &pb.Request_Put{
-				Put: &pb.PutRequest{
-					Data: ch.Data(),
-					Type: pb.ChunkType_CHUNK_TYPE_CAC,
-				},
-			},
-		})
+	for range numPuts {
+		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
 	}
 
 	// Brief pause to ensure all upload workers have picked up the Puts and are blocked
 	time.Sleep(50 * time.Millisecond)
 
-	// Send 1 Get request behind the blocked Puts
-	const targetGetID = 9999
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: targetGetID,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: targetChunk.Address().Bytes(),
-			},
-		},
-	})
-
-	// The Get request MUST complete and receive STATUS_OK while Puts are still blocked
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != targetGetID {
-		t.Fatalf("expected target get ID %d, got %d", targetGetID, resp.Id)
+	// A download sent behind the blocked uploads must still be answered.
+	sendPBRequest(t, wsConn, getRequest(targetChunk.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
+	resp := readGet(t, wsConn)
+	if !bytes.Equal(resp.Address, targetChunk.Address().Bytes()) {
+		t.Fatalf("expected the get reply for %s, got %x", targetChunk.Address(), resp.Address)
 	}
-	if resp.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK for fast get, got %v", resp.Status)
-	}
-	if !bytes.Equal(resp.Data, targetChunk.Data()) {
-		t.Fatalf("corrupted chunk data on get")
+	if resp.Status != pb.Status_STATUS_OK || !bytes.Equal(resp.Data, targetChunk.Data()) {
+		t.Fatalf("expected the chunk while uploads are blocked, got %v", resp.Status)
 	}
 
 	// Unblock the Puts and verify they all complete successfully
 	close(blockCh)
 	for range numPuts {
-		putResp := readPBResponse(t, wsConn)
-		if putResp.Status != pb.Status_STATUS_OK {
-			t.Fatalf("expected STATUS_OK for unblocked put %d, got %v", putResp.Id, putResp.Status)
+		if putResp := readPut(t, wsConn); putResp.Status != pb.Status_STATUS_OK {
+			t.Fatalf("expected STATUS_OK for unblocked put %x, got %v", putResp.Address, putResp.Status)
 		}
 	}
 }
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	blockCh := make(chan struct{})
 	defer func() {
 		select {
@@ -810,38 +783,25 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		DirectUpload: true,
 	})
 
-	// api.DefaultStreamSubWorkers upload workers + api.MaxStreamQueueSize putQueue buffer
+	// Fill the upload workers and the putQueue buffer behind them.
 	capacity := api.MaxStreamQueueSize + api.DefaultStreamSubWorkers
-	ch := testingc.GenerateTestRandomChunk()
-	for i := range capacity {
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(i + 1),
-			Body: &pb.Request_Put{
-				Put: &pb.PutRequest{
-					Data: ch.Data(),
-					Type: pb.ChunkType_CHUNK_TYPE_CAC,
-				},
-			},
-		})
+	for range capacity {
+		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
 	}
 
-	// Send request capacity+1 which exceeds queue capacity -> immediately rejected with STATUS_BUSY
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: uint64(capacity + 1),
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: ch.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
+	// One more is rejected straight away, with its own address.
+	overflow := testingc.GenerateTestRandomChunk()
+	sendPBRequest(t, wsConn, cacPut(overflow))
 
-	busyResp := readPBResponse(t, wsConn)
-	if busyResp.Id != uint64(capacity+1) || busyResp.Status != pb.Status_STATUS_BUSY {
+	busyResp := readPut(t, wsConn)
+	if !bytes.Equal(busyResp.Address, overflow.Address().Bytes()) {
+		t.Fatalf("expected the busy reply for %s, got %x", overflow.Address(), busyResp.Address)
+	}
+	if busyResp.Status != pb.Status_STATUS_BUSY {
 		t.Fatalf("expected STATUS_BUSY, got %v (err: %s)", busyResp.Status, busyResp.Error)
 	}
 	if busyResp.Error != "request queue full" {
@@ -851,8 +811,7 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 	// Unblock workers and drain remaining responses
 	close(blockCh)
 	for range capacity {
-		resp := readPBResponse(t, wsConn)
-		if resp.Status != pb.Status_STATUS_OK {
+		if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 			t.Fatalf("expected STATUS_OK for unblocked put, got %v", resp.Status)
 		}
 	}
@@ -884,11 +843,6 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 		}),
 	)
 
-	// No Swarm-Postage-Batch-Id header
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	var (
 		storerMock         = mockstorer.New()
 		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
@@ -896,43 +850,25 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore:   batchStore,
 			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
+			WsHeaders:    streamHeaders(false), // no connection batch: stamps must come per chunk
 			DirectUpload: true,
 		})
 	)
 
-	// 1. Put without stamp should fail with STATUS_BAD_REQUEST
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: ch.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp1 := readPBResponse(t, wsConn)
-	if resp1.Id != 1 || resp1.Status != pb.Status_STATUS_BAD_REQUEST {
-		t.Fatalf("expected STATUS_BAD_REQUEST without stamp, got %v (err: %s)", resp1.Status, resp1.Error)
+	// Without a stamp, and no batch on the connection, the upload is rejected.
+	sendPBRequest(t, wsConn, cacPut(ch))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST {
+		t.Fatalf("expected STATUS_BAD_REQUEST without stamp, got %v (err: %s)", resp.Status, resp.Error)
 	}
 
-	// 2. Put with valid stamp succeeds
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 2,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data:  ch.Data(),
-				Stamp: stampBytes,
-				Type:  pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp2 := readPBResponse(t, wsConn)
-	if resp2.Id != 2 || resp2.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK with stamp, got %v (err: %s)", resp2.Status, resp2.Error)
+	// With a valid pre-signed stamp it succeeds.
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, pb.ChunkType_CHUNK_TYPE_CAC))
+	resp := readPut(t, wsConn)
+	if resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK with stamp, got %v (err: %s)", resp.Status, resp.Error)
 	}
-	if !bytes.Equal(resp2.Address, ch.Address().Bytes()) {
-		t.Fatalf("address mismatch: got %x, want %x", resp2.Address, ch.Address().Bytes())
+	if !bytes.Equal(resp.Address, ch.Address().Bytes()) {
+		t.Fatalf("address mismatch: got %x, want %x", resp.Address, ch.Address().Bytes())
 	}
 }
 
@@ -958,17 +894,8 @@ func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
 	t.Cleanup(func() { _ = wsConn.Close() })
 
 	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 42,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: ch.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != 42 || resp.Status != pb.Status_STATUS_OK {
+	sendPBRequest(t, wsConn, cacPut(ch))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK via ?mode=stream, got %v (err: %s)", resp.Status, resp.Error)
 	}
 
@@ -978,11 +905,6 @@ func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_CacheOption(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
@@ -990,7 +912,7 @@ func TestChunkBidirectionalStream_CacheOption(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		DirectUpload: true,
 	})
 
@@ -999,80 +921,66 @@ func TestChunkBidirectionalStream_CacheOption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get with CACHE_DISABLE
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: ch.Address().Bytes(),
-				Cache:   pb.CacheOption_CACHE_DISABLE,
-			},
-		},
-	})
-	resp1 := readPBResponse(t, wsConn)
-	if resp1.Id != 1 || resp1.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK with CACHE_DISABLE, got %v", resp1.Status)
-	}
-
-	// Get with CACHE_ENABLE
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 2,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: ch.Address().Bytes(),
-				Cache:   pb.CacheOption_CACHE_ENABLE,
-			},
-		},
-	})
-	resp2 := readPBResponse(t, wsConn)
-	if resp2.Id != 2 || resp2.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK with CACHE_ENABLE, got %v", resp2.Status)
+	for _, opt := range []pb.CacheOption{pb.CacheOption_CACHE_DISABLE, pb.CacheOption_CACHE_ENABLE} {
+		sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), opt))
+		if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+			t.Fatalf("expected STATUS_OK with %v, got %v", opt, resp.Status)
+		}
 	}
 }
 
+// Messages the node cannot answer — because they are not protobuf, or carry no
+// request body and so no address to reply with — close the connection.
+//
 // nolint:paralleltest
 func TestChunkBidirectionalStream_ProtocolViolation(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
-	var (
-		storerMock         = mockstorer.New()
-		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:       storerMock,
-			Post:         mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
-			DirectUpload: true,
-		})
-	)
-
-	// Send text frame instead of binary
-	if err := wsConn.WriteMessage(websocket.TextMessage, []byte("invalid text message")); err != nil {
+	emptyRequest, err := (&pb.Request{}).Marshal()
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err := wsConn.ReadMessage()
-	if err == nil {
-		t.Fatal("expected error on protocol violation, got nil")
-	}
-	var cerr *websocket.CloseError
-	if errors.As(err, &cerr) {
-		if cerr.Code != websocket.CloseUnsupportedData {
-			t.Fatalf("expected close code %d, got %d", websocket.CloseUnsupportedData, cerr.Code)
-		}
+	for _, tc := range []struct {
+		name      string
+		msgType   int
+		data      []byte
+		closeText string
+	}{
+		{name: "text frame", msgType: websocket.TextMessage, data: []byte("invalid text message"), closeText: "invalid message type"},
+		{name: "not protobuf", msgType: websocket.BinaryMessage, data: []byte{0xff, 0xff, 0xff}, closeText: "invalid protobuf request"},
+		{name: "request with no body", msgType: websocket.BinaryMessage, data: emptyRequest, closeText: "missing request body"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockstorer.New(),
+				Post:         mockpost.New(mockpost.WithAcceptAll()),
+				WsPath:       "/chunks/stream",
+				WsHeaders:    streamHeaders(true),
+				DirectUpload: true,
+			})
+
+			if err := wsConn.WriteMessage(tc.msgType, tc.data); err != nil {
+				t.Fatal(err)
+			}
+
+			_ = wsConn.SetReadDeadline(time.Now().Add(streamTestTimeout))
+			_, _, err := wsConn.ReadMessage()
+			var cerr *websocket.CloseError
+			if !errors.As(err, &cerr) {
+				t.Fatalf("expected a close error, got %v", err)
+			}
+			if cerr.Code != websocket.CloseUnsupportedData {
+				t.Fatalf("expected close code %d, got %d", websocket.CloseUnsupportedData, cerr.Code)
+			}
+			if cerr.Text != tc.closeText {
+				t.Fatalf("expected close text %q, got %q", tc.closeText, cerr.Text)
+			}
+		})
 	}
 }
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_Shutdown(t *testing.T) {
 	var svc *api.Service
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
@@ -1080,23 +988,13 @@ func TestChunkBidirectionalStream_Shutdown(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		Service:      &svc,
 		DirectUpload: true,
 	})
 
-	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: ch.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != 1 || resp.Status != pb.Status_STATUS_OK {
+	sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v", resp.Status)
 	}
 
@@ -1108,19 +1006,13 @@ func TestChunkBidirectionalStream_Shutdown(t *testing.T) {
 
 	// Verify websocket receives close or is closed
 	_ = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-	_, _, err := wsConn.ReadMessage()
-	if err == nil {
+	if _, _, err := wsConn.ReadMessage(); err == nil {
 		t.Fatal("expected error reading from closed connection, got nil")
 	}
 }
 
 // nolint:paralleltest
 func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
@@ -1128,7 +1020,7 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		DirectUpload: true,
 	})
 
@@ -1150,26 +1042,22 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	socAddress := socChunk.Address().Bytes()
 
-	// Upload feed-sized SOC with explicit Type: CHUNK_TYPE_SOC
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: socChunk.Data(),
-				Type: pb.ChunkType_CHUNK_TYPE_SOC,
-			},
-		},
-	})
-
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != 1 {
-		t.Fatalf("expected ID 1, got %d", resp.Id)
+	// A small SOC parses as a CAC too, so declared as a CAC it would be stored
+	// under its BMT hash. The address check rejects that instead.
+	sendPBRequest(t, wsConn, putRequest(socAddress, socChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_CAC))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "address does not match chunk data" {
+		t.Fatalf("expected a SOC declared as CAC to be rejected, got %v (err: %s)", resp.Status, resp.Error)
 	}
+
+	// Declared as a SOC, it is stored under its SOC address.
+	sendPBRequest(t, wsConn, putRequest(socAddress, socChunk.Data(), nil, pb.ChunkType_CHUNK_TYPE_SOC))
+	resp := readPut(t, wsConn)
 	if resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
 	}
-	if !bytes.Equal(resp.Address, socChunk.Address().Bytes()) {
+	if !bytes.Equal(resp.Address, socAddress) {
 		t.Fatalf("expected SOC address %s, got %x", socChunk.Address(), resp.Address)
 	}
 
@@ -1178,20 +1066,8 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Retrieve the SOC chunk using GetRequest and verify its data matches
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 2,
-		Body: &pb.Request_Get{
-			Get: &pb.GetRequest{
-				Address: socChunk.Address().Bytes(),
-			},
-		},
-	})
-
-	getResp := readPBResponse(t, wsConn)
-	if getResp.Id != 2 {
-		t.Fatalf("expected ID 2, got %d", getResp.Id)
-	}
+	sendPBRequest(t, wsConn, getRequest(socAddress, pb.CacheOption_CACHE_DEFAULT))
+	getResp := readGet(t, wsConn)
 	if getResp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK on get SOC, got %v: %s", getResp.Status, getResp.Error)
 	}
@@ -1199,24 +1075,12 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 		t.Fatalf("retrieved SOC data does not match uploaded SOC data")
 	}
 
-	// Verify corrupted SOC data (e.g. invalid signature recovery ID) is rejected with STATUS_BAD_REQUEST
+	// Corrupted SOC data (an invalid signature recovery byte) is rejected.
 	corruptedData := make([]byte, len(socChunk.Data()))
 	copy(corruptedData, socChunk.Data())
-	corruptedData[swarm.HashSize+swarm.SocSignatureSize-1] = 99 // invalid recovery byte
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 3,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data: corruptedData,
-				Type: pb.ChunkType_CHUNK_TYPE_SOC,
-			},
-		},
-	})
-	badResp := readPBResponse(t, wsConn)
-	if badResp.Id != 3 {
-		t.Fatalf("expected ID 3, got %d", badResp.Id)
-	}
-	if badResp.Status != pb.Status_STATUS_BAD_REQUEST {
+	corruptedData[swarm.HashSize+swarm.SocSignatureSize-1] = 99
+	sendPBRequest(t, wsConn, putRequest(socAddress, corruptedData, nil, pb.ChunkType_CHUNK_TYPE_SOC))
+	if badResp := readPut(t, wsConn); badResp.Status != pb.Status_STATUS_BAD_REQUEST {
 		t.Fatalf("expected STATUS_BAD_REQUEST for corrupted SOC, got %v", badResp.Status)
 	}
 }
@@ -1246,11 +1110,9 @@ func TestChunkBidirectionalStream_TagWithPerChunkStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
+	// No batch on the connection: this checks the tag works with per-chunk stamps.
+	wsHeaders := streamHeaders(false)
 	wsHeaders.Set(api.SwarmTagHeader, strconv.FormatUint(tagSession.TagID, 10))
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-	// SwarmPostageBatchIdHeader is intentionally omitted to verify tag support with per-chunk stamps
 
 	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:     storerMock,
@@ -1267,19 +1129,8 @@ func TestChunkBidirectionalStream_TagWithPerChunkStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sendPBRequest(t, wsConn, &pb.Request{
-		Id: 1,
-		Body: &pb.Request_Put{
-			Put: &pb.PutRequest{
-				Data:  ch.Data(),
-				Stamp: stampBytes,
-				Type:  pb.ChunkType_CHUNK_TYPE_CAC,
-			},
-		},
-	})
-
-	resp := readPBResponse(t, wsConn)
-	if resp.Id != 1 || resp.Status != pb.Status_STATUS_OK {
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, pb.ChunkType_CHUNK_TYPE_CAC))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
 	}
 }
@@ -1287,10 +1138,6 @@ func TestChunkBidirectionalStream_TagWithPerChunkStamp(t *testing.T) {
 // nolint:paralleltest
 func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 	var svc *api.Service
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	blockCh := make(chan struct{})
 	defer func() {
@@ -1311,23 +1158,14 @@ func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
-		WsHeaders:    wsHeaders,
+		WsHeaders:    streamHeaders(true),
 		Service:      &svc,
 		DirectUpload: true,
 	})
 
 	// Send several Puts that block in the storer
-	for i := range 5 {
-		ch := testingc.GenerateTestRandomChunk()
-		sendPBRequest(t, wsConn, &pb.Request{
-			Id: uint64(i + 1),
-			Body: &pb.Request_Put{
-				Put: &pb.PutRequest{
-					Data: ch.Data(),
-					Type: pb.ChunkType_CHUNK_TYPE_CAC,
-				},
-			},
-		})
+	for range 5 {
+		sendPBRequest(t, wsConn, cacPut(testingc.GenerateTestRandomChunk()))
 	}
 
 	// Trigger node shutdown while upload workers are actively blocked
@@ -1336,7 +1174,6 @@ func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 		shutdownDone <- svc.Close()
 	}()
 
-	// svc.Close() should terminate promptly without deadlock even with pending writes
 	select {
 	case err := <-shutdownDone:
 		if err != nil {
@@ -1348,8 +1185,7 @@ func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 
 	// Verify websocket receives close error
 	_ = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-	_, _, err := wsConn.ReadMessage()
-	if err == nil {
+	if _, _, err := wsConn.ReadMessage(); err == nil {
 		t.Fatal("expected error reading from closed connection, got nil")
 	}
 }
@@ -1360,15 +1196,11 @@ func TestChunkBidirectionalStream_ShutdownClientStoppedReading(t *testing.T) {
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
-
 	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:    storerMock,
 		Post:      mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:    "/chunks/stream",
-		WsHeaders: wsHeaders,
+		WsHeaders: streamHeaders(false),
 		Service:   &svc,
 	})
 
@@ -1384,15 +1216,7 @@ func TestChunkBidirectionalStream_ShutdownClientStoppedReading(t *testing.T) {
 	// Flood download requests without ever reading from wsConn
 	for i := range flood {
 		_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
-		req := &pb.Request{
-			Id: uint64(i + 1),
-			Body: &pb.Request_Get{
-				Get: &pb.GetRequest{
-					Address: chunks[i].Address().Bytes(),
-				},
-			},
-		}
-		data, err := req.Marshal()
+		data, err := getRequest(chunks[i].Address().Bytes(), pb.CacheOption_CACHE_DEFAULT).Marshal()
 		if err != nil {
 			t.Fatal(err)
 		}

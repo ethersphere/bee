@@ -22,15 +22,15 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// CacheOption controls whether the chunk should be cached locally during retrieval.
+// CacheOption controls whether a retrieved chunk is cached locally.
 type CacheOption int32
 
 const (
-	// CACHE_DEFAULT uses the node's stream-level or default caching behavior.
+	// CACHE_DEFAULT uses the connection's caching behaviour (Swarm-Cache).
 	CacheOption_CACHE_DEFAULT CacheOption = 0
-	// CACHE_DISABLE explicitly skips caching the chunk in local store.
+	// CACHE_DISABLE skips caching the chunk in the local store.
 	CacheOption_CACHE_DISABLE CacheOption = 1
-	// CACHE_ENABLE explicitly caches the chunk in local store.
+	// CACHE_ENABLE caches the chunk in the local store.
 	CacheOption_CACHE_ENABLE CacheOption = 2
 )
 
@@ -54,15 +54,15 @@ func (CacheOption) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_48643591e84fbbe1, []int{0}
 }
 
-// ChunkType specifies whether the chunk being uploaded is a CAC or SOC.
+// ChunkType states whether an uploaded chunk is a CAC or a SOC.
 type ChunkType int32
 
 const (
-	// CHUNK_TYPE_UNSPECIFIED is the default proto3 zero-value; rejected by server.
+	// CHUNK_TYPE_UNSPECIFIED is the proto3 zero value; uploads with it are rejected.
 	ChunkType_CHUNK_TYPE_UNSPECIFIED ChunkType = 0
-	// CHUNK_TYPE_CAC indicates a standard Content Addressed Chunk.
+	// CHUNK_TYPE_CAC is a content-addressed chunk.
 	ChunkType_CHUNK_TYPE_CAC ChunkType = 1
-	// CHUNK_TYPE_SOC indicates a Single Owner Chunk.
+	// CHUNK_TYPE_SOC is a single-owner chunk.
 	ChunkType_CHUNK_TYPE_SOC ChunkType = 2
 )
 
@@ -86,21 +86,22 @@ func (ChunkType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_48643591e84fbbe1, []int{1}
 }
 
-// Status represents the result status of a chunk stream request.
+// Status is the outcome of a request.
 type Status int32
 
 const (
-	// STATUS_UNSPECIFIED is the default proto3 zero-value; never returned by the server.
+	// STATUS_UNSPECIFIED is the proto3 zero value; never sent by the node.
 	Status_STATUS_UNSPECIFIED Status = 0
-	// STATUS_OK indicates the request succeeded.
+	// STATUS_OK: the chunk was retrieved, or pushed (direct) / stored (tagged).
 	Status_STATUS_OK Status = 1
-	// STATUS_NOT_FOUND indicates the requested chunk was not found on download.
+	// STATUS_NOT_FOUND: the chunk is not in the reserve and no peer could serve it.
 	Status_STATUS_NOT_FOUND Status = 2
-	// STATUS_ERROR indicates an internal server error or storage failure.
+	// STATUS_ERROR: an internal or storage failure.
 	Status_STATUS_ERROR Status = 3
-	// STATUS_BAD_REQUEST indicates invalid client input (e.g. malformed data, invalid stamp, unspecified type).
+	// STATUS_BAD_REQUEST: invalid client input, such as malformed data, an invalid
+	// stamp, or an address that does not match the chunk.
 	Status_STATUS_BAD_REQUEST Status = 4
-	// STATUS_BUSY indicates the server worker queue is full; client should retry with backoff.
+	// STATUS_BUSY: the request queue is full; retry with backoff.
 	Status_STATUS_BUSY Status = 5
 )
 
@@ -131,11 +132,13 @@ func (Status) EnumDescriptor() ([]byte, []int) {
 }
 
 // Request is sent by a client to either download (Get) or upload (Put) a chunk.
+//
+// Requests carry no identifier of their own: the chunk address is the key. The
+// response to a request carries the same address, and its type (GetResponse or
+// PutResponse) tells a download reply from an upload reply for the same chunk.
+// A client must therefore not have two requests of the same type for the same
+// address in flight on one connection.
 type Request struct {
-	// Id is a client-assigned unique request identifier for correlating responses.
-	Id uint64 `protobuf:"varint,1,opt,name=Id,proto3" json:"Id,omitempty"`
-	// Body contains either a GetRequest or PutRequest.
-	//
 	// Types that are valid to be assigned to Body:
 	//
 	//	*Request_Get
@@ -183,10 +186,10 @@ type isRequest_Body interface {
 }
 
 type Request_Get struct {
-	Get *GetRequest `protobuf:"bytes,2,opt,name=Get,proto3,oneof" json:"Get,omitempty"`
+	Get *GetRequest `protobuf:"bytes,1,opt,name=Get,proto3,oneof" json:"Get,omitempty"`
 }
 type Request_Put struct {
-	Put *PutRequest `protobuf:"bytes,3,opt,name=Put,proto3,oneof" json:"Put,omitempty"`
+	Put *PutRequest `protobuf:"bytes,2,opt,name=Put,proto3,oneof" json:"Put,omitempty"`
 }
 
 func (*Request_Get) isRequest_Body() {}
@@ -197,13 +200,6 @@ func (m *Request) GetBody() isRequest_Body {
 		return m.Body
 	}
 	return nil
-}
-
-func (m *Request) GetId() uint64 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
 }
 
 func (m *Request) GetGet() *GetRequest {
@@ -228,11 +224,11 @@ func (*Request) XXX_OneofWrappers() []interface{} {
 	}
 }
 
-// GetRequest requests the retrieval of a chunk by its Swarm address.
+// GetRequest retrieves a chunk by its address.
 type GetRequest struct {
-	// Address is the 32-byte chunk address (CAC or SOC address).
+	// Address is the 32-byte chunk address (CAC or SOC).
 	Address []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
-	// Cache optionally overrides cache behavior for this retrieval.
+	// Cache optionally overrides the connection's caching behaviour.
 	Cache CacheOption `protobuf:"varint,2,opt,name=Cache,proto3,enum=chunkstream.CacheOption" json:"Cache,omitempty"`
 }
 
@@ -283,16 +279,20 @@ func (m *GetRequest) GetCache() CacheOption {
 	return CacheOption_CACHE_DEFAULT
 }
 
-// PutRequest requests the storage and network push of a chunk.
+// PutRequest stores a chunk and pushes it to the network.
 type PutRequest struct {
-	// Data contains the serialized chunk bytes.
-	// For CAC: span (8 bytes) + payload (up to 4096 bytes).
-	// For SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
-	Data []byte `protobuf:"bytes,1,opt,name=Data,proto3" json:"Data,omitempty"`
-	// Stamp contains the serialized postage stamp (optional if batch ID provided in connection headers).
-	Stamp []byte `protobuf:"bytes,2,opt,name=Stamp,proto3" json:"Stamp,omitempty"`
-	// Type specifies whether the chunk is a CAC or SOC.
-	Type ChunkType `protobuf:"varint,3,opt,name=Type,proto3,enum=chunkstream.ChunkType" json:"Type,omitempty"`
+	// Address is the 32-byte address of the chunk. It must match the address the
+	// node computes from Data, otherwise the upload is rejected.
+	Address []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	// Data is the serialised chunk.
+	// CAC: span (8 bytes) + payload (up to 4096 bytes).
+	// SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
+	Data []byte `protobuf:"bytes,2,opt,name=Data,proto3" json:"Data,omitempty"`
+	// Stamp is a serialised pre-signed postage stamp. Optional when the
+	// connection was opened with a Swarm-Postage-Batch-Id.
+	Stamp []byte `protobuf:"bytes,3,opt,name=Stamp,proto3" json:"Stamp,omitempty"`
+	// Type states whether the chunk is a CAC or a SOC.
+	Type ChunkType `protobuf:"varint,4,opt,name=Type,proto3,enum=chunkstream.ChunkType" json:"Type,omitempty"`
 }
 
 func (m *PutRequest) Reset()         { *m = PutRequest{} }
@@ -328,6 +328,13 @@ func (m *PutRequest) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_PutRequest proto.InternalMessageInfo
 
+func (m *PutRequest) GetAddress() []byte {
+	if m != nil {
+		return m.Address
+	}
+	return nil
+}
+
 func (m *PutRequest) GetData() []byte {
 	if m != nil {
 		return m.Data
@@ -349,18 +356,13 @@ func (m *PutRequest) GetType() ChunkType {
 	return ChunkType_CHUNK_TYPE_UNSPECIFIED
 }
 
-// Response is sent by the server in reply to each client Request.
+// Response is sent by the node in reply to each Request, with the same body type.
 type Response struct {
-	// Id matches the client-provided Request.Id.
-	Id uint64 `protobuf:"varint,1,opt,name=Id,proto3" json:"Id,omitempty"`
-	// Status indicates the outcome of the request.
-	Status Status `protobuf:"varint,2,opt,name=Status,proto3,enum=chunkstream.Status" json:"Status,omitempty"`
-	// Address is the 32-byte address of the chunk retrieved or uploaded.
-	Address []byte `protobuf:"bytes,3,opt,name=Address,proto3" json:"Address,omitempty"`
-	// Data contains chunk bytes for successful Get operations.
-	Data []byte `protobuf:"bytes,4,opt,name=Data,proto3" json:"Data,omitempty"`
-	// Error contains a sanitized description if Status is not STATUS_OK.
-	Error string `protobuf:"bytes,5,opt,name=Error,proto3" json:"Error,omitempty"`
+	// Types that are valid to be assigned to Body:
+	//
+	//	*Response_Get
+	//	*Response_Put
+	Body isResponse_Body `protobuf_oneof:"body"`
 }
 
 func (m *Response) Reset()         { *m = Response{} }
@@ -396,35 +398,182 @@ func (m *Response) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Response proto.InternalMessageInfo
 
-func (m *Response) GetId() uint64 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
+type isResponse_Body interface {
+	isResponse_Body()
+	MarshalTo([]byte) (int, error)
+	Size() int
 }
 
-func (m *Response) GetStatus() Status {
-	if m != nil {
-		return m.Status
-	}
-	return Status_STATUS_UNSPECIFIED
+type Response_Get struct {
+	Get *GetResponse `protobuf:"bytes,1,opt,name=Get,proto3,oneof" json:"Get,omitempty"`
+}
+type Response_Put struct {
+	Put *PutResponse `protobuf:"bytes,2,opt,name=Put,proto3,oneof" json:"Put,omitempty"`
 }
 
-func (m *Response) GetAddress() []byte {
+func (*Response_Get) isResponse_Body() {}
+func (*Response_Put) isResponse_Body() {}
+
+func (m *Response) GetBody() isResponse_Body {
+	if m != nil {
+		return m.Body
+	}
+	return nil
+}
+
+func (m *Response) GetGet() *GetResponse {
+	if x, ok := m.GetBody().(*Response_Get); ok {
+		return x.Get
+	}
+	return nil
+}
+
+func (m *Response) GetPut() *PutResponse {
+	if x, ok := m.GetBody().(*Response_Put); ok {
+		return x.Put
+	}
+	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*Response) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*Response_Get)(nil),
+		(*Response_Put)(nil),
+	}
+}
+
+// GetResponse answers a GetRequest.
+type GetResponse struct {
+	// Address is the address from the GetRequest.
+	Address []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	// Status is the outcome of the retrieval.
+	Status Status `protobuf:"varint,2,opt,name=Status,proto3,enum=chunkstream.Status" json:"Status,omitempty"`
+	// Data is the chunk (span + payload) when Status is STATUS_OK.
+	Data []byte `protobuf:"bytes,3,opt,name=Data,proto3" json:"Data,omitempty"`
+	// Error is a sanitised description when Status is not STATUS_OK.
+	Error string `protobuf:"bytes,4,opt,name=Error,proto3" json:"Error,omitempty"`
+}
+
+func (m *GetResponse) Reset()         { *m = GetResponse{} }
+func (m *GetResponse) String() string { return proto.CompactTextString(m) }
+func (*GetResponse) ProtoMessage()    {}
+func (*GetResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_48643591e84fbbe1, []int{4}
+}
+func (m *GetResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *GetResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_GetResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *GetResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetResponse.Merge(m, src)
+}
+func (m *GetResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *GetResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetResponse proto.InternalMessageInfo
+
+func (m *GetResponse) GetAddress() []byte {
 	if m != nil {
 		return m.Address
 	}
 	return nil
 }
 
-func (m *Response) GetData() []byte {
+func (m *GetResponse) GetStatus() Status {
+	if m != nil {
+		return m.Status
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (m *GetResponse) GetData() []byte {
 	if m != nil {
 		return m.Data
 	}
 	return nil
 }
 
-func (m *Response) GetError() string {
+func (m *GetResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
+// PutResponse answers a PutRequest.
+type PutResponse struct {
+	// Address is the address from the PutRequest.
+	Address []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	// Status is the outcome of the upload.
+	Status Status `protobuf:"varint,2,opt,name=Status,proto3,enum=chunkstream.Status" json:"Status,omitempty"`
+	// Error is a sanitised description when Status is not STATUS_OK.
+	Error string `protobuf:"bytes,3,opt,name=Error,proto3" json:"Error,omitempty"`
+}
+
+func (m *PutResponse) Reset()         { *m = PutResponse{} }
+func (m *PutResponse) String() string { return proto.CompactTextString(m) }
+func (*PutResponse) ProtoMessage()    {}
+func (*PutResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_48643591e84fbbe1, []int{5}
+}
+func (m *PutResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PutResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PutResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PutResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PutResponse.Merge(m, src)
+}
+func (m *PutResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *PutResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_PutResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PutResponse proto.InternalMessageInfo
+
+func (m *PutResponse) GetAddress() []byte {
+	if m != nil {
+		return m.Address
+	}
+	return nil
+}
+
+func (m *PutResponse) GetStatus() Status {
+	if m != nil {
+		return m.Status
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (m *PutResponse) GetError() string {
 	if m != nil {
 		return m.Error
 	}
@@ -439,42 +588,46 @@ func init() {
 	proto.RegisterType((*GetRequest)(nil), "chunkstream.GetRequest")
 	proto.RegisterType((*PutRequest)(nil), "chunkstream.PutRequest")
 	proto.RegisterType((*Response)(nil), "chunkstream.Response")
+	proto.RegisterType((*GetResponse)(nil), "chunkstream.GetResponse")
+	proto.RegisterType((*PutResponse)(nil), "chunkstream.PutResponse")
 }
 
 func init() { proto.RegisterFile("chunkstream.proto", fileDescriptor_48643591e84fbbe1) }
 
 var fileDescriptor_48643591e84fbbe1 = []byte{
-	// 476 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x93, 0xcf, 0x6e, 0x9b, 0x40,
-	0x10, 0xc6, 0x59, 0x8c, 0x9d, 0x7a, 0xec, 0xb8, 0x9b, 0x6d, 0xe4, 0xa2, 0xaa, 0x42, 0x96, 0x4f,
-	0x96, 0x2b, 0xf9, 0xe0, 0x3e, 0x01, 0xc6, 0xeb, 0xd8, 0x4a, 0x04, 0x74, 0x81, 0x4a, 0xe9, 0x05,
-	0xe1, 0xb0, 0x52, 0xaa, 0x2a, 0x86, 0xc2, 0x72, 0x88, 0x7a, 0xe9, 0xbd, 0x97, 0x3e, 0x56, 0x8f,
-	0x39, 0xf6, 0x58, 0xd9, 0x2f, 0x52, 0xf1, 0xc7, 0x09, 0x44, 0xb9, 0xed, 0x7c, 0xf3, 0xf1, 0x9b,
-	0x6f, 0x46, 0x02, 0xce, 0x6e, 0x6e, 0xb3, 0xdd, 0xb7, 0x54, 0x24, 0x3c, 0xb8, 0x9b, 0xc5, 0x49,
-	0x24, 0x22, 0xd2, 0xab, 0x49, 0xe3, 0x1f, 0x70, 0xc2, 0xf8, 0xf7, 0x8c, 0xa7, 0x82, 0x0c, 0x40,
-	0xde, 0x84, 0x2a, 0x1a, 0xa1, 0x89, 0xc2, 0xe4, 0x4d, 0x48, 0x3e, 0x40, 0xeb, 0x82, 0x0b, 0x55,
-	0x1e, 0xa1, 0x49, 0x6f, 0xfe, 0x76, 0x56, 0x07, 0x5d, 0x70, 0x51, 0x7d, 0xb5, 0x96, 0x58, 0xee,
-	0xca, 0xcd, 0x76, 0x26, 0xd4, 0xd6, 0x0b, 0x66, 0x3b, 0xab, 0x9b, 0xed, 0x4c, 0x2c, 0x3a, 0xa0,
-	0x6c, 0xa3, 0xf0, 0x7e, 0xfc, 0x19, 0xe0, 0x89, 0x44, 0x54, 0x38, 0xd1, 0xc3, 0x30, 0xe1, 0x69,
-	0x5a, 0x84, 0xe8, 0xb3, 0x63, 0x49, 0x66, 0xd0, 0x36, 0x82, 0x9b, 0x5b, 0x5e, 0x64, 0x19, 0xcc,
-	0xd5, 0x06, 0xbe, 0xe8, 0x58, 0xb1, 0xf8, 0x1a, 0xed, 0x58, 0x69, 0x1b, 0x6f, 0x01, 0x9e, 0x86,
-	0x12, 0x02, 0xca, 0x32, 0x10, 0x41, 0x05, 0x2d, 0xde, 0xe4, 0x1c, 0xda, 0x8e, 0x08, 0xee, 0xe2,
-	0x82, 0xd8, 0x67, 0x65, 0x41, 0xa6, 0xa0, 0xb8, 0xf7, 0x31, 0x2f, 0xb6, 0x18, 0xcc, 0x87, 0xcd,
-	0x31, 0xf9, 0x3b, 0xef, 0xb2, 0xc2, 0x33, 0xfe, 0x85, 0xe0, 0x15, 0xe3, 0x69, 0x1c, 0xed, 0x52,
-	0xfe, 0xc2, 0xe9, 0x3a, 0x8e, 0x08, 0x44, 0x96, 0x56, 0x89, 0xdf, 0x34, 0x50, 0x65, 0x8b, 0x55,
-	0x96, 0xfa, 0xde, 0xad, 0xe6, 0xde, 0xc7, 0xe4, 0x4a, 0x33, 0x39, 0x4d, 0x92, 0x28, 0x51, 0xdb,
-	0x23, 0x34, 0xe9, 0xb2, 0xb2, 0x98, 0x52, 0xe8, 0xd5, 0xee, 0x40, 0xce, 0xe0, 0xd4, 0xd0, 0x8d,
-	0x35, 0xf5, 0x97, 0x74, 0xa5, 0x7b, 0x57, 0x2e, 0x96, 0x6a, 0xd2, 0xc6, 0xd1, 0x17, 0x57, 0x14,
-	0x23, 0x82, 0xa1, 0x5f, 0x4a, 0xd4, 0x2c, 0x14, 0x79, 0x6a, 0x41, 0xf7, 0x71, 0x4f, 0xf2, 0x0e,
-	0x86, 0xc6, 0xda, 0x33, 0x2f, 0x7d, 0xf7, 0xda, 0xa6, 0xbe, 0x67, 0x3a, 0x36, 0x35, 0x36, 0xab,
-	0x0d, 0x5d, 0x62, 0x89, 0x10, 0x18, 0xd4, 0x7a, 0x86, 0x6e, 0x60, 0xf4, 0x4c, 0x73, 0x2c, 0x03,
-	0xcb, 0xd3, 0x9f, 0xe8, 0x78, 0x09, 0x32, 0x04, 0xe2, 0xb8, 0xba, 0xeb, 0x39, 0xcf, 0x50, 0xa7,
-	0xd0, 0xad, 0x74, 0xeb, 0x12, 0x23, 0x72, 0x0e, 0xb8, 0x2a, 0x4d, 0xcb, 0xf5, 0x57, 0x96, 0x67,
-	0x2e, 0xb1, 0x9c, 0x47, 0xad, 0x54, 0xca, 0x98, 0xc5, 0x70, 0xab, 0x86, 0x5b, 0xe8, 0x4b, 0x9f,
-	0xd1, 0x4f, 0x1e, 0x75, 0x5c, 0xac, 0x90, 0xd7, 0xd0, 0x3b, 0xea, 0x9e, 0x73, 0x8d, 0xdb, 0x8b,
-	0xf7, 0x7f, 0xf6, 0x1a, 0x7a, 0xd8, 0x6b, 0xe8, 0xdf, 0x5e, 0x43, 0xbf, 0x0f, 0x9a, 0xf4, 0x70,
-	0xd0, 0xa4, 0xbf, 0x07, 0x4d, 0xfa, 0x22, 0xc7, 0xdb, 0x6d, 0xa7, 0xf8, 0x27, 0x3e, 0xfe, 0x0f,
-	0x00, 0x00, 0xff, 0xff, 0x6c, 0x79, 0x5b, 0x13, 0x28, 0x03, 0x00, 0x00,
+	// 501 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x93, 0xcf, 0x6e, 0x9b, 0x40,
+	0x10, 0xc6, 0xc1, 0xff, 0x52, 0x0f, 0x4e, 0xba, 0xd9, 0x46, 0x2e, 0xaa, 0x2a, 0x54, 0xf9, 0x54,
+	0x39, 0x91, 0x0f, 0xe9, 0x13, 0x60, 0xbc, 0x8e, 0xad, 0x44, 0x40, 0x17, 0xa8, 0x94, 0x5e, 0x10,
+	0x8e, 0x57, 0x4a, 0x1b, 0xc5, 0x50, 0x58, 0x0e, 0x91, 0xaa, 0xaa, 0x8f, 0xd0, 0xc7, 0xea, 0x31,
+	0xc7, 0x1e, 0x2b, 0xfb, 0x45, 0x2a, 0x16, 0x6c, 0xaf, 0x93, 0x2a, 0xa7, 0xdc, 0x76, 0xbe, 0xf9,
+	0xf8, 0x66, 0xf6, 0xb7, 0x02, 0x0e, 0xaf, 0xae, 0xf3, 0xc5, 0x4d, 0xc6, 0x53, 0x16, 0xdd, 0x0e,
+	0x92, 0x34, 0xe6, 0x31, 0xd6, 0x24, 0xa9, 0x77, 0x03, 0x7b, 0x94, 0x7d, 0xcb, 0x59, 0xc6, 0xf1,
+	0x31, 0xd4, 0xcf, 0x18, 0xd7, 0xd5, 0x77, 0xea, 0x7b, 0xed, 0xf4, 0xf5, 0x40, 0xfe, 0xf0, 0x8c,
+	0xf1, 0xca, 0x35, 0x51, 0x68, 0xe1, 0x2a, 0xcc, 0x6e, 0xce, 0xf5, 0xda, 0x7f, 0xcc, 0x6e, 0x2e,
+	0x9b, 0xdd, 0x9c, 0x0f, 0x5b, 0xd0, 0x98, 0xc5, 0xf3, 0xbb, 0xde, 0x27, 0x80, 0x6d, 0x12, 0xd6,
+	0x61, 0xcf, 0x9c, 0xcf, 0x53, 0x96, 0x65, 0x62, 0x66, 0x87, 0xae, 0x4b, 0x3c, 0x80, 0xa6, 0x15,
+	0x5d, 0x5d, 0x33, 0x11, 0x7f, 0x70, 0xaa, 0xef, 0xc4, 0x8b, 0x8e, 0x93, 0xf0, 0x2f, 0xf1, 0x82,
+	0x96, 0xb6, 0xde, 0x77, 0x80, 0xed, 0xd0, 0x27, 0x72, 0x31, 0x34, 0x46, 0x11, 0x8f, 0x44, 0x6c,
+	0x87, 0x8a, 0x33, 0x3e, 0x82, 0xa6, 0xc7, 0xa3, 0xdb, 0x44, 0xaf, 0x0b, 0xb1, 0x2c, 0x70, 0x1f,
+	0x1a, 0xfe, 0x5d, 0xc2, 0xf4, 0x86, 0x58, 0xa0, 0xbb, 0xbb, 0x40, 0x71, 0x2e, 0xba, 0x54, 0x78,
+	0x7a, 0x0b, 0x78, 0x41, 0x59, 0x96, 0xc4, 0x8b, 0x8c, 0xe1, 0x13, 0x99, 0xa1, 0xfe, 0x98, 0x61,
+	0x69, 0x5b, 0x43, 0x3c, 0x91, 0x21, 0xea, 0x8f, 0x21, 0x6e, 0xdd, 0x32, 0xc5, 0x1f, 0xa0, 0x49,
+	0x59, 0x4f, 0x5c, 0xf7, 0x18, 0x5a, 0x1e, 0x8f, 0x78, 0x9e, 0x55, 0x1c, 0x5f, 0xed, 0x4c, 0x28,
+	0x5b, 0xb4, 0xb2, 0x6c, 0xd8, 0xd4, 0x77, 0xd9, 0x90, 0x34, 0x8d, 0x53, 0x81, 0xa1, 0x4d, 0xcb,
+	0xa2, 0xf7, 0x15, 0x34, 0x69, 0xbb, 0xe7, 0x9a, 0xbf, 0x99, 0x55, 0x97, 0x66, 0xf5, 0x09, 0x68,
+	0xd2, 0x7b, 0xe3, 0x43, 0xd8, 0xb7, 0x4c, 0x6b, 0x42, 0xc2, 0x11, 0x19, 0x9b, 0xc1, 0x85, 0x8f,
+	0x14, 0x49, 0x9a, 0x7a, 0xe6, 0xf0, 0x82, 0x20, 0x15, 0x23, 0xe8, 0x94, 0x12, 0xb1, 0x85, 0x52,
+	0xeb, 0x3b, 0xd0, 0xde, 0xbc, 0x1a, 0x7e, 0x03, 0x5d, 0x6b, 0x12, 0xd8, 0xe7, 0xa1, 0x7f, 0xe9,
+	0x92, 0x30, 0xb0, 0x3d, 0x97, 0x58, 0xd3, 0xf1, 0x94, 0x8c, 0x90, 0x82, 0x31, 0x1c, 0x48, 0x3d,
+	0xcb, 0xb4, 0x90, 0xfa, 0x40, 0xf3, 0x1c, 0x0b, 0xd5, 0xfa, 0x3f, 0xd5, 0xf5, 0xdd, 0x70, 0x17,
+	0xb0, 0xe7, 0x9b, 0x7e, 0xe0, 0x3d, 0x88, 0xda, 0x87, 0x76, 0xa5, 0x3b, 0xe7, 0x48, 0xc5, 0x47,
+	0x80, 0xaa, 0xd2, 0x76, 0xfc, 0x70, 0xec, 0x04, 0xf6, 0x08, 0xd5, 0x8a, 0x55, 0x2b, 0x95, 0x50,
+	0xea, 0x50, 0x54, 0x97, 0xe2, 0x86, 0xe6, 0x28, 0xa4, 0xe4, 0x63, 0x40, 0x3c, 0x1f, 0x35, 0xf0,
+	0x4b, 0xd0, 0xd6, 0x7a, 0xe0, 0x5d, 0xa2, 0xe6, 0xf0, 0xed, 0xef, 0xa5, 0xa1, 0xde, 0x2f, 0x0d,
+	0xf5, 0xef, 0xd2, 0x50, 0x7f, 0xad, 0x0c, 0xe5, 0x7e, 0x65, 0x28, 0x7f, 0x56, 0x86, 0xf2, 0xb9,
+	0x96, 0xcc, 0x66, 0x2d, 0xf1, 0xaf, 0x7f, 0xf8, 0x17, 0x00, 0x00, 0xff, 0xff, 0x66, 0xa0, 0xd1,
+	0x26, 0x00, 0x04, 0x00, 0x00,
 }
 
 func (m *Request) Marshal() (dAtA []byte, err error) {
@@ -506,11 +659,6 @@ func (m *Request) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			}
 		}
 	}
-	if m.Id != 0 {
-		i = encodeVarintChunkstream(dAtA, i, uint64(m.Id))
-		i--
-		dAtA[i] = 0x8
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -531,7 +679,7 @@ func (m *Request_Get) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintChunkstream(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -552,7 +700,7 @@ func (m *Request_Put) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintChunkstream(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
 	return len(dAtA) - i, nil
 }
@@ -614,19 +762,26 @@ func (m *PutRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.Type != 0 {
 		i = encodeVarintChunkstream(dAtA, i, uint64(m.Type))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
 	}
 	if len(m.Stamp) > 0 {
 		i -= len(m.Stamp)
 		copy(dAtA[i:], m.Stamp)
 		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Stamp)))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	if len(m.Data) > 0 {
 		i -= len(m.Data)
 		copy(dAtA[i:], m.Data)
 		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Data)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Address) > 0 {
+		i -= len(m.Address)
+		copy(dAtA[i:], m.Address)
+		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Address)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -653,24 +808,91 @@ func (m *Response) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Body != nil {
+		{
+			size := m.Body.Size()
+			i -= size
+			if _, err := m.Body.MarshalTo(dAtA[i:]); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Response_Get) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Response_Get) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Get != nil {
+		{
+			size, err := m.Get.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintChunkstream(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Response_Put) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Response_Put) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Put != nil {
+		{
+			size, err := m.Put.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintChunkstream(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *GetResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
 	if len(m.Error) > 0 {
 		i -= len(m.Error)
 		copy(dAtA[i:], m.Error)
 		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Error)))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x22
 	}
 	if len(m.Data) > 0 {
 		i -= len(m.Data)
 		copy(dAtA[i:], m.Data)
 		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Data)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.Address) > 0 {
-		i -= len(m.Address)
-		copy(dAtA[i:], m.Address)
-		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Address)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -679,10 +901,54 @@ func (m *Response) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.Id != 0 {
-		i = encodeVarintChunkstream(dAtA, i, uint64(m.Id))
+	if len(m.Address) > 0 {
+		i -= len(m.Address)
+		copy(dAtA[i:], m.Address)
+		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Address)))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PutResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PutResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PutResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Status != 0 {
+		i = encodeVarintChunkstream(dAtA, i, uint64(m.Status))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Address) > 0 {
+		i -= len(m.Address)
+		copy(dAtA[i:], m.Address)
+		i = encodeVarintChunkstream(dAtA, i, uint64(len(m.Address)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -704,9 +970,6 @@ func (m *Request) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Id != 0 {
-		n += 1 + sovChunkstream(uint64(m.Id))
-	}
 	if m.Body != nil {
 		n += m.Body.Size()
 	}
@@ -759,6 +1022,10 @@ func (m *PutRequest) Size() (n int) {
 	}
 	var l int
 	_ = l
+	l = len(m.Address)
+	if l > 0 {
+		n += 1 + l + sovChunkstream(uint64(l))
+	}
 	l = len(m.Data)
 	if l > 0 {
 		n += 1 + l + sovChunkstream(uint64(l))
@@ -779,19 +1046,72 @@ func (m *Response) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Id != 0 {
-		n += 1 + sovChunkstream(uint64(m.Id))
+	if m.Body != nil {
+		n += m.Body.Size()
 	}
-	if m.Status != 0 {
-		n += 1 + sovChunkstream(uint64(m.Status))
+	return n
+}
+
+func (m *Response_Get) Size() (n int) {
+	if m == nil {
+		return 0
 	}
+	var l int
+	_ = l
+	if m.Get != nil {
+		l = m.Get.Size()
+		n += 1 + l + sovChunkstream(uint64(l))
+	}
+	return n
+}
+func (m *Response_Put) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Put != nil {
+		l = m.Put.Size()
+		n += 1 + l + sovChunkstream(uint64(l))
+	}
+	return n
+}
+func (m *GetResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	l = len(m.Address)
 	if l > 0 {
 		n += 1 + l + sovChunkstream(uint64(l))
 	}
+	if m.Status != 0 {
+		n += 1 + sovChunkstream(uint64(m.Status))
+	}
 	l = len(m.Data)
 	if l > 0 {
 		n += 1 + l + sovChunkstream(uint64(l))
+	}
+	l = len(m.Error)
+	if l > 0 {
+		n += 1 + l + sovChunkstream(uint64(l))
+	}
+	return n
+}
+
+func (m *PutResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Address)
+	if l > 0 {
+		n += 1 + l + sovChunkstream(uint64(l))
+	}
+	if m.Status != 0 {
+		n += 1 + sovChunkstream(uint64(m.Status))
 	}
 	l = len(m.Error)
 	if l > 0 {
@@ -836,25 +1156,6 @@ func (m *Request) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
-			}
-			m.Id = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowChunkstream
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Id |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Get", wireType)
 			}
@@ -889,7 +1190,7 @@ func (m *Request) Unmarshal(dAtA []byte) error {
 			}
 			m.Body = &Request_Get{v}
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Put", wireType)
 			}
@@ -1085,6 +1386,40 @@ func (m *PutRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowChunkstream
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Address = append(m.Address[:0], dAtA[iNdEx:postIndex]...)
+			if m.Address == nil {
+				m.Address = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
 			}
 			var byteLen int
@@ -1117,7 +1452,7 @@ func (m *PutRequest) Unmarshal(dAtA []byte) error {
 				m.Data = []byte{}
 			}
 			iNdEx = postIndex
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Stamp", wireType)
 			}
@@ -1151,7 +1486,7 @@ func (m *PutRequest) Unmarshal(dAtA []byte) error {
 				m.Stamp = []byte{}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
 			}
@@ -1224,10 +1559,10 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Get", wireType)
 			}
-			m.Id = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowChunkstream
@@ -1237,16 +1572,32 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Id |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if msglen < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &GetResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Body = &Response_Get{v}
+			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Put", wireType)
 			}
-			m.Status = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowChunkstream
@@ -1256,12 +1607,81 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Status |= Status(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 3:
+			if msglen < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &PutResponse{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Body = &Response_Put{v}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipChunkstream(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowChunkstream
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
 			}
@@ -1295,7 +1715,26 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 				m.Address = []byte{}
 			}
 			iNdEx = postIndex
-		case 4:
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			m.Status = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowChunkstream
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Status |= Status(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
 			}
@@ -1329,7 +1768,145 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 				m.Data = []byte{}
 			}
 			iNdEx = postIndex
-		case 5:
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowChunkstream
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipChunkstream(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PutResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowChunkstream
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PutResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PutResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowChunkstream
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthChunkstream
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Address = append(m.Address[:0], dAtA[iNdEx:postIndex]...)
+			if m.Address == nil {
+				m.Address = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			m.Status = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowChunkstream
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Status |= Status(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
 			}

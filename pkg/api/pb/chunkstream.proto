@@ -9,82 +9,106 @@ package chunkstream;
 option go_package = "pb";
 
 // Request is sent by a client to either download (Get) or upload (Put) a chunk.
+//
+// Requests carry no identifier of their own: the chunk address is the key. The
+// response to a request carries the same address, and its type (GetResponse or
+// PutResponse) tells a download reply from an upload reply for the same chunk.
+// A client must therefore not have two requests of the same type for the same
+// address in flight on one connection.
 message Request {
-  // Id is a client-assigned unique request identifier for correlating responses.
-  uint64 Id = 1;
-  // Body contains either a GetRequest or PutRequest.
   oneof body {
-    GetRequest Get = 2;
-    PutRequest Put = 3;
+    GetRequest Get = 1;
+    PutRequest Put = 2;
   }
 }
 
-// CacheOption controls whether the chunk should be cached locally during retrieval.
+// CacheOption controls whether a retrieved chunk is cached locally.
 enum CacheOption {
-  // CACHE_DEFAULT uses the node's stream-level or default caching behavior.
+  // CACHE_DEFAULT uses the connection's caching behaviour (Swarm-Cache).
   CACHE_DEFAULT = 0;
-  // CACHE_DISABLE explicitly skips caching the chunk in local store.
+  // CACHE_DISABLE skips caching the chunk in the local store.
   CACHE_DISABLE = 1;
-  // CACHE_ENABLE explicitly caches the chunk in local store.
+  // CACHE_ENABLE caches the chunk in the local store.
   CACHE_ENABLE = 2;
 }
 
-// GetRequest requests the retrieval of a chunk by its Swarm address.
+// GetRequest retrieves a chunk by its address.
 message GetRequest {
-  // Address is the 32-byte chunk address (CAC or SOC address).
+  // Address is the 32-byte chunk address (CAC or SOC).
   bytes Address = 1;
-  // Cache optionally overrides cache behavior for this retrieval.
+  // Cache optionally overrides the connection's caching behaviour.
   CacheOption Cache = 2;
 }
 
-// ChunkType specifies whether the chunk being uploaded is a CAC or SOC.
+// ChunkType states whether an uploaded chunk is a CAC or a SOC.
 enum ChunkType {
-  // CHUNK_TYPE_UNSPECIFIED is the default proto3 zero-value; rejected by server.
+  // CHUNK_TYPE_UNSPECIFIED is the proto3 zero value; uploads with it are rejected.
   CHUNK_TYPE_UNSPECIFIED = 0;
-  // CHUNK_TYPE_CAC indicates a standard Content Addressed Chunk.
+  // CHUNK_TYPE_CAC is a content-addressed chunk.
   CHUNK_TYPE_CAC = 1;
-  // CHUNK_TYPE_SOC indicates a Single Owner Chunk.
+  // CHUNK_TYPE_SOC is a single-owner chunk.
   CHUNK_TYPE_SOC = 2;
 }
 
-// PutRequest requests the storage and network push of a chunk.
+// PutRequest stores a chunk and pushes it to the network.
 message PutRequest {
-  // Data contains the serialized chunk bytes.
-  // For CAC: span (8 bytes) + payload (up to 4096 bytes).
-  // For SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
-  bytes Data = 1;
-  // Stamp contains the serialized postage stamp (optional if batch ID provided in connection headers).
-  bytes Stamp = 2;
-  // Type specifies whether the chunk is a CAC or SOC.
-  ChunkType Type = 3;
+  // Address is the 32-byte address of the chunk. It must match the address the
+  // node computes from Data, otherwise the upload is rejected.
+  bytes Address = 1;
+  // Data is the serialised chunk.
+  // CAC: span (8 bytes) + payload (up to 4096 bytes).
+  // SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
+  bytes Data = 2;
+  // Stamp is a serialised pre-signed postage stamp. Optional when the
+  // connection was opened with a Swarm-Postage-Batch-Id.
+  bytes Stamp = 3;
+  // Type states whether the chunk is a CAC or a SOC.
+  ChunkType Type = 4;
 }
 
-// Response is sent by the server in reply to each client Request.
+// Response is sent by the node in reply to each Request, with the same body type.
 message Response {
-  // Id matches the client-provided Request.Id.
-  uint64 Id = 1;
-  // Status indicates the outcome of the request.
-  Status Status = 2;
-  // Address is the 32-byte address of the chunk retrieved or uploaded.
-  bytes Address = 3;
-  // Data contains chunk bytes for successful Get operations.
-  bytes Data = 4;
-  // Error contains a sanitized description if Status is not STATUS_OK.
-  string Error = 5;
+  oneof body {
+    GetResponse Get = 1;
+    PutResponse Put = 2;
+  }
 }
 
-// Status represents the result status of a chunk stream request.
+// GetResponse answers a GetRequest.
+message GetResponse {
+  // Address is the address from the GetRequest.
+  bytes Address = 1;
+  // Status is the outcome of the retrieval.
+  Status Status = 2;
+  // Data is the chunk (span + payload) when Status is STATUS_OK.
+  bytes Data = 3;
+  // Error is a sanitised description when Status is not STATUS_OK.
+  string Error = 4;
+}
+
+// PutResponse answers a PutRequest.
+message PutResponse {
+  // Address is the address from the PutRequest.
+  bytes Address = 1;
+  // Status is the outcome of the upload.
+  Status Status = 2;
+  // Error is a sanitised description when Status is not STATUS_OK.
+  string Error = 3;
+}
+
+// Status is the outcome of a request.
 enum Status {
-  // STATUS_UNSPECIFIED is the default proto3 zero-value; never returned by the server.
+  // STATUS_UNSPECIFIED is the proto3 zero value; never sent by the node.
   STATUS_UNSPECIFIED = 0;
-  // STATUS_OK indicates the request succeeded.
+  // STATUS_OK: the chunk was retrieved, or pushed (direct) / stored (tagged).
   STATUS_OK = 1;
-  // STATUS_NOT_FOUND indicates the requested chunk was not found on download.
+  // STATUS_NOT_FOUND: the chunk is not in the reserve and no peer could serve it.
   STATUS_NOT_FOUND = 2;
-  // STATUS_ERROR indicates an internal server error or storage failure.
+  // STATUS_ERROR: an internal or storage failure.
   STATUS_ERROR = 3;
-  // STATUS_BAD_REQUEST indicates invalid client input (e.g. malformed data, invalid stamp, unspecified type).
+  // STATUS_BAD_REQUEST: invalid client input, such as malformed data, an invalid
+  // stamp, or an address that does not match the chunk.
   STATUS_BAD_REQUEST = 4;
-  // STATUS_BUSY indicates the server worker queue is full; client should retry with backoff.
+  // STATUS_BUSY: the request queue is full; retry with backoff.
   STATUS_BUSY = 5;
 }
