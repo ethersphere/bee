@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -64,6 +65,10 @@ func TestExchangeGetPrice(t *testing.T) {
 // price-oracle poll loop writes exchangeRate and deduction while every
 // settlement path reads them through CurrentRates. Run under -race, an
 // unsynchronised write against the concurrent read is reported as fatal.
+//
+// The test intentionally has no assertions: without -race it is a no-op and
+// always passes. Do not delete it or add assertions to "strengthen" it; its
+// only job is to give the race detector concurrent reads and writes to observe.
 func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -94,4 +99,38 @@ func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestCurrentRatesConcurrentWithUpdatesSync(t *testing.T) {
+	priceOracleAddress := common.HexToAddress("0xabcd")
+	expectedPrice := big.NewInt(100)
+	expectedDeduce := big.NewInt(200)
+
+	result := make([]byte, 64)
+	expectedPrice.FillBytes(result[0:32])
+	expectedDeduce.FillBytes(result[32:64])
+
+	ex := priceoracle.New(
+		log.Noop,
+		priceOracleAddress,
+		transactionmock.New(
+			transactionmock.WithABICall(
+				&priceOracleABI,
+				priceOracleAddress,
+				result,
+				"getPrice",
+			),
+		),
+		1, // 1 second divisor so poll loop updates rapidly
+	)
+
+	ex.Start()
+	defer ex.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	for ctx.Err() == nil {
+		_, _, _ = ex.CurrentRates()
+	}
 }
