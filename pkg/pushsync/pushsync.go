@@ -246,13 +246,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		safe.Go(ps.logger, "pushsync-unwrap-chunk", func() {
 			ps.unwrap(chunk)
 		})
-	} else if chunk, err := soc.FromChunk(chunk); err == nil {
-		addr, err := chunk.Address()
-		if err != nil {
-			return err
-		}
-		ps.logger.Debug("handle gsoc", "peer_address", p.Address, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
-		ps.gsocHandler(chunk)
+	} else if sch, err := soc.FromValidChunk(chunk); err == nil {
+		ps.logger.Debug("handle gsoc", "peer_address", p.Address, "chunk_address", chunkAddress, "wrapped_chunk_address", sch.WrappedChunk().Address())
+		ps.gsocHandler(sch)
 	} else {
 		return swarm.ErrInvalidChunk
 	}
