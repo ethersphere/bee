@@ -34,7 +34,7 @@ func FuzzFeedPostHandler(f *testing.F) {
 	f.Add("", "")
 
 	f.Fuzz(func(t *testing.T, ownerStr, topicStr string) {
-		client, _, _, _ := newTestServer(t, testServerOptions{})
+		client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 		url := fmt.Sprintf("/feeds/%s/%s", ownerStr, topicStr)
 		// Request through test server; must never panic
