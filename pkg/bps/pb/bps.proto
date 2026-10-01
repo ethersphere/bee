@@ -9,17 +9,23 @@ package bps;
 option go_package = "pb";
 
 message Broadcast {
+  // either service or broadcast
   bytes soc = 1;
 }
 
 message Join {
   bytes topic = 1;
+  enum binding = 2; // 
+  bytes principal = 3; // the "owner"
+  // ============================
+  bytes identity = 4; // who am i
 }
 
 message JoinAck {
   bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
+  enum status = 2;
 }
 
-message Claim {
-  bytes soc = 1; // the soc chunk body to claim the publishing rights
-}
+//message Claim {
+  //bytes soc = 1; // the soc chunk body to claim the publishing rights
+//}
