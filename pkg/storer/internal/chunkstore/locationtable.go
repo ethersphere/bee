@@ -28,14 +28,21 @@ type LocationTable struct {
 }
 
 // BuildLocationTable scans the retrieval index over every address with
-// proximity of at least depth to anchor.
-func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, depth uint8) (*LocationTable, error) {
+// proximity of at least depth to anchor. sizeHint estimates the number of
+// addresses in the range and should err high: the table is allocated for it up
+// front, so a range that fits is built without copying, and one that does not
+// grows past it as a slice would.
+func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, depth uint8, sizeHint int) (*LocationTable, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("chunk store: build location table: %w", err)
 	}
 
+	sizeHint = max(sizeHint, 0)
 	var (
-		t       = new(LocationTable)
+		t = &LocationTable{
+			keys: make([][swarm.HashSize]byte, 0, sizeHint),
+			locs: make([]sharky.Location, 0, sizeHint),
+		}
 		item    = new(RetrievalIndexItem) // reused: the callback copies what it keeps
 		scanned int
 	)

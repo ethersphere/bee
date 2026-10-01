@@ -60,7 +60,7 @@ func TestLocationTableRange(t *testing.T) {
 			}
 			locs := putRetrievalItems(t, st, addrs)
 
-			table, err := chunkstore.BuildLocationTable(context.Background(), st, anchor.Bytes(), depth)
+			table, err := chunkstore.BuildLocationTable(context.Background(), st, anchor.Bytes(), depth, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +99,7 @@ func TestLocationTableSharedPrefix(t *testing.T) {
 	addrs := []swarm.Address{a, withPrefix(0), withPrefix(1)}
 	locs := putRetrievalItems(t, st, addrs)
 
-	table, err := chunkstore.BuildLocationTable(context.Background(), st, a.Bytes(), 0)
+	table, err := chunkstore.BuildLocationTable(context.Background(), st, a.Bytes(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestLocationTableCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := chunkstore.BuildLocationTable(ctx, st, swarm.ZeroAddress.Bytes(), 0)
+	_, err := chunkstore.BuildLocationTable(ctx, st, swarm.ZeroAddress.Bytes(), 0, 0)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v, want context.Canceled", err)
 	}
@@ -139,7 +139,7 @@ func TestLocationTableSlotLimits(t *testing.T) {
 	}
 	locs := putRetrievalItems(t, st, addrs) // shard i%4, slot i
 
-	table, err := chunkstore.BuildLocationTable(context.Background(), st, swarm.ZeroAddress.Bytes(), 0)
+	table, err := chunkstore.BuildLocationTable(context.Background(), st, swarm.ZeroAddress.Bytes(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,5 +150,33 @@ func TestLocationTableSlotLimits(t *testing.T) {
 	}
 	if got := table.SlotLimits(); !slices.Equal(got, want) {
 		t.Fatalf("slot limits: got %v, want %v", got, want)
+	}
+}
+
+func TestLocationTableSizeHint(t *testing.T) {
+	t.Parallel()
+
+	st := newTableIndex(t)
+	addrs := make([]swarm.Address, 10)
+	for i := range addrs {
+		addrs[i] = swarm.RandAddress(t)
+	}
+	locs := putRetrievalItems(t, st, addrs)
+
+	// The hint only sizes the allocation: a range larger or smaller than it
+	// must yield every entry.
+	for _, hint := range []int{-1, 0, 1, len(addrs), 10 * len(addrs)} {
+		table, err := chunkstore.BuildLocationTable(context.Background(), st, swarm.ZeroAddress.Bytes(), 0, hint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if table.Len() != len(addrs) {
+			t.Fatalf("hint %d: table size %d, want %d", hint, table.Len(), len(addrs))
+		}
+		for _, a := range addrs {
+			if loc, ok := table.Lookup(a); !ok || loc != locs[a.ByteString()] {
+				t.Fatalf("hint %d: address %s: got %v %v, want %v", hint, a, loc, ok, locs[a.ByteString()])
+			}
+		}
 	}
 }
