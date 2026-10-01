@@ -216,7 +216,7 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		// of the same address, or slot reuse by a newer chunk at another address.
 		var sameSlotSameAddr bool
 		if loaded {
-			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin)
+			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, stampHash, bin)
 			if err != nil {
 				return err
 			}
@@ -374,7 +374,7 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		}
 
 		if loaded {
-			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin)
+			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, stampHash, bin)
 			if err != nil {
 				return err
 			}
@@ -413,7 +413,7 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 func (r *Reserve) resolveStampIndexCollision(
 	ctx context.Context, s transaction.Store,
 	chunk swarm.Chunk, oldStampIndex *stampindex.Item,
-	sum, stampHash []byte, bin uint8,
+	stampHash []byte, bin uint8,
 ) (sameAddr bool, err error) {
 	prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())

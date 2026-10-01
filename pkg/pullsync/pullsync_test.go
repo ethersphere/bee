@@ -534,8 +534,8 @@ func TestIncoming_OverwriteNewerChunk(t *testing.T) {
 }
 
 // TestIncoming_OfferSumLength covers an offer carrying a sum of the wrong
-// length: the malformed entry is skipped, valid chunks are synced, and the
-// cursor advances to avoid a hot retry loop.
+// length: the malformed entry is skipped and reported, valid chunks are
+// synced, and the cursor advances to avoid a hot retry loop.
 func TestIncoming_OfferSumLength(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tResults := make([]*storer.BinC, len(results))
@@ -553,8 +553,8 @@ func TestIncoming_OfferSumLength(t *testing.T) {
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		if err != nil {
-			t.Fatalf("unexpected error for a malformed offer sum: %v", err)
+		if err == nil {
+			t.Fatal("expected an error for a malformed offer sum")
 		}
 		if topmost != topMost {
 			t.Fatalf("got topmost %d, want %d", topmost, topMost)

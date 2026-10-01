@@ -51,7 +51,7 @@ func step_08(
 		backfilled, removed := 0, 0
 		lastReported := 0
 		lastID := ""
-		seenBinIDs := make(map[uint8]map[uint64]swarm.Address)
+		seenBinIDs := make(map[uint8]map[uint64]struct{})
 
 		for {
 			var items []*reserve.BatchRadiusItem
@@ -89,12 +89,12 @@ func step_08(
 				// Guard against corrupted databases containing duplicate (bin, binID) entries.
 				// Prune duplicates to prevent orphaned ChunkSumItem records.
 				if seen, ok := seenBinIDs[item.Bin]; ok {
-					if prevAddr, exists := seen[item.BinID]; exists {
-						logger.Warning("duplicate binID during sum backfill, removing corrupt reserve entry", "bin", item.Bin, "bin_id", item.BinID, "existing_address", prevAddr, "duplicate_address", item.Address)
+					if _, exists := seen[item.BinID]; exists {
+						logger.Warning("duplicate binID during sum backfill, removing corrupt reserve entry", "bin", item.Bin, "bin_id", item.BinID, "duplicate_address", item.Address)
 						remove = true
 					}
 				} else {
-					seenBinIDs[item.Bin] = make(map[uint64]swarm.Address)
+					seenBinIDs[item.Bin] = make(map[uint64]struct{})
 				}
 
 				var chunk swarm.Chunk
@@ -143,7 +143,7 @@ func step_08(
 					continue
 				}
 
-				seenBinIDs[item.Bin][item.BinID] = item.Address
+				seenBinIDs[item.Bin][item.BinID] = struct{}{}
 
 				// the sum only needs the batch ID and stamp hash, both already
 				// on the item, so the stamp itself is never loaded.

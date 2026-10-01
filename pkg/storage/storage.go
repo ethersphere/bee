@@ -333,11 +333,11 @@ func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk) ([]byte, error
 	_, _ = h.Write(stampHash)
 
 	if soc.Valid(ch) {
-		s, err := soc.FromChunk(ch)
+		wrapped, err := soc.UnwrapCAC(ch)
 		if err != nil {
-			return nil, fmt.Errorf("soc from chunk: %w", err)
+			return nil, fmt.Errorf("unwrap cac: %w", err)
 		}
-		_, _ = h.Write(s.WrappedChunk().Address().Bytes())
+		_, _ = h.Write(wrapped.Address().Bytes())
 	}
 
 	return h.Sum(nil)[:ChunkSumSize], nil
@@ -369,11 +369,11 @@ func wrappedAddress(ch swarm.Chunk) (swarm.Address, error) {
 	if !soc.Valid(ch) {
 		return swarm.ZeroAddress, fmt.Errorf("%w: not a single owner chunk", ErrUnknownChunkType)
 	}
-	s, err := soc.FromChunk(ch)
+	wrapped, err := soc.UnwrapCAC(ch)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("soc from chunk: %w", err)
+		return swarm.ZeroAddress, fmt.Errorf("unwrap cac: %w", err)
 	}
-	return s.WrappedChunk().Address(), nil
+	return wrapped.Address(), nil
 }
 
 // IdentityAddress returns the internally used address for the chunk
