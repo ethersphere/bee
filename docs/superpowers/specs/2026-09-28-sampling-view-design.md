@@ -1,7 +1,7 @@
 # Design Spec: Sampling View (Snapshot Location Table + Release Invalidation)
 
-**Status:** Implemented on `perf/reserve-sampling-view`  
-**Base:** `master` (replaces PR #5615)  
+**Status:** Implemented on `perf/reserve-sampling-view`\
+**Base:** `master` (replaces PR #5615)
 
 ---
 
