@@ -4,8 +4,9 @@
 
 // Package updatecheck periodically asks a swarm-oci-serve registry which bee
 // release it serves. Through metrics and a log line, it reports whether that
-// release is newer than the running one. It never downloads or installs
-// anything.
+// release is newer than the running one. It never installs anything. Only
+// with the opt-in update restart under bee-runner does it download the new
+// binary, into the runner's cache, where the runner verifies it again.
 //
 // When bee was started by bee-runner, the runner hands over the release it
 // started and the release signing key it trusts. The check then reads the
@@ -97,7 +98,7 @@ type Runner struct {
 	// binary in the cache, then exits.
 	Cache  string
 	Binary string
-	// NoRollback is BEE_RUNNER_NO_ROLLBACK: the bee version of a noRollback
+	// NoRollback is BEE_RUNNER_NO_ROLLBACK: the bee version of a no-rollback
 	// release this node ran. bee-runner refuses every release that carries an
 	// older bee, so bee must not restart for one.
 	NoRollback string
@@ -444,7 +445,7 @@ func (s *Service) announceOtherChannel(res result) {
 }
 
 // announceBelowNoRollback logs a newer release once per descriptor version.
-// bee-runner will refuse it because its bee is older than the noRollback
+// bee-runner will refuse it because its bee is older than the no-rollback
 // release this node ran.
 func (s *Service) announceBelowNoRollback(res result) {
 	s.mu.Lock()

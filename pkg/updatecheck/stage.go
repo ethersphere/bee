@@ -24,7 +24,7 @@ const (
 	// maxBinarySize is bee-runner's download limit. A download of this many
 	// bytes or more is refused.
 	maxBinarySize = 512 << 20
-	// stageTimeout bounds one pre-staging download. A cold download of ~75 MB
+	// stageTimeout bounds one pre-staging download. A cold download of ~60 MB
 	// through a Swarm gateway takes a minute or two.
 	stageTimeout = 15 * time.Minute
 	// partialPrefix names an unfinished download in the runner's cache the same

@@ -14,15 +14,16 @@ import (
 var (
 	// releaseTagRe matches a plain release tag, such as 2.8.2 or v2.8.2.
 	releaseTagRe = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)$`)
+	// releaseOrRCTagRe matches a release or release candidate tag. bee-runner
+	// uses this form to order a no-rollback barrier. Examples: 2.9.0,
+	// v2.9.0-rc1, 2.9.0-rc.1, or a dev build 2.9.0-unofficial-<12 hex>, which
+	// orders as its base.
+	releaseOrRCTagRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:-rc\.?\d+)?(?:-unofficial-[0-9a-f]{12})?$`)
 	// currentVersionRe matches the leading version of bee.Version. That string
 	// has the form "<git describe tag>-<commit hash>", for example
 	// "2.8.2-7e703f49" or "2.9.0-rc1-7e703f49-dirty". Only an "-rcN" suffix
 	// directly after the patch number counts as a pre-release. Anything else is
-	// build metadata and is ignored when ordering versions. releaseOrRCTagRe
-	// matches a release or release candidate tag. bee-runner uses this form to
-	// order a no-rollback barrier. Examples: 2.9.0, v2.9.0-rc1, 2.9.0-rc.1, or a
-	// dev build with base 2.9.0-unofficial-<12 hex>.
-	releaseOrRCTagRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:-rc\.?\d+)?(?:-unofficial-[0-9a-f]{12})?$`)
+	// build metadata and is ignored when ordering versions.
 	currentVersionRe = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)(?:-rc\.?(\d+))?(?:[-+].*)?$`)
 )
 
