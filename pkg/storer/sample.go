@@ -344,7 +344,8 @@ func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, 
 		return nil
 	}
 	start := time.Now()
-	view, err := transaction.NewSamplingView(ctx, db.sharky, db.storage, anchor, depth)
+	hint := db.samplingViewSizeHint(depth)
+	view, err := transaction.NewSamplingView(ctx, db.sharky, db.storage, anchor, depth, hint)
 	if err != nil {
 		if ctx.Err() == nil {
 			db.logger.Warning("reserve sampler reading chunks through the retrieval index", "error", err)
@@ -353,7 +354,18 @@ func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, 
 	}
 	stats.LocationTableBuildDuration = time.Since(start)
 	stats.LocationTableSize = int64(view.Len())
+	stats.LocationTableSizeHint = int64(hint)
 	return view
+}
+
+// samplingViewSizeHint estimates how many chunks of the chunk store lie within
+// depth of the anchor.
+func (db *DB) samplingViewSizeHint(depth uint8) int {
+	n := db.ReserveSize()
+	if radius := db.StorageRadius(); depth > radius {
+		n >>= min(depth-radius, 63)
+	}
+	return n + n/32
 }
 
 func transformedAddress(hasher bmt.Hasher, addr swarm.Address, data []byte, chType swarm.ChunkType) (swarm.Address, error) {
@@ -428,6 +440,7 @@ type SampleStats struct {
 	AssemblyChunkLoadFailed    int64
 	StampLoadFailed            int64
 	LocationTableSize          int64
+	LocationTableSizeHint      int64
 	LocationTableBuildDuration time.Duration
 	LocationTableMisses        int64
 }
@@ -531,6 +544,7 @@ func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleSt
 		"chunk_load_duration_seconds":           stats.ChunkLoadDuration.Seconds(),
 		"iteration_duration_seconds":            stats.IterationDuration.Seconds(),
 		"location_table_size":                   float64(stats.LocationTableSize),
+		"location_table_size_hint":              float64(stats.LocationTableSizeHint),
 		"location_table_misses":                 float64(stats.LocationTableMisses),
 		"location_table_build_duration_seconds": stats.LocationTableBuildDuration.Seconds(),
 	}
