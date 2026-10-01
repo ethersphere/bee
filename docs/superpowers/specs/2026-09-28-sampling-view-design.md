@@ -126,5 +126,3 @@ Local measurements (Apple M4 Pro, interleaved runs compared with benchstat):
 - Table build over 100k index entries: 13.4 ms, one allocation fewer per entry than allocating an index item per entry (-20% allocations); full 32-byte keys add about 6% memory.
 - `BenchmarkReserveSample10k`: no change in time; 2.7% fewer allocations than `master`.
 - Opening and closing a view adds about 0.7 µs and 44 allocations per round for the observer and bitmaps.
-
-Testnet numbers (`bee-light-testnet`, 2.1M chunks) have not yet been measured for this design.
