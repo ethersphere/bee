@@ -207,7 +207,7 @@ type Service struct {
 	mu               sync.Mutex
 	lastAnnounce     string // latest release already announced in the log
 	lastOtherChannel uint64 // latest version on another channel already logged
-	lastBelowBarrier uint64 // latest version below the noRollback barrier already logged
+	lastBelowBarrier uint64 // latest version below the no-rollback barrier already logged
 	restart          restartState
 }
 
@@ -309,7 +309,7 @@ func parseNoRollback(logger log.Logger, r Runner) *semver.Version {
 	}
 	v, ok := parseReleaseOrRC(r.NoRollback)
 	if !ok {
-		logger.Warning("ignoring unparsable noRollback version from bee-runner", "no_rollback", truncate(r.NoRollback, maxLoggedValue))
+		logger.Warning("ignoring unparsable no-rollback version from bee-runner", "no_rollback", truncate(r.NoRollback, maxLoggedValue))
 		return nil
 	}
 	return v
@@ -506,7 +506,7 @@ type result struct {
 	// channel.
 	otherChannel bool
 	// belowNoRollback is set under the runner when the offered release is
-	// newer but carries a bee older than the noRollback barrier, or no bee
+	// newer but carries a bee older than the no-rollback barrier, or no bee
 	// version at all.
 	belowNoRollback bool
 	channels        []string
@@ -576,7 +576,7 @@ func (s *Service) check(ctx context.Context) (result, error) {
 		}
 		newer, onChannel := r.Version > s.runnerVersion, r.onChannel(s.channel)
 		// A newer release version can still carry an older bee (a revert).
-		// bee-runner refuses such a release past a noRollback release.
+		// bee-runner refuses such a release past a no-rollback release.
 		// Restarting for it would only bring back this same binary.
 		if newer && onChannel && s.noRollback != nil {
 			if v := highestReleaseOrRC(r); v == nil || v.LessThan(*s.noRollback) {
@@ -628,7 +628,7 @@ func latestRelease(r *release) *semver.Version {
 
 // highestReleaseOrRC returns the highest release or release candidate among the
 // tags, or nil if there is none. bee-runner uses this to read a release's bee
-// version when comparing it with a noRollback barrier.
+// version when comparing it with a no-rollback barrier.
 func highestReleaseOrRC(r *release) *semver.Version {
 	var best *semver.Version
 	for _, t := range r.Tags {

@@ -85,7 +85,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # A release is noRollback when any PR merged since the previous final
+      # A release is a no-rollback release when any PR merged since the previous final
       # release carries the no-rollback label, e.g. one that migrates the
       # database. Nodes that run it then never go back to an older bee.
       #
@@ -96,7 +96,7 @@ jobs:
       # to the release. A fix cherry-picked onto a release branch is a new
       # commit its PR does not name: label the cherry-pick PR too.
       - name: Check for no-rollback PRs
-        id: norollback
+        id: no_rollback
         env:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
@@ -124,7 +124,7 @@ jobs:
               echo "$prs"
               echo "EOF_NOTES"
             } >> "$GITHUB_OUTPUT"
-            { echo "**noRollback release** ($prev..$TAG):"; echo "$prs" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+            { echo "**no-rollback release** ($prev..$TAG):"; echo "$prs" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "no_rollback=false" >> "$GITHUB_OUTPUT"
             echo "no no-rollback PRs in $prev..$TAG" >> "$GITHUB_STEP_SUMMARY"
@@ -132,8 +132,8 @@ jobs:
       - name: Trigger mirror-bee
         env:
           TAG: ${{ github.ref_name }}
-          NO_ROLLBACK: ${{ steps.norollback.outputs.no_rollback }}
-          NOTES: ${{ steps.norollback.outputs.notes }}
+          NO_ROLLBACK: ${{ steps.no_rollback.outputs.no_rollback }}
+          NOTES: ${{ steps.no_rollback.outputs.notes }}
           GH_TOKEN: ${{ secrets.SWARM_OCI_DISPATCH_TOKEN }}
         run: |
           set -euo pipefail

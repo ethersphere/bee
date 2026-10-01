@@ -388,7 +388,7 @@ func TestOtherChannelLoggedOnce(t *testing.T) {
 	})
 }
 
-// Past a noRollback release, bee-runner refuses any release that carries an
+// Past a no-rollback release, bee-runner refuses any release that carries an
 // older bee. So a newer descriptor version with an older bee (or none) is not
 // an update worth restarting for. A fix forward still is.
 func TestNoRollbackBarrier(t *testing.T) {
