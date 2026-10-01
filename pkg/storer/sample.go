@@ -93,7 +93,7 @@ func (db *DB) ReserveSample(
 
 	isExcludedBatch, err := db.batchExclusionFilter(minBatchBalance)
 	if err != nil {
-		db.logger.Error(err, "get batch exclusion filter")
+		return Sample{}, fmt.Errorf("batch exclusion filter: %w", err)
 	}
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
