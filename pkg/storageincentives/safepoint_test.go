@@ -73,6 +73,13 @@ func TestRestartSafePoint(t *testing.T) {
 			st.LastSelectedRound = 1001
 			st.RoundData[1000] = si.RoundData{SampleData: &si.SampleData{}}
 		}), 0, false},
+		{"sample ready, commit receipt pending, reveal phase", with(status(si.PhaseReveal, 1001, at(1001, 38)), func(st *si.Status) {
+			st.LastSelectedRound = 1001
+			st.RoundData[1000] = si.RoundData{SampleData: &si.SampleData{}}
+		}), 0, false},
+		{"sample ready, commit receipt pending, last reveal block before margin", with(status(si.PhaseReveal, 1001, at(1001, 40)), func(st *si.Status) {
+			st.RoundData[1000] = si.RoundData{SampleData: &si.SampleData{}}
+		}), 0, false},
 		{"sample ready, selection not recorded", with(status(si.PhaseCommit, 1001, at(1001, 5)), func(st *si.Status) {
 			st.RoundData[1000] = si.RoundData{SampleData: &si.SampleData{}}
 		}), 0, false},
@@ -106,6 +113,25 @@ func TestRestartSafePoint(t *testing.T) {
 				t.Fatal("unsafe without a reason")
 			}
 		})
+	}
+}
+
+// The real block lies between the recorded one and the estimate, so a range
+// that crosses an unsafe block is unsafe even if both ends are safe.
+func TestRestartSafeRange(t *testing.T) {
+	t.Parallel()
+
+	st := status(si.PhaseReveal, 1000, at(1000, 40))
+	if ok, _ := si.RestartSafeRange(st, at(1000, 30), at(1000, 30), gnosisBlockTime); !ok {
+		t.Fatal("idle commit block reported unsafe")
+	}
+	if ok, _ := si.RestartSafeRange(st, at(1001, 10), at(1001, 10), gnosisBlockTime); !ok {
+		t.Fatal("idle next-round commit block reported unsafe")
+	}
+	// From the reveal phase of round 1000 to the commit phase of 1001
+	// crosses the claim phase of 1000.
+	if ok, reason := si.RestartSafeRange(st, at(1000, 30), at(1001, 10), gnosisBlockTime); ok || reason == "" {
+		t.Fatalf("range across the claim phase: %v %q", ok, reason)
 	}
 }
 

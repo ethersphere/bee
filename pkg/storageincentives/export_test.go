@@ -29,6 +29,10 @@ func RestartSafePoint(st *Status, block uint64, blockTime time.Duration) (bool, 
 	return restartSafePoint(st, block, newSafePointConfig(blockTime, DefaultBlocksPerRound, DefaultBlocksPerPhase))
 }
 
+func RestartSafeRange(st *Status, first, last uint64, blockTime time.Duration) (bool, string) {
+	return restartSafeRange(st, first, last, newSafePointConfig(blockTime, DefaultBlocksPerRound, DefaultBlocksPerPhase))
+}
+
 // NewSafePointAgent returns an agent that is not started. It reads its
 // redistribution status from store and is meant for testing SafeToRestart.
 func NewSafePointAgent(tb testing.TB, store storage.StateStorer, blockTime time.Duration) *Agent {

@@ -87,11 +87,25 @@ func (a *Agent) SafeToRestart() (safe bool, reason string) {
 		st = NewStatus()
 	}
 
+	// The estimate runs ahead of the chain when slots are missed, so the
+	// real block is somewhere between the recorded one and the estimate.
+	// Every block in that range must be safe.
 	block := st.Block
 	if a.blockTime > 0 && age > 0 {
 		block += uint64(age / a.blockTime)
 	}
-	return restartSafePoint(st, block, newSafePointConfig(a.blockTime, a.blocksPerRound, a.blocksPerPhase))
+	return restartSafeRange(st, st.Block, block, newSafePointConfig(a.blockTime, a.blocksPerRound, a.blocksPerPhase))
+}
+
+// restartSafeRange reports whether every block from first to last is a safe
+// point, with the reason for the first one that is not.
+func restartSafeRange(st *Status, first, last uint64, c safePointConfig) (bool, string) {
+	for b := first; b <= last; b++ {
+		if ok, reason := restartSafePoint(st, b, c); !ok {
+			return false, reason
+		}
+	}
+	return true, ""
 }
 
 // restartSafePoint uses a recorded status and the current block to decide
@@ -120,17 +134,21 @@ func restartSafePoint(st *Status, block uint64, c safePointConfig) (bool, string
 	if st.LastSelectedRound > round {
 		return false, fmt.Sprintf("selected for round %d", st.LastSelectedRound)
 	}
-	if pos < c.blocksPerPhase {
-		// The sample for this round is made in the claim phase of the previous
-		// one and may still be in progress. Selection is recorded before
-		// sampling starts.
-		if st.LastSelectedRound == round {
-			return false, fmt.Sprintf("selected for round %d, commit pending", round)
-		}
-		if round > 0 {
-			if rd, ok := st.RoundData[round-1]; ok && rd.SampleData != nil {
-				return false, fmt.Sprintf("sample ready for commit in round %d", round)
-			}
+	// The sample for this round is made in the claim phase of the previous
+	// one and may still be in progress. Selection is recorded before
+	// sampling starts. Without a sample by the end of the commit phase the
+	// node cannot commit, so selection alone only matters until then.
+	if pos < c.blocksPerPhase && st.LastSelectedRound == round {
+		return false, fmt.Sprintf("selected for round %d, commit pending", round)
+	}
+	// With a sample, the node may have committed even though no commit key
+	// is recorded yet: commit saves it only once the receipt arrives, which
+	// can be well into the reveal phase. A restart then would miss the
+	// reveal, and the contract freezes the stake. So a round with a sample
+	// stays unsafe until the reveal is done.
+	if round > 0 {
+		if rd, ok := st.RoundData[round-1]; ok && rd.SampleData != nil && !st.RoundData[round].HasRevealed {
+			return false, fmt.Sprintf("sample ready in round %d, not revealed", round)
 		}
 	}
 	if left := claimStart - pos; left < c.marginBlocks {
