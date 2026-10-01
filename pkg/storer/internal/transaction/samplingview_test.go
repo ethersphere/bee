@@ -74,7 +74,7 @@ func assertViewNotFound(t *testing.T, view *transaction.SamplingView, addr swarm
 
 func openView(tb testing.TB, sh transaction.Sharky, st transaction.ReadOnlyStore) *transaction.SamplingView {
 	tb.Helper()
-	view, err := transaction.NewSamplingView(context.Background(), sh, st, swarm.ZeroAddress.Bytes(), 0, 0)
+	view, err := transaction.NewSamplingView(context.Background(), sh, st, swarm.ZeroAddress.Bytes(), 0)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestSamplingViewCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := transaction.NewSamplingView(ctx, sh, st, swarm.ZeroAddress.Bytes(), 0, 0); !errors.Is(err, context.Canceled) {
+	if _, err := transaction.NewSamplingView(ctx, sh, st, swarm.ZeroAddress.Bytes(), 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got error %v, want %v", err, context.Canceled)
 	}
 }

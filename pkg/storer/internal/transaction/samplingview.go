@@ -38,9 +38,8 @@ type SamplingView struct {
 // NewSamplingView watches sharky releases and only then snapshots the
 // locations. An index entry is committed away before its slot is released (see
 // transaction.Commit), so a slot the snapshot references that is freed later
-// is recorded before a write can reuse it. sizeHint estimates the number of
-// chunks within depth of anchor, erring high; see BuildLocationTable.
-func NewSamplingView(ctx context.Context, sh Sharky, st ReadOnlyStore, anchor []byte, depth uint8, sizeHint int) (*SamplingView, error) {
+// is recorded before a write can reuse it.
+func NewSamplingView(ctx context.Context, sh Sharky, st ReadOnlyStore, anchor []byte, depth uint8) (*SamplingView, error) {
 	released := new(releasedSlots)
 	stop := sh.Watch(released.add)
 	opened := false
@@ -50,7 +49,7 @@ func NewSamplingView(ctx context.Context, sh Sharky, st ReadOnlyStore, anchor []
 		}
 	}()
 
-	table, err := chunkstore.BuildLocationTable(ctx, st.IndexStore(), anchor, depth, sizeHint)
+	table, err := chunkstore.BuildLocationTable(ctx, st.IndexStore(), anchor, depth)
 	if err != nil {
 		return nil, err
 	}
