@@ -945,6 +945,11 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
 	}
+	if batchSnapshot != nil && o.PostageSnapshotFile != "" && !snapshotLoaded {
+		// The replay failed and the batch service fell back to the chain, but the
+		// operator asked for this file explicitly, so do not start without it.
+		return nil, fmt.Errorf("postage snapshot file %q: replay failed", o.PostageSnapshotFile)
+	}
 	if snapshotLoaded {
 		// The snapshot rebuilt the store up to its block height, so the node can
 		// already serve postage requests while the remaining gap syncs live.
