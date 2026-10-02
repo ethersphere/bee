@@ -19,12 +19,14 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
-	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
@@ -32,7 +34,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -218,10 +219,10 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository() (transaction.Storage, *sharky.Store, io.Closer, error) {
+func initInmemRepository() (transaction.Storage, io.Closer, error) {
 	store, _, err := leveldbstore.New("", nil)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
+		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -230,10 +231,10 @@ func initInmemRepository() (transaction.Storage, *sharky.Store, io.Closer, error
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
+		return nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
 	}
 
-	return transaction.NewStorage(sharky, store), sharky, closer(store, sharky), nil
+	return transaction.NewStorage(sharky, store), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -281,15 +282,15 @@ func initDiskRepository(
 	ctx context.Context,
 	basePath string,
 	opts *Options,
-) (transaction.Storage, *sharky.Store, *PinIntegrity, io.Closer, int, error) {
+) (transaction.Storage, *PinIntegrity, io.Closer, int, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
-		return nil, nil, nil, nil, 0, fmt.Errorf("failed creating levelDB index store: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
 	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store, opts.Logger))
 	if err != nil {
-		return nil, nil, nil, nil, 0, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
+		return nil, nil, nil, 0, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}
 
 	if opts.LdbStats.Load() != nil {
@@ -341,13 +342,13 @@ func initDiskRepository(
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
 		err := os.Mkdir(sharkyBasePath, 0o700)
 		if err != nil {
-			return nil, nil, nil, nil, 0, err
+			return nil, nil, nil, 0, err
 		}
 	}
 
 	recoveryCloser, pruned, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
 	if err != nil {
-		return nil, nil, nil, nil, 0, fmt.Errorf("failed to recover sharky: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed to recover sharky: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -356,7 +357,7 @@ func initDiskRepository(
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, nil, nil, nil, 0, fmt.Errorf("failed creating sharky instance: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
 	pinIntegrity := &PinIntegrity{
@@ -364,7 +365,7 @@ func initDiskRepository(
 		Sharky: sharky,
 	}
 
-	return transaction.NewStorage(sharky, store), sharky, pinIntegrity, closer(store, sharky, recoveryCloser), pruned, nil
+	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), pruned, nil
 }
 
 const lockKeyNewSession string = "new_session"
@@ -449,10 +450,6 @@ type DB struct {
 	reserveOptions   reserveOpts
 
 	pinIntegrity *PinIntegrity
-	sharky       *sharky.Store // read by the reserve sampler through a SamplingView
-
-	samplingViewDisabled bool   // set by tests to exercise the retrieval index read path
-	samplingViewOpened   func() // set by tests to act between opening the view and reading chunks
 }
 
 type reserveOpts struct {
@@ -469,7 +466,6 @@ type reserveOpts struct {
 func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	var (
 		err          error
-		sh           *sharky.Store
 		pinIntegrity *PinIntegrity
 		st           transaction.Storage
 		dbCloser     io.Closer
@@ -488,12 +484,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
 
 	if dirPath == "" {
-		st, sh, dbCloser, err = initInmemRepository()
+		st, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		st, sh, pinIntegrity, dbCloser, pruned, err = initDiskRepository(ctx, dirPath, opts)
+		st, pinIntegrity, dbCloser, pruned, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -532,7 +528,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	db := &DB{
 		metrics:    metrics,
 		storage:    st,
-		sharky:     sh,
 		logger:     logger,
 		tracer:     opts.Tracer,
 		baseAddr:   opts.Address,

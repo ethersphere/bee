@@ -22,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -74,6 +73,20 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
+	return db.reserveSample(ctx, anchor, committedDepth, consensusTime, minBatchBalance, db.storage.NewSamplingView)
+}
+
+// openSamplingViewFn opens the view the sampler workers read chunks through.
+type openSamplingViewFn func(ctx context.Context, anchor []byte, depth uint8) (*transaction.SamplingView, error)
+
+func (db *DB) reserveSample(
+	ctx context.Context,
+	anchor []byte,
+	committedDepth uint8,
+	consensusTime uint64,
+	minBatchBalance *big.Int,
+	openSamplingView openSamplingViewFn,
+) (Sample, error) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -100,10 +113,14 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	view := db.openSamplingView(ctx, anchor, committedDepth, allStats)
-	if view != nil {
-		defer view.Close()
+	viewStart := time.Now()
+	view, err := openSamplingView(ctx, anchor, committedDepth)
+	if err != nil {
+		return Sample{}, fmt.Errorf("open sampling view: %w", err)
 	}
+	defer view.Close()
+	allStats.LocationTableBuildDuration = time.Since(viewStart)
+	allStats.LocationTableSize = int64(view.Len())
 
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
@@ -141,14 +158,6 @@ func (db *DB) ReserveSample(
 		g.Go(safe.RunFunc(db.logger, "storer-sample-worker", func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewPrefixHasher(anchor)
-			// One handle per worker rather than one per chunk: building it
-			// allocates, and the sampler asks for a chunk millions of times per
-			// round. It is not shared between workers because the read-only
-			// chunk store makes no thread-safety promise.
-			var chunkStore storage.GetterInto = db.ChunkStore()
-			if view != nil {
-				chunkStore = view
-			}
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			defer func() {
 				addStats(wstat)
@@ -170,7 +179,7 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				n, err := chunkStore.GetInto(gCtx, chItem.Address, buf)
+				n, err := view.GetInto(gCtx, chItem.Address, buf)
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {
@@ -294,9 +303,7 @@ func (db *DB) ReserveSample(
 		}
 	}
 	addStats(stats)
-	if view != nil {
-		allStats.LocationTableMisses = view.Misses()
-	}
+	allStats.LocationTableMisses = view.Misses()
 
 	allStats.TotalDuration = time.Since(t)
 
@@ -331,29 +338,6 @@ func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
 	})
 
 	return res, err
-}
-
-// openSamplingView returns a view that reads chunks without an index lookup
-// each, or nil if it cannot be opened; the workers then read through the
-// chunk store.
-func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, stats *SampleStats) *transaction.SamplingView {
-	if db.samplingViewDisabled {
-		return nil
-	}
-	start := time.Now()
-	view, err := transaction.NewSamplingView(ctx, db.sharky, db.storage, anchor, depth)
-	if err != nil {
-		if ctx.Err() == nil {
-			db.logger.Warning("reserve sampler reading chunks through the retrieval index", "error", err)
-		}
-		return nil
-	}
-	stats.LocationTableBuildDuration = time.Since(start)
-	stats.LocationTableSize = int64(view.Len())
-	if db.samplingViewOpened != nil {
-		db.samplingViewOpened()
-	}
-	return view
 }
 
 func transformedAddress(hasher bmt.Hasher, addr swarm.Address, data []byte, chType swarm.ChunkType) (swarm.Address, error) {

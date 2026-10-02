@@ -15,8 +15,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// Sharky is the part of sharky.Store a SamplingView reads through.
-type Sharky interface {
+// sharkyReader is the part of sharky.Store a SamplingView reads through.
+type sharkyReader interface {
 	Read(ctx context.Context, loc sharky.Location, buf []byte) error
 	Watch(fn func(sharky.Location)) (stop func())
 }
@@ -27,7 +27,7 @@ type Sharky interface {
 // retrieval index, as the chunk store would. GetInto is safe for concurrent
 // use. Close must be called when sampling ends.
 type SamplingView struct {
-	sharky   Sharky
+	sharky   sharkyReader
 	chunks   storage.ReadOnlyChunkStore // fallback for reads the table cannot serve
 	table    *chunkstore.LocationTable
 	released *releasedSlots
@@ -35,27 +35,26 @@ type SamplingView struct {
 	misses   atomic.Int64
 }
 
-// NewSamplingView watches sharky releases and only then snapshots the
+// NewSamplingView opens a SamplingView over the chunks within depth of anchor.
+func (s *store) NewSamplingView(ctx context.Context, anchor []byte, depth uint8) (*SamplingView, error) {
+	return newSamplingView(ctx, s.sharky, s, anchor, depth)
+}
+
+// newSamplingView watches sharky releases and only then snapshots the
 // locations. An index entry is committed away before its slot is released (see
 // transaction.Commit), so a slot the snapshot references that is freed later
 // is recorded before a write can reuse it.
-func NewSamplingView(ctx context.Context, sh Sharky, st ReadOnlyStore, anchor []byte, depth uint8) (*SamplingView, error) {
+func newSamplingView(ctx context.Context, sh sharkyReader, st ReadOnlyStore, anchor []byte, depth uint8) (*SamplingView, error) {
 	released := new(releasedSlots)
 	stop := sh.Watch(released.add)
-	opened := false
-	defer func() {
-		if !opened {
-			stop()
-		}
-	}()
 
 	table, err := chunkstore.BuildLocationTable(ctx, st.IndexStore(), anchor, depth)
 	if err != nil {
+		stop()
 		return nil, err
 	}
 	released.publish(table.SlotLimits())
 
-	opened = true
 	return &SamplingView{
 		sharky:   sh,
 		chunks:   st.ChunkStore(),

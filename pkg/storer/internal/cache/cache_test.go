@@ -622,6 +622,10 @@ func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
 func (t *inmemTrx) Commit() error                  { return nil }
 
 func (t *inmemStorage) Close() error { return nil }
+func (t *inmemStorage) NewSamplingView(context.Context, []byte, uint8) (*transaction.SamplingView, error) {
+	return nil, errors.ErrUnsupported
+}
+
 func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
 	trx, done := t.NewTransaction(ctx)
 	defer done()
