@@ -102,10 +102,7 @@ func (db *DB) ReserveSample(
 
 	view := db.openSamplingView(ctx, anchor, committedDepth, allStats)
 	if view != nil {
-		defer func() { _ = view.Close() }()
-	}
-	if db.samplingViewOpened != nil {
-		db.samplingViewOpened()
+		defer view.Close()
 	}
 
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
@@ -353,6 +350,9 @@ func (db *DB) openSamplingView(ctx context.Context, anchor []byte, depth uint8, 
 	}
 	stats.LocationTableBuildDuration = time.Since(start)
 	stats.LocationTableSize = int64(view.Len())
+	if db.samplingViewOpened != nil {
+		db.samplingViewOpened()
+	}
 	return view
 }
 
