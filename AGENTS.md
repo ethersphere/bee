@@ -26,13 +26,15 @@ Handle errors and logging the way this repo does: propagate errors with context 
 
 Prefer **`package foo_test`** tests, **`export_test.go`** when you must export internals, and **`t.Parallel()`** only where it is safe. Add or update tests when behavior changes. Integration tests use **`-tags=integration`**.
 
+Code that parses, decodes or validates untrusted input needs a fuzz target (`*_fuzz_test.go`, see **Fuzzing** in `CODING.md`).
+
 ## Pre-commit checklist
 
 Before you finish a change set (especially before a commit or PR), run these and fix failures:
 
 1. **Formatting** — `make format` (gofumpt + gci; see `CODING.md`).
 2. **Compile** — `make build` (all packages) and, when you need the binary artifact, `make binary` (`dist/bee`, `CGO_ENABLED=0`).
-3. **Tests** — `make test` (unit tests, `-failfast`). For a single package use `go test ./pkg/<name>/...`. Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code.
+3. **Tests** — `make test` (unit tests, `-failfast`). For a single package use `go test ./pkg/<name>/...`. Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code. Run `make fuzz-regression FUZZPKG=./pkg/<name>/...` when you touch fuzz targets or the input they cover. Run `make fuzz FUZZPKG=./pkg/<name>/...` when you add or change a fuzz target.
 4. **Static checks** — `make lint` and `make vet` (see `.golangci.yml`).
 
 CI pipelines may use `make test-ci` / `make test-ci-race` (see `Makefile` for flags).
@@ -40,13 +42,15 @@ CI pipelines may use `make test-ci` / `make test-ci-race` (see `Makefile` for fl
 ## Dev commands (quick reference)
 
 ```bash
-make binary     # dist/bee
-make build      # compile all packages
-make test       # unit tests
-make test-race  # unit tests + race detector
-make lint       # golangci-lint (see .golangci.yml)
-make vet        # go vet
-make protobuf   # regenerate *.pb.go after changing .proto files
+make binary          # dist/bee
+make build           # compile all packages
+make test            # unit tests
+make test-race       # unit tests + race detector
+make fuzz            # mutate-fuzz; set FUZZPKG=./pkg/<name>/...
+make fuzz-regression # replay seeds; set FUZZPKG=./pkg/<name>/...
+make lint            # golangci-lint (see .golangci.yml)
+make vet             # go vet
+make protobuf        # regenerate *.pb.go after changing .proto files
 ```
 
 ## Architecture
@@ -139,6 +143,7 @@ Every `.go` file starts with:
 - Prefer external test packages: `package foo_test` not `package foo`.
 - `export_test.go` in the real package to export symbols only for tests.
 - Use `t.Parallel()` where safe. Avoid the word `fail` in test names. Integration: `-tags=integration`. Prefer `t.Fatal` / `t.FailNow` over `panic` in tests.
+- Fuzzing: new or changed parsers, decoders and validators of untrusted input (peer protobufs, chunk/SOC data, stamps, manifests, API input) get a `func FuzzName(f *testing.F)` in `<name>_fuzz_test.go`, with `f.Add` seeds that cover valid inputs and size-boundary edge cases. If parse accepts, assert invariants.
 
 ### Style and tooling
 
