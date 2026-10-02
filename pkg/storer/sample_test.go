@@ -951,13 +951,15 @@ func BenchmarkReserveSample10kWith1000ExcludedBatches(b *testing.B) {
 }
 
 // fillSampleReserve puts chunkCountPerPO CAC or SOC chunks in each of the first
-// maxPO bins of baseAddr and returns the anchor and consensus time to sample with.
-func fillSampleReserve(t *testing.T, st *storer.DB, baseAddr swarm.Address) ([]byte, uint64) {
+// maxPO bins of baseAddr and returns them with the anchor and consensus time to
+// sample with.
+func fillSampleReserve(t *testing.T, st *storer.DB, baseAddr swarm.Address) ([]swarm.Chunk, []byte, uint64) {
 	t.Helper()
 	const chunkCountPerPO, maxPO = 10, 10
 
 	timeVar := uint64(time.Now().UnixNano())
 	putter := st.ReservePutter()
+	chunks := make([]swarm.Chunk, 0, chunkCountPerPO*maxPO)
 	for po := range maxPO {
 		for range chunkCountPerPO {
 			ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
@@ -968,9 +970,10 @@ func fillSampleReserve(t *testing.T, st *storer.DB, baseAddr swarm.Address) ([]b
 			if err := putter.Put(context.Background(), ch); err != nil {
 				t.Fatal(err)
 			}
+			chunks = append(chunks, ch)
 		}
 	}
-	return swarm.RandAddressAt(t, baseAddr, 5).Bytes(), timeVar
+	return chunks, swarm.RandAddressAt(t, baseAddr, 5).Bytes(), timeVar
 }
 
 func sampleTestStorers(t *testing.T) map[string]func(*testing.T, swarm.Address) *storer.DB {
@@ -993,7 +996,9 @@ func sampleTestStorers(t *testing.T) map[string]func(*testing.T, swarm.Address) 
 	}
 }
 
-func TestReserveSamplerSamplingViewEquivalence(t *testing.T) {
+// TestReserveSamplerMatchesChunks checks that the sample read through the
+// sampling view is the one computed directly from the stored chunks.
+func TestReserveSamplerMatchesChunks(t *testing.T) {
 	t.Parallel()
 
 	for name, open := range sampleTestStorers(t) {
@@ -1002,27 +1007,30 @@ func TestReserveSamplerSamplingViewEquivalence(t *testing.T) {
 
 			baseAddr := swarm.RandAddress(t)
 			st := open(t, baseAddr)
-			anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+			chunks, anchor, timeVar := fillSampleReserve(t, st, baseAddr)
 
-			withView, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			var inDepth []swarm.Chunk
+			for _, ch := range chunks {
+				if swarm.Proximity(ch.Address().Bytes(), anchor) >= 5 {
+					inDepth = append(inDepth, ch)
+				}
+			}
+			want, err := storer.MakeSampleUsingChunks(inDepth, anchor)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if withView.Stats.LocationTableSize == 0 {
-				t.Fatal("first sample should use the location table")
-			}
+			want.Items = want.Items[:min(len(want.Items), storer.SampleSize)]
 
-			st.DisableSamplingView()
-			withIndex, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			got, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if withIndex.Stats.LocationTableSize != 0 {
-				t.Fatal("second sample should read through the retrieval index")
+			assertSampleNoErrors(t, got)
+			if got.Stats.LocationTableSize == 0 {
+				t.Fatal("sample should read through the location table")
 			}
-
-			if diff := cmp.Diff(withIndex.Items, withView.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
-				t.Fatalf("samples differ (-index +view):\n%s", diff)
+			if diff := cmp.Diff(want.Items, got.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+				t.Fatalf("sample differs from the stored chunks (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -1037,7 +1045,7 @@ func TestReserveSamplerConcurrentRuns(t *testing.T) {
 
 			baseAddr := swarm.RandAddress(t)
 			st := open(t, baseAddr)
-			anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+			_, anchor, timeVar := fillSampleReserve(t, st, baseAddr)
 
 			samples := make([]storer.Sample, 2)
 			var g errgroup.Group
@@ -1100,14 +1108,12 @@ func TestReserveSamplerReplacedSOC(t *testing.T) {
 			if err := putter.Put(context.Background(), v1); err != nil {
 				t.Fatal(err)
 			}
-			st.OnSamplingViewOpened(func() {
+			anchor := v1.Address().Bytes()
+			sample, err := st.ReserveSampleAfterViewOpened(context.Background(), anchor, 5, timeVar, func() {
 				if err := putter.Put(context.Background(), v2); err != nil {
 					t.Errorf("replace soc: %v", err)
 				}
 			})
-
-			anchor := v1.Address().Bytes()
-			sample, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

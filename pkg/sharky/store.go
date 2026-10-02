@@ -240,8 +240,7 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 		return ErrShardNotFound
 	}
 
-	// Must run before the slot is freed: the sampling view relies on seeing
-	// the release before any Write can reuse the slot.
+	// Notify before the slot is freed so no Write can reuse it unseen (see Watch).
 	if ws := s.watchers.Load(); ws != nil {
 		for _, w := range *ws {
 			w.fn(loc)
