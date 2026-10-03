@@ -1019,6 +1019,12 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Overlay address of the broker node. Must not be this node.
+        - in: query
+          name: identity
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address identifying the joiner.
       responses:
         "200":
           description: Establishes a WebSocket subscription for incoming broadcasts
@@ -1068,6 +1074,12 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Overlay address of the broker node. Must not be this node.
+        - in: query
+          name: identity
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address identifying the joiner.
       responses:
         "200":
           description: Establishes a WebSocket subscription for publishing broadcasts
