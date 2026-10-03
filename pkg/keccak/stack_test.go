@@ -20,6 +20,12 @@ import (
 // before their frame starts: the return address and the saved frame pointer.
 const stubOverhead = 16
 
+// probePatterns are the sentinels the stack below the stub is painted with.
+// They are bitwise complements of each other, so any write that changes a bit
+// (including the wrappers' |= 0x01 / |= 0x80 padding markers, which are no-ops
+// on a byte that already has those bits set) is caught by one of them.
+var probePatterns = []uintptr{0xA5A5A5A5A5A5A5A5, 0x5A5A5A5A5A5A5A5A}
+
 // stackTestLengths extends testInputLengths with lengths that straddle block
 // boundaries and multi-block inputs, to cover every absorb/squeeze path.
 var stackTestLengths = append([]int{271, 273, 408, 4095, 4097, 4104, 8192}, testInputLengths...)
@@ -38,11 +44,14 @@ func TestStackUsage(t *testing.T) {
 		if !HasSIMD() {
 			t.Skip("AVX2 not available on this CPU")
 		}
-		testStackUsage(t, 4, keccak256x4FrameSize, 32, func(inputs [][]byte, off uintptr) (uintptr, [][32]byte) {
+		testStackUsage(t, 4, keccak256x4FrameSize, 32, func(inputs [][]byte, off, pattern uintptr) (uintptr, [][32]byte) {
 			var in [4][]byte
 			var out [4]Hash256
 			copy(in[:], inputs)
-			used := stackProbe4(&in, &out, off)
+			// apply the same lane checks as Sum256x4: the stub itself is only
+			// safe for the inputs prepareLanes lets through.
+			prepareLanes(in[:])
+			used := stackProbe4(&in, &out, off, pattern)
 			return used, hashesOf(out[:])
 		})
 	})
@@ -50,17 +59,20 @@ func TestStackUsage(t *testing.T) {
 		if !HasAVX512() {
 			t.Skip("AVX-512 not available on this CPU")
 		}
-		testStackUsage(t, 8, keccak256x8FrameSize, 64, func(inputs [][]byte, off uintptr) (uintptr, [][32]byte) {
+		testStackUsage(t, 8, keccak256x8FrameSize, 64, func(inputs [][]byte, off, pattern uintptr) (uintptr, [][32]byte) {
 			var in [8][]byte
 			var out [8]Hash256
 			copy(in[:], inputs)
-			used := stackProbe8(&in, &out, off)
+			// apply the same lane checks as Sum256x8: the stub itself is only
+			// safe for the inputs prepareLanes lets through.
+			prepareLanes(in[:])
+			used := stackProbe8(&in, &out, off, pattern)
 			return used, hashesOf(out[:])
 		})
 	})
 }
 
-func testStackUsage(t *testing.T, lanes, frameSize int, align uintptr, probe func([][]byte, uintptr) (uintptr, [][32]byte)) {
+func testStackUsage(t *testing.T, lanes, frameSize int, align uintptr, probe func([][]byte, uintptr, uintptr) (uintptr, [][32]byte)) {
 	t.Helper()
 
 	limit := uintptr(stubOverhead + frameSize)
@@ -79,22 +91,24 @@ func testStackUsage(t *testing.T, lanes, frameSize int, align uintptr, probe fun
 				inputs[i] = data
 			}
 			for off := uintptr(0); off < align; off += 8 {
-				name := fmt.Sprintf("len=%d filled=%d off=%d", length, filled, off)
+				for _, pattern := range probePatterns {
+					name := fmt.Sprintf("len=%d filled=%d off=%d pattern=%#x", length, filled, off, pattern)
 
-				used, got := probe(inputs, off)
-				if used <= stubOverhead {
-					t.Fatalf("%s: probe saw %d bytes of stack used; the probe is not measuring the C code", name, used)
-				}
-				if used > limit {
-					t.Fatalf("%s: C code used %d bytes of stack, stub reserves %d: it overflows the stub frame and corrupts memory below the goroutine stack",
-						name, used-stubOverhead, frameSize)
-				}
-				for i := range filled {
-					if !bytes.Equal(got[i][:], want) {
-						t.Fatalf("%s: lane %d digest mismatch", name, i)
+					used, got := probe(inputs, off, pattern)
+					if used <= stubOverhead {
+						t.Fatalf("%s: probe saw %d bytes of stack used; the probe is not measuring the C code", name, used)
 					}
+					if used > limit {
+						t.Fatalf("%s: C code used %d bytes of stack, stub reserves %d: it overflows the stub frame and corrupts memory below the goroutine stack",
+							name, used-stubOverhead, frameSize)
+					}
+					for i := range filled {
+						if !bytes.Equal(got[i][:], want) {
+							t.Fatalf("%s: lane %d digest mismatch", name, i)
+						}
+					}
+					maxUsed = max(maxUsed, used)
 				}
-				maxUsed = max(maxUsed, used)
 			}
 		}
 	}

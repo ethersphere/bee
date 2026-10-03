@@ -3,6 +3,7 @@
 #include "textflag.h"
 #include "funcdata.h"
 #include "go_asm.h"
+#include "keccak_stub_amd64.h"
 
 // func keccak256x8(inputs *[8][]byte, outputs *[8]Hash256)
 //
@@ -12,9 +13,5 @@ TEXT ·keccak256x8(SB), $4096-16
 	NO_LOCAL_POINTERS
 	MOVQ inputs+0(FP), DI
 	MOVQ outputs+8(FP), SI
-	MOVQ SP, R12
-	LEAQ const_keccak256x8FrameSize(SP), AX
-	MOVQ AX, SP
-	CALL go_keccak256x8(SB)
-	MOVQ R12, SP
+	CALL_ON_FRAME(go_keccak256x8, const_keccak256x8FrameSize(SP))
 	RET
