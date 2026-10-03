@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -41,36 +42,13 @@ var bpsClaimTimeout = 30 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
 
-// BPSService joins cohorts at a broker.
-type BPSService interface {
-	Join(ctx context.Context, broker, addr swarm.Address) (BPSSession, error)
-}
-
-// BPSSession is a single joined p2p stream to a broker.
-type BPSSession interface {
-	// Challenge is the nonce the broker issued for this stream.
-	Challenge() []byte
-	// Messages yields raw SOC bytes broadcast by the broker.
-	// Implementations must not block when Messages is not drained (the
-	// publish endpoint never reads it). Closing the channel is treated
-	// as the stream ending.
-	Messages() <-chan []byte
-	// Claim writes the claim SOC to the broker. The broker does not reply.
-	Claim(ctx context.Context, soc []byte) error
-	// Publish writes a broadcast SOC to the broker.
-	Publish(ctx context.Context, soc []byte) error
-	// Done is closed when the p2p stream ends.
-	Done() <-chan struct{}
-	// Err reports why the stream ended. Valid after Done is closed.
-	Err() error
-	Close() error
-}
-
 type bpsRequest struct {
-	owner  common.Address
-	id     []byte
-	addr   swarm.Address
-	broker swarm.Address
+	owner    common.Address
+	id       []byte
+	topic    []byte
+	addr     swarm.Address
+	broker   swarm.Address
+	identity []byte
 }
 
 type bpsChallengeMessage struct {
@@ -148,7 +126,8 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 	}
 
 	queries := struct {
-		Broker swarm.Address `map:"broker"`
+		Broker   swarm.Address `map:"broker"`
+		Identity []byte        `map:"identity" validate:"required,len=20"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -173,7 +152,14 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 		jsonhttp.InternalServerError(w, "derive topic address failed")
 		return bpsRequest{}, false
 	}
-	return bpsRequest{owner: paths.Owner, id: id, addr: addr, broker: queries.Broker}, true
+	return bpsRequest{
+		owner:    paths.Owner,
+		id:       id,
+		topic:    paths.Topic,
+		addr:     addr,
+		broker:   queries.Broker,
+		identity: queries.Identity,
+	}, true
 }
 
 func (s *Service) bpsUpgrade(w http.ResponseWriter, r *http.Request, logger log.Logger) (*websocket.Conn, bool) {
@@ -271,7 +257,13 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 		_ = conn.Close()
 	}()
 
-	sess, err := s.bps.Join(ctx, req.broker, req.addr)
+	sess, err := s.bps.Join(ctx, bps.JoinRequest{
+		Broker:    req.broker,
+		Binding:   bps.BindingFeed,
+		Topic:     req.topic,
+		Principal: req.owner.Bytes(),
+		Identity:  req.identity,
+	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
 		s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
@@ -287,10 +279,6 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 			if !ok {
 				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(sess.Err()))
 				return
-			}
-			if !soc.Valid(swarm.NewChunk(req.addr, data)) {
-				logger.Debug("dropping invalid broadcast", "address", req.addr)
-				continue
 			}
 			if err := s.bpsWrite(conn, websocket.BinaryMessage, data); err != nil {
 				logger.Debug("write broadcast failed", "error", err)
@@ -374,7 +362,13 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		_ = conn.Close()
 	}()
 
-	sess, err := s.bps.Join(ctx, req.broker, req.addr)
+	sess, err := s.bps.Join(ctx, bps.JoinRequest{
+		Broker:    req.broker,
+		Binding:   bps.BindingFeed,
+		Topic:     req.topic,
+		Principal: req.owner.Bytes(),
+		Identity:  req.identity,
+	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
 		s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
