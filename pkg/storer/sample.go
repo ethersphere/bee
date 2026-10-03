@@ -91,9 +91,9 @@ func (db *DB) ReserveSample(
 		db.recordReserveSampleMetrics(duration, allStats, workers, err)
 	}()
 
-	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
+	isExcludedBatch, err := db.batchExclusionFilter(minBatchBalance)
 	if err != nil {
-		db.logger.Error(err, "get batches below value")
+		return Sample{}, fmt.Errorf("batch exclusion filter: %w", err)
 	}
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
@@ -114,6 +114,20 @@ func (db *DB) ReserveSample(
 			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
 				return false, nil
 			}
+
+			// exclude chunks whose batches balance are below minimum
+			if isExcludedBatch != nil && isExcludedBatch(ch.BatchID) {
+				stats.BelowBalanceIgnored++
+				return false, nil
+			}
+
+			// Skip chunks if they are not SOC or CAC
+			if ch.ChunkType != swarm.ChunkTypeSingleOwner &&
+				ch.ChunkType != swarm.ChunkTypeContentAddressed {
+				stats.RogueChunk++
+				return false, nil
+			}
+
 			select {
 			case chunkC <- ch:
 				stats.TotalIterated++
@@ -145,19 +159,6 @@ func (db *DB) ReserveSample(
 			}()
 
 			for chItem := range chunkC {
-				// exclude chunks who's batches balance are below minimum
-				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
-					wstat.BelowBalanceIgnored++
-					continue
-				}
-
-				// Skip chunks if they are not SOC or CAC
-				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
-					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
-					wstat.RogueChunk++
-					continue
-				}
-
 				chunkLoadStart := time.Now()
 
 				n, err := chunkStore.GetInto(gCtx, chItem.Address, buf)
@@ -303,21 +304,30 @@ func le(a, b swarm.Address) bool {
 	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
-func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
-	res := make(map[string]struct{})
-
+func (db *DB) batchExclusionFilter(until *big.Int) (func([]byte) bool, error) {
 	if until == nil {
-		return res, nil
+		return nil, nil // no batches excluded
 	}
 
+	set := make(map[[32]byte]struct{})
 	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 		if b.Value.Cmp(until) < 0 {
-			res[string(b.ID)] = struct{}{}
+			var id [32]byte
+			copy(id[:], b.ID)
+			set[id] = struct{}{}
 		}
 		return false, nil
 	})
+	if err != nil || len(set) == 0 {
+		return nil, err
+	}
 
-	return res, err
+	return func(batchID []byte) bool {
+		var id [32]byte
+		copy(id[:], batchID)
+		_, found := set[id]
+		return found
+	}, nil
 }
 
 func transformedAddress(hasher bmt.Hasher, addr swarm.Address, data []byte, chType swarm.ChunkType) (swarm.Address, error) {
