@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
@@ -23,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	kadMock "github.com/ethersphere/bee/v2/pkg/topology/kademlia/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
-	"github.com/google/go-cmp/cmp"
 )
 
 // test that adding one peer starts syncing
@@ -462,10 +463,10 @@ func TestRadiusIncrease(t *testing.T) {
 	rs.SetStorageRadius(2)
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
-	if !p.IsBinSyncing(addr, 1) {
+	if !p.IsPeerBinSyncing(addr, 1) {
 		t.Fatalf("peer is not syncing but should")
 	}
-	if p.IsBinSyncing(addr, 2) {
+	if p.IsPeerBinSyncing(addr, 2) {
 		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
@@ -640,6 +641,54 @@ type opts struct {
 	rs           *resMock.ReserveStore
 	bins         uint8
 	syncSleepDur time.Duration
+}
+
+func TestIsReserveSynced(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr    = swarm.RandAddress(t)
+		cursors = []uint64{1000, 1000, 1000, 1000}
+		replies = []mockps.SyncReply{
+			{Bin: 1, Start: 1, Topmost: 500, Peer: addr}, // partial sync, historical stays active
+		}
+	)
+
+	p, _, kad, pullsync := newPuller(t, opts{
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 1},
+			),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors(cursors, 0),
+			mockps.WithReplies(replies...),
+		},
+		bins: 4,
+		rs:   resMock.NewReserve(resMock.WithRadius(2)),
+	})
+
+	kad.Trigger()
+	waitCursorsCalled(t, pullsync, addr)
+	waitSyncCalledBins(t, pullsync, addr, 1)
+
+	// While bin 1 has an active historical sync and radius is 2:
+	err := spinlock.Wait(time.Second, func() bool {
+		return p.IsBinSyncing(1)
+	})
+	if err != nil {
+		t.Fatal("expected bin 1 to be syncing")
+	}
+
+	if p.IsBinSyncing(2) {
+		t.Fatal("expected bin 2 not to be syncing")
+	}
+	if !p.IsReserveSynced(2) {
+		t.Fatal("expected reserve to be synced for depth 2 when only bin 1 is syncing")
+	}
+	if p.IsReserveSynced(1) {
+		t.Fatal("expected reserve NOT to be synced for depth 1 when bin 1 is syncing")
+	}
 }
 
 func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
