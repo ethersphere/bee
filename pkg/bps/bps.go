@@ -133,7 +133,7 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 
 		select {
 		case cl := <-tx:
-			claim := pb.Claim{Soc: cl}
+			claim := pb.Broadcast{Soc: cl}
 			if err := w.WriteMsgWithContext(ctx, &claim); err != nil {
 				s.logger.Error(err, "read join ack")
 				return
@@ -222,7 +222,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		claim := pb.Claim{}
+		claim := pb.Broadcast{}
 		if err := r.ReadMsgWithContext(ctx, &claim); err != nil {
 			s.logger.Error(err, "read claim")
 			return
