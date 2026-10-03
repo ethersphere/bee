@@ -6,6 +6,7 @@ package redistribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -115,7 +116,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
@@ -138,7 +139,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
@@ -161,7 +162,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -189,7 +190,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -199,17 +200,12 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		)
 	}()
 
-	txHash, err = c.txService.Send(ctx, request, boostPercent)
+	txHash, receipt, err := c.txService.SendWithRetry(ctx, request)
 	if err != nil {
 		return txHash, err
 	}
-	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return txHash, err
-	}
-
-	if receipt.Status == 0 {
-		return txHash, transaction.ErrTransactionReverted
+	if receipt == nil {
+		return txHash, errors.New("missing receipt after send with retry")
 	}
 	return txHash, nil
 }

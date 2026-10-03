@@ -55,6 +55,10 @@ func (b *Backend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boo
 	return nil, nil, postagecontract.ErrChainDisabled
 }
 
+func (b *Backend) SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
 func (b *Backend) SuggestGasTipCap(context.Context) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
@@ -88,6 +92,10 @@ func (b *Backend) NonceAt(context.Context, common.Address, *big.Int) (uint64, er
 }
 
 func (b *Backend) FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
+func (b *Backend) FeeHistory(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
 

@@ -1897,6 +1897,7 @@ paths:
           required: true
           description: Swarm address of peer
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
@@ -1972,6 +1973,7 @@ paths:
           required: true
           description: Amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       tags:
         - Chequebook
       responses:
@@ -1999,6 +2001,7 @@ paths:
           required: true
           description: Amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       tags:
         - Chequebook
       responses:
@@ -2091,6 +2094,7 @@ paths:
           required: true
           description: Hash of the transaction
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       tags:
         - Transaction
       responses:
@@ -2240,6 +2244,7 @@ paths:
             type: boolean
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "201":
@@ -2278,6 +2283,7 @@ paths:
           required: true
           description: Amount of BZZ per chunk to top up to an existing postage batch.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
@@ -2318,6 +2324,7 @@ paths:
           required: true
           description: The new batch depth, which must be greater than the current depth
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
@@ -2556,6 +2563,7 @@ paths:
         - Staking
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
@@ -2585,6 +2593,7 @@ paths:
           required: true
           description: Amount of BZZ added that will be deposited for staking.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
@@ -2628,6 +2637,7 @@ paths:
         - Staking
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
