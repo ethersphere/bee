@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.11.3
+GOLANGCI_LINT_VERSION ?= v2.13.2
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -136,12 +136,14 @@ else
 	$(GO) test -failfast -v ./...
 endif
 
+# The default per-package timeout (10m) is too tight for pkg/api under the race
+# detector on slower CI runners, so raise it for the CI targets.
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -coverprofile=cover.out ./...
+	$(GO) test -timeout 20m -coverprofile=cover.out ./...
 else
-	$(GO) test ./...
+	$(GO) test -timeout 20m ./...
 endif
 
 .PHONY: test-ci-race

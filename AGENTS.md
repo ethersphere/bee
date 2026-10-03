@@ -8,7 +8,7 @@ Bee is the reference Go implementation of an Ethereum Swarm node. It implements 
 
 **Module**: `github.com/ethersphere/bee/v2`
 
-**Go version**: 1.26 (see `go.mod`)
+**Go version**: 1.27 (see `go.mod`)
 
 **License**: BSD 3-clause (see `LICENSE`)
 
@@ -160,4 +160,3 @@ Never commit or push to git.
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
-g

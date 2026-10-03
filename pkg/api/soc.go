@@ -270,7 +270,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	wc := socCh.WrappedChunk()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:          {"application/octet-stream"},
+		ContentTypeHeader:          {contentTypeOctetStream},
 		SwarmSocSignatureHeader:    {hex.EncodeToString(sig)},
 		AccessControlExposeHeaders: {SwarmSocSignatureHeader},
 	}
