@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/bps/pb"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
@@ -77,16 +78,32 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Join onto a topic at the broker at address. This is called on the subscriber.
+// JoinRequest describes a cohort join. Identity is the joiner's address,
+// injected from the API rather than taken from the peer address, so a node can
+// join on behalf of a client.
+type JoinRequest struct {
+	Broker    swarm.Address   // where to join the topic
+	Binding   pb.TopicBinding // which kind of topic binding
+	Topic     []byte          // the topic
+	Principal []byte          // the "owner/admin"
+	Identity  []byte          // the joining node's identity
+}
+
+// Join onto a topic at the broker. This is called on the subscriber.
 // Returns the challenge and a channel that would send the payloads over it.
-func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte) (challenge []byte, rx, tx chan []byte, claim func([]byte), err error) {
-	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
+func (s *Service) Join(ctx context.Context, req JoinRequest) (challenge []byte, rx, tx chan []byte, claim func([]byte), err error) {
+	stream, err := s.streamer.NewStream(ctx, req.Broker, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("new stream: %w", err)
 	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	joinMsg := pb.Join{Topic: topic}
+	joinMsg := pb.Join{
+		Topic:     req.Topic,
+		Binding:   req.Binding,
+		Principal: req.Principal,
+		Identity:  req.Identity,
+	}
 	if err := w.WriteMsgWithContext(ctx, &joinMsg); err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("write join msg: %w", err)
 	}
@@ -175,17 +192,32 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("read sys message: %w", err)
 	}
 
+	if err := validateJoin(&join); err != nil {
+		if werr := w.WriteMsgWithContext(ctx, &pb.JoinAck{Status: pb.Status_STATUS_REJECTED}); werr != nil {
+			return fmt.Errorf("write join ack: %w", werr)
+		}
+		stream.Reset()
+		return err
+	}
+
 	// add to the cohort and get a channel to receive the broadcasts on
-	ch, challenge := s.joinCohort(p.Address, join.Topic)
+	ch, challenge, err := s.joinCohort(&join)
+	if err != nil {
+		if werr := w.WriteMsgWithContext(ctx, &pb.JoinAck{Status: pb.Status_STATUS_REJECTED}); werr != nil {
+			return fmt.Errorf("write join ack: %w", werr)
+		}
+		stream.Reset()
+		return err
+	}
 	// register in the cohort and return the secret
 	// peer is trying to join the cohort. accept and return the challenge
-	ack := pb.JoinAck{Challenge: challenge}
+	ack := pb.JoinAck{Challenge: challenge, Status: pb.Status_STATUS_OK}
 	if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
-		s.left(p.Address, join.Topic)
+		s.left(join.Identity, join.Topic)
 		return fmt.Errorf("write claim: %w", err)
 	}
 
-	defer s.left(p.Address, join.Topic)
+	defer s.left(join.Identity, join.Topic)
 	var wg sync.WaitGroup
 	// the writer side - reads messages off the publisher channel
 	// and pushes them to the subscriber stream
@@ -229,7 +261,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		}
 
 		// do the checks on the claim, if it is wrong then we reset the stream
-		ch1, err := s.claim(p.Address, join.Topic, claim.Soc)
+		ch1, err := s.claim(&join, claim.Soc)
 		if err != nil {
 			stream.Reset()
 			return
@@ -253,67 +285,103 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	return nil
 }
 
-var errInvalidProof = errors.New("invalid proof")
+var (
+	errInvalidProof     = errors.New("bps: invalid proof")
+	errInvalidTopic     = errors.New("bps: invalid topic")
+	errInvalidPrincipal = errors.New("bps: invalid principal")
+	errInvalidIdentity  = errors.New("bps: invalid identity")
+	errCohortMismatch   = errors.New("bps: cohort binding mismatch")
+)
+
+// validateJoin rejects a Join naming malformed or unsupported fields.
+func validateJoin(join *pb.Join) error {
+	if len(join.Topic) != swarm.HashSize {
+		return errInvalidTopic
+	}
+	if len(join.Principal) != crypto.AddressSize {
+		return errInvalidPrincipal
+	}
+	if len(join.Identity) != crypto.AddressSize {
+		return errInvalidIdentity
+	}
+	if _, err := bindingFor(join.Binding); err != nil {
+		return err
+	}
+	return nil
+}
 
 // join/open operation in one - the peer either joins an existing
 // cohort or creates one by joining a previously unregistered topic.
 // returns the cohort challenge and the channel that data will be sent over
-func (s *Service) joinCohort(overlay swarm.Address, topic []byte) (chan []byte, []byte) {
+func (s *Service) joinCohort(join *pb.Join) (chan []byte, []byte, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	t := string(topic)
+	t := string(join.Topic)
 	co, ok := s.cohorts[t]
 
-	m := newMember()
+	m := newMember(join.Identity)
 	if ok {
-		co.members[overlay.String()] = m
-		return m.ch, m.challenge
+		if co.binding != join.Binding || !bytes.Equal(co.principal, join.Principal) {
+			return nil, nil, errCohortMismatch
+		}
+		co.members[string(join.Identity)] = m
+		return m.ch, m.challenge, nil
 	}
 	members := make(map[string]*member)
-	members[overlay.String()] = m
+	members[string(join.Identity)] = m
 	s.cohorts[t] = &cohort{
-		topic:   topic,
-		members: members,
+		topic:     join.Topic,
+		binding:   join.Binding,
+		principal: join.Principal,
+		members:   members,
 	}
 
-	return m.ch, m.challenge
+	return m.ch, m.challenge, nil
 }
 
-func (s *Service) left(overlay swarm.Address, topic []byte) {
+func (s *Service) left(identity, topic []byte) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	t := string(topic)
 	co, ok := s.cohorts[t]
 	if ok {
-		delete(co.members, overlay.String())
+		delete(co.members, string(identity))
 		if len(co.members) == 0 {
 			delete(s.cohorts, t)
 		}
 	}
 }
 
-func (s *Service) claim(overlay swarm.Address, topic, socBlob []byte) (chan []byte, error) {
+func (s *Service) claim(join *pb.Join, socBlob []byte) (chan []byte, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	t := string(topic)
+	t := string(join.Topic)
 	co, ok := s.cohorts[t]
 	if !ok {
 		return nil, errors.New("tried to claim non-existent topic")
 	}
-	member, ok := co.members[overlay.String()]
+	member, ok := co.members[string(join.Identity)]
 	if !ok {
 		return nil, errors.New("no such member")
 	}
-	chunk := swarm.NewChunk(swarm.NewAddress(topic), socBlob)
+	b, err := bindingFor(co.binding)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := b.claimAddress(co.topic, co.principal)
+	if err != nil {
+		return nil, fmt.Errorf("claim address: %w", err)
+	}
+	chunk := swarm.NewChunk(addr, socBlob)
 	if !soc.Valid(chunk) {
 		return nil, errInvalidProof
 	}
-	innerProof := make([]byte, len(s.selfOverlay.Bytes())+len(member.challenge))
-	copy(innerProof, member.challenge)
-	copy(innerProof[len(member.challenge):], s.selfOverlay.Bytes())
-	proofSoc, _ := soc.FromChunk(chunk)
-	if !bytes.Equal(proofSoc.WrappedChunk().Data()[swarm.SpanSize:], innerProof) {
-		return nil, errInvalidProof
+	proofSoc, err := soc.FromChunk(chunk)
+	if err != nil {
+		return nil, fmt.Errorf("claim soc: %w", err)
+	}
+	if err := b.verifyClaim(proofSoc, co.principal, member.challenge, s.selfOverlay.Bytes(), co.topic); err != nil {
+		return nil, err
 	}
 
 	publisher := member
@@ -342,24 +410,28 @@ func (s *Service) claim(overlay swarm.Address, topic, socBlob []byte) (chan []by
 }
 
 type cohort struct {
-	topic []byte // topic is the feed topic + owner hash
+	topic     []byte // topic is the feed topic
+	binding   pb.TopicBinding
+	principal []byte // governing identity allowed to publish
 	// lastSeen uint64 // last feed update index, used to prevent replay and circumvent dedup logic (for now)
 	members map[string]*member
 }
 
-func newMember() *member {
+func newMember(identity []byte) *member {
 	challenge := make([]byte, 32)
 	if _, err := rand.Read(challenge); err != nil {
 		panic(err)
 	}
 
 	return &member{
+		identity:  identity,
 		ch:        make(chan []byte, broadcastBufferSize),
 		challenge: challenge,
 	}
 }
 
 type member struct {
+	identity  []byte
 	ch        chan []byte
 	challenge []byte
 }
