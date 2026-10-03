@@ -355,7 +355,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
-		} else if sch, err := soc.FromValidChunk(chunk); err == nil {
+		} else if sch, err := soc.FromChunkValidate(chunk); err == nil {
 			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", sch.WrappedChunk().Address())
 			s.gsocHandler(sch)
 		} else {

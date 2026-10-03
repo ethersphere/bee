@@ -18,14 +18,14 @@ var (
 
 // Valid checks if the chunk is a valid single-owner chunk.
 func Valid(ch swarm.Chunk) bool {
-	_, err := FromValidChunk(ch)
+	_, err := FromChunkValidate(ch)
 	return err == nil
 }
 
-// FromValidChunk parses the chunk as a single-owner chunk and verifies that
+// FromChunkValidate parses the chunk as a single-owner chunk and verifies that
 // the chunk address is the address of the parsed SOC. Unlike FromChunk, it
 // rejects a correctly signed SOC delivered under any other address.
-func FromValidChunk(ch swarm.Chunk) (*SOC, error) {
+func FromChunkValidate(ch swarm.Chunk) (*SOC, error) {
 	s, err := FromChunk(ch)
 	if err != nil {
 		return nil, err
