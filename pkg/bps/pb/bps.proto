@@ -13,19 +13,28 @@ message Broadcast {
   bytes soc = 1;
 }
 
+enum TopicBinding {
+  Undefined = 0;
+  Feed = 1;
+}
+
 message Join {
   bytes topic = 1;
-  enum binding = 2; // 
+  TopicBinding binding enum = 2; // 
   bytes principal = 3; // the "owner"
   // ============================
   bytes identity = 4; // who am i
 }
 
-message JoinAck {
-  bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
-  enum status = 2;
+enum Status {
+  Undefined = 0;
+  OK = 1;
+  Full = 2;
+  Rejected = 3;
 }
 
-//message Claim {
-  //bytes soc = 1; // the soc chunk body to claim the publishing rights
-//}
+message JoinAck {
+  bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
+  Status status enum = 2;
+}
+
