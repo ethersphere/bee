@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-multierror"
 )
@@ -36,6 +38,9 @@ type Store struct {
 	wg          *sync.WaitGroup // count started operations
 	quit        chan struct{}   // quit channel
 	metrics     metrics
+
+	watchMu  sync.Mutex                 // serializes changes to watchers
+	watchers atomic.Pointer[[]*watcher] // replaced on change, read by Release
 }
 
 // New constructs a sharded blobstore
@@ -183,8 +188,49 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	}
 }
 
+// watcher wraps fn because func values are not comparable; the pointer gives stop an identity.
+type watcher struct {
+	fn func(Location)
+}
+
+// Watch registers fn to be called with every location passed to Release,
+// before its slot can be handed out to a Write. fn runs on the goroutine that
+// calls Release, so it must be fast, must not block and must not call back
+// into the store. A Release already running when stop returns may still call
+// fn once. stop is idempotent.
+func (s *Store) Watch(fn func(Location)) (stop func()) {
+	w := &watcher{fn: fn}
+	s.updateWatchers(func(ws []*watcher) []*watcher { return append(ws, w) })
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.updateWatchers(func(ws []*watcher) []*watcher {
+				return slices.DeleteFunc(ws, func(x *watcher) bool { return x == w })
+			})
+		})
+	}
+}
+
+// updateWatchers replaces the watcher list with update applied to a copy of it.
+func (s *Store) updateWatchers(update func([]*watcher) []*watcher) {
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	var ws []*watcher
+	if cur := s.watchers.Load(); cur != nil {
+		ws = slices.Clone(*cur)
+	}
+	ws = update(ws)
+	if len(ws) == 0 {
+		s.watchers.Store(nil)
+		return
+	}
+	s.watchers.Store(&ws)
+}
+
 // Release gives back the slot to the shard
 // From here on the slot can be reused and overwritten
+// Watchers are notified before the slot is freed.
 // Release is meant to be called when an entry in the upstream db is removed
 // Note that releasing is not safe for obfuscating earlier content, since
 // even after reuse, the slot may be used by a very short blob and leaves the
@@ -193,6 +239,14 @@ func (s *Store) Release(ctx context.Context, loc Location) error {
 	if int(loc.Shard) >= len(s.shards) {
 		return ErrShardNotFound
 	}
+
+	// Notify before the slot is freed so no Write can reuse it unseen (see Watch).
+	if ws := s.watchers.Load(); ws != nil {
+		for _, w := range *ws {
+			w.fn(loc)
+		}
+	}
+
 	sh := s.shards[loc.Shard]
 	err := sh.release(ctx, loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()

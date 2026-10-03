@@ -5,6 +5,7 @@
 package storer_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -20,7 +21,9 @@ import (
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestReserveSampler(t *testing.T) {
@@ -685,6 +688,199 @@ func BenchmarkSampleHashing(b *testing.B) {
 				if _, err := storer.MakeSampleUsingChunks(chunks, anchor); err != nil {
 					b.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+// fillSampleReserve puts chunkCountPerPO CAC or SOC chunks in each of the first
+// maxPO bins of baseAddr and returns them with the anchor and consensus time to
+// sample with.
+func fillSampleReserve(t *testing.T, st *storer.DB, baseAddr swarm.Address) ([]swarm.Chunk, []byte, uint64) {
+	t.Helper()
+	const chunkCountPerPO, maxPO = 10, 10
+
+	timeVar := uint64(time.Now().UnixNano())
+	putter := st.ReservePutter()
+	chunks := make([]swarm.Chunk, 0, chunkCountPerPO*maxPO)
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
+			if rand.Intn(2) == 0 {
+				ch = chunk.GenerateTestRandomSoChunk(t, ch)
+			}
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				t.Fatal(err)
+			}
+			chunks = append(chunks, ch)
+		}
+	}
+	return chunks, swarm.RandAddressAt(t, baseAddr, 5).Bytes(), timeVar
+}
+
+func sampleTestStorers(t *testing.T) map[string]func(*testing.T, swarm.Address) *storer.DB {
+	t.Helper()
+	open := func(mk func(testing.TB, *storer.Options) func() (*storer.DB, error)) func(*testing.T, swarm.Address) *storer.DB {
+		return func(t *testing.T, baseAddr swarm.Address) *storer.DB {
+			t.Helper()
+			opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+			opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+			st, err := mk(t, opts)()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return st
+		}
+	}
+	return map[string]func(*testing.T, swarm.Address) *storer.DB{
+		"disk": open(diskStorer),
+		"mem":  open(memStorer),
+	}
+}
+
+// TestReserveSamplerMatchesChunks checks that the sample read through the
+// sampling view is the one computed directly from the stored chunks.
+func TestReserveSamplerMatchesChunks(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := open(t, baseAddr)
+			chunks, anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+
+			var inDepth []swarm.Chunk
+			for _, ch := range chunks {
+				if swarm.Proximity(ch.Address().Bytes(), anchor) >= 5 {
+					inDepth = append(inDepth, ch)
+				}
+			}
+			want, err := storer.MakeSampleUsingChunks(inDepth, anchor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want.Items = want.Items[:min(len(want.Items), storer.SampleSize)]
+
+			got, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSampleNoErrors(t, got)
+			if got.Stats.LocationTableSize == 0 {
+				t.Fatal("sample should read through the location table")
+			}
+			if diff := cmp.Diff(want.Items, got.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+				t.Fatalf("sample differs from the stored chunks (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestReserveSamplerConcurrentRuns(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := open(t, baseAddr)
+			_, anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+
+			samples := make([]storer.Sample, 2)
+			var g errgroup.Group
+			for i := range samples {
+				g.Go(func() error {
+					s, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+					samples[i] = s
+					return err
+				})
+			}
+			if err := g.Wait(); err != nil {
+				t.Fatal(err)
+			}
+
+			assertSampleNoErrors(t, samples[0])
+			if diff := cmp.Diff(samples[0].Items, samples[1].Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+				t.Fatalf("concurrent samples differ:\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestReserveSamplerReplacedSOC replaces a SOC after the sampling view opens
+// and checks that the sample item carries one version for both its data and
+// its transformed address.
+func TestReserveSamplerReplacedSOC(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			st := open(t, swarm.RandAddress(t))
+
+			key, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer := crypto.NewDefaultSigner(key)
+			id := testutil.RandBytes(t, swarm.HashSize)
+			batch := testutil.RandBytes(t, swarm.HashSize)
+			timeVar := uint64(time.Now().UnixNano())
+
+			version := func(payload string, ts uint64) swarm.Chunk {
+				t.Helper()
+				ch, err := cac.New([]byte(payload))
+				if err != nil {
+					t.Fatal(err)
+				}
+				sch, err := soc.New(id, ch).Sign(signer)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return sch.WithStamp(postagetesting.MustNewFields(batch, 0, ts)).WithBatch(3, 2, false)
+			}
+			v1 := version("version in the table", timeVar-2)
+			v2 := version("version written during the round", timeVar-1)
+
+			putter := st.ReservePutter()
+			if err := putter.Put(context.Background(), v1); err != nil {
+				t.Fatal(err)
+			}
+			anchor := v1.Address().Bytes()
+			sample, err := st.ReserveSampleAfterViewOpened(context.Background(), anchor, 5, timeVar, func() {
+				if err := putter.Put(context.Background(), v2); err != nil {
+					t.Errorf("replace soc: %v", err)
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSampleNoErrors(t, sample)
+			if len(sample.Items) != 1 {
+				t.Fatalf("got %d sample items, want 1", len(sample.Items))
+			}
+			if sample.Stats.LocationTableSize == 0 {
+				t.Fatal("no sampling view was opened")
+			}
+			if sample.Stats.LocationTableMisses < 1 {
+				t.Fatal("the replace did not happen during the round: no location table miss")
+			}
+
+			item := sample.Items[0]
+			if !bytes.Equal(item.ChunkData, v2.Data()) {
+				t.Fatal("sample item must carry the version written during the round")
+			}
+			want, err := storer.TransformedAddress(bmt.NewPrefixHasher(anchor), swarm.NewChunk(item.ChunkAddress, item.ChunkData), swarm.ChunkTypeSingleOwner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !item.TransformedAddress.Equal(want) {
+				t.Fatalf("transformed address %s does not match chunk data (want %s)", item.TransformedAddress, want)
 			}
 		})
 	}
