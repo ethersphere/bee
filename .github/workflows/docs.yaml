@@ -4,40 +4,21 @@ on:
   push:
     branches:
       - 'master'
+    paths:
+      - 'openapi/**'
   pull_request:
-    branches:
-      - '**'
+    paths:
+      - 'openapi/**'
 
 jobs:
   build:
     name: Preview
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
     - name: Checkout
       uses: actions/checkout@v5
-      with:
-        fetch-depth: '0'
-    - name: Check whether docs have changed
-      id: checkdocs
-      run: |
-          changed=false
-          git diff --name-only HEAD^ HEAD > files.txt
-          while IFS= read -r file
-          do
-            if [[ $file == openapi/* ]]; then
-              echo "detected openapi spec change"
-              changed=true
-            fi
-          done < files.txt
-
-          if [ $changed == true ]
-          then
-            echo "::set-output name=build_docs::true"
-          else
-            echo "::set-output name=build_docs::false"
-          fi
     - name: Build the OpenAPI specs
-      if: steps.checkdocs.outputs.build_docs == 'true'
       uses: acud/openapi-dockerized@v1
       with:
         build-roots: 'openapi/Swarm.yaml'
