@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
@@ -1103,6 +1104,13 @@ func NewBee(
 	b.pssCloser = pssService
 	b.gsocCloser = gsocService
 
+	bpsService := bps.New(p2ps, swarmAddress, o.FullNodeMode, logger)
+	if o.FullNodeMode {
+		if err = p2ps.AddProtocol(bpsService.Protocol()); err != nil {
+			return nil, fmt.Errorf("bps protocol: %w", err)
+		}
+	}
+
 	validStamp := postage.ValidStamp(batchStore)
 
 	// metrics exposed on the status protocol
@@ -1378,6 +1386,7 @@ func NewBee(
 		Resolver:        multiResolver,
 		Pss:             pssService,
 		Gsoc:            gsocService,
+		Bps:             bpsService,
 		FeedFactory:     feedFactory,
 		Post:            post,
 		AccessControl:   accesscontrol,

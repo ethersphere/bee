@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -158,7 +159,7 @@ type Service struct {
 	resolver        resolver.Interface
 	pss             pss.Interface
 	gsoc            gsoc.Listener
-	bps             BPSService
+	bps             bps.Interface
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -265,7 +266,7 @@ type ExtraOptions struct {
 	Resolver        resolver.Interface
 	Pss             pss.Interface
 	Gsoc            gsoc.Listener
-	Bps             BPSService
+	Bps             bps.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
 	AccessControl   accesscontrol.Controller

@@ -37,7 +37,11 @@ const (
 // so the buffer absorbs short bursts while the member's stream is busy.
 const broadcastBufferSize = 1
 
-var errNotBroker = errors.New("not a broker")
+var (
+	errNotBroker     = errors.New("not a broker")
+	errJoinRejected  = errors.New("bps: join rejected")
+	errSessionClosed = errors.New("bps: session closed")
+)
 
 // Service is the bps protocol service.
 type Service struct {
@@ -78,81 +82,142 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
+// Interface is the bps surface consumed by the API. It is satisfied by
+// *Service and exists so consumers can depend on behaviour, not the concrete
+// implementation.
+type Interface interface {
+	// Join joins a topic's cohort at a broker and returns the live session.
+	Join(ctx context.Context, req JoinRequest) (Session, error)
+}
+
+// Session is a single joined p2p stream to a broker.
+type Session interface {
+	// Challenge is the nonce the broker issued for this stream.
+	Challenge() []byte
+	// Messages yields raw SOC bytes broadcast by the broker. The channel is
+	// closed when the stream ends.
+	Messages() <-chan []byte
+	// Claim writes the publisher claim SOC to the broker. The broker does not
+	// reply.
+	Claim(ctx context.Context, soc []byte) error
+	// Publish writes a broadcast SOC to the broker.
+	Publish(ctx context.Context, soc []byte) error
+	// Done is closed when the p2p stream ends.
+	Done() <-chan struct{}
+	// Err reports why the stream ended. Valid after Done is closed.
+	Err() error
+	// Close closes the stream.
+	Close() error
+}
+
+// TopicBinding is the topic binding carried by Join, wrapped so consumers do
+// not depend on the generated protobuf package.
+type TopicBinding int
+
+const (
+	BindingUndefined TopicBinding = iota
+	BindingFeed
+)
+
+// proto maps the wrapped binding to its wire value.
+func (b TopicBinding) proto() pb.TopicBinding {
+	switch b {
+	case BindingFeed:
+		return pb.TopicBinding_BINDING_FEED
+	default:
+		return pb.TopicBinding_BINDING_UNDEFINED
+	}
+}
+
 // JoinRequest describes a cohort join. Identity is the joiner's address,
 // injected from the API rather than taken from the peer address, so a node can
 // join on behalf of a client.
 type JoinRequest struct {
-	Broker    swarm.Address   // where to join the topic
-	Binding   pb.TopicBinding // which kind of topic binding
-	Topic     []byte          // the topic
-	Principal []byte          // the "owner/admin"
-	Identity  []byte          // the joining node's identity
+	Broker    swarm.Address // where to join the topic
+	Binding   TopicBinding  // which kind of topic binding
+	Topic     []byte        // the topic
+	Principal []byte        // the "owner/admin"
+	Identity  []byte        // the joining node's identity
 }
 
 // Join onto a topic at the broker. This is called on the subscriber.
-// Returns the challenge and a channel that would send the payloads over it.
-func (s *Service) Join(ctx context.Context, req JoinRequest) (challenge []byte, rx, tx chan []byte, claim func([]byte), err error) {
+func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 	stream, err := s.streamer.NewStream(ctx, req.Broker, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("new stream: %w", err)
+		return nil, fmt.Errorf("new stream: %w", err)
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	joinMsg := pb.Join{
 		Topic:     req.Topic,
-		Binding:   req.Binding,
+		Binding:   req.Binding.proto(),
 		Principal: req.Principal,
 		Identity:  req.Identity,
 	}
 	if err := w.WriteMsgWithContext(ctx, &joinMsg); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("write join msg: %w", err)
+		cancel()
+		stream.Reset()
+		return nil, fmt.Errorf("write join msg: %w", err)
 	}
 	joinAck := pb.JoinAck{}
 	if err := r.ReadMsgWithContext(ctx, &joinAck); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("read join ack: %w", err)
+		cancel()
+		stream.Reset()
+		return nil, fmt.Errorf("read join ack: %w", err)
+	}
+	if joinAck.Status != pb.Status_STATUS_OK {
+		cancel()
+		stream.Reset()
+		return nil, fmt.Errorf("join %s: %w", joinAck.Status, errJoinRejected)
 	}
 
-	rxCh := make(chan []byte, broadcastBufferSize)
+	sess := &session{
+		ctx:       ctx,
+		cancel:    cancel,
+		challenge: joinAck.Challenge,
+		rx:        make(chan []byte, broadcastBufferSize),
+		tx:        make(chan []byte),
+		done:      make(chan struct{}),
+	}
 
 	// reading should always yield broadcast msgs
 	go func() {
 		defer stream.FullClose()
 
+		var readErr error
+		defer func() { sess.finish(readErr) }()
+
 		for {
 			msg := pb.Broadcast{}
 			if err := r.ReadMsgWithContext(ctx, &msg); err != nil {
-				s.logger.Error(err, "read join ack")
+				if ctx.Err() == nil {
+					s.logger.Error(err, "read broadcast")
+				}
+				readErr = err
 				return
 			}
 
 			// we might want to do some input validation to see that the broker isn't tricking us
 
 			select {
-			case rxCh <- msg.Soc:
+			case sess.rx <- msg.Soc:
 			default:
 			}
-
 		}
 	}()
 
 	// the write loop will only be used in the case of a publisher.
 	// for readers this is essentially a noop.
-	tx = make(chan []byte)
-	claim = func(soc []byte) {
-		select {
-		case tx <- soc:
-		case <-ctx.Done():
-			return
-		}
-	}
 	go func() {
 		defer stream.FullClose()
 
 		select {
-		case cl := <-tx:
+		case cl := <-sess.tx:
 			claim := pb.Broadcast{Soc: cl}
 			if err := w.WriteMsgWithContext(ctx, &claim); err != nil {
-				s.logger.Error(err, "read join ack")
+				s.logger.Error(err, "write claim")
 				return
 			}
 		case <-ctx.Done():
@@ -161,7 +226,7 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (challenge []byte, 
 
 		for {
 			select {
-			case bcast := <-tx:
+			case bcast := <-sess.tx:
 				msg := pb.Broadcast{Soc: bcast}
 				if err := w.WriteMsgWithContext(ctx, &msg); err != nil {
 					s.logger.Error(err, "write broadcast")
@@ -173,7 +238,59 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (challenge []byte, 
 		}
 	}()
 
-	return joinAck.Challenge, rxCh, tx, claim, nil
+	return sess, nil
+}
+
+// session is the concrete Session implementation.
+type session struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	challenge []byte
+	rx        chan []byte
+	tx        chan []byte
+	done      chan struct{}
+	err       error
+	once      sync.Once
+}
+
+func (s *session) Challenge() []byte       { return s.challenge }
+func (s *session) Messages() <-chan []byte { return s.rx }
+func (s *session) Done() <-chan struct{}   { return s.done }
+func (s *session) Err() error              { return s.err }
+func (s *session) Close() error {
+	s.cancel()
+	return nil
+}
+
+func (s *session) Claim(ctx context.Context, soc []byte) error {
+	select {
+	case s.tx <- soc:
+		return nil
+	case <-s.done:
+		return errSessionClosed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *session) Publish(ctx context.Context, soc []byte) error {
+	select {
+	case s.tx <- soc:
+		return nil
+	case <-s.done:
+		return errSessionClosed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// finish records the terminal error and signals stream completion exactly once.
+func (s *session) finish(err error) {
+	s.once.Do(func() {
+		s.err = err
+		close(s.rx)
+		close(s.done)
+	})
 }
 
 // handler is the protocol handler on the broker.
