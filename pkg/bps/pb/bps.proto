@@ -14,27 +14,27 @@ message Broadcast {
 }
 
 enum TopicBinding {
-  Undefined = 0;
-  Feed = 1;
+  BINDING_UNDEFINED = 0;
+  BINDING_FEED = 1;
 }
 
 message Join {
   bytes topic = 1;
-  TopicBinding binding enum = 2; // 
+  TopicBinding binding = 2; // which kind of topic binding
   bytes principal = 3; // the "owner"
   // ============================
   bytes identity = 4; // who am i
 }
 
 enum Status {
-  Undefined = 0;
-  OK = 1;
-  Full = 2;
-  Rejected = 3;
+  STATUS_UNDEFINED = 0;
+  STATUS_OK = 1;
+  STATUS_FULL = 2;
+  STATUS_REJECTED = 3;
 }
 
 message JoinAck {
   bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
-  Status status enum = 2;
+  Status status = 2;
 }
 
