@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -379,7 +380,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
-	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, 100, "eth_feeHistory block count for fee hints")
+	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, wrapped.DefaultFeeHistoryBlockCount, "eth_feeHistory block count for fee hints")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")

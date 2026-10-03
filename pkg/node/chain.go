@@ -100,6 +100,9 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
+		if feeHistoryBlockCount == 0 {
+			feeHistoryBlockCount = wrapped.DefaultFeeHistoryBlockCount
+		}
 		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount)
 	}
 

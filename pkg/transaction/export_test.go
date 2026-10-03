@@ -29,13 +29,12 @@ func SuggestGasFeeForTier(
 	maxTxPrice *big.Int,
 	ctx context.Context,
 	tier int,
-	previousTip *big.Int,
-	overrides *RetryOverrides,
+	previousTip, previousFeeCap *big.Int, overrides *RetryOverrides,
 ) (gasFeeCap, gasTipCap *big.Int, err error) {
 	svc := &transactionService{
 		logger:     log.Noop,
 		backend:    backend,
 		maxTxPrice: maxTxPrice,
 	}
-	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip, overrides)
+	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip, previousFeeCap, overrides)
 }

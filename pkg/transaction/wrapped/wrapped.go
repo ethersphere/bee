@@ -23,7 +23,9 @@ const maxAverageBlockTime = 30 * time.Second
 
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
-const feeHistoryDefaultBlockCount = 100
+// DefaultFeeHistoryBlockCount is the default eth_feeHistory block window.
+// Callers pass it explicitly. NewBackend stores the supplied count as-is.
+const DefaultFeeHistoryBlockCount = 100
 
 var feeHistoryDefaultRewardPercentiles = []float64{10, 50, 90}
 
@@ -53,10 +55,6 @@ func NewBackend(
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
-	}
-
-	if feeHistoryBlockCount == 0 {
-		feeHistoryBlockCount = feeHistoryDefaultBlockCount
 	}
 
 	return &wrappedBackend{

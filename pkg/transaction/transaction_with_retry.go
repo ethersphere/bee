@@ -115,23 +115,23 @@ func (t *transactionService) SendWithRetry(ctx context.Context, request *TxReque
 		t.retryMetrics.RecordRetryComplete(1, err)
 		return common.Hash{}, nil, err
 	}
-	return t.sendWithRetry(ctx, request, nil, nil, applyRetryOptions(opts))
+	return t.sendWithRetry(ctx, request, nil, nil, nil, nil)
 }
 
-// applyMempoolBump returns tip bumped by mempoolBumpPercent.
-func applyMempoolBump(tip *big.Int) *big.Int {
+// applyMempoolBump returns amount increased by mempoolBumpPercent.
+func applyMempoolBump(amount *big.Int) *big.Int {
 	return new(big.Int).Div(
-		new(big.Int).Mul(new(big.Int).Set(tip), big.NewInt(int64(100+mempoolBumpPercent))),
+		new(big.Int).Mul(new(big.Int).Set(amount), big.NewInt(int64(100+mempoolBumpPercent))),
 		big.NewInt(100),
 	)
 }
 
 // suggestGasFeeForTier fetches fresh fee history, picks the tip for the given tier,
-// applies the mempool bump floor relative to previousTip, and computes gasFeeCap.
-func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
+// and applies the mempool bump floor to the tip and the fee cap.
+func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("block header: %w", err)
 	}
 	if header == nil || header.BaseFee == nil {
 		return nil, nil, errors.New("latest block header or base fee unavailable")
@@ -157,13 +157,12 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 	gasFeeCap = new(big.Int).Mul(header.BaseFee, big.NewInt(2))
 	gasFeeCapWithTip := new(big.Int).Add(new(big.Int).Set(gasFeeCap), tip)
 
-	t.logger.Debug("suggest gas fees for retry",
-		"tier", tier.String(),
-		"base_fee", header.BaseFee,
-		"previous_tip", previousTip,
-		"selected_tip", tip,
-		"gas_fee_cap", gasFeeCapWithTip,
-		"max_tx_price", t.maxTxPrice)
+	if previousFeeCap != nil && previousFeeCap.Sign() > 0 {
+		bumpedFeeCap := applyMempoolBump(previousFeeCap)
+		if gasFeeCapWithTip.Cmp(bumpedFeeCap) < 0 {
+			gasFeeCapWithTip = bumpedFeeCap
+		}
+	}
 
 	canOverride := func(feeCap *big.Int) bool {
 		return overrides != nil && overrides.IgnoreMaxPrice != nil && overrides.IgnoreMaxPrice(feeCap)
@@ -207,24 +206,26 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 	if fixedNonce != nil {
 		nonce = *fixedNonce
 	} else {
+		// The lock must be held until the transaction is broadcasted.
+		// Otherwise another transaction can take the same nonce.
 		t.lock.Lock()
 		defer t.lock.Unlock()
 
 		n, err := t.nextNonce(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("next nonce: %w", err)
 		}
 		nonce = n
 	}
 
 	gasLimit, err := t.estimateGasLimit(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("estimate gas: %w", err)
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestGasFeeForTier(ctx, tier, previousTip, overrides)
+	gasFeeCap, gasTipCap, err := t.suggestGasFeeForTier(ctx, tier, previousTip, previousFeeCap, overrides)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("suggest gas fee: %w", err)
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -243,20 +244,17 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		return nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
 	}
 
-	t.logger.Info("send with retry: broadcast",
-		"tier", tier.String(),
+	t.logger.Debug("retried transaction: broadcast",
 		"tx", signedTx.Hash(),
 		"nonce", nonce,
-		"to", addressForLog(request.To),
-		"gas_limit", tx.Gas(),
-		"gas_fee_cap", tx.GasFeeCap(),
+		"tier", tier.String(),
 		"gas_tip_cap", tx.GasTipCap(),
-		"value", tx.Value(),
-		"data_len", len(tx.Data()),
-		"description", request.Description,
+		"gas_fee_cap", tx.GasFeeCap(),
 	)
-	err = t.backend.SendTransaction(ctx, signedTx)
-	return signedTx, err
+	if err := t.backend.SendTransaction(ctx, signedTx); err != nil {
+		return signedTx, fmt.Errorf("send transaction: %w", err)
+	}
+	return signedTx, nil
 }
 
 // persistReplaceTx persists a newly broadcast tx and updates retry state.
@@ -290,24 +288,17 @@ func (t *transactionService) persistReplaceTx(signedTx *types.Transaction, rs *R
 		Created:     now,
 		Description: description,
 	}); err != nil {
-		return err
+		return fmt.Errorf("store transaction: %w", err)
 	}
 
 	if err := t.store.Put(pendingTransactionKey(txHash), struct{}{}); err != nil {
-		return err
+		return fmt.Errorf("store pending transaction: %w", err)
 	}
 
 	if err := t.store.Put(retryStateKey(rs.Nonce), rs); err != nil {
-		return err
+		return fmt.Errorf("store retry state: %w", err)
 	}
 	return nil
-}
-
-// attemptResult is the outcome of a single broadcast+wait cycle.
-type attemptResult struct {
-	signedTx *types.Transaction // successfully broadcast tx (nil if broadcast failed before send)
-	receipt  *types.Receipt     // non-nil when receipt was received within the wait window
-	err      error              // non-nil on any error; check isNonRetryable to decide whether to stop
 }
 
 type retryNonceWatch struct {
@@ -316,11 +307,11 @@ type retryNonceWatch struct {
 }
 
 // sendWithRetry is the core retry loop.
-func (t *transactionService) sendWithRetry(
-	ctx context.Context,
-	request *TxRequest,
-	rs *RetriedTransaction,
-	nonceWatch *retryNonceWatch, overrides *RetryOverrides) (common.Hash, *types.Receipt, error) {
+func (t *transactionService) sendWithRetry(ctx context.Context, request *TxRequest, rs *RetriedTransaction, nonceWatch *retryNonceWatch, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (common.Hash, *types.Receipt, error) {
+	tiers, err := t.tierRangeForRequest(ctx)
+	if err != nil {
+		return common.Hash{}, nil, fmt.Errorf("fee tiers: %w", err)
+	}
 
 	if rs == nil {
 		rs = &RetriedTransaction{}
@@ -330,27 +321,12 @@ func (t *transactionService) sendWithRetry(
 		nonceWatch = &retryNonceWatch{}
 	}
 
-	tiers, err := t.tierRangeForRequest(ctx)
-	if err != nil {
-		return common.Hash{}, nil, err
-	}
-
-	t.logger.Debug("send with retry: started",
-		"description", request.Description,
-		"to", addressForLog(request.To),
-		"start_tier", tiers[0].String(),
-		"end_tier", t.endTier.String(),
-		"attempts_per_tier", t.attemptsPerTier,
-		"retry_delay", t.txRetryDelay,
-		"nonce_assigned", rs.NonceAssigned)
-
 	var (
-		previousTip    *big.Int
 		terminateTxErr error
 		nonce          *uint64
 		attempts       int
 	)
-	defer func() { t.finishRetry(rs, request, attempts, terminateTxErr, nonceWatch) }()
+	defer func() { t.finishRetry(rs, attempts, terminateTxErr, nonceWatch) }()
 
 	for _, tier := range tiers {
 		for k := 0; k < t.attemptsPerTier; k++ {
@@ -359,32 +335,26 @@ func (t *transactionService) sendWithRetry(
 				nonce = &rs.Nonce
 			}
 
-			res := t.attempt(ctx, rs, request, previousTip, tier, nonce, nonceWatch, overrides)
-			if res.err != nil && (isNonRetryable(res.err) || isNonceTooLow(res.err)) {
-				terminateTxErr = res.err
+			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonce, nonceWatch, overrides)
+			if err != nil && (isNonRetryable(err) || isNonceTooLow(err)) {
+				terminateTxErr = err
 				return common.Hash{}, nil, terminateTxErr
 			}
 
-			if res.receipt != nil {
-				t.logger.Debug("send with retry: receipt received",
-					"tx_hash", res.receipt.TxHash,
-					"status", res.receipt.Status,
-					"gas_used", res.receipt.GasUsed,
-					"block_number", res.receipt.BlockNumber,
-					"nonce", rs.Nonce,
-					"description", request.Description)
+			if receipt != nil {
+				t.cleanupRetryResult(rs, receipt.TxHash)
 
-				t.cleanupRetryResult(rs, res.receipt.TxHash)
-
-				if res.receipt.Status == 0 {
+				if receipt.Status == 0 {
 					terminateTxErr = ErrTransactionReverted
-					return res.receipt.TxHash, res.receipt, terminateTxErr
+					return receipt.TxHash, receipt, terminateTxErr
 				}
-				return res.receipt.TxHash, res.receipt, nil
+				t.logger.Info("retried transaction: receipt received", "tx", receipt.TxHash, "nonce", rs.Nonce)
+				return receipt.TxHash, receipt, nil
 			}
 
-			if res.signedTx != nil {
-				previousTip = res.signedTx.GasTipCap()
+			if signedTx != nil {
+				previousTip = new(big.Int).Set(signedTx.GasTipCap())
+				previousFeeCap = new(big.Int).Set(signedTx.GasFeeCap())
 			}
 		}
 	}
@@ -395,15 +365,12 @@ func (t *transactionService) sendWithRetry(
 
 // finishRetry performs final cleanup when the loop exits without a receipt.
 // The nonce watch keeps running until the confirmed nonce moves past the session.
-func (t *transactionService) finishRetry(rs *RetriedTransaction, request *TxRequest, attempt int, terminateTxErr error, nonceWatch *retryNonceWatch) {
+func (t *transactionService) finishRetry(rs *RetriedTransaction, attempt int, terminateTxErr error, nonceWatch *retryNonceWatch) {
 	if terminateTxErr != nil {
-		t.logger.Error(terminateTxErr,
-			"send with retry: finished with error",
-			"attempt", attempt,
-			"tx_hash", rs.CurrentHash,
-			"nonce", rs.Nonce,
-			"to", addressForLog(request.To),
-			"description", request.Description)
+		t.logger.Error(
+			terminateTxErr,
+			"retried transaction: finished with error",
+			"tx", rs.CurrentHash, "nonce", rs.Nonce, "attempt", attempt)
 	}
 
 	switch {
@@ -439,22 +406,21 @@ func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *Retr
 }
 
 // attempt performs a single broadcast+wait cycle: broadcast, persist state, wait for receipt.
-func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip *big.Int, tier feeTier, nonce *uint64, nonceWatch *retryNonceWatch, overrides *RetryOverrides) attemptResult {
+func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip, previousFeeCap *big.Int, tier feeTier, nonce *uint64, nonceWatch *retryNonceWatch, overrides *RetryOverrides) (*types.Transaction, *types.Receipt, error) {
 	replaced := true
 
-	signedTx, broadCastErr := t.broadcastTx(ctx, request, nonce, tier, previousTip, overrides)
+	signedTx, broadCastErr := t.broadcastTx(ctx, request, nonce, tier, previousTip, previousFeeCap, overrides)
 	if broadCastErr != nil {
 		switch {
 		case isNonceTooLow(broadCastErr):
 			if receipt := t.receiptForRetryHashes(ctx, rs); receipt != nil {
-				return attemptResult{receipt: receipt}
+				return nil, receipt, nil
 			}
-			return attemptResult{err: broadCastErr}
+			return nil, nil, broadCastErr
 		case isReplacementUnderpriced(broadCastErr):
 			// Base fee dropped between attempts within the same tier,
 			// so the bumped tip was not enough for the mempool to accept the replacement.
-			t.logger.Warning("send with retry: replacement underpriced",
-				"error", broadCastErr,
+			t.logger.Debug("retried transaction: replacement underpriced",
 				"tx", signedTx.Hash(),
 				"nonce", signedTx.Nonce(),
 				"gas_tip_cap", signedTx.GasTipCap(),
@@ -462,7 +428,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 			)
 			replaced = false
 		case isNonRetryable(broadCastErr):
-			return attemptResult{err: broadCastErr}
+			return nil, nil, broadCastErr
 		case signedTx == nil:
 			// Any other error that occurred before the SendTransaction RPC call.
 			replaced = false
@@ -475,7 +441,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 			t.watchRetryNonce(rs.Nonce, nonceWatch)
 		}
 		if persistErr != nil {
-			return attemptResult{err: fmt.Errorf("%w: %w", ErrUpdateRetryState, persistErr)}
+			return nil, nil, fmt.Errorf("%w: %w", ErrUpdateRetryState, persistErr)
 		}
 	}
 
@@ -483,29 +449,29 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		// Rare case: no successful broadcast yet, nothing to monitor. Wait to avoid spamming attempts.
 		select {
 		case <-ctx.Done():
-			return attemptResult{err: ctx.Err()}
+			return nil, nil, fmt.Errorf("wait to broadcast: %w", ctx.Err())
 		case <-time.After(t.txRetryDelay):
-			return attemptResult{err: broadCastErr}
+			return nil, nil, broadCastErr
 		}
 	}
 
 	return t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, t.txRetryDelay)
 }
 
-func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTransaction, nonceWatch *retryNonceWatch, signedTx *types.Transaction, timeout time.Duration) attemptResult {
+func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTransaction, nonceWatch *retryNonceWatch, signedTx *types.Transaction, timeout time.Duration) (*types.Transaction, *types.Receipt, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	select {
 	case <-nonceWatch.doneC:
 		if receipt := t.receiptForRetryHashes(waitCtx, rs); receipt != nil {
-			return attemptResult{receipt: receipt}
+			return nil, receipt, nil
 		}
-		return attemptResult{signedTx: signedTx, err: ErrTransactionCancelled}
+		return signedTx, nil, ErrTransactionCancelled
 	case err := <-nonceWatch.errC:
-		return attemptResult{signedTx: signedTx, err: err}
+		return signedTx, nil, fmt.Errorf("nonce watch: %w", err)
 	case <-waitCtx.Done():
-		return attemptResult{signedTx: signedTx, err: waitCtx.Err()}
+		return signedTx, nil, fmt.Errorf("wait for nonce: %w", waitCtx.Err())
 	}
 }
 
@@ -517,16 +483,16 @@ func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWa
 				t.logger.Info("pending retried transaction confirmed", "tx", receipt.TxHash, "nonce", rs.Nonce)
 				t.cleanupRetryResult(rs, receipt.TxHash)
 			} else {
-				t.logger.Warning("pending retried transaction cancelled", "nonce", rs.Nonce)
+				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 				t.deleteRetryTransaction(rs)
 			}
 
 		case err := <-nonceWatch.errC:
 			if errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Warning("pending retried transaction cancelled", "nonce", rs.Nonce)
+				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 				t.deleteRetryTransaction(rs)
 			} else if !errors.Is(err, ErrMonitorClosed) {
-				t.logger.Error(err, "waiting for pending retried transaction failed", "nonce", rs.Nonce)
+				t.logger.Error(err, "waiting for pending retried transaction failed", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 			}
 		case <-t.ctx.Done():
 		}
@@ -608,17 +574,20 @@ func (t *transactionService) pendingRetryTransactions() (map[uint64]RetriedTrans
 	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
 		var state RetriedTransaction
 		if err := json.Unmarshal(val, &state); err != nil {
-			return false, err
+			return false, fmt.Errorf("unmarshal retry state: %w", err)
 		}
 		var nonce uint64
 		if _, err := fmt.Sscanf(string(key), retryStatePrefix+"%d", &nonce); err != nil {
-			return false, err
+			return false, fmt.Errorf("parse retry nonce: %w", err)
 		}
 		state.Nonce = nonce
 		out[nonce] = state
 		return false, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, fmt.Errorf("iterate retry state: %w", err)
+	}
+	return out, nil
 }
 
 func (t *transactionService) deleteRetryTransaction(rs *RetriedTransaction) {
@@ -632,30 +601,30 @@ func (t *transactionService) deleteRetryTransaction(rs *RetriedTransaction) {
 func (t *transactionService) resumeRetryTransactions() error {
 	entries, err := t.pendingRetryTransactions()
 	if err != nil {
-		return err
+		return fmt.Errorf("pending retry transactions: %w", err)
 	}
 
 	confirmed, err := t.backend.NonceAt(t.ctx, t.sender, nil)
 	if err != nil {
-		t.logger.Warning("resume transaction with retry: failed to get confirmed nonce, resuming all", "error", err)
+		t.logger.Warning("resume retried transaction: failed to get confirmed nonce, resuming all", "error", err)
 	}
 
-	t.logger.Debug("resume transaction with retry: scanning persisted retry states", "count", len(entries), "confirmed_nonce", confirmed)
+	t.logger.Debug("resume retried transaction: scanning persisted retry states", "count", len(entries), "confirmed_nonce", confirmed)
 
 	for nonce, rs := range entries {
 		stored, err := t.StoredTransaction(rs.CurrentHash)
 		if err != nil {
-			t.logger.Error(err, "resume transaction with retry: stored tx not found, cleaning up", "tx_hash", rs.CurrentHash)
+			t.logger.Error(err, "resume retried transaction: stored tx not found, cleaning up", "tx", rs.CurrentHash, "nonce", nonce)
 			t.deleteRetryTransaction(&rs)
 			continue
 		}
 		if confirmed > nonce {
-			t.logger.Debug("resume transaction with retry: skipping already confirmed transaction", "nonce", nonce)
+			t.logger.Debug("resume retried transaction: skipping already confirmed transaction", "tx", rs.CurrentHash, "nonce", nonce)
 			t.deleteRetryTransaction(&rs)
 			continue
 		}
 
-		t.logger.Debug("resume transaction with retry: resuming", "nonce", nonce, "tx_hash", rs.CurrentHash)
+		t.logger.Debug("resume retried transaction: resuming", "tx", rs.CurrentHash, "nonce", nonce)
 
 		request := &TxRequest{
 			To:          stored.To,
@@ -668,18 +637,19 @@ func (t *transactionService) resumeRetryTransactions() error {
 		nonceWatch := &retryNonceWatch{}
 		t.watchRetryNonce(rs.Nonce, nonceWatch)
 
+		var (
+			previousTip    *big.Int
+			previousFeeCap *big.Int
+		)
+		if stored.GasTipCap != nil {
+			previousTip = new(big.Int).Set(stored.GasTipCap)
+		}
+		if stored.GasFeeCap != nil {
+			previousFeeCap = new(big.Int).Set(stored.GasFeeCap)
+		}
 		t.wg.Go(func() {
-			if _, _, err := t.sendWithRetry(t.ctx, request, &rs, nonceWatch, nil); err != nil {
-				t.logger.Error(err, "resumed transaction send with finished with error", "nonce", nonce)
-			}
+			_, _, _ = t.sendWithRetry(t.ctx, request, &rs, nonceWatch, previousTip, previousFeeCap, nil)
 		})
 	}
 	return nil
-}
-
-func addressForLog(addr *common.Address) string {
-	if addr == nil {
-		return ""
-	}
-	return addr.Hex()
 }
