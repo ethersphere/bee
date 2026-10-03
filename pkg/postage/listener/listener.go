@@ -33,7 +33,6 @@ const loggerName = "listener"
 const DefaultBlockPage = uint64(1000)
 
 const (
-	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
@@ -44,8 +43,29 @@ var batchFactorOverridePublic = "5"
 var (
 	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 	ErrPostagePaused         = errors.New("postage contract is paused")
-	ErrParseSnapshot         = errors.New("failed to parse snapshot data")
 )
+
+// SyncTarget returns the highest block Listen syncs up to when the backend
+// reports blockNumber as its head: the head minus the reorg-safety tail, rounded
+// down to the batch factor. It reports false while the head is still within the
+// tail, in which case Listen makes no progress.
+func SyncTarget(blockNumber uint64) (uint64, bool) {
+	if blockNumber < tailSize {
+		return 0, false
+	}
+	bf := batchFactor()
+	return (blockNumber - tailSize) / bf * bf, true
+}
+
+// batchFactor returns the effective batch factor: the build-time override when it
+// parses to a positive value, the default otherwise.
+func batchFactor() uint64 {
+	bf, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
+	if err != nil || bf == 0 {
+		return defaultBatchFactor
+	}
+	return bf
+}
 
 type BlockHeightContractFilterer interface {
 	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error)
@@ -235,22 +255,11 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		return nil
 	}
 
-	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
-	if err != nil {
-		l.logger.Warning("batch factor conversation failed", "batch_factor", batchFactor, "error", err)
-		batchFactor = defaultBatchFactor
-	}
+	bf := batchFactor()
+	l.logger.Debug("batch factor", "value", bf)
 
-	l.logger.Debug("batch factor", "value", batchFactor)
-
-	// Type assertion to detect if backend is SnapshotLogFilterer
 	pageSize := l.blockPage
-	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
-		pageSize = blockPageSnapshot
-		l.logger.Debug("using snapshot page size", "page_size", pageSize)
-	} else {
-		l.logger.Debug("using standard page size", "page_size", pageSize)
-	}
+	l.logger.Debug("block page size", "page_size", pageSize)
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
@@ -280,7 +289,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			// otherwise we just use the backoff time
 			var expectedWaitTime time.Duration
 			if lastConfirmedBlock != 0 {
-				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
+				nextExpectedBatchBlock := (lastConfirmedBlock/bf + 1) * bf
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
 				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks)
 			} else {
@@ -305,9 +314,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
-				if errors.Is(err, ErrParseSnapshot) {
-					return err
-				}
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
@@ -315,17 +321,13 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				continue
 			}
 
-			if to < tailSize {
+			target, ok := SyncTarget(to)
+			if !ok {
 				// in a test blockchain there might be not be enough blocks yet
 				continue
 			}
-
-			// consider to-tailSize as the "latest" block we need to sync to
-			to = to - tailSize
-			lastConfirmedBlock = to
-
-			// round down to the largest multiple of batchFactor
-			to = (to / batchFactor) * batchFactor
+			lastConfirmedBlock = to - tailSize
+			to = target
 
 			if to < from {
 				// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario
@@ -343,9 +345,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
-				if errors.Is(err, ErrParseSnapshot) {
-					return err
-				}
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
