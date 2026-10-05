@@ -5,6 +5,7 @@
 package pullsync_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
@@ -235,6 +237,92 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 			t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
 		}
 	})
+}
+
+// TestIncoming_InvalidSOC checks that a delivered chunk carrying a well-formed
+// and correctly signed SOC payload, which nevertheless does not pass soc.Valid,
+// is rejected and not stored in the reserve.
+func TestIncoming_InvalidSOC(t *testing.T) {
+	for _, tc := range invalidSOCs(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				if soc.Valid(tc.chunk) {
+					t.Fatal("test chunk must not be a valid soc")
+				}
+				if _, err := soc.FromChunk(tc.chunk); err != nil {
+					t.Fatalf("test chunk must parse as soc: %v", err)
+				}
+
+				stampHash, err := tc.chunk.Stamp().Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+				tResults := []*storer.BinC{{
+					Address:   tc.chunk.Address(),
+					BatchID:   tc.chunk.Stamp().BatchID(),
+					BinID:     1,
+					StampHash: stampHash,
+				}}
+
+				var (
+					ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tc.chunk))
+					recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+					psClient, clientDb = newPullSync(t, recorder, 0)
+				)
+
+				_, _, err = psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+				if !errors.Is(err, swarm.ErrInvalidChunk) {
+					t.Errorf("got error %v, want %v", err, swarm.ErrInvalidChunk)
+				}
+				if p := clientDb.PutCalls(); p != 0 {
+					t.Errorf("invalid soc stored in reserve: got %d puts, want 0", p)
+				}
+			})
+		})
+	}
+}
+
+type invalidSOC struct {
+	name  string
+	chunk swarm.Chunk
+}
+
+// invalidSOCs returns chunks whose data is a correctly signed SOC that
+// soc.FromChunk accepts but soc.Valid rejects.
+func invalidSOCs(t *testing.T) []invalidSOC {
+	t.Helper()
+
+	cac := testingc.GenerateTestRandomChunk()
+
+	// a regular SOC sent under an address other than keccak(id, owner)
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := make([]byte, swarm.HashSize)
+	sch, err := soc.New(id, cac).Sign(crypto.NewDefaultSigner(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongAddress := swarm.NewChunk(cac.Address(), sch.Data()).WithStamp(postagetesting.MustNewStamp())
+
+	// a replica SOC with the correct address, but whose id does not match the
+	// wrapped chunk address
+	replicasKey, err := crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replicaID := bytes.Repeat([]byte{0xff}, swarm.HashSize)
+	rch, err := soc.New(replicaID, cac).Sign(crypto.NewDefaultSigner(replicasKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	badReplica := rch.WithStamp(postagetesting.MustNewStamp())
+
+	return []invalidSOC{
+		{name: "mismatched address", chunk: wrongAddress},
+		{name: "replica with mismatched id", chunk: badReplica},
+	}
 }
 
 func TestMissingChunk(t *testing.T) {

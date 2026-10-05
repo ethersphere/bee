@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bigint"
@@ -458,12 +459,16 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
 	}
-	minimumValidityBlocks, err := s.postageContract.MinimumValidityBlocks(r.Context())
-	if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get minimum validity blocks failed", "error", err)
-		logger.Error(nil, "get minimum validity blocks failed")
-		jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
-		return
+	// postageContract is wired in Configure; guard against early calls during startup.
+	var minimumValidityBlocks uint64
+	if s.postageContract != nil {
+		minimumValidityBlocks, err = s.postageContract.MinimumValidityBlocks(r.Context())
+		if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
+			logger.Debug("get minimum validity blocks failed", "error", err)
+			logger.Error(nil, "get minimum validity blocks failed")
+			jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
+			return
+		}
 	}
 	jsonhttp.OK(w, chainStateResponse{
 		ChainTip:              chainTip,
@@ -506,6 +511,53 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 	ttl = ttl.Div(ttl, pricePerBlock)
 
 	return ttl.Int64(), nil
+}
+
+type postageLabelUpdateRequest struct {
+	Label string `json:"label"`
+}
+
+func (s *Service) postageUpdateLabelHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("patch_stamp").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	body := postageLabelUpdateRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		logger.Debug("patch stamp: decode body failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: decode body failed")
+		jsonhttp.BadRequest(w, "invalid request body")
+		return
+	}
+
+	// label is required by the OpenAPI spec; reject empty/missing rather than
+	// silently blanking the issuer label.
+	if strings.TrimSpace(body.Label) == "" {
+		logger.Debug("patch stamp: empty label", "batch_id", hexBatchID)
+		jsonhttp.BadRequest(w, "label is required")
+		return
+	}
+
+	if err := s.post.UpdateIssuerLabel(paths.BatchID, body.Label); err != nil {
+		logger.Debug("patch stamp: update label failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: update label failed")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "issuer does not exist")
+		default:
+			jsonhttp.InternalServerError(w, "cannot update label")
+		}
+		return
+	}
+
+	jsonhttp.OK(w, nil)
 }
 
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {

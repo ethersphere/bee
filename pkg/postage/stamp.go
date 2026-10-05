@@ -29,6 +29,8 @@ var (
 	ErrInvalidIndex = errors.New("invalid index")
 	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
+	// ErrBatchInvalid is the error given if batch cannot deserialise.
+	ErrBatchInvalid = errors.New("invalid batch")
 	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
 	ErrBucketMismatch = errors.New("bucket mismatch")
 	// ErrInvalidBatchID is the error returned if the batch ID is incorrect

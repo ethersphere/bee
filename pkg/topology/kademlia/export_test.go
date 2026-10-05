@@ -16,7 +16,14 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	NeighborhoodBroadcasts    = neighborhoodBroadcasts
 )
+
+// MarkConnectedPeersSeen runs the sweep the manage loop performs on every
+// lastSeenRefreshInterval tick.
+func (k *Kad) MarkConnectedPeersSeen() error {
+	return k.markConnectedPeersSeen()
+}
 
 const (
 	DefaultBitSuffixLength     = defaultBitSuffixLength

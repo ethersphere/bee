@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -514,7 +515,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 
 	for _, item := range itemsToDelete {
 		func(item *pushItem) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "uploadstore-delete-chunks", func() error {
 				return st.Run(context.Background(), func(s transaction.Store) error {
 					ui := &uploadItem{Address: item.Address, BatchID: item.BatchID}
 					return errors.Join(
@@ -524,7 +525,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 						s.IndexStore().Delete(item),
 					)
 				})
-			})
+			}))
 		}(item)
 	}
 

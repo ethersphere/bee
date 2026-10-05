@@ -552,29 +552,3 @@ func (m *noOpPostageContract) MinimumValidityBlocks(context.Context) (uint64, er
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
 }
-
-func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageStampContractAddress common.Address, postageStampContractABI abi.ABI, chainEnabled bool) (common.Address, error) {
-	if !chainEnabled {
-		return common.Address{}, nil
-	}
-
-	callData, err := postageStampContractABI.Pack("bzzToken")
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	request := &transaction.TxRequest{
-		To:       &postageStampContractAddress,
-		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
-		Value:    big.NewInt(0),
-	}
-
-	data, err := transactionService.Call(ctx, request)
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	return common.BytesToAddress(data), nil
-}

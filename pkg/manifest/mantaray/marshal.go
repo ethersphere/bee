@@ -105,6 +105,24 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 		return nil, ErrInvalidInput
 	}
 
+	// Infer refBytesSize when Add() never set it (directory-only adds): use
+	// our own entry width if present, else the first child ref's width.
+	// Without this, the header reports refBytesSize=0 while the body still
+	// carries full-width data, and the v0.2 reader at line 280 silently drops
+	// every fork.
+	if n.refBytesSize == 0 {
+		if len(n.entry) > 0 {
+			n.refBytesSize = len(n.entry)
+		} else {
+			for _, f := range n.forks {
+				if len(f.ref) > 0 {
+					n.refBytesSize = len(f.ref)
+					break
+				}
+			}
+		}
+	}
+
 	// header
 
 	headerBytes := make([]byte, nodeHeaderSize)
@@ -236,6 +254,12 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 
 		refBytesSize := int(data[nodeHeaderSize-1])
 
+		// refBytesSize is attacker-controlled (0..255); reject inputs too short
+		// to hold the declared entry rather than panicking on the slice.
+		if len(data) < nodeHeaderSize+refBytesSize {
+			return fmt.Errorf("not enough bytes for node entry: %d (%d): %w", len(data), nodeHeaderSize+refBytesSize, ErrInvalidManifest)
+		}
+
 		n.entry = append([]byte{}, data[nodeHeaderSize:nodeHeaderSize+refBytesSize]...)
 		offset := nodeHeaderSize + refBytesSize // skip entry
 		n.forks = make(map[byte]*fork)
@@ -262,6 +286,13 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 	} else if bytes.Equal(versionHash, version02HashBytes) {
 
 		refBytesSize := int(data[nodeHeaderSize-1])
+
+		// refBytesSize is attacker-controlled (0..255); reject inputs too short
+		// to hold the declared entry and the trailing 32-byte fork index rather
+		// than panicking on the entry slice or the fork-index compare below.
+		if len(data) < nodeHeaderSize+refBytesSize+32 {
+			return fmt.Errorf("not enough bytes for node entry: %d (%d): %w", len(data), nodeHeaderSize+refBytesSize+32, ErrInvalidManifest)
+		}
 
 		n.entry = append([]byte{}, data[nodeHeaderSize:nodeHeaderSize+refBytesSize]...)
 		offset := nodeHeaderSize + refBytesSize // skip entry

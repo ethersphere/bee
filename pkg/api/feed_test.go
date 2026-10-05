@@ -71,12 +71,12 @@ func TestFeed_Get(t *testing.T) {
 		t.Parallel()
 
 		var (
-			timestamp       = int64(12121212)
-			ch              = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
-			look            = newMockLookup(12, 0, ch, nil, &id{}, &id{})
-			factory         = newMockFactory(look)
-			idBytes, _      = (&id{}).MarshalBinary()
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			timestamp          = int64(12121212)
+			ch                 = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
+			look               = newMockLookup(12, 0, ch, nil, &id{}, &id{})
+			factory            = newMockFactory(look)
+			idBytes, _         = (&id{}).MarshalBinary()
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -104,7 +104,7 @@ func TestFeed_Get(t *testing.T) {
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
 
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -134,7 +134,7 @@ func TestFeed_Get(t *testing.T) {
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
 
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -171,7 +171,7 @@ func TestFeed_Get(t *testing.T) {
 			look    = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
 			factory = newMockFactory(look)
 
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -184,9 +184,9 @@ func TestFeed_Get(t *testing.T) {
 		t.Parallel()
 
 		var (
-			look            = newMockLookup(1, 0, nil, errors.New("dummy"), &id{}, &id{})
-			factory         = newMockFactory(look)
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			look               = newMockLookup(1, 0, nil, errors.New("dummy"), &id{}, &id{})
+			factory            = newMockFactory(look)
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -218,7 +218,7 @@ func TestFeed_Get(t *testing.T) {
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
 
-			client, _, _, _ = newTestServer(t, testServerOptions{
+			client, _, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
 				Feeds:  factory,
 			})
@@ -260,11 +260,11 @@ func TestFeed_Post(t *testing.T) {
 	// get the reference from the store, unmarshal to a
 	// manifest entry and make sure all metadata correct
 	var (
-		logger          = log.Noop
-		topic           = "aabbcc"
-		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		logger             = log.Noop
+		topic              = "aabbcc"
+		mp                 = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		mockStorer         = mockstorer.New()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
 			Logger: logger,
 			Post:   mp,
@@ -280,7 +280,7 @@ func TestFeed_Post(t *testing.T) {
 			}),
 		)
 
-		ls := loadsave.NewReadonly(mockStorer.ChunkStore(), mockStorer.Cache(), redundancy.DefaultLevel)
+		ls := loadsave.NewReadonly(mockStorer.ChunkStore(), mockStorer.Cache(), redundancy.DefaultDownloadLevel)
 		i, err := manifest.NewMantarayManifestReference(expReference, ls)
 		if err != nil {
 			t.Fatal(err)

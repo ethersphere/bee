@@ -31,7 +31,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shardFiles := make([]*os.File, shardCnt)
 
 	for i := range shardCnt {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR, 0o666)
+		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR, 0o600)
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
 		}
@@ -43,7 +43,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 			return nil, err
 		}
 		size := uint32(fi.Size() / int64(datasize))
-		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0o666)
+		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0o600)
 		if err != nil {
 			return nil, err
 		}
@@ -60,6 +60,9 @@ func (r *Recovery) Add(loc Location) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	if int(loc.Shard) >= len(r.shards) {
+		return ErrShardNotFound
+	}
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {
@@ -75,6 +78,10 @@ func (r *Recovery) Add(loc Location) error {
 func (r *Recovery) Read(ctx context.Context, loc Location, buf []byte) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
+
+	if int(loc.Shard) >= len(r.shardFiles) {
+		return ErrShardNotFound
+	}
 	_, err := r.shardFiles[loc.Shard].ReadAt(buf, int64(loc.Slot)*int64(r.datasize))
 	return err
 }
@@ -83,6 +90,9 @@ func (r *Recovery) Move(ctx context.Context, from Location, to Location) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	if int(from.Shard) >= len(r.shardFiles) || int(to.Shard) >= len(r.shardFiles) {
+		return ErrShardNotFound
+	}
 	chData := make([]byte, from.Length)
 	_, err := r.shardFiles[from.Shard].ReadAt(chData, int64(from.Slot)*int64(r.datasize))
 	if err != nil {
@@ -97,6 +107,9 @@ func (r *Recovery) TruncateAt(ctx context.Context, shard uint8, slot uint32) err
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	if int(shard) >= len(r.shardFiles) {
+		return ErrShardNotFound
+	}
 	return r.shardFiles[shard].Truncate(int64(slot) * int64(r.datasize))
 }
 

@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
-	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
@@ -35,7 +34,7 @@ import (
 //nolint:ireturn
 func prepareHistoryFixture(storer api.Storer) (accesscontrol.History, swarm.Address) {
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, redundancy.NONE), redundancy.DefaultLevel)
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, redundancy.NONE), redundancy.DefaultDownloadLevel)
 
 	h, _ := accesscontrol.NewHistory(ls)
 
@@ -77,16 +76,10 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 		storerMock     = mockstorer.New()
 		logger         = log.Noop
 		now            = time.Now().Unix()
-		chunk          = swarm.NewChunk(
-			swarm.MustParseHexAddress("0025737be11979e91654dffd2be817ac1e52a2dadb08c97a7cef12f937e707bc"),
-			[]byte{72, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 149, 179, 31, 244, 146, 247, 129, 123, 132, 248, 215, 77, 44, 47, 91, 248, 229, 215, 89, 156, 210, 243, 3, 110, 204, 74, 101, 119, 53, 53, 145, 188, 193, 153, 130, 197, 83, 152, 36, 140, 150, 209, 191, 214, 193, 4, 144, 121, 32, 45, 205, 220, 59, 227, 28, 43, 161, 51, 108, 14, 106, 180, 135, 2},
-		)
-		g           = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-		bytedata, _ = g.SequentialBytes(swarm.ChunkSize * 2)
-		tag, _      = storerMock.NewSession()
-		sch         = testingsoc.GenerateMockSOCWithKey(t, []byte("foo"), pk)
-		dirdata     = []byte("Lorem ipsum dolor sit amet")
-		socResource = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
+		g              = mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+		bytedata, _    = g.SequentialBytes(swarm.ChunkSize * 2)
+		tag, _         = storerMock.NewSession()
+		dirdata        = []byte("Lorem ipsum dolor sit amet")
 	)
 
 	tc := []struct {
@@ -100,7 +93,6 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 		resp        struct {
 			Reference swarm.Address `json:"reference"`
 		}
-		direct bool
 	}{
 		{
 			name:        "bzz",
@@ -141,27 +133,6 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			expdata:     bytedata,
 			contenttype: "application/octet-stream",
 		},
-		{
-			name:        "chunks",
-			upurl:       "/chunks",
-			downurl:     "/chunks",
-			exphash:     "ca8d2d29466e017cba46d383e7e0794d99a141185ec525086037f25fc2093155",
-			resp:        api.ChunkAddressResponse{Reference: swarm.MustParseHexAddress("ca8d2d29466e017cba46d383e7e0794d99a141185ec525086037f25fc2093155")},
-			data:        bytes.NewReader(chunk.Data()),
-			expdata:     chunk.Data(),
-			contenttype: "binary/octet-stream",
-		},
-		{
-			name:        "soc",
-			upurl:       socResource(hex.EncodeToString(sch.Owner), hex.EncodeToString(sch.ID), hex.EncodeToString(sch.Signature)),
-			downurl:     "/chunks",
-			exphash:     "b100d7ce487426b17b98ff779fad4f2dd471d04ab1c8949dd2a1a78fe4a1524e",
-			resp:        api.ChunkAddressResponse{Reference: swarm.MustParseHexAddress("b100d7ce487426b17b98ff779fad4f2dd471d04ab1c8949dd2a1a78fe4a1524e")},
-			data:        bytes.NewReader(sch.WrappedChunk.Data()),
-			expdata:     sch.Chunk().Data(),
-			contenttype: "binary/octet-stream",
-			direct:      true,
-		},
 	}
 
 	for _, v := range tc {
@@ -170,38 +141,25 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 			jsonhttptest.WithRequestBody(v.data),
 			jsonhttptest.WithExpectedJSONResponse(v.resp),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, v.contenttype),
 		}
-		if v.name == "soc" {
-			upTestOpts = append(upTestOpts, jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"))
-		} else {
-			upTestOpts = append(upTestOpts, jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader))
-		}
+		upTestOpts = append(upTestOpts, jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader))
 		expcontenttype := v.contenttype
 		if v.name == "bzz-dir" {
 			expcontenttype = "text/plain; charset=utf-8"
 			upTestOpts = append(upTestOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
 		}
 		t.Run(v.name, func(t *testing.T) {
-			client, _, _, chanStore := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:        storerMock,
 				Logger:        logger,
 				Post:          mockpost.New(mockpost.WithAcceptAll()),
 				PublicKey:     pk.PublicKey,
 				AccessControl: mockac.New(),
-				DirectUpload:  v.direct,
 			})
-
-			if chanStore != nil {
-				chanStore.Subscribe(func(chunk swarm.Chunk) {
-					err := storerMock.Put(context.Background(), chunk)
-					if err != nil {
-						t.Fatal(err)
-					}
-				})
-			}
 
 			header := jsonhttptest.Request(t, client, http.MethodPost, v.upurl, http.StatusCreated,
 				upTestOpts...,
@@ -217,7 +175,7 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, expcontenttype),
 			)
 
-			if v.name != "bzz-dir" && v.name != "soc" && v.name != "chunks" {
+			if v.name != "bzz-dir" {
 				t.Run("head", func(t *testing.T) {
 					jsonhttptest.Request(t, client, http.MethodHead, v.downurl+"/"+v.exphash, http.StatusOK,
 						jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(now, 10)),
@@ -255,7 +213,7 @@ func TestAccessLogicWithoutAct(t *testing.T) {
 	)
 
 	t.Run("upload-w/-act-then-download-w/o-act", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -288,7 +246,7 @@ func TestAccessLogicWithoutAct(t *testing.T) {
 	})
 
 	t.Run("upload-w/o-act-then-download-w/-act", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -352,7 +310,7 @@ func TestAccessLogicInvalidPath(t *testing.T) {
 	)
 
 	t.Run("invalid-path-params", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -403,7 +361,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	)
 
 	t.Run("empty-history-upload-then-download-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -439,7 +397,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("with-history-upload-then-download-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -485,7 +443,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("upload-then-download-wrong-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -521,7 +479,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("upload-wrong-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -544,7 +502,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("download-w/o-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -580,7 +538,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 		fileName             = "sample.html"
 	)
 	t.Run("upload-then-download-with-timestamp-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -628,7 +586,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 
 	t.Run("download-w/o-timestamp", func(t *testing.T) {
 		encryptedRef := "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -643,7 +601,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 		)
 	})
 	t.Run("download-w/-invalid-timestamp", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -691,7 +649,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 	)
 
 	t.Run("upload-then-download-w/-publisher-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -737,7 +695,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 	})
 
 	t.Run("upload-then-download-invalid-publickey", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -795,7 +753,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 			downloader   = "03c712a7e29bc792ac8d8ae49793d28d5bda27ed70f0d90697b2fb456c0a168bd2"
 			encryptedRef = "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
 		)
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -820,7 +778,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 			downloader = "03c712a7e29bc792ac8d8ae49793d28d5bda27ed70f0d90697b2fb456c0a168bd2"
 			testfile   = "testfile1"
 		)
-		downloaderClient, _, _, _ := newTestServer(t, testServerOptions{
+		downloaderClient, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -842,7 +800,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 
 	t.Run("download-w/o-publisher", func(t *testing.T) {
 		encryptedRef := "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -862,13 +820,13 @@ func TestAccessLogicPublisher(t *testing.T) {
 func TestAccessLogicGrantees(t *testing.T) {
 	t.Parallel()
 	var (
-		spk, _          = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
-		pk, _           = crypto.DecodeSecp256k1PrivateKey(spk)
-		storerMock      = mockstorer.New()
-		h, fixtureHref  = prepareHistoryFixture(storerMock)
-		logger          = log.Noop
-		addr            = swarm.RandAddress(t)
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		spk, _             = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
+		pk, _              = crypto.DecodeSecp256k1PrivateKey(spk)
+		storerMock         = mockstorer.New()
+		h, fixtureHref     = prepareHistoryFixture(storerMock)
+		logger             = log.Noop
+		addr               = swarm.RandAddress(t)
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -881,7 +839,7 @@ func TestAccessLogicGrantees(t *testing.T) {
 			publicKeyBytes = crypto.EncodeSecp256k1PublicKey(&pk.PublicKey)
 			publisher      = hex.EncodeToString(publicKeyBytes)
 		)
-		clientwihtpublisher, _, _, _ := newTestServer(t, testServerOptions{
+		clientwihtpublisher, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),

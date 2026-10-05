@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,8 +28,11 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "listener"
 
+// DefaultBlockPage is the default number of blocks requested in a single
+// FilterLogs call while paging.
+const DefaultBlockPage = uint64(1000)
+
 const (
-	blockPage          = 5000      // how many blocks to sync every time we page
 	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
@@ -60,6 +64,7 @@ type listener struct {
 	metrics                     metrics
 	stallingTimeout             time.Duration
 	backoffTime                 time.Duration
+	blockPage                   uint64
 	syncingStopped              *syncutil.Signaler
 
 	// Cached postage stamp contract event topics.
@@ -79,7 +84,11 @@ func New(
 	blockTime time.Duration,
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
+	blockPage uint64,
 ) postage.Listener {
+	if blockPage == 0 {
+		blockPage = DefaultBlockPage
+	}
 	return &listener{
 		syncingStopped:              syncingStopped,
 		logger:                      logger.WithName(loggerName).Register(),
@@ -91,6 +100,7 @@ func New(
 		metrics:                     newMetrics(),
 		stallingTimeout:             stallingTimeout,
 		backoffTime:                 backoffTime,
+		blockPage:                   blockPage,
 
 		batchCreatedTopic:       postageStampContractABI.Events["BatchCreated"].ID,
 		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
@@ -234,7 +244,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	l.logger.Debug("batch factor", "value", batchFactor)
 
 	// Type assertion to detect if backend is SnapshotLogFilterer
-	pageSize := uint64(blockPage)
+	pageSize := l.blockPage
 	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
 		pageSize = blockPageSnapshot
 		l.logger.Debug("using snapshot page size", "page_size", pageSize)
@@ -250,7 +260,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	lastConfirmedBlock := uint64(0)
 
 	l.wg.Add(1)
-	listenf := func() error {
+	listenf := safe.RunFunc(l.logger, "postage-listener-func", func() error {
 		defer l.wg.Done()
 		for {
 			// if for whatever reason we are stuck for too long we terminate
@@ -301,6 +311,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 
@@ -338,6 +349,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 
@@ -350,7 +362,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			totalTimeMetric(l.metrics.PageProcessDuration, start)
 			l.metrics.PagesProcessed.Inc()
 		}
-	}
+	})
 
 	go func() {
 		err := listenf()

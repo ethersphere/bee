@@ -47,7 +47,12 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, nonce, 1, 3, chequebook.Bytes())
+	node1maSerialized, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{node1ma})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bzzAddress2, err := bzz.ParseAddress(node1maSerialized, overlay.Bytes(), bzzAddress.Signature, nonce, 1, 3, chequebook.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +105,13 @@ func TestParseAddress_ChequebookIsSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	node1maSerialized, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{node1ma})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Swapping the chequebook between sign and parse must invalidate the record.
-	if _, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), addr.Signature, nonce, 1, 3, tamperedChequebook.Bytes()); !errors.Is(err, bzz.ErrInvalidAddress) {
+	if _, err := bzz.ParseAddress(node1maSerialized, overlay.Bytes(), addr.Signature, nonce, 1, 3, tamperedChequebook.Bytes()); !errors.Is(err, bzz.ErrInvalidAddress) {
 		t.Fatalf("ParseAddress with tampered chequebook: want ErrInvalidAddress, got %v", err)
 	}
 }
@@ -148,9 +158,14 @@ func TestParseAddress_RejectsNonCanonicalChequebookLength(t *testing.T) {
 		{"long 48 bytes", long48},
 	}
 
+	node1maSerialized, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{node1ma})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), addr.Signature, nonce, 1, 3, tc.wire); !errors.Is(err, bzz.ErrInvalidAddress) {
+			if _, err := bzz.ParseAddress(node1maSerialized, overlay.Bytes(), addr.Signature, nonce, 1, 3, tc.wire); !errors.Is(err, bzz.ErrInvalidAddress) {
 				t.Fatalf("want ErrInvalidAddress for %d-byte chequebook wire, got %v", len(tc.wire), err)
 			}
 		})
@@ -161,10 +176,10 @@ func TestParseAddress_RejectsNonCanonicalChequebookLength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), emptyAddr.Signature, nonce, 1, 3, nil); err != nil {
+	if _, err := bzz.ParseAddress(node1maSerialized, overlay.Bytes(), emptyAddr.Signature, nonce, 1, 3, nil); err != nil {
 		t.Fatalf("empty chequebook must parse, got %v", err)
 	}
-	if _, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), addr.Signature, nonce, 1, 3, cbBytes); err != nil {
+	if _, err := bzz.ParseAddress(node1maSerialized, overlay.Bytes(), addr.Signature, nonce, 1, 3, cbBytes); err != nil {
 		t.Fatalf("20-byte chequebook must parse, got %v", err)
 	}
 }

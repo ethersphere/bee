@@ -41,7 +41,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return &transaction.StoredTransaction{
@@ -82,7 +82,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return nil, transaction.ErrUnknownTransaction
@@ -100,7 +100,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	t.Run("other errors", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
 					return nil, errors.New("err")
@@ -151,7 +151,7 @@ func TestTransactionList(t *testing.T) {
 		},
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		TransactionOpts: []mock.Option{
 			mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 				return []common.Hash{txHash1, txHash2}, nil
@@ -205,7 +205,7 @@ func TestTransactionListError(t *testing.T) {
 	t.Run("pending transactions error", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 					return nil, errors.New("err")
@@ -227,7 +227,7 @@ func TestTransactionListError(t *testing.T) {
 	t.Run("pending transactions error", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 					return []common.Hash{txHash1}, nil
@@ -254,7 +254,7 @@ func TestTransactionResend(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return nil
@@ -272,7 +272,7 @@ func TestTransactionResend(t *testing.T) {
 	t.Run("unknown transaction", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return transaction.ErrUnknownTransaction
@@ -291,7 +291,7 @@ func TestTransactionResend(t *testing.T) {
 	t.Run("already imported", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return transaction.ErrAlreadyImported
@@ -310,7 +310,7 @@ func TestTransactionResend(t *testing.T) {
 	t.Run("other error", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
 				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 					return errors.New("err")

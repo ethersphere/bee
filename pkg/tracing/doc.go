@@ -7,15 +7,14 @@ Package tracing helps with the propagation of the tracing span through context
 in the system. It does this for operations contained to single node, as well as
 across nodes, by injecting special headers.
 
-To use the tracing package, a Tracer instance must be created, which contains
-functions for starting new span contexts, injecting them in other data, and
-extracting the active span them from the context.
+The package wraps the OpenTelemetry Go SDK and ships spans via the OTLP/HTTP
+exporter, so any OTLP-compatible backend (Jaeger v2, Tempo, Honeycomb, …) works.
 
 To use the tracing package a Tracer instance must be created:
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
-		Endpoint:    "127.0.0.1:6831",
+		Endpoint:    "127.0.0.1:4318",
 		ServiceName: "bee",
 	})
 	if err != nil {
@@ -25,13 +24,13 @@ To use the tracing package a Tracer instance must be created:
 	// ...
 
 The tracer instance contains functions for starting new span contexts, injecting
-them in other data, and extracting the active span them from the context:
+them in other data, and extracting the active span from the context:
 
 	span, _, ctx := tracer.StartSpanFromContext(ctx, "operation-name", nil)
 
-Once the operation is finished, the open span should be finished:
+Once the operation is finished, the open span should be ended:
 
-	span.Finish()
+	span.End()
 
 The tracing package also provides a function for creating a logger which will
 inject a "traceID" field entry to the log line, which helps in finding out which

@@ -7,6 +7,7 @@ package mock
 import (
 	"bytes"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 
@@ -71,4 +72,8 @@ func (s *Stream) FullClose() error {
 
 func (s *Stream) Reset() error {
 	return nil
+}
+
+func (s *Stream) Version() (*semver.Version, error) {
+	return nil, nil
 }

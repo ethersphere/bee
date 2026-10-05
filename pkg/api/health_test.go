@@ -19,7 +19,7 @@ func TestHealth(t *testing.T) {
 	t.Run("probe not set", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 		// When probe is not set health endpoint should indicate that node is not healthy
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.HealthStatusResponse{
@@ -33,7 +33,7 @@ func TestHealth(t *testing.T) {
 		t.Parallel()
 
 		probe := api.NewProbe()
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			Probe: probe,
 		})
 

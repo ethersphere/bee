@@ -31,6 +31,8 @@
 # BEE_BOOTNODE=[/dnsaddr/mainnet.ethswarm.org]
 ## cause the node to always accept incoming connections (default false)
 # BEE_BOOTNODE_MODE=false
+## bzz token contract address
+# BEE_BZZ_TOKEN_ADDRESS=
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes (default 1000000)
 # BEE_CACHE_CAPACITY=1000000
 ## enable forwarded content caching (default true)
