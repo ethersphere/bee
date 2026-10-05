@@ -292,10 +292,45 @@ func TestOutOfDepthStoring(t *testing.T) {
 
 	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 
-	// The storer correctly refused to store, so the origin exhausted its peers
-	// and falls back to ErrWantSelf (full node with no remaining peers).
-	if !errors.Is(err, topology.ErrWantSelf) {
-		t.Fatalf("got %v, want %v", err, topology.ErrWantSelf)
+	// The storer correctly refused to store, so the origin exhausted its peers.
+	// The chunk is outside the origin's AOR as well, so it must not fall back
+	// to storing the chunk itself.
+	if !errors.Is(err, topology.ErrNotFound) {
+		t.Fatalf("got %v, want %v", err, topology.ErrNotFound)
+	}
+}
+
+// TestOriginSelfStore verifies that an origin with no peers left falls back to
+// storing the chunk itself only when the chunk is within its AOR.
+func TestOriginSelfStore(t *testing.T) {
+	t.Parallel()
+
+	const radius = 4
+
+	// the chunk shares more than radius bits with the near origin and no bits
+	// with the far one
+	near := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	far := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+	chunk := testingc.GenerateValidRandomChunkAt(t, near, radius)
+
+	for _, tc := range []struct {
+		name    string
+		origin  swarm.Address
+		wantErr error
+	}{
+		{name: "within AOR", origin: near, wantErr: topology.ErrWantSelf},
+		{name: "outside AOR", origin: far, wantErr: topology.ErrNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			psOrigin, _ := createPushSyncNodeWithRadius(t, tc.origin, defaultPrices, nil, nil, defaultSigner(chunk), radius, mock.WithClosestPeerErr(topology.ErrNotFound))
+
+			_, err := psOrigin.PushChunkToClosest(context.Background(), chunk)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got %v, want %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 

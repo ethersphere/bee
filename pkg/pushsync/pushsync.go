@@ -454,7 +454,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 						if shallowReceiptResult != nil {
 							return shallowReceiptResult, ErrShallowReceipt
 						}
-						return nil, topology.ErrWantSelf
+						// An origin stores the chunk itself only within its AOR;
+						// outside of it the chunk would be as good as lost, so
+						// report that no peer was found and let the caller retry.
+						if !origin || swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) >= rad {
+							return nil, topology.ErrWantSelf
+						}
+						ps.metrics.OutOfDepthStoring.Inc()
 					}
 					if shallowReceiptResult != nil {
 						return shallowReceiptResult, ErrShallowReceipt
