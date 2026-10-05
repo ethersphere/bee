@@ -31,9 +31,13 @@
 // treated as no-op fillers so the caller can populate N_real < N lanes with
 // real data and ignore the remaining N - N_real output digests. The digests
 // produced for nil lanes are not meaningful and must not be consumed. Mixing
-// distinct non-zero lengths within one call is unsupported and will produce
-// wrong digests for the shorter lanes, even when every individual length
-// would work on its own in an all-same-length call.
+// distinct non-zero lengths within one call is unsupported: the C wrappers
+// would produce wrong digests for the shorter lanes, even when every
+// individual length would work on its own in an all-same-length call.
+//
+// Both constraints are enforced in Go before the C code runs, because
+// violating them also makes the C wrappers write out of bounds: nil lanes are
+// replaced with an alias of a real lane, and mixed non-zero lengths panic.
 package keccak
 
 import "encoding/hex"
