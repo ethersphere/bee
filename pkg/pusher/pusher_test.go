@@ -429,6 +429,56 @@ func TestShallowReceiptExhausted(t *testing.T) {
 	})
 }
 
+// TestOutOfDepthStoring tests that a chunk which no reachable node is
+// responsible for is given up on instead of being retried forever.
+func TestOutOfDepthStoring(t *testing.T) {
+	t.Parallel()
+
+	var callCount atomic.Int32
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		callCount.Add(1)
+		return nil, pushsync.ErrOutOfDepthStoring
+	})
+
+	t.Run("deferred", func(t *testing.T) {
+		t.Parallel()
+
+		storer := &reportingStorer{
+			mockStorer: &mockStorer{chunks: make(chan swarm.Chunk)},
+			reported:   make(chan storage.ChunkState, 1),
+		}
+		_ = createPusher(t, storer, pushSyncService, defaultMockBatchStore, defaultRetryCount)
+
+		chunk := testingc.GenerateTestRandomChunk()
+		storer.chunks <- chunk
+
+		if state := <-storer.reported; state != storage.ChunkCouldNotSync {
+			t.Fatalf("got reported state %v, want %v", state, storage.ChunkCouldNotSync)
+		}
+		if storer.isReported(chunk, storage.ChunkSynced) || storer.isReported(chunk, storage.ChunkStored) {
+			t.Fatal("chunk reported as synced or stored")
+		}
+	})
+
+	t.Run("direct", func(t *testing.T) {
+		t.Parallel()
+
+		storer := &mockStorer{chunks: make(chan swarm.Chunk)}
+		pusherSvc := createPusher(t, storer, pushSyncService, defaultMockBatchStore, defaultRetryCount)
+
+		newFeed := make(chan *pusher.Op)
+		pusherSvc.AddFeed(newFeed)
+
+		errC := make(chan error, 1)
+		newFeed <- &pusher.Op{Chunk: testingc.GenerateTestRandomChunk(), Err: errC, Direct: true}
+
+		// the first attempt already ends the upload with a terminal error
+		if err := <-errC; !errors.Is(err, pusher.ErrCouldNotSync) {
+			t.Fatalf("got %v, want %v", err, pusher.ErrCouldNotSync)
+		}
+	})
+}
+
 // TestChunkWithInvalidStampSkipped tests that chunks with invalid stamps are skipped in pusher
 func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	t.Parallel()

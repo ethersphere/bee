@@ -139,7 +139,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		defer func() {
 			// no peer was found which may mean that the node is suffering from connections issues
 			// we must slow down the pusher to prevent constant retries
-			if errors.Is(err, topology.ErrNotFound) {
+			// a direct push has already replied to its caller, which does its
+			// own waiting, so sleeping here would only hold a push slot
+			if errors.Is(err, topology.ErrNotFound) && !op.Direct {
 				select {
 				case <-time.After(time.Second * 5):
 				case <-s.quit:
@@ -285,7 +287,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			return true, err
 		}
 		s.attempts.delete(op.identityAddress)
-	case errors.Is(err, pushsync.ErrShallowReceipt):
+	case errors.Is(err, pushsync.ErrShallowReceipt), errors.Is(err, pushsync.ErrOutOfDepthStoring):
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
@@ -351,6 +353,12 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		// reporting success or asking the caller to retry forever
 		s.metrics.TotalCouldNotSync.Inc()
 		loggerV1.Debug("direct upload: retries exhausted on shallow receipts", "chunk_address", op.Chunk.Address())
+		err = ErrCouldNotSync
+	case errors.Is(err, pushsync.ErrOutOfDepthStoring):
+		// no reachable node is responsible for the chunk; retrying right
+		// away cannot succeed, so fail the upload
+		s.metrics.TotalCouldNotSync.Inc()
+		loggerV1.Debug("direct upload: no node within the chunk's neighborhood took it", "chunk_address", op.Chunk.Address())
 		err = ErrCouldNotSync
 	case err == nil:
 		s.attempts.delete(op.identityAddress)

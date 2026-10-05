@@ -455,12 +455,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 							return shallowReceiptResult, ErrShallowReceipt
 						}
 						// An origin stores the chunk itself only within its AOR;
-						// outside of it the chunk would be as good as lost, so
-						// report that no peer was found and let the caller retry.
+						// outside of it the chunk would be as good as lost.
 						if !origin || swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) >= rad {
 							return nil, topology.ErrWantSelf
 						}
 						ps.metrics.OutOfDepthStoring.Inc()
+						// Peers were tried and none of them took the chunk:
+						// retrying right away cannot succeed, unlike the case
+						// of a node that has no peers at all.
+						if len(fullSkip) > 0 {
+							return nil, ErrOutOfDepthStoring
+						}
 					}
 					if shallowReceiptResult != nil {
 						return shallowReceiptResult, ErrShallowReceipt

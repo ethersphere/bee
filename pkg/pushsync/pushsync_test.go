@@ -294,13 +294,14 @@ func TestOutOfDepthStoring(t *testing.T) {
 
 	// The storer correctly refused to store, so the origin exhausted its peers.
 	// The chunk is outside the origin's AOR as well, so it must not fall back
-	// to storing the chunk itself.
-	if !errors.Is(err, topology.ErrNotFound) {
-		t.Fatalf("got %v, want %v", err, topology.ErrNotFound)
+	// to storing the chunk itself, and since its peers were tried the failure
+	// must not look like a node without peers.
+	if !errors.Is(err, pushsync.ErrOutOfDepthStoring) {
+		t.Fatalf("got %v, want %v", err, pushsync.ErrOutOfDepthStoring)
 	}
 }
 
-// TestOriginSelfStore verifies that an origin with no peers left falls back to
+// TestOriginSelfStore verifies that an origin without peers falls back to
 // storing the chunk itself only when the chunk is within its AOR.
 func TestOriginSelfStore(t *testing.T) {
 	t.Parallel()
