@@ -68,6 +68,11 @@ const (
 	DefaultRetryCount = 6
 )
 
+// ErrCouldNotSync is returned for a direct upload when the retry budget is
+// exhausted without a valid receipt. It intentionally does not wrap
+// pushsync.ErrShallowReceipt, which callers treat as retryable.
+var ErrCouldNotSync = errors.New("pusher: could not sync chunk")
+
 func New(
 	networkID uint64,
 	storer Storer,
@@ -342,8 +347,11 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if s.shallowReceipt(op.identityAddress) {
 			return err
 		}
-		// budget exhausted; propagate err instead of falsely reporting success
+		// budget exhausted; return a terminal error instead of falsely
+		// reporting success or asking the caller to retry forever
 		s.metrics.TotalCouldNotSync.Inc()
+		loggerV1.Debug("direct upload: retries exhausted on shallow receipts", "chunk_address", op.Chunk.Address())
+		err = ErrCouldNotSync
 	case err == nil:
 		s.attempts.delete(op.identityAddress)
 	default:

@@ -348,6 +348,87 @@ func TestPusherRetryShallow(t *testing.T) {
 	}
 }
 
+// reportingStorer signals every reported chunk state over a channel.
+type reportingStorer struct {
+	*mockStorer
+	reported chan storage.ChunkState
+}
+
+func (r *reportingStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
+	err := r.mockStorer.Report(ctx, chunk, state)
+	r.reported <- state
+	return err
+}
+
+// TestShallowReceiptExhausted tests that a chunk which keeps getting shallow
+// receipts is never reported as synced once the retries are exhausted.
+func TestShallowReceiptExhausted(t *testing.T) {
+	t.Parallel()
+
+	var callCount atomic.Int32
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		callCount.Add(1)
+		return &pushsync.Receipt{Address: chunk.Address()}, pushsync.ErrShallowReceipt
+	})
+
+	t.Run("deferred", func(t *testing.T) {
+		t.Parallel()
+
+		storer := &reportingStorer{
+			mockStorer: &mockStorer{chunks: make(chan swarm.Chunk)},
+			reported:   make(chan storage.ChunkState, 1),
+		}
+		_ = createPusher(t, storer, pushSyncService, defaultMockBatchStore, defaultRetryCount)
+
+		before := callCount.Load()
+		chunk := testingc.GenerateTestRandomChunk()
+		storer.chunks <- chunk
+
+		if state := <-storer.reported; state != storage.ChunkCouldNotSync {
+			t.Fatalf("got reported state %v, want %v", state, storage.ChunkCouldNotSync)
+		}
+		if storer.isReported(chunk, storage.ChunkSynced) {
+			t.Fatal("chunk reported as synced")
+		}
+		if got := int(callCount.Load() - before); got < defaultRetryCount {
+			t.Fatalf("got %d push attempts, want at least %d", got, defaultRetryCount)
+		}
+	})
+
+	t.Run("direct", func(t *testing.T) {
+		t.Parallel()
+
+		storer := &mockStorer{chunks: make(chan swarm.Chunk)}
+		pusherSvc := createPusher(t, storer, pushSyncService, defaultMockBatchStore, defaultRetryCount)
+
+		newFeed := make(chan *pusher.Op)
+		pusherSvc.AddFeed(newFeed)
+
+		chunk := testingc.GenerateTestRandomChunk()
+
+		// the caller retries on shallow receipts until the pusher gives up
+		// with a terminal error that is not a shallow receipt
+		for i := 1; i <= defaultRetryCount; i++ {
+			errC := make(chan error, 1)
+			newFeed <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
+
+			err := <-errC
+			if i < defaultRetryCount {
+				if !errors.Is(err, pushsync.ErrShallowReceipt) {
+					t.Fatalf("attempt %d: got %v, want %v", i, err, pushsync.ErrShallowReceipt)
+				}
+				continue
+			}
+			if !errors.Is(err, pusher.ErrCouldNotSync) {
+				t.Fatalf("attempt %d: got %v, want %v", i, err, pusher.ErrCouldNotSync)
+			}
+			if errors.Is(err, pushsync.ErrShallowReceipt) {
+				t.Fatalf("attempt %d: terminal error must not be a shallow receipt", i)
+			}
+		}
+	})
+}
+
 // TestChunkWithInvalidStampSkipped tests that chunks with invalid stamps are skipped in pusher
 func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	t.Parallel()
