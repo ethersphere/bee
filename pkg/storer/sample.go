@@ -71,7 +71,7 @@ func (db *DB) ReserveSample(
 	committedDepth uint8,
 	consensusTime uint64,
 	minBatchBalance *big.Int,
-) (Sample, error) {
+) (_ Sample, err error) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -85,9 +85,10 @@ func (db *DB) ReserveSample(
 	workers := max(4, runtime.NumCPU())
 	t := time.Now()
 
+	// err is the named result, so early returns are recorded too.
 	defer func() {
 		duration := time.Since(t)
-		err := g.Wait()
+		_ = g.Wait()
 		db.recordReserveSampleMetrics(duration, allStats, workers, err)
 	}()
 

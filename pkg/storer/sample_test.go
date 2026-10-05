@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestReserveSampler(t *testing.T) {
@@ -304,6 +306,39 @@ func TestReserveSamplerBatchExclusionFilterError(t *testing.T) {
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("expected error wrapping %v, got %v", expectedErr, err)
 	}
+
+	if got := reserveSampleRuns(t, st, "failure"); got != 1 {
+		t.Fatalf("expected 1 failed sample run in metrics, got %d", got)
+	}
+	if got := reserveSampleRuns(t, st, "success"); got != 0 {
+		t.Fatalf("expected 0 successful sample runs in metrics, got %d", got)
+	}
+}
+
+// reserveSampleRuns returns the number of sample runs recorded with status.
+func reserveSampleRuns(t *testing.T, st *storer.DB, status string) uint64 {
+	t.Helper()
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(st.Metrics()...)
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mf := range families {
+		if !strings.HasSuffix(mf.GetName(), "reserve_sample_duration_seconds") {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "status" && l.GetValue() == status {
+					return m.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func TestReserveSamplerSisterNeighborhood(t *testing.T) {
