@@ -26,8 +26,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 // nolint:paralleltest,tparallel
@@ -99,6 +102,40 @@ func TestChunkUploadDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+// noPeerChunkStore mimics retrieval running out of peers to ask for a chunk.
+type noPeerChunkStore struct {
+	storage.ChunkStore
+}
+
+func (noPeerChunkStore) Get(context.Context, swarm.Address) (swarm.Chunk, error) {
+	return nil, topology.ErrNotFound
+}
+
+func TestChunkGetNotFound(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		storer api.Storer
+	}{
+		{name: "not in store", storer: mockstorer.New()},
+		{name: "no peer to retrieve from", storer: mockstorer.NewWithChunkStore(noPeerChunkStore{inmemchunkstore.New()})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _, _, _, _ := newTestServer(t, testServerOptions{Storer: tc.storer})
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/chunks/abbbbb", http.StatusNotFound,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Message: "chunk not found",
+					Code:    http.StatusNotFound,
+				}),
+			)
+		})
+	}
 }
 
 // nolint:paralleltest,tparallel
