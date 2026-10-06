@@ -115,6 +115,7 @@ func (db *DB) ReserveSample(
 			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
 				return false, nil
 			}
+			stats.TotalIterated++
 
 			// exclude chunks whose batches balance are below minimum
 			if isExcludedBatch != nil && isExcludedBatch(ch.BatchID) {
@@ -131,7 +132,6 @@ func (db *DB) ReserveSample(
 
 			select {
 			case chunkC <- ch:
-				stats.TotalIterated++
 				return false, nil
 			case <-gCtx.Done():
 				return false, gCtx.Err()
