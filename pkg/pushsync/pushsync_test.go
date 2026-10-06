@@ -301,6 +301,71 @@ func TestOutOfDepthStoring(t *testing.T) {
 	}
 }
 
+// TestForwardToUnhealthyCloserPeer verifies that a forwarder outside of the
+// chunk's AOR does not claim to be the closest node only because the closer
+// peer is unhealthy: it forwards the chunk to that peer.
+func TestForwardToUnhealthyCloserPeer(t *testing.T) {
+	t.Parallel()
+
+	const radius = 3
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(key)
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	storer, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the chunk is within the storer's AOR; the forwarder and the origin
+	// share fewer bits with it than the radius
+	chunk := testingc.GenerateValidRandomChunkAt(t, storer, radius)
+	flipBit := func(a swarm.Address, bit int) swarm.Address {
+		b := a.Clone().Bytes()
+		b[0] ^= 0x80 >> bit
+		return swarm.NewAddress(b)
+	}
+	forwarder := flipBit(chunk.Address(), radius-1)
+	origin := flipBit(chunk.Address(), 0)
+
+	psStorer, storerStore := createPushSyncNodeWithRadius(t, storer, defaultPrices, nil, nil, signer, radius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	// the forwarder's only closer peer is the storer, which is not healthy
+	forwarderRecorder := streamtest.New(streamtest.WithProtocols(psStorer.Protocol()), streamtest.WithBaseAddr(forwarder))
+	psForwarder, _ := createPushSyncNodeWithRadius(t, forwarder, defaultPrices, forwarderRecorder, nil, nil, radius,
+		mock.WithClosestPeerFunc(func(_ swarm.Address, _ bool, filter topology.Select, skipPeers ...swarm.Address) (swarm.Address, error) {
+			if filter.Healthy || swarm.ContainsAddress(skipPeers, storer) {
+				return swarm.ZeroAddress, topology.ErrWantSelf
+			}
+			return storer, nil
+		}),
+	)
+
+	originRecorder := streamtest.New(streamtest.WithProtocols(psForwarder.Protocol()), streamtest.WithBaseAddr(origin))
+	psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, originRecorder, nil, nil, radius, mock.WithPeers(forwarder))
+
+	receipt, err := psOrigin.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	storerStore.chunksMu.Lock()
+	_, has := storerStore.chunksPut[chunk.Address().ByteString()]
+	storerStore.chunksMu.Unlock()
+	if !has {
+		t.Fatal("chunk not stored by the node within AOR")
+	}
+}
+
 // TestOriginSelfStore verifies that an origin without peers falls back to
 // storing the chunk itself only when the chunk is within its AOR.
 func TestOriginSelfStore(t *testing.T) {

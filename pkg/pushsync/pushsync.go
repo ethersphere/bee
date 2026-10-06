@@ -555,10 +555,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
 	includeSelf := ps.fullNode && !origin
 
+	// With self included, ErrWantSelf only says that no peer passing the
+	// filter is closer than this node. A closer peer that is merely unhealthy
+	// or unreachable is still a better destination than this node, so the
+	// search is widened in that case as well.
+	widen := func(err error) bool {
+		return errors.Is(err, topology.ErrNotFound) || errors.Is(err, topology.ErrWantSelf)
+	}
+
 	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)
-	if errors.Is(err, topology.ErrNotFound) {
+	if widen(err) {
 		peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true}, skipList...)
-		if errors.Is(err, topology.ErrNotFound) {
+		if widen(err) {
 			return ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{}, skipList...)
 		}
 		return peer, err
