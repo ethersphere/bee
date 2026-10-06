@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
@@ -29,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/traversal"
 )
 
 type counter struct {
@@ -91,30 +91,35 @@ func assertSameReplicas(t *testing.T, want, got map[string]struct{}) {
 	}
 }
 
-// recordingStamper wraps a postage.Stamper and records the address and
-// identity address each Stamp call was made for.
+// recordingStamper wraps a postage.Stamper and records, per address, the
+// identity address and the stamp issued for it.
 type recordingStamper struct {
-	postage.Stamper
 	mu      sync.Mutex
 	stamped map[string]int
 	idAddrs map[string]swarm.Address
+	stamps  map[string]*postage.Stamp
 }
 
 func newRecordingStamper() *recordingStamper {
 	return &recordingStamper{
-		Stamper: postagetesting.NewStamper(),
 		stamped: make(map[string]int),
 		idAddrs: make(map[string]swarm.Address),
+		stamps:  make(map[string]*postage.Stamp),
 	}
 }
 
+// Stamp issues a stamp unique to addr, so a pushed chunk can be matched to it.
 func (r *recordingStamper) Stamp(addr, idAddr swarm.Address) (*postage.Stamp, error) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	stamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), addr.Bytes())
 	r.stamped[addr.String()]++
 	r.idAddrs[addr.String()] = idAddr
-	r.mu.Unlock()
-	return r.Stamper.Stamp(addr, idAddr)
+	r.stamps[addr.String()] = stamp
+	return stamp, nil
 }
+
+func (r *recordingStamper) BatchId() []byte { return nil }
 
 func (r *recordingStamper) stampedFor(addr swarm.Address) int {
 	r.mu.Lock()
@@ -122,79 +127,96 @@ func (r *recordingStamper) stampedFor(addr swarm.Address) int {
 	return r.stamped[addr.String()]
 }
 
-func (r *recordingStamper) idAddrFor(addr swarm.Address) swarm.Address {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.idAddrs[addr.String()]
-}
-
 // assertReplicaStamps checks every replica was stamped once, keyed by its
-// identity address, as the upload path does.
-func assertReplicaStamps(t *testing.T, ctx context.Context, cs storage.ChunkStore, stamper *recordingStamper, replicaAddrs map[string]struct{}) {
+// identity address as the upload path does, and pushed with that stamp.
+func assertReplicaStamps(t *testing.T, stamper *recordingStamper, replicas map[string]swarm.Chunk) {
 	t.Helper()
 
-	for addrStr := range replicaAddrs {
-		addr := swarm.MustParseHexAddress(addrStr)
-		ch, err := cs.Get(ctx, addr)
-		if err != nil {
-			t.Fatalf("get replica %s: %v", addr, err)
-		}
-		if got := stamper.stampedFor(addr); got != 1 {
-			t.Fatalf("replica %s: want 1 Stamp call, got %d", addr, got)
+	stamper.mu.Lock()
+	defer stamper.mu.Unlock()
+	for addrStr, ch := range replicas {
+		if got := stamper.stamped[addrStr]; got != 1 {
+			t.Fatalf("replica %s: want 1 Stamp call, got %d", addrStr, got)
 		}
 		want, err := storage.IdentityAddress(ch)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := stamper.idAddrFor(addr); !got.Equal(want) {
-			t.Fatalf("replica %s: stamped with id address %s, want %s", addr, got, want)
+		if got := stamper.idAddrs[addrStr]; !got.Equal(want) {
+			t.Fatalf("replica %s: stamped with id address %s, want %s", addrStr, got, want)
+		}
+		if ch.Stamp() == nil || !bytes.Equal(ch.Stamp().Sig(), stamper.stamps[addrStr].Sig()) {
+			t.Fatalf("replica %s: pushed without the stamp issued for it", addrStr)
 		}
 	}
 }
 
-// pushedReplicas reads the pusher feed until want chunks were pushed, checks
-// each one already exists locally and returns the dispersed replicas among them.
-func pushedReplicas(ctx context.Context, feed <-chan *pusher.Op, cs storage.ChunkStore, want int) (func() (map[string]struct{}, error), <-chan struct{}) {
+// reupload runs Reupload while draining the pusher feed. It fails unless
+// exactly want chunks are pushed, each of them already stored locally, and
+// returns the pushed dispersed replicas.
+func reupload(t *testing.T, s steward.Interface, store pusherFeed, cs storage.ChunkStore, root swarm.Address, stamper postage.Stamper, rLevel redundancy.Level, want int) map[string]swarm.Chunk {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var (
-		mu     sync.Mutex
-		seen   = make(map[string]struct{})
-		feedEr error
-		done   = make(chan struct{})
+		replicas = make(map[string]swarm.Chunk)
+		pushed   int
+		feedErr  error
+		done     = make(chan struct{})
 	)
 	go func() {
 		defer close(done)
-		count := 0
-		for op := range feed {
-			has, err := cs.Has(ctx, op.Chunk.Address())
-			if err == nil && !has {
-				err = fmt.Errorf("pushed chunk %s not found locally", op.Chunk.Address())
-			}
-			if err != nil {
-				mu.Lock()
-				feedEr = err
-				mu.Unlock()
+		for {
+			select {
+			case <-ctx.Done():
 				return
-			}
-			if isDispersedReplica(op.Chunk) {
-				mu.Lock()
-				seen[op.Chunk.Address().String()] = struct{}{}
-				mu.Unlock()
-			}
-			count++
-			if count == want {
-				return
+			case op := <-store.PusherFeed():
+				pushed++
+				if feedErr != nil {
+					continue
+				}
+				has, err := cs.Has(ctx, op.Chunk.Address())
+				if err == nil && !has {
+					err = fmt.Errorf("pushed chunk %s not found locally", op.Chunk.Address())
+				}
+				if err != nil {
+					feedErr = err
+					continue
+				}
+				if isDispersedReplica(op.Chunk) {
+					replicas[op.Chunk.Address().String()] = op.Chunk
+				}
 			}
 		}
 	}()
-	return func() (map[string]struct{}, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		out := make(map[string]struct{}, len(seen))
-		for a := range seen {
-			out[a] = struct{}{}
-		}
-		return out, feedEr
-	}, done
+
+	err := s.Reupload(ctx, root, stamper, rLevel)
+	cancel()
+	<-done
+	if err != nil {
+		t.Fatal(err)
+	}
+	if feedErr != nil {
+		t.Fatal(feedErr)
+	}
+	if pushed != want {
+		t.Fatalf("pushed %d chunks, want %d", pushed, want)
+	}
+	return replicas
+}
+
+type pusherFeed interface {
+	PusherFeed() <-chan *pusher.Op
+}
+
+func replicaAddrs(replicas map[string]swarm.Chunk) map[string]struct{} {
+	out := make(map[string]struct{}, len(replicas))
+	for a := range replicas {
+		out[a] = struct{}{}
+	}
+	return out
 }
 
 func TestSteward(t *testing.T) {
@@ -240,23 +262,7 @@ func TestSteward(t *testing.T) {
 	// Replicas are not part of the trie, so traversal does not walk them:
 	// the re-upload pushes the trie chunks plus a fresh set of replicas.
 	trieChunkCount := int(inmem.count.Load()) - len(uploadReplicas)
-	snapshot, done := pushedReplicas(ctx, store.PusherFeed(), chunkStore, trieChunkCount+replicaCount)
-
-	err = s.Reupload(ctx, addr, stamper, redundancy.PARANOID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("took too long to finish")
-	}
-
-	gotReplicas, err := snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
+	gotReplicas := reupload(t, s, store, chunkStore, addr, stamper, redundancy.PARANOID, trieChunkCount+replicaCount)
 
 	isRetrievable, err := s.IsRetrievable(ctx, addr, redundancy.PARANOID)
 	if err != nil {
@@ -289,8 +295,8 @@ func TestSteward(t *testing.T) {
 	// The re-uploaded replicas must be exactly the ones the regular upload path
 	// produced: same count and same addresses. Asserting only the count would
 	// not catch replicas derived from the wrong root chunk.
-	assertSameReplicas(t, uploadReplicas, gotReplicas)
-	assertReplicaStamps(t, ctx, chunkStore, stamper, gotReplicas)
+	assertSameReplicas(t, uploadReplicas, replicaAddrs(gotReplicas))
+	assertReplicaStamps(t, stamper, gotReplicas)
 }
 
 // strictAddressChunkStore wraps a storage.ChunkStore and requires Get to be
@@ -359,124 +365,97 @@ func TestStewardEncryptedReference(t *testing.T) {
 	// Replicas are not walked by traversal, so the re-upload pushes the trie
 	// chunks plus a fresh set of replicas.
 	wantPushed := int(inmem.count.Load()) - len(uploadReplicas) + replicaCount
-	snapshot, done := pushedReplicas(ctx, store.PusherFeed(), chunkStore, wantPushed)
-
-	err = s.Reupload(ctx, addr, stamper, redundancy.PARANOID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("took too long to finish")
-	}
-
-	gotReplicas, err := snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
+	gotReplicas := reupload(t, s, store, chunkStore, addr, stamper, redundancy.PARANOID, wantPushed)
 
 	// The re-uploaded replicas must be exactly the ones the upload path derived
-	// from the plain content address. If Reupload had derived them from the
-	// 64-byte encrypted reference instead, the addresses would differ and this
-	// would fail even though the count still matched.
-	assertSameReplicas(t, uploadReplicas, gotReplicas)
-	assertReplicaStamps(t, ctx, chunkStore, stamper, gotReplicas)
+	// from the plain content address, not from the 64-byte encrypted reference.
+	assertSameReplicas(t, uploadReplicas, replicaAddrs(gotReplicas))
+	assertReplicaStamps(t, stamper, gotReplicas)
 
-	// Every replica must wrap the plain 32-byte content address's chunk, and
-	// replicas.NewPutter derives replica addresses from that same chunk's
-	// address (ch.Address()) - so this also proves replica addresses were
-	// derived from contentAddr, not the 64-byte encrypted reference. If the
-	// reference had not been trimmed before the fix, this lookup would have
-	// failed (get root chunk for dispersed replicas) or wrapped the wrong chunk.
-	for addrStr := range gotReplicas {
-		replicaAddr := swarm.MustParseHexAddress(addrStr)
-		sch, err := chunkStore.Get(ctx, replicaAddr)
-		if err != nil {
-			t.Fatalf("get replica chunk %s: %v", replicaAddr, err)
-		}
+	// every replica must wrap the chunk at the plain content address
+	for addrStr, sch := range gotReplicas {
 		replicaSOC, err := soc.FromChunk(sch)
 		if err != nil {
-			t.Fatalf("replica %s is not a valid SOC chunk: %v", replicaAddr, err)
+			t.Fatalf("replica %s is not a valid SOC chunk: %v", addrStr, err)
 		}
 		if !replicaSOC.WrappedChunk().Address().Equal(contentAddr) {
-			t.Fatalf("replica %s wraps chunk %s, want %s", replicaAddr, replicaSOC.WrappedChunk().Address(), contentAddr)
+			t.Fatalf("replica %s wraps chunk %s, want %s", addrStr, replicaSOC.WrappedChunk().Address(), contentAddr)
 		}
 	}
-	// The root chunk's own address gets stamped exactly once via the normal
-	// traversal path (fn), because it's re-uploaded as part of the trie like any
-	// other chunk. It must not be stamped a second time by the replica-upload
-	// step: reusing that stamp on a differently-addressed SOC replica chunk
-	// would fail stamp validation on the receiving side, since a stamp is only
-	// valid for the specific address it was computed against.
+	// the root chunk is stamped once, by the traversal, not again for its replicas
 	if got := stamper.stampedFor(contentAddr); got != 1 {
 		t.Fatalf("root chunk address %s: want exactly 1 Stamp call (from trie traversal), got %d", contentAddr, got)
 	}
 }
 
 // TestStewardManifestReplicas verifies that Reupload re-creates the dispersed
-// replicas of every joiner root under a manifest - the manifest nodes and the
-// file it references - not only of the top-level reference.
+// replicas of every content-addressed joiner root under a manifest (the
+// manifest nodes and the files it references), once per root, at the
+// requested redundancy level.
 func TestStewardManifestReplicas(t *testing.T) {
 	t.Parallel()
 
-	const rLevel = redundancy.PARANOID
-	var (
-		ctx        = context.Background()
-		inmem      = &counter{ChunkStore: inmemchunkstore.New()}
-		chunkStore = inmem
-		store      = mockstorer.NewWithChunkStore(chunkStore)
-		s          = steward.New(store, &localRetriever{ChunkStore: chunkStore}, inmem)
-		stamper    = newRecordingStamper()
-		data       = make([]byte, 3*swarm.ChunkSize)
-	)
-	if _, err := rand.Read(data); err != nil {
-		t.Fatal(err)
-	}
+	for _, rLevel := range []redundancy.Level{redundancy.MEDIUM, redundancy.PARANOID} {
+		t.Run(fmt.Sprintf("rLevel-%d", rLevel), func(t *testing.T) {
+			t.Parallel()
 
-	fileRef, err := builder.FeedPipeline(ctx, builder.NewPipelineBuilder(ctx, chunkStore, false, rLevel), bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	factory := func() pipeline.Interface { return builder.NewPipelineBuilder(ctx, chunkStore, false, rLevel) }
-	m, err := manifest.NewDefaultManifest(loadsave.New(chunkStore, chunkStore, factory, rLevel), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Add(ctx, "file.bin", manifest.NewEntry(fileRef, nil)); err != nil {
-		t.Fatal(err)
-	}
-	manifestRef, err := m.Store(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+			var (
+				ctx        = context.Background()
+				inmem      = &counter{ChunkStore: inmemchunkstore.New()}
+				chunkStore = inmem
+				store      = mockstorer.NewWithChunkStore(chunkStore)
+				s          = steward.New(store, &localRetriever{ChunkStore: chunkStore}, inmem)
+				stamper    = newRecordingStamper()
+				data       = make([]byte, 3*swarm.ChunkSize)
+			)
+			if _, err := rand.Read(data); err != nil {
+				t.Fatal(err)
+			}
 
-	// each pipeline (the file and every manifest node) disperses its own root
-	uploadReplicas := inmem.replicaSet()
-	if len(uploadReplicas) <= rLevel.GetReplicaCount() {
-		t.Fatalf("expected replicas for more than one root, got %d", len(uploadReplicas))
-	}
+			fileRef, err := builder.FeedPipeline(ctx, builder.NewPipelineBuilder(ctx, chunkStore, false, rLevel), bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// a SOC entry has no dispersed replicas
+			socRef := testingsoc.GenerateMockSOC(t, []byte("soc data")).Chunk()
+			if err := chunkStore.Put(ctx, socRef); err != nil {
+				t.Fatal(err)
+			}
 
-	wantPushed := int(inmem.count.Load())
-	snapshot, done := pushedReplicas(ctx, store.PusherFeed(), chunkStore, wantPushed)
+			factory := func() pipeline.Interface { return builder.NewPipelineBuilder(ctx, chunkStore, false, rLevel) }
+			m, err := manifest.NewDefaultManifest(loadsave.New(chunkStore, chunkStore, factory, rLevel), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// the same file under two paths must get its replicas only once
+			for path, ref := range map[string]swarm.Address{"a.bin": fileRef, "b.bin": fileRef, "soc": socRef.Address()} {
+				if err := m.Add(ctx, path, manifest.NewEntry(ref, nil)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			manifestRef, err := m.Store(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if err := s.Reupload(ctx, manifestRef, stamper, rLevel); err != nil {
-		t.Fatal(err)
-	}
+			// each pipeline (the file and every manifest node) disperses its own root
+			uploadReplicas := inmem.replicaSet()
+			if len(uploadReplicas) <= rLevel.GetReplicaCount() {
+				t.Fatalf("expected replicas for more than one root, got %d", len(uploadReplicas))
+			}
 
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("took too long to finish")
-	}
+			// traversal yields a repeated entry's chunks each time it is referenced,
+			// but its replicas must be pushed only once
+			trieChunks := 0
+			if err := traversal.New(chunkStore, chunkStore).Traverse(ctx, manifestRef, func(swarm.Address) error { trieChunks++; return nil }, rLevel); err != nil {
+				t.Fatal(err)
+			}
 
-	gotReplicas, err := snapshot()
-	if err != nil {
-		t.Fatal(err)
+			gotReplicas := reupload(t, s, store, chunkStore, manifestRef, stamper, rLevel, trieChunks+len(uploadReplicas))
+			assertSameReplicas(t, uploadReplicas, replicaAddrs(gotReplicas))
+			assertReplicaStamps(t, stamper, gotReplicas)
+		})
 	}
-	assertSameReplicas(t, uploadReplicas, gotReplicas)
-	assertReplicaStamps(t, ctx, chunkStore, stamper, gotReplicas)
 }
 
 // TestStewardSOCReference verifies that re-uploading a single owner chunk
@@ -496,22 +475,7 @@ func TestStewardSOCReference(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snapshot, done := pushedReplicas(ctx, store.PusherFeed(), chunkStore, 1)
-
-	if err := s.Reupload(ctx, sch.Address(), postagetesting.NewStamper(), redundancy.DefaultUploadLevel); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("took too long to finish")
-	}
-
-	gotReplicas, err := snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
+	gotReplicas := reupload(t, s, store, chunkStore, sch.Address(), newRecordingStamper(), redundancy.MEDIUM, 1)
 	if len(gotReplicas) != 0 {
 		t.Fatalf("expected no dispersed replicas for a SOC reference, got %d", len(gotReplicas))
 	}

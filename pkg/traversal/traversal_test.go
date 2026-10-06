@@ -555,8 +555,9 @@ func TestTraversalRootFn(t *testing.T) {
 		if !roots[fileRef.String()] {
 			t.Fatal("file root not reported")
 		}
-		if len(roots) < 3 {
-			t.Fatalf("got %d roots, want the manifest root, its node and the file root", len(roots))
+		// the manifest root, its single fork node and the file root
+		if len(roots) != 3 {
+			t.Fatalf("got %d roots, want 3", len(roots))
 		}
 	})
 }
