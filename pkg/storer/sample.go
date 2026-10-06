@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -120,13 +120,6 @@ func (db *DB) ReserveSample(
 			// exclude chunks whose batches balance are below minimum
 			if isExcludedBatch != nil && isExcludedBatch(ch.BatchID) {
 				stats.BelowBalanceIgnored++
-				return false, nil
-			}
-
-			// Skip chunks if they are not SOC or CAC
-			if ch.ChunkType != swarm.ChunkTypeSingleOwner &&
-				ch.ChunkType != swarm.ChunkTypeContentAddressed {
-				stats.RogueChunk++
 				return false, nil
 			}
 
@@ -397,7 +390,6 @@ type SampleStats struct {
 	TaddrDuration             time.Duration
 	ValidStampDuration        time.Duration
 	BatchesBelowValueDuration time.Duration
-	RogueChunk                int64
 	ChunkLoadDuration         time.Duration
 	ChunkLoadFailed           int64
 	AssemblyChunkLoadFailed   int64
@@ -414,7 +406,6 @@ func (s *SampleStats) add(other SampleStats) {
 	s.TaddrDuration += other.TaddrDuration
 	s.ValidStampDuration += other.ValidStampDuration
 	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
-	s.RogueChunk += other.RogueChunk
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
 	s.AssemblyChunkLoadFailed += other.AssemblyChunkLoadFailed
@@ -447,7 +438,7 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) {
 	items := make([]SampleItem, len(chunks))
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch.Address(), ch.Data(), getChunkType(ch))
+		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch.Address(), ch.Data(), storage.ChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}
@@ -469,15 +460,6 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 
 func newStamp(s swarm.Stamp) *postage.Stamp {
 	return postage.NewStamp(s.BatchID(), s.Index(), s.Timestamp(), s.Sig())
-}
-
-func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
-	if cac.Valid(chunk) {
-		return swarm.ChunkTypeContentAddressed
-	} else if soc.Valid(chunk) {
-		return swarm.ChunkTypeSingleOwner
-	}
-	return swarm.ChunkTypeUnspecified
 }
 
 func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleStats, workers int, err error) {
