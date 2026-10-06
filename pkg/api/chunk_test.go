@@ -154,7 +154,7 @@ func TestChunkHasHandler(t *testing.T) {
 // nolint:paralleltest,tparallel
 func TestChunkGetHandlerNoPeers(t *testing.T) {
 	storerMock := mockstorer.NewWithChunkStore(noPeersChunkStore{inmemchunkstore.New()})
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: storerMock,
 	})
 

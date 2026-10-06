@@ -628,7 +628,7 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 func TestBytesGetHandlerNoPeers(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.NewWithChunkStore(noPeersChunkStore{inmemchunkstore.New()}),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
