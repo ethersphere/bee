@@ -297,9 +297,14 @@ func TestConcurrency(t *testing.T) {
 func TestLocationUnmarshalShortBuffer(t *testing.T) {
 	t.Parallel()
 
-	var l sharky.Location
-	if err := l.UnmarshalBinary(make([]byte, sharky.LocationSize-1)); !errors.Is(err, sharky.ErrInvalidLocation) {
-		t.Fatalf("expected %v, got %v", sharky.ErrInvalidLocation, err)
+	for _, buf := range [][]byte{nil, {}, []byte("0"), make([]byte, sharky.LocationSize-1)} {
+		var l sharky.Location
+		if err := l.UnmarshalBinary(buf); !errors.Is(err, sharky.ErrInvalidLocation) {
+			t.Fatalf("expected %v for buffer of length %d, got %v", sharky.ErrInvalidLocation, len(buf), err)
+		}
+		if _, err := sharky.LocationFromBinary(buf); !errors.Is(err, sharky.ErrInvalidLocation) {
+			t.Fatalf("expected %v for buffer of length %d, got %v", sharky.ErrInvalidLocation, len(buf), err)
+		}
 	}
 }
 

@@ -183,20 +183,12 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin:     s.checkOrigin,
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		logger.Debug("upgrade failed", "error", err)
-		logger.Error(nil, "upgrade failed")
-		jsonhttp.InternalServerError(w, "upgrade failed")
-		return
-	}
-
-	// Subscribe synchronously, before handing the connection off to its own
-	// goroutine: Upgrade already flushed the 101 response, so the client can
-	// start sending GSOC-triggering activity immediately. Subscribing here
-	// instead of inside the spawned goroutine closes the window in which an
-	// update could arrive before the handler is registered and be silently
-	// missed.
+	// Subscribe before upgrading the connection: Upgrade flushes the 101
+	// response, after which the client can immediately start sending
+	// GSOC-triggering activity. Subscribing only after Upgrade leaves a window
+	// in which such an update arrives before the handler is registered and is
+	// silently missed. Updates that arrive before the writer goroutine starts
+	// are buffered in the queue and picked up through wake.
 	//
 	// Caching the wrapped chunks is a subscription of its own, shared by every
 	// subscriber of this address that asked for it. It is registered first, so
@@ -226,6 +218,17 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	})
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		cleanup()
+		releaseCache()
+		queue.release()
+		logger.Debug("upgrade failed", "error", err)
+		logger.Error(nil, "upgrade failed")
+		jsonhttp.InternalServerError(w, "upgrade failed")
+		return
+	}
 
 	s.wsWg.Add(1)
 	go s.gsocListeningWs(conn, func() {

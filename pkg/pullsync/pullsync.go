@@ -46,7 +46,7 @@ var ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
 const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
-	pageTimeout                     = time.Second
+	pageTimeout                     = time.Millisecond * 250
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
@@ -355,14 +355,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
-		} else if chunk, err := soc.FromChunk(chunk); err == nil {
-			addr, err := chunk.Address()
-			if err != nil {
-				chunkErr = errors.Join(chunkErr, err)
-				continue
-			}
-			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
-			s.gsocHandler(chunk)
+		} else if sch, err := soc.FromChunkValidate(chunk); err == nil {
+			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", sch.WrappedChunk().Address())
+			s.gsocHandler(sch)
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
