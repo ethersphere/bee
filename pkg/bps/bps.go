@@ -2,8 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bps exposes a simple hello-world wire protocol
-// used to greet other peers.
+// Package bps implements BPS-lite (SWIP-74): a single-publisher live stream
+// over a feed, through one broker, one hop.
+//
+// A cohort is identified by its spec {topic, FEED_TOPIC, admin}. Every peer
+// joins with the spec and its own address and is answered with a random
+// per-stream challenge. The admin publishes ordinary single-owner chunks that
+// are updates of the session feed on keccak256(topic | challenge); its first
+// valid frame claims the stream. The broker keeps one cursor per cohort and
+// delivers every accepted update to every subscriber stream.
 package bps
 
 import (
@@ -13,13 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bps/pb"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -27,43 +35,105 @@ import (
 const loggerName = "bps"
 
 const (
-	protocolName    = "bps"
+	protocolName    = "pubsub"
 	protocolVersion = "1.0.0"
-	streamName      = "bps"
+	streamName      = "pubsub"
 )
-
-// broadcastBufferSize is the per-member buffer for broadcast messages.
-// Delivery is lossy by design (a slow member must not stall the cohort),
-// so the buffer absorbs short bursts while the member's stream is busy.
-const broadcastBufferSize = 1
 
 var (
-	errNotBroker     = errors.New("not a broker")
-	errJoinRejected  = errors.New("bps: join rejected")
-	errSessionClosed = errors.New("bps: session closed")
+	errNotBroker       = errors.New("bps: not a broker")
+	errJoinRefused     = errors.New("bps: join refused")
+	errInvalidJoin     = errors.New("bps: invalid join")
+	errSessionClosed   = errors.New("bps: session closed")
+	errProtocolError   = errors.New("bps: protocol error")
+	errViolation       = errors.New("bps: protocol violation")
+	errWrongStream     = errors.New("bps: frame from subscriber stream")
+	errCohortReclaimed = errors.New("bps: cohort reclaimed")
 )
 
-// Service is the bps protocol service.
-type Service struct {
-	fullNode    bool
-	mtx         sync.Mutex
-	selfOverlay swarm.Address // this node's overlay. used to verify challenges
-	streamer    p2p.Streamer
-	cohorts     map[string]*cohort
-	// cohort registry - keep track of members, publisher, channels, challenge, streams?
-	// this is only relevant for the actual broker. subscribers don't care of manage this state at all.
-	// registry *CohortRegistry
-
-	logger log.Logger
+// Options are the broker's resource bounds. Zero values take the defaults.
+type Options struct {
+	MaxSubscribers          int           // subscriber streams per cohort
+	MaxCohorts              int           // live cohorts per broker
+	MaxCohortsPerPeer       int           // cohorts per peer connection
+	MaxStreamsPerPeerCohort int           // streams per peer connection per cohort
+	InactivityDeadline      time.Duration // reclaims a cohort with no accepted frame
+	ClaimDeadline           time.Duration // disconnects a pending stream that has not claimed
+	QueueSize               int           // outbound frames per subscriber stream
+	ViolationBlocklist      time.Duration // blocklist duration for a protocol violation
+	ClaimTimeoutBlocklist   time.Duration // blocklist duration for a claim timeout
 }
 
-// New returns a new bps Service.
-func New(streamer p2p.Streamer, overlay swarm.Address, fullNode bool, logger log.Logger) *Service {
+// DefaultOptions are the SWIP-74 recommended bounds.
+var DefaultOptions = Options{
+	MaxSubscribers:          1024,
+	MaxCohorts:              4096,
+	MaxCohortsPerPeer:       16,
+	MaxStreamsPerPeerCohort: 2,
+	InactivityDeadline:      10 * time.Minute,
+	ClaimDeadline:           30 * time.Second,
+	QueueSize:               64,
+	ViolationBlocklist:      10 * time.Minute,
+	ClaimTimeoutBlocklist:   time.Minute,
+}
+
+func (o Options) withDefaults() Options {
+	d := DefaultOptions
+	if o.MaxSubscribers > 0 {
+		d.MaxSubscribers = o.MaxSubscribers
+	}
+	if o.MaxCohorts > 0 {
+		d.MaxCohorts = o.MaxCohorts
+	}
+	if o.MaxCohortsPerPeer > 0 {
+		d.MaxCohortsPerPeer = o.MaxCohortsPerPeer
+	}
+	if o.MaxStreamsPerPeerCohort > 0 {
+		d.MaxStreamsPerPeerCohort = o.MaxStreamsPerPeerCohort
+	}
+	if o.InactivityDeadline > 0 {
+		d.InactivityDeadline = o.InactivityDeadline
+	}
+	if o.ClaimDeadline > 0 {
+		d.ClaimDeadline = o.ClaimDeadline
+	}
+	if o.QueueSize > 0 {
+		d.QueueSize = o.QueueSize
+	}
+	if o.ViolationBlocklist > 0 {
+		d.ViolationBlocklist = o.ViolationBlocklist
+	}
+	if o.ClaimTimeoutBlocklist > 0 {
+		d.ClaimTimeoutBlocklist = o.ClaimTimeoutBlocklist
+	}
+	return d
+}
+
+// Service is the bps protocol service. On a full node it is also the broker.
+type Service struct {
+	fullNode    bool
+	streamer    p2p.Streamer
+	blocklister p2p.Blocklister
+	opts        Options
+	metrics     metrics
+	logger      log.Logger
+
+	mtx     sync.Mutex
+	cohorts map[string]*cohort        // by canonical spec
+	peers   map[string]map[string]int // peer overlay -> cohort key -> streams
+	closed  bool
+}
+
+// New returns a new bps Service. The blocklister may be nil.
+func New(streamer p2p.Streamer, blocklister p2p.Blocklister, fullNode bool, logger log.Logger, o Options) *Service {
 	return &Service{
 		fullNode:    fullNode,
-		selfOverlay: overlay,
 		streamer:    streamer,
+		blocklister: blocklister,
+		opts:        o.withDefaults(),
+		metrics:     newMetrics(),
 		cohorts:     make(map[string]*cohort),
+		peers:       make(map[string]map[string]int),
 		logger:      logger.WithName(loggerName).Register(),
 	}
 }
@@ -82,26 +152,48 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Interface is the bps surface consumed by the API. It is satisfied by
-// *Service and exists so consumers can depend on behaviour, not the concrete
-// implementation.
+// Close reclaims every cohort and resets their streams.
+func (s *Service) Close() error {
+	s.mtx.Lock()
+	s.closed = true
+	cohorts := s.cohorts
+	s.cohorts = make(map[string]*cohort)
+	s.mtx.Unlock()
+	for _, co := range cohorts {
+		for _, m := range co.shutdown() {
+			m.reset()
+		}
+	}
+	return nil
+}
+
+// Interface is the bps surface consumed by the API.
 type Interface interface {
-	// Join joins a topic's cohort at a broker and returns the live session.
+	// Join joins a cohort at a broker and returns the live session.
 	Join(ctx context.Context, req JoinRequest) (Session, error)
+}
+
+// Message is a verified DATA delivery: the chunk and the frame fields its id
+// was derived from.
+type Message struct {
+	SOC       []byte
+	Challenge []byte
+	Index     uint64
 }
 
 // Session is a single joined p2p stream to a broker.
 type Session interface {
-	// Challenge is the nonce the broker issued for this stream.
+	// Challenge is the challenge the broker issued for this stream. Every
+	// chunk published on the session must be signed under it (see ID).
 	Challenge() []byte
-	// Messages yields raw SOC bytes broadcast by the broker. The channel is
-	// closed when the stream ends.
-	Messages() <-chan []byte
-	// Claim writes the publisher claim SOC to the broker. The broker does not
-	// reply.
-	Claim(ctx context.Context, soc []byte) error
-	// Publish writes a broadcast SOC to the broker.
-	Publish(ctx context.Context, soc []byte) error
+	// Messages yields the DATA deliveries that verify against the cohort spec
+	// and the session cursor. The channel is closed when the stream ends.
+	Messages() <-chan Message
+	// Cursor is the lowest DATA index the session will deliver next.
+	Cursor() uint64
+	// Publish writes a chunk of the given kind and index, signed under the
+	// session challenge, to the broker. The broker does not reply.
+	Publish(ctx context.Context, kind Kind, index uint64, soc []byte) error
 	// Done is closed when the p2p stream ends.
 	Done() <-chan struct{}
 	// Err reports why the stream ended. Valid after Done is closed.
@@ -110,128 +202,94 @@ type Session interface {
 	Close() error
 }
 
-// TopicBinding is the topic binding carried by Join, wrapped so consumers do
-// not depend on the generated protobuf package.
-type TopicBinding int
-
-const (
-	BindingUndefined TopicBinding = iota
-	BindingFeed
-)
-
-// proto maps the wrapped binding to its wire value.
-func (b TopicBinding) proto() pb.TopicBinding {
-	switch b {
-	case BindingFeed:
-		return pb.TopicBinding_BINDING_FEED
-	default:
-		return pb.TopicBinding_BINDING_UNDEFINED
-	}
-}
-
-// JoinRequest describes a cohort join. Identity is the joiner's address,
-// injected from the API rather than taken from the peer address, so a node can
-// join on behalf of a client.
+// JoinRequest describes a cohort join.
 type JoinRequest struct {
-	Broker    swarm.Address // where to join the topic
-	Binding   TopicBinding  // which kind of topic binding
-	Topic     []byte        // the topic
-	Principal []byte        // the "owner/admin"
-	Identity  []byte        // the joining node's identity
+	Broker swarm.Address // the broker
+	Topic  []byte        // 32 bytes: the feed topic
+	Admin  []byte        // 20 bytes: the publisher
+	Addr   []byte        // 20 bytes: the joining stream's identity
+	Cursor uint64        // the lowest DATA index to deliver, the subscriber's cursor for (topic, admin)
 }
 
-// Join onto a topic at the broker. This is called on the subscriber.
+func (r JoinRequest) spec() *pb.CohortSpec {
+	return &pb.CohortSpec{Topic: r.Topic, Binding: pb.TopicBinding_FEED_TOPIC, Admin: r.Admin}
+}
+
+// Join joins a cohort at the broker. A peer whose join was refused or whose
+// stream was reset must back off before rejoining.
 func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
+	spec := req.spec()
+	if err := validateJoin(&pb.Join{Cohort: spec, Addr: req.Addr}); err != nil {
+		return nil, err
+	}
 	stream, err := s.streamer.NewStream(ctx, req.Broker, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
 	w, r := protobuf.NewWriterAndReader(stream)
-	joinMsg := pb.Join{
-		Topic:     req.Topic,
-		Binding:   req.Binding.proto(),
-		Principal: req.Principal,
-		Identity:  req.Identity,
+	if err := w.WriteMsgWithContext(ctx, &pb.Join{Cohort: spec, Addr: req.Addr}); err != nil {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("write join: %w", err)
 	}
-	if err := w.WriteMsgWithContext(ctx, &joinMsg); err != nil {
-		cancel()
-		stream.Reset()
-		return nil, fmt.Errorf("write join msg: %w", err)
+	var ack pb.Ack
+	if err := r.ReadMsgWithContext(ctx, &ack); err != nil {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("read ack: %w", err)
 	}
-	joinAck := pb.JoinAck{}
-	if err := r.ReadMsgWithContext(ctx, &joinAck); err != nil {
-		cancel()
-		stream.Reset()
-		return nil, fmt.Errorf("read join ack: %w", err)
+	if ack.Status != pb.Status_OK {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("join %s: %w", ack.Status, errJoinRefused)
 	}
-	if joinAck.Status != pb.Status_STATUS_OK {
-		cancel()
-		stream.Reset()
-		return nil, fmt.Errorf("join %s: %w", joinAck.Status, errJoinRejected)
+	if len(ack.Challenge) != ChallengeSize {
+		_ = stream.Reset()
+		return nil, fmt.Errorf("challenge length %d: %w", len(ack.Challenge), errProtocolError)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	sess := &session{
 		ctx:       ctx,
 		cancel:    cancel,
-		challenge: joinAck.Challenge,
-		rx:        make(chan []byte, broadcastBufferSize),
-		tx:        make(chan []byte),
+		w:         w,
+		challenge: ack.Challenge,
+		rx:        make(chan Message),
 		done:      make(chan struct{}),
 	}
+	sess.cursor.Store(req.Cursor)
 
-	// reading should always yield broadcast msgs
 	go func() {
-		defer stream.FullClose()
-
 		var readErr error
-		defer func() { sess.finish(readErr) }()
+		defer func() {
+			sess.finish(readErr)
+			if readErr != nil && ctx.Err() == nil {
+				_ = stream.Reset()
+			} else {
+				_ = stream.FullClose()
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			_ = stream.Reset()
+		}()
 
 		for {
-			msg := pb.Broadcast{}
-			if err := r.ReadMsgWithContext(ctx, &msg); err != nil {
-				if ctx.Err() == nil {
-					s.logger.Error(err, "read broadcast")
-				}
+			var f pb.Broadcast
+			if err := r.ReadMsgWithContext(ctx, &f); err != nil {
 				readErr = err
 				return
 			}
-
-			// we might want to do some input validation to see that the broker isn't tricking us
-
-			select {
-			case sess.rx <- msg.Soc:
-			default:
+			// re-verify end to end: drop what is below the cursor or does
+			// not validate against the spec; never compare the challenge
+			if f.Kind != pb.Kind_DATA || f.Index < sess.cursor.Load() {
+				continue
 			}
-		}
-	}()
-
-	// the write loop will only be used in the case of a publisher.
-	// for readers this is essentially a noop.
-	go func() {
-		defer stream.FullClose()
-
-		select {
-		case cl := <-sess.tx:
-			claim := pb.Broadcast{Soc: cl}
-			if err := w.WriteMsgWithContext(ctx, &claim); err != nil {
-				s.logger.Error(err, "write claim")
-				return
+			if err := verify(&f, req.Topic, req.Admin); err != nil {
+				s.logger.Debug("dropping delivery", "error", err)
+				continue
 			}
-		case <-ctx.Done():
-			return
-		}
-
-		for {
+			sess.cursor.Store(f.Index + 1)
 			select {
-			case bcast := <-sess.tx:
-				msg := pb.Broadcast{Soc: bcast}
-				if err := w.WriteMsgWithContext(ctx, &msg); err != nil {
-					s.logger.Error(err, "write broadcast")
-					return
-				}
+			case sess.rx <- Message{SOC: f.Soc, Challenge: f.Challenge, Index: f.Index}:
 			case <-ctx.Done():
 				return
 			}
@@ -245,43 +303,39 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 type session struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
+	wmtx      sync.Mutex
+	w         protobuf.Writer
 	challenge []byte
-	rx        chan []byte
-	tx        chan []byte
+	cursor    atomic.Uint64
+	rx        chan Message
 	done      chan struct{}
 	err       error
 	once      sync.Once
 }
 
-func (s *session) Challenge() []byte       { return s.challenge }
-func (s *session) Messages() <-chan []byte { return s.rx }
-func (s *session) Done() <-chan struct{}   { return s.done }
-func (s *session) Err() error              { return s.err }
+func (s *session) Challenge() []byte        { return s.challenge }
+func (s *session) Messages() <-chan Message { return s.rx }
+func (s *session) Cursor() uint64           { return s.cursor.Load() }
+func (s *session) Done() <-chan struct{}    { return s.done }
+func (s *session) Err() error               { return s.err }
 func (s *session) Close() error {
 	s.cancel()
 	return nil
 }
 
-func (s *session) Claim(ctx context.Context, soc []byte) error {
+func (s *session) Publish(ctx context.Context, kind Kind, index uint64, soc []byte) error {
 	select {
-	case s.tx <- soc:
-		return nil
 	case <-s.done:
 		return errSessionClosed
-	case <-ctx.Done():
-		return ctx.Err()
+	default:
 	}
-}
-
-func (s *session) Publish(ctx context.Context, soc []byte) error {
-	select {
-	case s.tx <- soc:
-		return nil
-	case <-s.done:
-		return errSessionClosed
-	case <-ctx.Done():
-		return ctx.Err()
+	s.wmtx.Lock()
+	defer s.wmtx.Unlock()
+	f := pb.Broadcast{Soc: soc, Kind: kind.proto(), Challenge: s.challenge, Index: index}
+	if err := s.w.WriteMsgWithContext(ctx, &f); err != nil {
+		return fmt.Errorf("write broadcast: %w", err)
 	}
+	return nil
 }
 
 // finish records the terminal error and signals stream completion exactly once.
@@ -293,62 +347,71 @@ func (s *session) finish(err error) {
 	})
 }
 
+// validateJoin rejects a Join whose spec has a value outside SWIP-74 or whose
+// addr is not 20 bytes.
+func validateJoin(join *pb.Join) error {
+	c := join.Cohort
+	switch {
+	case c == nil:
+		return fmt.Errorf("no cohort: %w", errInvalidJoin)
+	case len(c.Topic) != swarm.HashSize:
+		return fmt.Errorf("topic length %d: %w", len(c.Topic), errInvalidJoin)
+	case c.Binding != pb.TopicBinding_FEED_TOPIC:
+		return fmt.Errorf("binding %s: %w", c.Binding, errInvalidJoin)
+	case len(c.Admin) != crypto.AddressSize:
+		return fmt.Errorf("admin length %d: %w", len(c.Admin), errInvalidJoin)
+	case len(join.Addr) != crypto.AddressSize:
+		return fmt.Errorf("addr length %d: %w", len(join.Addr), errInvalidJoin)
+	}
+	return nil
+}
+
 // handler is the protocol handler on the broker.
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	if !s.fullNode {
-		stream.Reset()
+		_ = stream.Reset()
 		return errNotBroker
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer stream.FullClose()
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var join pb.Join
 	if err := r.ReadMsgWithContext(ctx, &join); err != nil {
-		return fmt.Errorf("read sys message: %w", err)
+		_ = stream.Reset()
+		return fmt.Errorf("read join: %w", err)
 	}
-
 	if err := validateJoin(&join); err != nil {
-		if werr := w.WriteMsgWithContext(ctx, &pb.JoinAck{Status: pb.Status_STATUS_REJECTED}); werr != nil {
-			return fmt.Errorf("write join ack: %w", werr)
-		}
-		stream.Reset()
-		return err
+		return s.refuse(ctx, w, stream, pb.Status_REJECTED, err)
 	}
+	// re-marshal so that the cohort key ignores fields BPS-lite does not define
+	join.Cohort = &pb.CohortSpec{Topic: join.Cohort.Topic, Binding: join.Cohort.Binding, Admin: join.Cohort.Admin}
 
-	// add to the cohort and get a channel to receive the broadcasts on
-	ch, challenge, err := s.joinCohort(&join)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	co, m, err := s.join(p.Address, &join, func() {
+		cancel()
+		_ = stream.Reset()
+	})
 	if err != nil {
-		if werr := w.WriteMsgWithContext(ctx, &pb.JoinAck{Status: pb.Status_STATUS_REJECTED}); werr != nil {
-			return fmt.Errorf("write join ack: %w", werr)
-		}
-		stream.Reset()
-		return err
+		return s.refuse(ctx, w, stream, pb.Status_FULL, err)
 	}
-	// register in the cohort and return the secret
-	// peer is trying to join the cohort. accept and return the challenge
-	ack := pb.JoinAck{Challenge: challenge, Status: pb.Status_STATUS_OK}
-	if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
-		s.left(join.Identity, join.Topic)
-		return fmt.Errorf("write claim: %w", err)
+	defer s.leave(p.Address, co, m)
+
+	if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: m.challenge}); err != nil {
+		m.reset()
+		return fmt.Errorf("write ack: %w", err)
 	}
 
-	defer s.left(join.Identity, join.Topic)
+	// the writer side: deliveries to a subscriber stream
 	var wg sync.WaitGroup
-	// the writer side - reads messages off the publisher channel
-	// and pushes them to the subscriber stream
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer cancel()
 		for {
-			// await messages, then write to the stream once they come in
 			select {
-			case msg := <-ch:
-				m := pb.Broadcast{Soc: msg}
-				if err := w.WriteMsgWithContext(ctx, &m); err != nil {
-					s.logger.Error(err, "write broadcast")
+			case f := <-m.queue:
+				if err := w.WriteMsgWithContext(ctx, f); err != nil {
+					m.reset()
 					return
 				}
 			case <-ctx.Done():
@@ -356,199 +419,323 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 			}
 		}
 	}()
+	defer wg.Wait()
 
-	// peer is trying to claim the cohort. if the challenge doesn't add up - kick them off
-	// check if claim signature pk matches the feed owner address on the registry
-	// if it does - this is an atomic swap - the current stream becomes the publisher stream
-	// and the next challenge changes randomly, so that if needed, the publisher can reclaim
-	// later and rejoin + reclaim.
-
-	// writer side - we first try to read a claim. we can wait indefinitely here.
-	// once a claim is accepted, we prompte the stream to be a publisher stream
-	// then continuously try to read from it broadcast messages and push them over the
-	// publisher channel
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer cancel()
-		claim := pb.Broadcast{}
-		if err := r.ReadMsgWithContext(ctx, &claim); err != nil {
-			s.logger.Error(err, "read claim")
-			return
+	// the reader side: publications and claims
+	for {
+		var f pb.Broadcast
+		if err := r.ReadMsgWithContext(ctx, &f); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			m.reset()
+			return nil
 		}
-
-		// do the checks on the claim, if it is wrong then we reset the stream
-		ch1, err := s.claim(&join, claim.Soc)
-		if err != nil {
-			stream.Reset()
-			return
+		if err := s.handleFrame(co, m, &f); err != nil {
+			if errors.Is(err, errViolation) && s.blocklister != nil {
+				if berr := s.blocklister.Blocklist(p.Address, s.opts.ViolationBlocklist, err.Error()); berr != nil {
+					s.logger.Debug("blocklist failed", "peer_address", p.Address, "error", berr)
+				}
+			}
+			m.reset()
+			return err
 		}
-		defer close(ch1)
-		for {
-			// await messages, then write to the cohort channel
-			m := pb.Broadcast{}
-			if err := r.ReadMsgWithContext(ctx, &m); err != nil {
-				s.logger.Error(err, "read broadcast")
-				return
+	}
+}
+
+// refuse answers a Join with a non-OK Ack, which ends the stream.
+func (s *Service) refuse(ctx context.Context, w protobuf.Writer, stream p2p.Stream, status pb.Status, cause error) error {
+	if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: status}); err != nil {
+		_ = stream.Reset()
+		return fmt.Errorf("write ack: %w", err)
+	}
+	_ = stream.FullClose()
+	s.logger.Debug("join refused", "status", status, "error", cause)
+	return nil
+}
+
+// handleFrame validates a Broadcast arriving at the broker per SWIP-74 and
+// accepts, drops or punishes it. A returned error resets the stream.
+func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
+	co.mtx.Lock()
+	role, cursor := m.role, co.cursor
+	co.mtx.Unlock()
+
+	// 1. only a publisher or pending stream may send
+	if role == roleSubscriber {
+		s.count(&co.counters.wrongStream, "wrong_stream")
+		return fmt.Errorf("%w: %w", errViolation, errWrongStream)
+	}
+	// 2. a kind BPS-lite does not define is dropped
+	if f.Kind != pb.Kind_DATA && f.Kind != pb.Kind_AUTH {
+		s.count(&co.counters.unknownKind, "unknown_kind")
+		return nil
+	}
+	// 3. the challenge must be the stream's
+	if !bytes.Equal(f.Challenge, m.challenge) {
+		s.count(&co.counters.wrongChallenge, "wrong_challenge")
+		return nil
+	}
+	// 4. on a publisher stream a DATA frame below the cursor is a retransmit;
+	// on a pending stream it is checked after the signature, so that it claims
+	if role == rolePublisher && f.Kind == pb.Kind_DATA && f.Index < cursor {
+		s.count(&co.counters.retransmit, "retransmit")
+		return nil
+	}
+	// 5. the chunk must be the admin's at the id derived from the frame
+	if err := verify(f, co.spec.Topic, co.spec.Admin); err != nil {
+		s.count(&co.counters.invalidSOC, "invalid_soc")
+		return fmt.Errorf("%w: %w", errViolation, err)
+	}
+
+	var overflow []*member
+	co.mtx.Lock()
+	if m.role == rolePending {
+		m.role = rolePublisher
+		m.claimTimer.Stop()
+	}
+	switch {
+	case f.Kind == pb.Kind_AUTH:
+		co.lastActivity = time.Now()
+	case f.Index < co.cursor:
+		s.count(&co.counters.retransmit, "retransmit")
+	default:
+		co.cursor = f.Index + 1
+		co.lastActivity = time.Now()
+		s.metrics.Delivered.Inc()
+		for sub := range co.members {
+			if sub.role != roleSubscriber {
+				continue
 			}
 			select {
-			case ch1 <- m.Soc:
-			case <-ctx.Done():
-				return
+			case sub.queue <- f:
+			default:
+				s.count(&co.counters.queueReset, "queue_reset")
+				overflow = append(overflow, sub)
 			}
 		}
-	}()
-	wg.Wait()
+	}
+	co.mtx.Unlock()
+	for _, sub := range overflow {
+		sub.reset()
+	}
 	return nil
 }
 
-var (
-	errInvalidProof     = errors.New("bps: invalid proof")
-	errInvalidTopic     = errors.New("bps: invalid topic")
-	errInvalidPrincipal = errors.New("bps: invalid principal")
-	errInvalidIdentity  = errors.New("bps: invalid identity")
-	errCohortMismatch   = errors.New("bps: cohort binding mismatch")
+// join attaches a stream to the cohort named by the spec, creating the
+// cohort if no live one has it. An error means a capacity bound was hit.
+func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort, *member, error) {
+	key, err := join.Cohort.Marshal()
+	if err != nil {
+		return nil, nil, err
+	}
+	k := string(key)
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if s.closed {
+		return nil, nil, errSessionClosed
+	}
+
+	pc := s.peers[peer.ByteString()]
+	if pc[k] == 0 && len(pc) >= s.opts.MaxCohortsPerPeer {
+		return nil, nil, errors.New("cohorts per peer")
+	}
+	if pc[k] >= s.opts.MaxStreamsPerPeerCohort {
+		return nil, nil, errors.New("streams per peer per cohort")
+	}
+
+	role := roleSubscriber
+	if bytes.Equal(join.Addr, join.Cohort.Admin) {
+		role = rolePending
+	}
+
+	co, ok := s.cohorts[k]
+	if !ok {
+		if len(s.cohorts) >= s.opts.MaxCohorts {
+			return nil, nil, errors.New("cohorts per broker")
+		}
+		co = &cohort{
+			key:          k,
+			spec:         join.Cohort,
+			members:      make(map[*member]struct{}),
+			lastActivity: time.Now(),
+		}
+		co.inactivity = time.AfterFunc(s.opts.InactivityDeadline, func() { s.reclaim(co) })
+		s.cohorts[k] = co
+		s.metrics.Cohorts.Set(float64(len(s.cohorts)))
+	}
+
+	co.mtx.Lock()
+	defer co.mtx.Unlock()
+	if role == roleSubscriber && co.subscribers >= s.opts.MaxSubscribers {
+		if len(co.members) == 0 {
+			s.removeCohort(co)
+		}
+		return nil, nil, errors.New("subscribers per cohort")
+	}
+
+	challenge := make([]byte, ChallengeSize)
+	if _, err := rand.Read(challenge); err != nil {
+		if len(co.members) == 0 {
+			s.removeCohort(co)
+		}
+		return nil, nil, fmt.Errorf("challenge: %w", err)
+	}
+	m := &member{
+		role:      role,
+		challenge: challenge,
+		queue:     make(chan *pb.Broadcast, s.opts.QueueSize),
+	}
+	var once sync.Once
+	m.reset = func() { once.Do(reset) }
+	if role == rolePending {
+		m.claimTimer = time.AfterFunc(s.opts.ClaimDeadline, func() { s.claimTimeout(peer, co, m) })
+	} else {
+		co.subscribers++
+	}
+	co.members[m] = struct{}{}
+
+	if pc == nil {
+		pc = make(map[string]int)
+		s.peers[peer.ByteString()] = pc
+	}
+	pc[k]++
+	return co, m, nil
+}
+
+// leave detaches a stream. A cohort with no attached streams is reclaimed at once.
+func (s *Service) leave(peer swarm.Address, co *cohort, m *member) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if pc := s.peers[peer.ByteString()]; pc != nil {
+		if pc[co.key]--; pc[co.key] <= 0 {
+			delete(pc, co.key)
+		}
+		if len(pc) == 0 {
+			delete(s.peers, peer.ByteString())
+		}
+	}
+
+	co.mtx.Lock()
+	defer co.mtx.Unlock()
+	if _, ok := co.members[m]; !ok {
+		return
+	}
+	delete(co.members, m)
+	if m.claimTimer != nil {
+		m.claimTimer.Stop()
+	}
+	if m.role == roleSubscriber {
+		co.subscribers--
+	}
+	if len(co.members) == 0 && s.cohorts[co.key] == co {
+		s.removeCohort(co)
+	}
+}
+
+// removeCohort forgets the cohort. Must be called with s.mtx and co.mtx held.
+func (s *Service) removeCohort(co *cohort) {
+	delete(s.cohorts, co.key)
+	co.inactivity.Stop()
+	s.metrics.Cohorts.Set(float64(len(s.cohorts)))
+}
+
+// reclaim forgets a cohort on which no frame was accepted for the inactivity
+// deadline, and resets every stream in it.
+func (s *Service) reclaim(co *cohort) {
+	s.mtx.Lock()
+	if s.cohorts[co.key] != co {
+		s.mtx.Unlock()
+		return
+	}
+	co.mtx.Lock()
+	if idle := time.Since(co.lastActivity); idle < s.opts.InactivityDeadline {
+		co.inactivity.Reset(s.opts.InactivityDeadline - idle)
+		co.mtx.Unlock()
+		s.mtx.Unlock()
+		return
+	}
+	s.removeCohort(co)
+	co.mtx.Unlock()
+	s.mtx.Unlock()
+
+	s.logger.Debug("cohort reclaimed", "error", errCohortReclaimed)
+	for _, m := range co.shutdown() {
+		m.reset()
+	}
+}
+
+// claimTimeout disconnects a pending stream that has not claimed in time.
+func (s *Service) claimTimeout(peer swarm.Address, co *cohort, m *member) {
+	co.mtx.Lock()
+	pending := m.role == rolePending
+	co.mtx.Unlock()
+	if !pending {
+		return
+	}
+	s.count(&co.counters.claimTimeout, "claim_timeout")
+	if s.blocklister != nil {
+		if err := s.blocklister.Blocklist(peer, s.opts.ClaimTimeoutBlocklist, "bps claim timeout"); err != nil {
+			s.logger.Debug("blocklist failed", "peer_address", peer, "error", err)
+		}
+	}
+	m.reset()
+}
+
+// Counters returns the counters of the live cohort {topic, FEED_TOPIC, admin}.
+func (s *Service) Counters(topic, admin []byte) (Counters, bool) {
+	key, err := (&pb.CohortSpec{Topic: topic, Binding: pb.TopicBinding_FEED_TOPIC, Admin: admin}).Marshal()
+	if err != nil {
+		return Counters{}, false
+	}
+	s.mtx.Lock()
+	co, ok := s.cohorts[string(key)]
+	s.mtx.Unlock()
+	if !ok {
+		return Counters{}, false
+	}
+	return co.counters.snapshot(), true
+}
+
+type role int
+
+const (
+	roleSubscriber role = iota + 1 // receives, never publishes
+	rolePending                    // declared the admin's addr, has not claimed yet
+	rolePublisher                  // claimed: may publish, receives nothing
 )
 
-// validateJoin rejects a Join naming malformed or unsupported fields.
-func validateJoin(join *pb.Join) error {
-	if len(join.Topic) != swarm.HashSize {
-		return errInvalidTopic
-	}
-	if len(join.Principal) != crypto.AddressSize {
-		return errInvalidPrincipal
-	}
-	if len(join.Identity) != crypto.AddressSize {
-		return errInvalidIdentity
-	}
-	if _, err := bindingFor(join.Binding); err != nil {
-		return err
-	}
-	return nil
-}
-
-// join/open operation in one - the peer either joins an existing
-// cohort or creates one by joining a previously unregistered topic.
-// returns the cohort challenge and the channel that data will be sent over
-func (s *Service) joinCohort(join *pb.Join) (chan []byte, []byte, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	t := string(join.Topic)
-	co, ok := s.cohorts[t]
-
-	m := newMember(join.Identity)
-	if ok {
-		if co.binding != join.Binding || !bytes.Equal(co.principal, join.Principal) {
-			return nil, nil, errCohortMismatch
-		}
-		co.members[string(join.Identity)] = m
-		return m.ch, m.challenge, nil
-	}
-	members := make(map[string]*member)
-	members[string(join.Identity)] = m
-	s.cohorts[t] = &cohort{
-		topic:     join.Topic,
-		binding:   join.Binding,
-		principal: join.Principal,
-		members:   members,
-	}
-
-	return m.ch, m.challenge, nil
-}
-
-func (s *Service) left(identity, topic []byte) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	t := string(topic)
-	co, ok := s.cohorts[t]
-	if ok {
-		delete(co.members, string(identity))
-		if len(co.members) == 0 {
-			delete(s.cohorts, t)
-		}
-	}
-}
-
-func (s *Service) claim(join *pb.Join, socBlob []byte) (chan []byte, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	t := string(join.Topic)
-	co, ok := s.cohorts[t]
-	if !ok {
-		return nil, errors.New("tried to claim non-existent topic")
-	}
-	member, ok := co.members[string(join.Identity)]
-	if !ok {
-		return nil, errors.New("no such member")
-	}
-	b, err := bindingFor(co.binding)
-	if err != nil {
-		return nil, err
-	}
-	addr, err := b.claimAddress(co.topic, co.principal)
-	if err != nil {
-		return nil, fmt.Errorf("claim address: %w", err)
-	}
-	chunk := swarm.NewChunk(addr, socBlob)
-	if !soc.Valid(chunk) {
-		return nil, errInvalidProof
-	}
-	proofSoc, err := soc.FromChunk(chunk)
-	if err != nil {
-		return nil, fmt.Errorf("claim soc: %w", err)
-	}
-	if err := b.verifyClaim(proofSoc, co.principal, member.challenge, s.selfOverlay.Bytes(), co.topic); err != nil {
-		return nil, err
-	}
-
-	publisher := member
-	txCh := make(chan []byte)
-	go func() {
-		for v := range txCh {
-			s.mtx.Lock()
-			co, ok := s.cohorts[t]
-			if !ok {
-				s.mtx.Unlock()
-				return
-			}
-			for _, m := range co.members {
-				if m == publisher {
-					continue
-				}
-				select {
-				case m.ch <- v:
-				default:
-				}
-			}
-			s.mtx.Unlock()
-		}
-	}()
-	return txCh, nil
-}
-
 type cohort struct {
-	topic     []byte // topic is the feed topic
-	binding   pb.TopicBinding
-	principal []byte // governing identity allowed to publish
-	// lastSeen uint64 // last feed update index, used to prevent replay and circumvent dedup logic (for now)
-	members map[string]*member
+	key        string
+	spec       *pb.CohortSpec
+	inactivity *time.Timer
+	counters   counters
+
+	mtx          sync.Mutex
+	cursor       uint64 // the lowest DATA index accepted next
+	lastActivity time.Time
+	members      map[*member]struct{}
+	subscribers  int
 }
 
-func newMember(identity []byte) *member {
-	challenge := make([]byte, 32)
-	if _, err := rand.Read(challenge); err != nil {
-		panic(err)
+// shutdown returns the cohort's streams, for the caller to reset.
+func (co *cohort) shutdown() []*member {
+	co.mtx.Lock()
+	defer co.mtx.Unlock()
+	ms := make([]*member, 0, len(co.members))
+	for m := range co.members {
+		ms = append(ms, m)
 	}
-
-	return &member{
-		identity:  identity,
-		ch:        make(chan []byte, broadcastBufferSize),
-		challenge: challenge,
-	}
+	return ms
 }
 
+// member is one stream attached to a cohort. role is guarded by cohort.mtx.
 type member struct {
-	identity  []byte
-	ch        chan []byte
-	challenge []byte
+	role       role
+	challenge  []byte
+	queue      chan *pb.Broadcast
+	reset      func()
+	claimTimer *time.Timer
 }

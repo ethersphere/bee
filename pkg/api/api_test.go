@@ -26,6 +26,7 @@ import (
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -95,7 +96,7 @@ type testServerOptions struct {
 	Resolver           resolver.Interface
 	Pss                pss.Interface
 	Gsoc               gsoc.Listener
-	Bps                api.BPSService
+	Bps                bps.Interface
 	WsPath             string
 	WsPingPeriod       time.Duration
 	Logger             log.Logger

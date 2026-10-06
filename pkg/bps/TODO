@@ -1,52 +1,10 @@
-● Here's what's still open, from the earlier reviews plus a few smaller things I noticed while working in the code.
+Aligned with SWIP-74 rev 8 (ethersphere/SWIPs#111, SWIPs/swip-74.md). Still open:
 
-  Protocol and security
-
-  1. Publisher tracking (#7): add cohort.publisher and allow only one publisher per cohort. On takeover, close the old publisher's stream. Doing
-     the check, the swap and the eviction under one lock also stops two claims from racing each other.
-  2. Owner checks (#8):
-     - Store the owner recovered from the claim in the cohort.
-     - The broker should check that each broadcast is a valid SOC signed by that owner.
-     - Subscribers should check too, which means deciding how they learn the owner.
-  3. Members keyed by stream, not overlay (#9): a second join from the same peer currently overwrites the first, and either stream's left then
-     removes the other. Fixing this also closes the case where the publisher stalls sending on ch1 after the fan-out goroutine has exited.
-  4. Domain-separated topic ID: use id = keccak("bps-claim" | t) so the claim chunk can't overwrite the owner's own SOC or GSOC in Swarm. This is a
-     client-side convention; a helper function would enforce it.
-  5. Limits on cohort creation: reject Join.Topic values that aren't 32 bytes, and cap cohorts per peer and in total.
-  6. Replay and ordering of broadcasts: lastSeen is commented out, so nothing stops a broker from re-sending old messages.
-
-  Client (Join)
-
-  7. The first message on tx is always sent as the claim. Give the claim its own path or a state flag.
-  8. Wrong log messages: several write errors are logged as "read join ack".
-
-  Code quality
-
-  9. newMember panics if rand.Read fails; it should return an error.
-  10. The ad-hoc errors.New messages should be bps:-prefixed sentinel errors.
-  11. soc.FromChunk's error is ignored. It can't fail once Valid passes, but it deserves a comment.
-  12. The fan-out goroutine takes the service-wide s.mtx for every message. A lock per cohort will be needed once there are many cohorts.
-  13. Stale comments:
-      - The package doc still describes a "hello-world wire protocol used to greet other peers".
-      - The handler comment still says the "next challenge changes randomly", but nonces are now per member.
-
-  Integration
-
-  14. Wiring: nothing in pkg/node/node.go calls bps.New yet. It needs swarmAddress and o.FullNodeMode, and the protocol has to be registered with
-      p2p.
-
-  Tests
-
-  15. Claim cases not covered yet:
-      - a claim signed for a different broker
-      - a stale nonce, e.g. from an earlier stream
-      - a bad signature, or a signer other than the owner
-      - publisher takeover, once #1 is done
-      - a subscriber leaving and being removed
-      - an unverified broadcast being rejected, once #2 is done
-
-  Housekeeping
-
-  16. Unrelated diff: regenerated .pb.go files in 12 unrelated packages are still modified in the working tree. They're safe to revert.
-
-  I'd do 3, then 1 and 2 together (tracking the publisher and storing the owner are really one change), then 7, then 14.
+1. Client backoff: a peer whose join was refused or whose stream was reset MUST back off
+   (randomised exponential, 1s-30s, full jitter) before rejoining. Join is one-shot; the
+   API websocket closes instead of retrying, so a reconnecting client owns the backoff.
+2. Spec open points (?) follow the draft as written: the kind byte in the service prefix,
+   streams per peer per cohort = 2, claim deadline = 30s.
+3. Per-cohort counters are exposed via Service.Counters; there is no API endpoint for them
+   yet (prometheus carries the aggregate per outcome).
+4. Conformance 12 (interop with a full SWIP-60 broker) is untestable until SWIP-60 exists.

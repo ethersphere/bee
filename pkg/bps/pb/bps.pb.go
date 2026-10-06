@@ -22,21 +22,22 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
+// What the topic binds to. One binding.
 type TopicBinding int32
 
 const (
-	TopicBinding_BINDING_UNDEFINED TopicBinding = 0
-	TopicBinding_BINDING_FEED      TopicBinding = 1
+	TopicBinding_TOPIC_BINDING_UNSPECIFIED TopicBinding = 0
+	TopicBinding_FEED_TOPIC                TopicBinding = 4
 )
 
 var TopicBinding_name = map[int32]string{
-	0: "BINDING_UNDEFINED",
-	1: "BINDING_FEED",
+	0: "TOPIC_BINDING_UNSPECIFIED",
+	4: "FEED_TOPIC",
 }
 
 var TopicBinding_value = map[string]int32{
-	"BINDING_UNDEFINED": 0,
-	"BINDING_FEED":      1,
+	"TOPIC_BINDING_UNSPECIFIED": 0,
+	"FEED_TOPIC":                4,
 }
 
 func (x TopicBinding) String() string {
@@ -50,24 +51,24 @@ func (TopicBinding) EnumDescriptor() ([]byte, []int) {
 type Status int32
 
 const (
-	Status_STATUS_UNDEFINED Status = 0
-	Status_STATUS_OK        Status = 1
-	Status_STATUS_FULL      Status = 2
-	Status_STATUS_REJECTED  Status = 3
+	Status_STATUS_UNSPECIFIED Status = 0
+	Status_OK                 Status = 1
+	Status_FULL               Status = 2
+	Status_REJECTED           Status = 3
 )
 
 var Status_name = map[int32]string{
-	0: "STATUS_UNDEFINED",
-	1: "STATUS_OK",
-	2: "STATUS_FULL",
-	3: "STATUS_REJECTED",
+	0: "STATUS_UNSPECIFIED",
+	1: "OK",
+	2: "FULL",
+	3: "REJECTED",
 }
 
 var Status_value = map[string]int32{
-	"STATUS_UNDEFINED": 0,
-	"STATUS_OK":        1,
-	"STATUS_FULL":      2,
-	"STATUS_REJECTED":  3,
+	"STATUS_UNSPECIFIED": 0,
+	"OK":                 1,
+	"FULL":               2,
+	"REJECTED":           3,
 }
 
 func (x Status) String() string {
@@ -78,23 +79,54 @@ func (Status) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_786299925f8760d5, []int{1}
 }
 
-type Broadcast struct {
-	// either service or broadcast
-	Soc []byte `protobuf:"bytes,1,opt,name=soc,proto3" json:"soc,omitempty"`
+// What a chunk on this wire is.
+type Kind int32
+
+const (
+	Kind_KIND_UNSPECIFIED Kind = 0
+	Kind_DATA             Kind = 1
+	Kind_AUTH             Kind = 2
+)
+
+var Kind_name = map[int32]string{
+	0: "KIND_UNSPECIFIED",
+	1: "DATA",
+	2: "AUTH",
 }
 
-func (m *Broadcast) Reset()         { *m = Broadcast{} }
-func (m *Broadcast) String() string { return proto.CompactTextString(m) }
-func (*Broadcast) ProtoMessage()    {}
-func (*Broadcast) Descriptor() ([]byte, []int) {
+var Kind_value = map[string]int32{
+	"KIND_UNSPECIFIED": 0,
+	"DATA":             1,
+	"AUTH":             2,
+}
+
+func (x Kind) String() string {
+	return proto.EnumName(Kind_name, int32(x))
+}
+
+func (Kind) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_786299925f8760d5, []int{2}
+}
+
+// The cohort's identity, keyed by its canonical serialisation.
+type CohortSpec struct {
+	Topic   []byte       `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Binding TopicBinding `protobuf:"varint,2,opt,name=binding,proto3,enum=bps.TopicBinding" json:"binding,omitempty"`
+	Admin   []byte       `protobuf:"bytes,3,opt,name=admin,proto3" json:"admin,omitempty"`
+}
+
+func (m *CohortSpec) Reset()         { *m = CohortSpec{} }
+func (m *CohortSpec) String() string { return proto.CompactTextString(m) }
+func (*CohortSpec) ProtoMessage()    {}
+func (*CohortSpec) Descriptor() ([]byte, []int) {
 	return fileDescriptor_786299925f8760d5, []int{0}
 }
-func (m *Broadcast) XXX_Unmarshal(b []byte) error {
+func (m *CohortSpec) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Broadcast) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CohortSpec) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Broadcast.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CohortSpec.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -104,31 +136,43 @@ func (m *Broadcast) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Broadcast) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Broadcast.Merge(m, src)
+func (m *CohortSpec) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CohortSpec.Merge(m, src)
 }
-func (m *Broadcast) XXX_Size() int {
+func (m *CohortSpec) XXX_Size() int {
 	return m.Size()
 }
-func (m *Broadcast) XXX_DiscardUnknown() {
-	xxx_messageInfo_Broadcast.DiscardUnknown(m)
+func (m *CohortSpec) XXX_DiscardUnknown() {
+	xxx_messageInfo_CohortSpec.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Broadcast proto.InternalMessageInfo
+var xxx_messageInfo_CohortSpec proto.InternalMessageInfo
 
-func (m *Broadcast) GetSoc() []byte {
+func (m *CohortSpec) GetTopic() []byte {
 	if m != nil {
-		return m.Soc
+		return m.Topic
 	}
 	return nil
 }
 
+func (m *CohortSpec) GetBinding() TopicBinding {
+	if m != nil {
+		return m.Binding
+	}
+	return TopicBinding_TOPIC_BINDING_UNSPECIFIED
+}
+
+func (m *CohortSpec) GetAdmin() []byte {
+	if m != nil {
+		return m.Admin
+	}
+	return nil
+}
+
+// Peer -> broker: the first frame on a fresh stream.
 type Join struct {
-	Topic     []byte       `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Binding   TopicBinding `protobuf:"varint,2,opt,name=binding,proto3,enum=bps.TopicBinding" json:"binding,omitempty"`
-	Principal []byte       `protobuf:"bytes,3,opt,name=principal,proto3" json:"principal,omitempty"`
-	// ============================
-	Identity []byte `protobuf:"bytes,4,opt,name=identity,proto3" json:"identity,omitempty"`
+	Cohort *CohortSpec `protobuf:"bytes,1,opt,name=cohort,proto3" json:"cohort,omitempty"`
+	Addr   []byte      `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
 }
 
 func (m *Join) Reset()         { *m = Join{} }
@@ -164,51 +208,38 @@ func (m *Join) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Join proto.InternalMessageInfo
 
-func (m *Join) GetTopic() []byte {
+func (m *Join) GetCohort() *CohortSpec {
 	if m != nil {
-		return m.Topic
+		return m.Cohort
 	}
 	return nil
 }
 
-func (m *Join) GetBinding() TopicBinding {
+func (m *Join) GetAddr() []byte {
 	if m != nil {
-		return m.Binding
-	}
-	return TopicBinding_BINDING_UNDEFINED
-}
-
-func (m *Join) GetPrincipal() []byte {
-	if m != nil {
-		return m.Principal
+		return m.Addr
 	}
 	return nil
 }
 
-func (m *Join) GetIdentity() []byte {
-	if m != nil {
-		return m.Identity
-	}
-	return nil
+// Broker -> peer, answering Join. A non-OK Ack ends the stream.
+type Ack struct {
+	Status    Status `protobuf:"varint,1,opt,name=status,proto3,enum=bps.Status" json:"status,omitempty"`
+	Challenge []byte `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"`
 }
 
-type JoinAck struct {
-	Challenge []byte `protobuf:"bytes,1,opt,name=challenge,proto3" json:"challenge,omitempty"`
-	Status    Status `protobuf:"varint,2,opt,name=status,proto3,enum=bps.Status" json:"status,omitempty"`
-}
-
-func (m *JoinAck) Reset()         { *m = JoinAck{} }
-func (m *JoinAck) String() string { return proto.CompactTextString(m) }
-func (*JoinAck) ProtoMessage()    {}
-func (*JoinAck) Descriptor() ([]byte, []int) {
+func (m *Ack) Reset()         { *m = Ack{} }
+func (m *Ack) String() string { return proto.CompactTextString(m) }
+func (*Ack) ProtoMessage()    {}
+func (*Ack) Descriptor() ([]byte, []int) {
 	return fileDescriptor_786299925f8760d5, []int{2}
 }
-func (m *JoinAck) XXX_Unmarshal(b []byte) error {
+func (m *Ack) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *JoinAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Ack) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_JoinAck.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Ack.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -218,68 +249,145 @@ func (m *JoinAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *JoinAck) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_JoinAck.Merge(m, src)
+func (m *Ack) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Ack.Merge(m, src)
 }
-func (m *JoinAck) XXX_Size() int {
+func (m *Ack) XXX_Size() int {
 	return m.Size()
 }
-func (m *JoinAck) XXX_DiscardUnknown() {
-	xxx_messageInfo_JoinAck.DiscardUnknown(m)
+func (m *Ack) XXX_DiscardUnknown() {
+	xxx_messageInfo_Ack.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_JoinAck proto.InternalMessageInfo
+var xxx_messageInfo_Ack proto.InternalMessageInfo
 
-func (m *JoinAck) GetChallenge() []byte {
+func (m *Ack) GetStatus() Status {
+	if m != nil {
+		return m.Status
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (m *Ack) GetChallenge() []byte {
 	if m != nil {
 		return m.Challenge
 	}
 	return nil
 }
 
-func (m *JoinAck) GetStatus() Status {
-	if m != nil {
-		return m.Status
+// Every frame after the handshake. soc is an ordinary single-owner chunk
+// whose id is derived from kind, challenge and index (see bps.ID).
+type Broadcast struct {
+	Soc       []byte `protobuf:"bytes,1,opt,name=soc,proto3" json:"soc,omitempty"`
+	Kind      Kind   `protobuf:"varint,2,opt,name=kind,proto3,enum=bps.Kind" json:"kind,omitempty"`
+	Challenge []byte `protobuf:"bytes,3,opt,name=challenge,proto3" json:"challenge,omitempty"`
+	Index     uint64 `protobuf:"varint,4,opt,name=index,proto3" json:"index,omitempty"`
+}
+
+func (m *Broadcast) Reset()         { *m = Broadcast{} }
+func (m *Broadcast) String() string { return proto.CompactTextString(m) }
+func (*Broadcast) ProtoMessage()    {}
+func (*Broadcast) Descriptor() ([]byte, []int) {
+	return fileDescriptor_786299925f8760d5, []int{3}
+}
+func (m *Broadcast) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Broadcast) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Broadcast.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
 	}
-	return Status_STATUS_UNDEFINED
+}
+func (m *Broadcast) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Broadcast.Merge(m, src)
+}
+func (m *Broadcast) XXX_Size() int {
+	return m.Size()
+}
+func (m *Broadcast) XXX_DiscardUnknown() {
+	xxx_messageInfo_Broadcast.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Broadcast proto.InternalMessageInfo
+
+func (m *Broadcast) GetSoc() []byte {
+	if m != nil {
+		return m.Soc
+	}
+	return nil
+}
+
+func (m *Broadcast) GetKind() Kind {
+	if m != nil {
+		return m.Kind
+	}
+	return Kind_KIND_UNSPECIFIED
+}
+
+func (m *Broadcast) GetChallenge() []byte {
+	if m != nil {
+		return m.Challenge
+	}
+	return nil
+}
+
+func (m *Broadcast) GetIndex() uint64 {
+	if m != nil {
+		return m.Index
+	}
+	return 0
 }
 
 func init() {
 	proto.RegisterEnum("bps.TopicBinding", TopicBinding_name, TopicBinding_value)
 	proto.RegisterEnum("bps.Status", Status_name, Status_value)
-	proto.RegisterType((*Broadcast)(nil), "bps.Broadcast")
+	proto.RegisterEnum("bps.Kind", Kind_name, Kind_value)
+	proto.RegisterType((*CohortSpec)(nil), "bps.CohortSpec")
 	proto.RegisterType((*Join)(nil), "bps.Join")
-	proto.RegisterType((*JoinAck)(nil), "bps.JoinAck")
+	proto.RegisterType((*Ack)(nil), "bps.Ack")
+	proto.RegisterType((*Broadcast)(nil), "bps.Broadcast")
 }
 
 func init() { proto.RegisterFile("bps.proto", fileDescriptor_786299925f8760d5) }
 
 var fileDescriptor_786299925f8760d5 = []byte{
-	// 328 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x91, 0x31, 0x4f, 0xc2, 0x40,
-	0x18, 0x86, 0x7b, 0x14, 0xc1, 0x7e, 0xa0, 0x1c, 0x9f, 0x98, 0x34, 0x06, 0x1b, 0x82, 0x0b, 0xc1,
-	0x84, 0x41, 0x07, 0x67, 0x6a, 0x0f, 0x03, 0x92, 0x9a, 0xb4, 0x65, 0x71, 0x31, 0x6d, 0x21, 0x78,
-	0x91, 0xb4, 0x17, 0x7a, 0x0e, 0xce, 0xfe, 0x01, 0x7f, 0x96, 0x23, 0xa3, 0xa3, 0x81, 0x3f, 0x62,
-	0x5a, 0x8a, 0xe8, 0x76, 0xef, 0xf3, 0xde, 0xbd, 0x79, 0x92, 0x03, 0x2d, 0x10, 0x49, 0x4f, 0x2c,
-	0x63, 0x19, 0xa3, 0x1a, 0x88, 0xa4, 0x7d, 0x0e, 0x9a, 0xb9, 0x8c, 0xfd, 0x69, 0xe8, 0x27, 0x12,
-	0x29, 0xa8, 0x49, 0x1c, 0xea, 0xa4, 0x45, 0x3a, 0x55, 0x27, 0x3d, 0xb6, 0xdf, 0x09, 0x14, 0x47,
-	0x31, 0x8f, 0xb0, 0x01, 0x07, 0x32, 0x16, 0x7c, 0x57, 0x6e, 0x03, 0x5e, 0x42, 0x39, 0xe0, 0xd1,
-	0x94, 0x47, 0x73, 0xbd, 0xd0, 0x22, 0x9d, 0xe3, 0xab, 0x7a, 0x2f, 0xdd, 0xf7, 0xd2, 0xd2, 0xdc,
-	0x16, 0xce, 0xee, 0x06, 0x36, 0x41, 0x13, 0x4b, 0x1e, 0x85, 0x5c, 0xf8, 0x0b, 0x5d, 0xcd, 0x66,
-	0xf6, 0x00, 0xcf, 0xe0, 0x90, 0x4f, 0x67, 0x91, 0xe4, 0xf2, 0x4d, 0x2f, 0x66, 0xe5, 0x6f, 0x6e,
-	0x8f, 0xa1, 0x9c, 0x4a, 0xf4, 0xc3, 0x97, 0x74, 0x24, 0x7c, 0xf6, 0x17, 0x8b, 0x59, 0x34, 0x9f,
-	0xe5, 0x2e, 0x7b, 0x80, 0x17, 0x50, 0x4a, 0xa4, 0x2f, 0x5f, 0x93, 0x5c, 0xa7, 0x92, 0xe9, 0xb8,
-	0x19, 0x72, 0xf2, 0xaa, 0x7b, 0x03, 0xd5, 0xbf, 0x82, 0x78, 0x0a, 0x75, 0x73, 0x68, 0x5b, 0x43,
-	0xfb, 0xee, 0x69, 0x62, 0x5b, 0x6c, 0x30, 0xb4, 0x99, 0x45, 0x15, 0xa4, 0x50, 0xdd, 0xe1, 0x01,
-	0x63, 0x16, 0x25, 0x5d, 0x17, 0x4a, 0xdb, 0x29, 0x6c, 0x00, 0x75, 0xbd, 0xbe, 0x37, 0x71, 0xff,
-	0xbd, 0x38, 0x02, 0x2d, 0xa7, 0x0f, 0xf7, 0x94, 0x60, 0x0d, 0x2a, 0x79, 0x1c, 0x4c, 0xc6, 0x63,
-	0x5a, 0xc0, 0x13, 0xa8, 0xe5, 0xc0, 0x61, 0x23, 0x76, 0xeb, 0x31, 0x8b, 0xaa, 0x66, 0xf3, 0x73,
-	0x6d, 0x90, 0xd5, 0xda, 0x20, 0xdf, 0x6b, 0x83, 0x7c, 0x6c, 0x0c, 0x65, 0xb5, 0x31, 0x94, 0xaf,
-	0x8d, 0xa1, 0x3c, 0x16, 0x44, 0x10, 0x94, 0xb2, 0xaf, 0xba, 0xfe, 0x09, 0x00, 0x00, 0xff, 0xff,
-	0x32, 0x9a, 0x54, 0x7b, 0xb7, 0x01, 0x00, 0x00,
+	// 416 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x92, 0xc1, 0x6a, 0xdb, 0x40,
+	0x10, 0x86, 0x2d, 0x69, 0xab, 0xda, 0x13, 0xe3, 0x6e, 0x87, 0x50, 0x5c, 0x48, 0x84, 0x71, 0x0f,
+	0x35, 0x2e, 0x84, 0xe2, 0x9e, 0x0b, 0x95, 0x25, 0xb9, 0x51, 0x1c, 0x9c, 0xb0, 0x92, 0x2f, 0xbd,
+	0x18, 0x49, 0x2b, 0x92, 0x25, 0xe9, 0xae, 0xb0, 0x54, 0xe8, 0x63, 0xf4, 0xb1, 0x7a, 0xcc, 0xb1,
+	0xc7, 0x62, 0xbf, 0x48, 0xd1, 0x4a, 0x21, 0x8d, 0x6f, 0x33, 0xf3, 0xcf, 0x7c, 0xb3, 0xff, 0xb0,
+	0xd0, 0x4b, 0x8b, 0xf2, 0xac, 0xd8, 0xaa, 0x4a, 0xa1, 0x95, 0x16, 0xe5, 0x38, 0x07, 0xf0, 0xd4,
+	0xad, 0xda, 0x56, 0x51, 0x91, 0x67, 0x78, 0x0c, 0x2f, 0x2a, 0x55, 0x88, 0x6c, 0x68, 0x8c, 0x8c,
+	0x49, 0x9f, 0x35, 0x09, 0x7e, 0x80, 0x97, 0xa9, 0x90, 0x5c, 0xc8, 0x9b, 0xa1, 0x39, 0x32, 0x26,
+	0x83, 0xd9, 0xeb, 0xb3, 0x9a, 0x12, 0xd7, 0xe2, 0xbc, 0x11, 0xd8, 0x63, 0x47, 0x8d, 0x48, 0xf8,
+	0x77, 0x21, 0x87, 0x56, 0x83, 0xd0, 0xc9, 0xd8, 0x03, 0x72, 0xa1, 0x84, 0xc4, 0xf7, 0x60, 0x67,
+	0x7a, 0x9d, 0xde, 0x70, 0x34, 0x7b, 0xa5, 0x49, 0x4f, 0x2f, 0x60, 0xad, 0x8c, 0x08, 0x24, 0xe1,
+	0x7c, 0xab, 0x17, 0xf6, 0x99, 0x8e, 0xc7, 0xe7, 0x60, 0xb9, 0xd9, 0x1d, 0xbe, 0x03, 0xbb, 0xac,
+	0x92, 0xea, 0x47, 0xa9, 0x19, 0x83, 0xd9, 0x91, 0x66, 0x44, 0xba, 0xc4, 0x5a, 0x09, 0x4f, 0xa0,
+	0x97, 0xdd, 0x26, 0xf7, 0xf7, 0xb9, 0xbc, 0xc9, 0x5b, 0xc8, 0x53, 0x61, 0x5c, 0x40, 0x6f, 0xbe,
+	0x55, 0x09, 0xcf, 0x92, 0xb2, 0x42, 0x0a, 0x56, 0xa9, 0x1e, 0x2d, 0xd7, 0x21, 0x9e, 0x02, 0xb9,
+	0x13, 0x92, 0xb7, 0x6e, 0x7b, 0x9a, 0xbf, 0x14, 0x92, 0x33, 0x5d, 0x7e, 0xce, 0xb6, 0x0e, 0xd8,
+	0xf5, 0x01, 0x84, 0xe4, 0xf9, 0xcf, 0x21, 0x19, 0x19, 0x13, 0xc2, 0x9a, 0x64, 0xfa, 0x19, 0xfa,
+	0xff, 0xdf, 0x0b, 0x4f, 0xe1, 0x6d, 0x7c, 0x75, 0x1d, 0x7a, 0x9b, 0x79, 0xb8, 0xf2, 0xc3, 0xd5,
+	0xd7, 0xcd, 0x7a, 0x15, 0x5d, 0x07, 0x5e, 0xb8, 0x08, 0x03, 0x9f, 0x76, 0x70, 0x00, 0xb0, 0x08,
+	0x02, 0x7f, 0xa3, 0x7b, 0x28, 0x99, 0x7e, 0x01, 0xbb, 0x31, 0x88, 0x6f, 0x00, 0xa3, 0xd8, 0x8d,
+	0xd7, 0xd1, 0xc1, 0x84, 0x0d, 0xe6, 0xd5, 0x92, 0x1a, 0xd8, 0x05, 0xb2, 0x58, 0x5f, 0x5e, 0x52,
+	0x13, 0xfb, 0xd0, 0x65, 0xc1, 0x45, 0xe0, 0xc5, 0x81, 0x4f, 0xad, 0xe9, 0x47, 0x20, 0xb5, 0x05,
+	0x3c, 0x06, 0xba, 0x0c, 0x57, 0xfe, 0xc1, 0x74, 0x17, 0x88, 0xef, 0xc6, 0x6e, 0x33, 0xef, 0xae,
+	0xe3, 0x73, 0x6a, 0xce, 0x4f, 0x7e, 0xef, 0x1c, 0xe3, 0x61, 0xe7, 0x18, 0x7f, 0x77, 0x8e, 0xf1,
+	0x6b, 0xef, 0x74, 0x1e, 0xf6, 0x4e, 0xe7, 0xcf, 0xde, 0xe9, 0x7c, 0x33, 0x8b, 0x34, 0xb5, 0xf5,
+	0x27, 0xfa, 0xf4, 0x2f, 0x00, 0x00, 0xff, 0xff, 0xc2, 0xe3, 0x2e, 0x00, 0x51, 0x02, 0x00, 0x00,
 }
 
-func (m *Broadcast) Marshal() (dAtA []byte, err error) {
+func (m *CohortSpec) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -289,20 +397,32 @@ func (m *Broadcast) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Broadcast) MarshalTo(dAtA []byte) (int, error) {
+func (m *CohortSpec) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Broadcast) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CohortSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Soc) > 0 {
-		i -= len(m.Soc)
-		copy(dAtA[i:], m.Soc)
-		i = encodeVarintBps(dAtA, i, uint64(len(m.Soc)))
+	if len(m.Admin) > 0 {
+		i -= len(m.Admin)
+		copy(dAtA[i:], m.Admin)
+		i = encodeVarintBps(dAtA, i, uint64(len(m.Admin)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Binding != 0 {
+		i = encodeVarintBps(dAtA, i, uint64(m.Binding))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Topic) > 0 {
+		i -= len(m.Topic)
+		copy(dAtA[i:], m.Topic)
+		i = encodeVarintBps(dAtA, i, uint64(len(m.Topic)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -329,36 +449,29 @@ func (m *Join) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Identity) > 0 {
-		i -= len(m.Identity)
-		copy(dAtA[i:], m.Identity)
-		i = encodeVarintBps(dAtA, i, uint64(len(m.Identity)))
+	if len(m.Addr) > 0 {
+		i -= len(m.Addr)
+		copy(dAtA[i:], m.Addr)
+		i = encodeVarintBps(dAtA, i, uint64(len(m.Addr)))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x12
 	}
-	if len(m.Principal) > 0 {
-		i -= len(m.Principal)
-		copy(dAtA[i:], m.Principal)
-		i = encodeVarintBps(dAtA, i, uint64(len(m.Principal)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Binding != 0 {
-		i = encodeVarintBps(dAtA, i, uint64(m.Binding))
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.Topic) > 0 {
-		i -= len(m.Topic)
-		copy(dAtA[i:], m.Topic)
-		i = encodeVarintBps(dAtA, i, uint64(len(m.Topic)))
+	if m.Cohort != nil {
+		{
+			size, err := m.Cohort.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintBps(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *JoinAck) Marshal() (dAtA []byte, err error) {
+func (m *Ack) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -368,25 +481,72 @@ func (m *JoinAck) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *JoinAck) MarshalTo(dAtA []byte) (int, error) {
+func (m *Ack) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *JoinAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Ack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
+	if len(m.Challenge) > 0 {
+		i -= len(m.Challenge)
+		copy(dAtA[i:], m.Challenge)
+		i = encodeVarintBps(dAtA, i, uint64(len(m.Challenge)))
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.Status != 0 {
 		i = encodeVarintBps(dAtA, i, uint64(m.Status))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Broadcast) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Broadcast) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Broadcast) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Index != 0 {
+		i = encodeVarintBps(dAtA, i, uint64(m.Index))
+		i--
+		dAtA[i] = 0x20
 	}
 	if len(m.Challenge) > 0 {
 		i -= len(m.Challenge)
 		copy(dAtA[i:], m.Challenge)
 		i = encodeVarintBps(dAtA, i, uint64(len(m.Challenge)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Kind != 0 {
+		i = encodeVarintBps(dAtA, i, uint64(m.Kind))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Soc) > 0 {
+		i -= len(m.Soc)
+		copy(dAtA[i:], m.Soc)
+		i = encodeVarintBps(dAtA, i, uint64(len(m.Soc)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -404,20 +564,7 @@ func encodeVarintBps(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *Broadcast) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Soc)
-	if l > 0 {
-		n += 1 + l + sovBps(uint64(l))
-	}
-	return n
-}
-
-func (m *Join) Size() (n int) {
+func (m *CohortSpec) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -430,29 +577,65 @@ func (m *Join) Size() (n int) {
 	if m.Binding != 0 {
 		n += 1 + sovBps(uint64(m.Binding))
 	}
-	l = len(m.Principal)
-	if l > 0 {
-		n += 1 + l + sovBps(uint64(l))
-	}
-	l = len(m.Identity)
+	l = len(m.Admin)
 	if l > 0 {
 		n += 1 + l + sovBps(uint64(l))
 	}
 	return n
 }
 
-func (m *JoinAck) Size() (n int) {
+func (m *Join) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	if m.Cohort != nil {
+		l = m.Cohort.Size()
+		n += 1 + l + sovBps(uint64(l))
+	}
+	l = len(m.Addr)
+	if l > 0 {
+		n += 1 + l + sovBps(uint64(l))
+	}
+	return n
+}
+
+func (m *Ack) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Status != 0 {
+		n += 1 + sovBps(uint64(m.Status))
+	}
 	l = len(m.Challenge)
 	if l > 0 {
 		n += 1 + l + sovBps(uint64(l))
 	}
-	if m.Status != 0 {
-		n += 1 + sovBps(uint64(m.Status))
+	return n
+}
+
+func (m *Broadcast) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Soc)
+	if l > 0 {
+		n += 1 + l + sovBps(uint64(l))
+	}
+	if m.Kind != 0 {
+		n += 1 + sovBps(uint64(m.Kind))
+	}
+	l = len(m.Challenge)
+	if l > 0 {
+		n += 1 + l + sovBps(uint64(l))
+	}
+	if m.Index != 0 {
+		n += 1 + sovBps(uint64(m.Index))
 	}
 	return n
 }
@@ -462,6 +645,375 @@ func sovBps(x uint64) (n int) {
 }
 func sozBps(x uint64) (n int) {
 	return sovBps(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *CohortSpec) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowBps
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CohortSpec: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CohortSpec: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Topic", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthBps
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthBps
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Topic = append(m.Topic[:0], dAtA[iNdEx:postIndex]...)
+			if m.Topic == nil {
+				m.Topic = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Binding", wireType)
+			}
+			m.Binding = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Binding |= TopicBinding(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Admin", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthBps
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthBps
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Admin = append(m.Admin[:0], dAtA[iNdEx:postIndex]...)
+			if m.Admin == nil {
+				m.Admin = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipBps(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Join) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowBps
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Join: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Join: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cohort", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthBps
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthBps
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Cohort == nil {
+				m.Cohort = &CohortSpec{}
+			}
+			if err := m.Cohort.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Addr", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthBps
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthBps
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Addr = append(m.Addr[:0], dAtA[iNdEx:postIndex]...)
+			if m.Addr == nil {
+				m.Addr = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipBps(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Ack) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowBps
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Ack: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Ack: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			m.Status = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Status |= Status(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Challenge", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBps
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthBps
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthBps
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Challenge = append(m.Challenge[:0], dAtA[iNdEx:postIndex]...)
+			if m.Challenge == nil {
+				m.Challenge = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipBps(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthBps
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 func (m *Broadcast) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
@@ -526,98 +1078,11 @@ func (m *Broadcast) Unmarshal(dAtA []byte) error {
 				m.Soc = []byte{}
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipBps(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthBps
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthBps
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *Join) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowBps
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Join: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Join: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Topic", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowBps
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthBps
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return ErrInvalidLengthBps
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Topic = append(m.Topic[:0], dAtA[iNdEx:postIndex]...)
-			if m.Topic == nil {
-				m.Topic = []byte{}
-			}
-			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Binding", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
 			}
-			m.Binding = 0
+			m.Kind = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowBps
@@ -627,133 +1092,12 @@ func (m *Join) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Binding |= TopicBinding(b&0x7F) << shift
+				m.Kind |= Kind(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Principal", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowBps
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthBps
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return ErrInvalidLengthBps
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Principal = append(m.Principal[:0], dAtA[iNdEx:postIndex]...)
-			if m.Principal == nil {
-				m.Principal = []byte{}
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Identity", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowBps
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthBps
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return ErrInvalidLengthBps
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Identity = append(m.Identity[:0], dAtA[iNdEx:postIndex]...)
-			if m.Identity == nil {
-				m.Identity = []byte{}
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipBps(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthBps
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthBps
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *JoinAck) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowBps
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: JoinAck: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: JoinAck: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Challenge", wireType)
 			}
@@ -787,11 +1131,11 @@ func (m *JoinAck) Unmarshal(dAtA []byte) error {
 				m.Challenge = []byte{}
 			}
 			iNdEx = postIndex
-		case 2:
+		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
 			}
-			m.Status = 0
+			m.Index = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowBps
@@ -801,7 +1145,7 @@ func (m *JoinAck) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Status |= Status(b&0x7F) << shift
+				m.Index |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

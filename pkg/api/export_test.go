@@ -144,7 +144,7 @@ func NewParseError(entry, value string, cause error) error {
 }
 
 const (
-	BPSCloseInvalidClaim   = bpsCloseInvalidClaim
+	BPSCloseInvalidSOC     = bpsCloseInvalidSOC
 	BPSCloseInvalidMessage = bpsCloseInvalidMessage
 	BPSCloseBrokerGone     = bpsCloseBrokerGone
 )

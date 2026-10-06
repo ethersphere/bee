@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,75 +16,53 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/bps"
-	"github.com/ethersphere/bee/v2/pkg/cac"
-	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
 const (
-	bpsCloseInvalidClaim   = 4001 // claim failed local verification or was malformed
+	bpsCloseInvalidSOC     = 4001 // a chunk that does not validate under the session challenge
 	bpsCloseInvalidMessage = 4002 // frame violates the endpoint protocol
 	bpsCloseBrokerGone     = 4003 // the p2p stream to the broker ended
 
-	bpsMaxCloseReason = 123 // websocket control frame payload limit minus the code
-	bpsMaxFrameSize   = swarm.HashSize + swarm.SocSignatureSize + swarm.SpanSize + swarm.ChunkSize
+	bpsMaxCloseReason = 123   // websocket control frame payload limit minus the code
+	bpsFrameHeader    = 1 + 8 // publish frame header: kind | index (big-endian)
+	bpsMaxSOCSize     = swarm.HashSize + swarm.SocSignatureSize + swarm.SpanSize + swarm.ChunkSize
+	bpsMaxFrameSize   = bpsFrameHeader + bpsMaxSOCSize
 )
 
-// bpsTopicPrefix domain-separates the cohort SOC id from the owner's other SOCs.
-var bpsTopicPrefix = []byte("bps-claim")
-
-// bpsClaimTimeout bounds how long a publisher may take to send its claim.
+// bpsClaimTimeout bounds how long a publisher may take to send its first frame.
 var bpsClaimTimeout = 30 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
 
 type bpsRequest struct {
 	owner    common.Address
-	id       []byte
 	topic    []byte
-	addr     swarm.Address
 	broker   swarm.Address
 	identity []byte
+	cursor   uint64
 }
 
 type bpsChallengeMessage struct {
 	Type      string `json:"type"`
 	Challenge string `json:"challenge"`
 	Broker    string `json:"broker"`
-	ID        string `json:"id"`
-}
-
-type bpsClaimMessage struct {
-	Type      string `json:"type"`
-	Signature string `json:"signature"`
-}
-
-type bpsClaimSentMessage struct {
-	Type string `json:"type"`
-}
-
-// bpsTopicAddress derives the cohort SOC id and address for owner and topic.
-func bpsTopicAddress(owner common.Address, topic []byte) ([]byte, swarm.Address, error) {
-	id, err := crypto.LegacyKeccak256(append(append([]byte{}, bpsTopicPrefix...), topic...))
-	if err != nil {
-		return nil, swarm.ZeroAddress, err
-	}
-	addr, err := soc.CreateAddress(id, owner.Bytes())
-	if err != nil {
-		return nil, swarm.ZeroAddress, err
-	}
-	return id, addr, nil
+	DataTopic string `json:"dataTopic"`
+	AuthTopic string `json:"authTopic"`
 }
 
 func (s *Service) bpsSubscribeWsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("bps_subscribe").Build()
 	req, ok := s.bpsParseRequest(w, r, logger)
 	if !ok {
+		return
+	}
+	if len(req.identity) == 0 {
+		jsonhttp.BadRequest(w, "missing identity")
 		return
 	}
 	conn, ok := s.bpsUpgrade(w, r, logger)
@@ -127,7 +106,8 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 
 	queries := struct {
 		Broker   swarm.Address `map:"broker"`
-		Identity []byte        `map:"identity" validate:"required,len=20"`
+		Identity []byte        `map:"identity" validate:"omitempty,len=20"`
+		Cursor   uint64        `map:"cursor"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -146,19 +126,12 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 		return bpsRequest{}, false
 	}
 
-	id, addr, err := bpsTopicAddress(paths.Owner, paths.Topic)
-	if err != nil {
-		logger.Debug("derive topic address failed", "error", err)
-		jsonhttp.InternalServerError(w, "derive topic address failed")
-		return bpsRequest{}, false
-	}
 	return bpsRequest{
 		owner:    paths.Owner,
-		id:       id,
 		topic:    paths.Topic,
-		addr:     addr,
 		broker:   queries.Broker,
 		identity: queries.Identity,
+		cursor:   queries.Cursor,
 	}, true
 }
 
@@ -258,11 +231,11 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 	}()
 
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
-		Broker:    req.broker,
-		Binding:   bps.BindingFeed,
-		Topic:     req.topic,
-		Principal: req.owner.Bytes(),
-		Identity:  req.identity,
+		Broker: req.broker,
+		Topic:  req.topic,
+		Admin:  req.owner.Bytes(),
+		Addr:   req.identity,
+		Cursor: req.cursor,
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -275,11 +248,16 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 
 	for {
 		select {
-		case data, ok := <-sess.Messages():
+		case msg, ok := <-sess.Messages():
 			if !ok {
 				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(sess.Err()))
 				return
 			}
+			// challenge | index | soc: what the client needs to re-verify the chunk
+			data := make([]byte, 0, bps.ChallengeSize+8+len(msg.SOC))
+			data = append(data, msg.Challenge...)
+			data = binary.BigEndian.AppendUint64(data, msg.Index)
+			data = append(data, msg.SOC...)
 			if err := s.bpsWrite(conn, websocket.BinaryMessage, data); err != nil {
 				logger.Debug("write broadcast failed", "error", err)
 				return
@@ -303,43 +281,25 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 	}
 }
 
-// bpsVerifyClaim checks a claim frame the same way the broker will and
-// returns the claim SOC bytes, or a close code and reason on failure.
-func bpsVerifyClaim(f bpsFrame, req bpsRequest, challenge []byte) ([]byte, int, string) {
-	if f.typ != websocket.TextMessage {
-		return nil, bpsCloseInvalidMessage, "expected claim"
+// bpsParseFrame checks a publish frame kind | index | soc the same way the
+// broker will, or returns a close code and reason on failure.
+func bpsParseFrame(f bpsFrame, req bpsRequest, challenge []byte) (bps.Kind, uint64, []byte, int, string) {
+	if f.typ != websocket.BinaryMessage {
+		return 0, 0, nil, bpsCloseInvalidMessage, "expected binary frame"
 	}
-	var m bpsClaimMessage
-	if err := json.Unmarshal(f.data, &m); err != nil {
-		return nil, bpsCloseInvalidClaim, "malformed claim"
+	if len(f.data) < bpsFrameHeader {
+		return 0, 0, nil, bpsCloseInvalidMessage, "short frame"
 	}
-	if m.Type != "claim" {
-		return nil, bpsCloseInvalidMessage, "expected claim"
+	kind := bps.Kind(f.data[0])
+	if kind != bps.KindData && kind != bps.KindAuth {
+		return 0, 0, nil, bpsCloseInvalidMessage, "unknown kind"
 	}
-	sig, err := hex.DecodeString(m.Signature)
-	if err != nil || len(sig) != swarm.SocSignatureSize {
-		return nil, bpsCloseInvalidClaim, "invalid signature"
+	index := binary.BigEndian.Uint64(f.data[1:bpsFrameHeader])
+	chunk := f.data[bpsFrameHeader:]
+	if err := bps.Verify(kind, challenge, index, chunk, req.topic, req.owner.Bytes()); err != nil {
+		return 0, 0, nil, bpsCloseInvalidSOC, "invalid soc"
 	}
-	payload := make([]byte, 0, len(challenge)+swarm.HashSize)
-	payload = append(append(payload, challenge...), req.broker.Bytes()...)
-	ch, err := cac.New(payload)
-	if err != nil {
-		return nil, bpsCloseInvalidClaim, "invalid claim payload"
-	}
-	sc, err := soc.NewSigned(req.id, ch, req.owner.Bytes(), sig)
-	if err != nil {
-		return nil, bpsCloseInvalidClaim, "invalid claim"
-	}
-	chunk, err := sc.Chunk()
-	if err != nil {
-		return nil, bpsCloseInvalidClaim, "invalid claim"
-	}
-	// NewSigned does not verify the signature; Valid recovers the signer
-	// and checks that it maps to the cohort address.
-	if !chunk.Address().Equal(req.addr) || !soc.Valid(chunk) {
-		return nil, bpsCloseInvalidClaim, "claim verification failed"
-	}
-	return chunk.Data(), 0, ""
+	return kind, index, chunk, 0, ""
 }
 
 func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.Logger) {
@@ -362,12 +322,12 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		_ = conn.Close()
 	}()
 
+	// the publisher declares the admin's address and claims with its first frame
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
-		Broker:    req.broker,
-		Binding:   bps.BindingFeed,
-		Topic:     req.topic,
-		Principal: req.owner.Bytes(),
-		Identity:  req.identity,
+		Broker: req.broker,
+		Topic:  req.topic,
+		Admin:  req.owner.Bytes(),
+		Addr:   req.owner.Bytes(),
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -377,16 +337,27 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 	defer sess.Close()
 
 	challenge := sess.Challenge()
-	if len(challenge) != swarm.HashSize {
+	if len(challenge) != bps.ChallengeSize {
 		logger.Debug("invalid challenge length", "broker", req.broker, "length", len(challenge))
 		s.bpsClose(conn, bpsCloseBrokerGone, "invalid challenge")
+		return
+	}
+	dataTopic, err := bps.SessionTopic(bps.KindData, req.topic, challenge)
+	if err != nil {
+		s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
+		return
+	}
+	authTopic, err := bps.SessionTopic(bps.KindAuth, req.topic, challenge)
+	if err != nil {
+		s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
 		return
 	}
 	if err := s.bpsWriteJSON(conn, bpsChallengeMessage{
 		Type:      "challenge",
 		Challenge: hex.EncodeToString(challenge),
 		Broker:    req.broker.String(),
-		ID:        hex.EncodeToString(req.id),
+		DataTopic: hex.EncodeToString(dataTopic),
+		AuthTopic: hex.EncodeToString(authTopic),
 	}); err != nil {
 		logger.Debug("write challenge failed", "error", err)
 		return
@@ -401,35 +372,18 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 	for {
 		select {
 		case f := <-frames:
-			if !claimed {
-				claim, code, reason := bpsVerifyClaim(f, req, challenge)
-				if code != 0 {
-					s.bpsClose(conn, code, reason)
-					return
-				}
-				if err := sess.Claim(ctx, claim); err != nil {
-					s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
-					return
-				}
-				claimed = true
-				claimTimer.Stop()
-				if err := s.bpsWriteJSON(conn, bpsClaimSentMessage{Type: "claim_sent"}); err != nil {
-					logger.Debug("write claim_sent failed", "error", err)
-					return
-				}
-				continue
-			}
-			if f.typ != websocket.BinaryMessage {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "expected binary soc")
+			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge)
+			if code != 0 {
+				s.bpsClose(conn, code, reason)
 				return
 			}
-			if !soc.Valid(swarm.NewChunk(req.addr, f.data)) {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "invalid soc")
-				return
-			}
-			if err := sess.Publish(ctx, f.data); err != nil {
+			if err := sess.Publish(ctx, kind, index, chunk); err != nil {
 				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
 				return
+			}
+			if !claimed {
+				claimed = true
+				claimTimer.Stop()
 			}
 		case <-claimTimer.C:
 			if !claimed {
