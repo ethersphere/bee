@@ -157,7 +157,12 @@ func assertReplicaStamps(t *testing.T, stamper *recordingStamper, replicas map[s
 func reupload(t *testing.T, s steward.Interface, store pusherFeed, cs storage.ChunkStore, root swarm.Address, stamper postage.Stamper, rLevel redundancy.Level, want int) map[string]swarm.Chunk {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// fail with a message before the test binary's own timeout would panic
+	deadline, ok := t.Deadline()
+	if !ok {
+		deadline = time.Now().Add(5 * time.Minute)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Until(deadline)*9/10)
 	defer cancel()
 
 	var (
