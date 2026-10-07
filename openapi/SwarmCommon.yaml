@@ -1294,6 +1294,8 @@ components:
       name: swarm-lookahead-buffer-size
       schema:
         type: integer
+        minimum: 0
+        maximum: 4194304
       required: false
       description: >
         Override the lookahead buffer size used during retrieval, in bytes. When unset the node
