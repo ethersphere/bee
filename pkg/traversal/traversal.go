@@ -26,7 +26,20 @@ import (
 // Traverser represents service which traverse through address dependent chunks.
 type Traverser interface {
 	// Traverse iterates through each address related to the supplied one, if possible.
-	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc, redundancy.Level) error
+	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc, redundancy.Level, ...Option) error
+}
+
+// Option configures a single traversal.
+type Option func(*options)
+
+type options struct {
+	rootFn swarm.AddressIterFunc
+}
+
+// WithRootFn sets a function called with every joiner root traversed: the
+// reference itself and, for manifests, every manifest node and entry.
+func WithRootFn(fn swarm.AddressIterFunc) Option {
+	return func(o *options) { o.rootFn = fn }
 }
 
 // New constructs for a new Traverser.
@@ -41,11 +54,21 @@ type service struct {
 }
 
 // Traverse implements Traverser.Traverse method.
-func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc, rLevel redundancy.Level) error {
+func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc, rLevel redundancy.Level, opts ...Option) error {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	processBytes := func(ref swarm.Address) error {
 		j, _, err := joiner.New(ctx, s.getter, s.putter, ref, rLevel)
 		if err != nil {
 			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
+		}
+		if o.rootFn != nil {
+			if err := o.rootFn(ref); err != nil {
+				return fmt.Errorf("traversal: root function error for %q: %w", ref, err)
+			}
 		}
 		err = j.IterateChunkAddresses(iterFn)
 		if err != nil {

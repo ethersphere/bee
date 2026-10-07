@@ -502,6 +502,66 @@ func TestTraversalSOC(t *testing.T) {
 	}
 }
 
+func TestTraversalRootFn(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx   = context.Background()
+		store = inmemchunkstore.New()
+	)
+
+	fileRef, err := builder.FeedPipeline(ctx, builder.NewPipelineBuilder(ctx, store, false, 0), bytes.NewReader(generateSample(3*swarm.ChunkSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := manifest.NewDefaultManifest(loadsave.New(store, store, pipelineFactory(store, false), redundancy.NONE), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Add(ctx, "file.bin", manifest.NewEntry(fileRef, nil)); err != nil {
+		t.Fatal(err)
+	}
+	manifestRef, err := m.Store(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("bytes", func(t *testing.T) {
+		t.Parallel()
+
+		var roots []swarm.Address
+		err := traversal.New(store, store).Traverse(ctx, fileRef, func(swarm.Address) error { return nil }, redundancy.NONE,
+			traversal.WithRootFn(func(a swarm.Address) error { roots = append(roots, a); return nil }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(roots) != 1 || !roots[0].Equal(fileRef) {
+			t.Fatalf("got roots %v, want only %s", roots, fileRef)
+		}
+	})
+
+	t.Run("manifest", func(t *testing.T) {
+		t.Parallel()
+
+		roots := make(map[string]bool)
+		err := traversal.New(store, store).Traverse(ctx, manifestRef, func(swarm.Address) error { return nil }, redundancy.NONE,
+			traversal.WithRootFn(func(a swarm.Address) error { roots[a.String()] = true; return nil }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !roots[manifestRef.String()] {
+			t.Fatal("manifest root not reported")
+		}
+		if !roots[fileRef.String()] {
+			t.Fatal("file root not reported")
+		}
+		// the manifest root, its single fork node and the file root
+		if len(roots) != 3 {
+			t.Fatalf("got %d roots, want 3", len(roots))
+		}
+	})
+}
+
 func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
 		return builder.NewPipelineBuilder(context.Background(), s, encrypt, 0)

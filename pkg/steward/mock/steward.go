@@ -14,13 +14,15 @@ import (
 
 // Steward represents steward.Interface mock.
 type Steward struct {
-	addr swarm.Address
+	addr   swarm.Address
+	rLevel redundancy.Level
 }
 
 // Reupload implements steward.Interface Reupload method.
-// The given address is recorded.
-func (s *Steward) Reupload(_ context.Context, addr swarm.Address, _ postage.Stamper, _ redundancy.Level) error {
+// The given address and redundancy level are recorded.
+func (s *Steward) Reupload(_ context.Context, addr swarm.Address, _ postage.Stamper, rLevel redundancy.Level) error {
 	s.addr = addr
+	s.rLevel = rLevel
 	return nil
 }
 
@@ -33,4 +35,9 @@ func (s *Steward) IsRetrievable(_ context.Context, addr swarm.Address, _ redunda
 // LastAddress returns the last address given to the Reupload method call.
 func (s *Steward) LastAddress() swarm.Address {
 	return s.addr
+}
+
+// LastLevel returns the last redundancy level given to the Reupload method call.
+func (s *Steward) LastLevel() redundancy.Level {
+	return s.rLevel
 }
