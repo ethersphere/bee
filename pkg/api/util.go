@@ -73,13 +73,11 @@ func (e *parseError) Equal(err error) bool {
 // and hex.ErrLength errors are replaced in
 // order to hide unnecessary information.
 func newParseError(entry, value string, cause error) error {
-	var numErr *strconv.NumError
-	if errors.As(cause, &numErr) {
+	if numErr, ok := errors.AsType[*strconv.NumError](cause); ok {
 		cause = numErr.Err
 	}
 
-	var hexErr hex.InvalidByteError
-	if errors.As(cause, &hexErr) {
+	if hexErr, ok := errors.AsType[hex.InvalidByteError](cause); ok {
 		cause = hexInvalidByteError(hexErr)
 	}
 

@@ -372,7 +372,7 @@ func TestPruneKeepsEntriesWithoutLastSeen(t *testing.T) {
 	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
 
 	if err := state.Put("addressbook_entry_"+overlay.String(), &addressbook.VerifiedAddress{
-		Address:  addrPtr(newTestAddr(t, overlay)),
+		Address:  new(newTestAddr(t, overlay)),
 		Verified: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -385,8 +385,6 @@ func TestPruneKeepsEntriesWithoutLastSeen(t *testing.T) {
 		t.Fatalf("entry without a last-seen time must not be pruned: %v", err)
 	}
 }
-
-func addrPtr(a bzz.Address) *bzz.Address { return &a }
 
 type mockCorruptedStore struct{}
 

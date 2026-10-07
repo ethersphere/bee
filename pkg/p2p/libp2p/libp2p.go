@@ -264,7 +264,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				{
 					PrefixLength: 32, // Apply limits per individual IPv4 address (/32)
 					// Allow 10 connection attempts per second per IP, burst up to 40
-					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
+					RPS: 10.0, Burst: 40,
 				},
 			},
 			IPv6SubnetLimits: []libp2prate.SubnetLimit{
@@ -272,7 +272,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 					PrefixLength: 56, // Apply limits per /56 IPv6 subnet
 					// Allow 10 connection attempts per second per IP, burst up to 40
 					// Subnet-level limiting prevents flooding from multiple addresses in the same block.
-					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
+					RPS: 10.0, Burst: 40,
 				},
 			},
 			// Duration to retain state for an IP or subnet after it becomes inactive.
@@ -919,15 +919,13 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 			s.metrics.HandledStreamCount.Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
-				var de *p2p.DisconnectError
-				if errors.As(err, &de) {
+				if de, ok := errors.AsType[*p2p.DisconnectError](err); ok {
 					loggerV1.Debug("libp2p handler: disconnecting due to disconnect error", "protocol", p.Name, "address", overlay)
 					_ = stream.Reset()
 					_ = s.Disconnect(overlay, de.Error())
 				}
 
-				var bpe *p2p.BlockPeerError
-				if errors.As(err, &bpe) {
+				if bpe, ok := errors.AsType[*p2p.BlockPeerError](err); ok {
 					_ = stream.Reset()
 					if err := s.Blocklist(overlay, bpe.Duration(), bpe.Error()); err != nil {
 						logger.Debug("blocklist: could not blocklist peer", "peer_id", peerID, "error", err)
@@ -1372,8 +1370,7 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 			s.logger.Debug("stream experienced unexpected early close")
 			_ = st.Close()
 		}
-		var errNotSupported multistream.ErrNotSupported[protocol.ID]
-		if errors.As(err, &errNotSupported) {
+		if _, ok := errors.AsType[multistream.ErrNotSupported[protocol.ID]](err); ok {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
 		if errors.Is(err, multistream.ErrIncorrectVersion) {

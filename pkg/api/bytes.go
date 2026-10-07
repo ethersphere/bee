@@ -184,7 +184,7 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader: {"application/octet-stream"},
+		ContentTypeHeader: {contentTypeOctetStream},
 	}
 
 	s.downloadHandler(logger, w, r, address, additionalHeaders, true, false, nil)
@@ -207,7 +207,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader: {"application/octet-stream"},
+		ContentTypeHeader: {contentTypeOctetStream},
 	}
 
 	// share the GET path: the joiner strips the redundancy level encoded in the
