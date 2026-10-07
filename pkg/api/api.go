@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -212,6 +213,8 @@ type Service struct {
 	batchStore   postage.Storer
 	stamperStore storage.Store
 	pinIntegrity PinIntegrity
+	// pinIntegrityFullScan is set while a check of all pins is running.
+	pinIntegrityFullScan atomic.Bool
 
 	syncStatus func() (bool, error)
 
