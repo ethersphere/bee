@@ -21,6 +21,7 @@ package encryption
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 )
@@ -29,6 +30,9 @@ const (
 	KeyLength     = 32
 	ReferenceSize = 64
 )
+
+// ErrInvalidKey is returned when encrypting or decrypting with an empty key.
+var ErrInvalidKey = errors.New("encryption: invalid key")
 
 type Key []byte
 
@@ -114,6 +118,12 @@ func (e *Encryption) Reset() {
 
 // split up input into keylength segments and encrypt sequentially
 func (e *Encryption) transform(in, out []byte) error {
+	// The loop below advances by keyLen, so an empty key would never
+	// terminate.
+	if e.keyLen == 0 {
+		return ErrInvalidKey
+	}
+
 	inLength := len(in)
 
 	for i := 0; i < inLength; i += e.keyLen {
