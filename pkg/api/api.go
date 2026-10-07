@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -644,8 +645,17 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.isForbiddenCrossOriginRequest(r) {
+			s.logger.Debug("cross origin request rejected", "method", r.Method, "path", r.URL.Path, "origin", r.Header.Get(OriginHeader), "sec_fetch_site", r.Header.Get(secFetchSiteHeader))
+			jsonhttp.Forbidden(w, "cross origin request not allowed")
+			return
+		}
 		if o := r.Header.Get(OriginHeader); o != "" && s.checkOrigin(r) {
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			// A wildcard lets any page read responses, so it must not also
+			// grant access to credentialed requests.
+			if s.isOriginListed(o) || !slices.Contains(s.CORSAllowedOrigins, "*") {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE")
@@ -653,6 +663,40 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+// secFetchSiteHeader is the Fetch Metadata header browsers set to describe
+// the relation between the requesting page and the target.
+const secFetchSiteHeader = "Sec-Fetch-Site"
+
+// isForbiddenCrossOriginRequest reports whether r is a state-changing request
+// sent by a browser from a page that is not allowed to use the API. Such
+// requests are not always preflighted, for example a form POST, so the CORS
+// headers alone do not stop their side effects.
+func (s *Service) isForbiddenCrossOriginRequest(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+	if !s.checkOrigin(r) {
+		return true
+	}
+	switch r.Header.Get(secFetchSiteHeader) {
+	case "cross-site", "same-site":
+		o := r.Header.Get(OriginHeader)
+		return !s.isOriginListed(o) && !slices.Contains(s.CORSAllowedOrigins, "*")
+	}
+	return false
+}
+
+// isOriginListed reports whether origin is explicitly configured as allowed.
+func (s *Service) isOriginListed(origin string) bool {
+	for _, v := range s.CORSAllowedOrigins {
+		if v != "*" && equalASCIIFold(origin, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
