@@ -589,6 +589,17 @@ func (s *Service) observeUploadSpeed(w http.ResponseWriter, r *http.Request, sta
 	s.metrics.UploadSpeed.WithLabelValues(endpoint, mode).Observe(speed)
 }
 
+// maxGasPriceWei caps the Gas-Price header at 1000 gwei, far above normal
+// prices on the chains bee runs on. Under EIP-1559 everything above the base
+// fee is paid as tip, so the cap keeps a mistyped value from overpaying.
+const maxGasPriceWei = 1_000_000_000_000
+
+// gasPriceOutOfRange reports whether a caller-supplied gas price is negative
+// or above maxGasPriceWei.
+func gasPriceOutOfRange(gasPrice *big.Int) bool {
+	return gasPrice != nil && (gasPrice.Sign() < 0 || gasPrice.Cmp(big.NewInt(maxGasPriceWei)) > 0)
+}
+
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
 // gas price and gas limit through the HTTP API headers.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
@@ -602,6 +613,11 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
+				return
+			}
+			if gasPriceOutOfRange(headers.GasPrice) {
+				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+				jsonhttp.BadRequest(w, "gas price out of range")
 				return
 			}
 			ctx := r.Context()
