@@ -120,9 +120,20 @@ func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 		h.ServeHTTP(wrapper, r)
 		s.metrics.ResponseCodeCounts.WithLabelValues(
 			strconv.Itoa(wrapper.statusCode),
-			r.Method,
+			metricsMethod(r.Method),
 		).Inc()
 	})
+}
+
+// metricsMethod maps a request method to a bounded label value. Any token is a
+// valid HTTP method, so it is not used verbatim as a label.
+func metricsMethod(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodConnect, http.MethodOptions, http.MethodTrace:
+		return method
+	}
+	return "OTHER"
 }
 
 // UpgradedResponseWriter adds more functionality on top of ResponseWriter
