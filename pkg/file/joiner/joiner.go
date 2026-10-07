@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -357,6 +358,12 @@ func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize
 	for {
 		whatsLeft := subtrieSize - (branchSize * (refs - 1))
 		if whatsLeft <= branchSize {
+			break
+		}
+		// subtrieSize comes from chunk data. Stop before the multiplication
+		// overflows: a wrapped branchSize, or a non-positive refs, made the
+		// exit condition unsatisfiable.
+		if branchSize > math.MaxInt64/branching {
 			break
 		}
 		branchSize *= branching
