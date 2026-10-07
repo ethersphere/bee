@@ -9,49 +9,83 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
     branches:
       - 'master'
+  # No paths-ignore on pull_request: the required checks below must always
+  # report. Docs-only PRs are detected by the changes job and skip the work.
   pull_request:
-    paths-ignore:
-      - packaging/**
-      - openapi/**
-      - '**/*.md'
-      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - '**'
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      # 'false' only for a pull request touching nothing but ignored paths.
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+    steps:
+    - name: Detect code changes
+      id: filter
+      if: github.event_name == 'pull_request'
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      with:
+        predicate-quantifier: every
+        filters: |
+          code:
+            - '!packaging/**'
+            - '!openapi/**'
+            - '!**/*.md'
+            - '!.github/ISSUE_TEMPLATE/**'
   test:
     name: Test
+    needs: [changes]
+    # A matrix job skipped at job level is not expanded, so the required
+    # "Test (<os>)" checks would never report. Always run the matrix and
+    # gate the steps instead. Runs everything if changes did not succeed.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      RUN_CHECKS: ${{ needs.changes.outputs.code != 'false' }}
     steps:
+    - name: Skip (no code changes)
+      if: env.RUN_CHECKS != 'true'
+      run: echo "Only ignored paths changed, skipping build and tests."
     - name: Checkout
+      if: env.RUN_CHECKS == 'true'
       uses: actions/checkout@v5
     - name: Setup Go
+      if: env.RUN_CHECKS == 'true'
       uses: actions/setup-go@v6
       with:
         cache: true
         go-version-file: go.mod
     - name: Increase UDP buffer sizes (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      if: env.RUN_CHECKS == 'true' && matrix.os == 'ubuntu-latest'
       run: |
         sudo sysctl -w net.core.rmem_max=7500000
         sudo sysctl -w net.core.wmem_max=7500000
     - name: Increase UDP buffer sizes (macOS)
-      if: matrix.os == 'macos-latest'
+      if: env.RUN_CHECKS == 'true' && matrix.os == 'macos-latest'
       run: |
         sudo sysctl -w kern.ipc.maxsockbuf=6291456
     - name: Build
+      if: env.RUN_CHECKS == 'true'
       run: make build
     - name: Test with race detector (Ubuntu and MacOS)
-      if: matrix.os != 'windows-latest'
+      if: env.RUN_CHECKS == 'true' && matrix.os != 'windows-latest'
       run: make test-ci-race
     - name: Test without race detector (Windows)
-      if: matrix.os == 'windows-latest'
+      if: env.RUN_CHECKS == 'true' && matrix.os == 'windows-latest'
       run: make test-ci
   lint:
     name: Lint
+    needs: [changes]
+    # Skipped jobs report success to required status checks.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
