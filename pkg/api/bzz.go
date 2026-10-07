@@ -733,8 +733,10 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool             `map:"Swarm-Cache"`
+		// The buffer is allocated eagerly, so it must be bounded: 4 MiB is 8x
+		// the largest default (largeFileBufferSize).
+		LookaheadBufferSize *int  `map:"Swarm-Lookahead-Buffer-Size" validate:"omitempty,gte=0,lte=4194304"`
+		Cache               *bool `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
