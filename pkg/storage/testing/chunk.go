@@ -19,6 +19,7 @@ package testing
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -158,5 +159,161 @@ func fixtureChunks() map[string]swarm.Chunk {
 			swarm.MustParseHexAddress("70002115a015d40a1f5ef68c29d072f06fae58854934c1cb399fcb63cf336127"),
 			[]byte{72, 0, 0, 0, 0, 0, 0, 0, 124, 59, 0, 0, 0, 0, 0, 0, 44, 67, 19, 101, 42, 213, 4, 209, 212, 189, 107, 244, 111, 22, 230, 24, 245, 103, 227, 165, 88, 74, 50, 11, 143, 197, 220, 118, 175, 24, 169, 193, 15, 40, 225, 196, 246, 151, 1, 45, 86, 7, 36, 99, 156, 86, 83, 29, 46, 207, 115, 112, 126, 88, 101, 128, 153, 113, 30, 27, 50, 232, 77, 215},
 		),
+	}
+}
+
+// ChunkCase is a named chunk together with whether it is expected to be
+// accepted by a chunk ingress point. Owner is the signer's ethereum address
+// for SOC cases and nil for CAC cases.
+type ChunkCase struct {
+	Name  string
+	Chunk swarm.Chunk
+	Owner []byte
+	Valid bool
+}
+
+// ChunkValidityCases returns valid and invalid content addressed and single
+// owner chunks for testing chunk ingress validation:
+//   - cac: a valid content addressed chunk.
+//   - cac_span_only: a valid CAC with an empty payload.
+//   - cac_span_exceeds_payload: a valid CAC whose span is larger than its
+//     payload; CAC validation does not check span consistency, as
+//     intermediate chunks legitimately have such spans.
+//   - soc: a valid single owner chunk.
+//   - soc_empty_payload: a valid SOC wrapping a CAC with an empty payload.
+//   - soc_replica: a valid dispersed replica SOC.
+//   - invalid_cac: valid CAC data under an address that is not its BMT hash.
+//   - empty_data: a chunk without data.
+//   - short_span: data shorter than the span.
+//   - cac_oversized: a payload larger than swarm.ChunkSize.
+//   - invalid_soc: a SOC whose signature has been tampered with.
+//   - soc_mismatched_address: a correctly signed SOC under an address other
+//     than the one its content recovers to.
+//   - soc_truncated: SOC data one byte shorter than swarm.SocMinChunkSize.
+//   - soc_oversized: a SOC wrapping a payload larger than swarm.ChunkSize.
+//   - soc_bad_recovery_byte: a SOC whose signature recovery byte is out of range.
+//   - soc_tampered_payload: a SOC whose wrapped payload was changed after signing.
+//   - soc_replica_mismatched_id: a replica SOC whose id does not match the
+//     wrapped chunk address.
+func ChunkValidityCases(tb testing.TB) []ChunkCase {
+	tb.Helper()
+
+	newSigner := func() crypto.Signer {
+		key, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			tb.Fatal(err)
+		}
+		return crypto.NewDefaultSigner(key)
+	}
+	ownerOf := func(signer crypto.Signer) []byte {
+		owner, err := signer.EthereumAddress()
+		if err != nil {
+			tb.Fatal(err)
+		}
+		return owner.Bytes()
+	}
+	newCAC := func(data, span []byte) swarm.Chunk {
+		hash, err := cac.DoHash(data, span)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		addr := swarm.NewAddress(hash)
+		return swarm.NewChunk(addr, append(append([]byte(nil), span...), data...)).
+			WithStamp(postagetesting.MustNewValidStamp(newSigner(), addr))
+	}
+	span := func(n uint64) []byte {
+		b := make([]byte, swarm.SpanSize)
+		binary.LittleEndian.PutUint64(b, n)
+		return b
+	}
+	newSOC := func(signer crypto.Signer, id []byte, wrapped swarm.Chunk) swarm.Chunk {
+		ch, err := soc.New(id, wrapped).Sign(signer)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		return ch.WithStamp(postagetesting.MustNewValidStamp(signer, ch.Address()))
+	}
+	withData := func(addr swarm.Address, data []byte) swarm.Chunk {
+		return swarm.NewChunk(addr, data).WithStamp(postagetesting.MustNewStamp())
+	}
+	tamper := func(ch swarm.Chunk, i int, b byte) swarm.Chunk {
+		data := append([]byte(nil), ch.Data()...)
+		data[i] = b
+		return withData(ch.Address(), data)
+	}
+
+	// valid cases
+	cacCh := GenerateTestRandomChunk()
+	cacSpanOnly := newCAC(nil, span(0))
+	cacSpanExceeds := newCAC(testutil.RandBytes(tb, 100), span(1<<20))
+
+	socSigner := newSigner()
+	socCh := newSOC(socSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+
+	emptySigner := newSigner()
+	socEmpty := newSOC(emptySigner, testutil.RandBytes(tb, swarm.HashSize), cacSpanOnly)
+
+	replicasKey, err := crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	replicasSigner := crypto.NewDefaultSigner(replicasKey)
+	replicaWrapped := GenerateTestRandomChunk()
+	replicaID := append([]byte(nil), replicaWrapped.Address().Bytes()...)
+	replicaID[0] ^= 0x01 // replicas differ from the wrapped address in the first byte only
+	socReplica := newSOC(replicasSigner, replicaID, replicaWrapped)
+
+	// invalid CAC cases
+	invalidCAC := GenerateTestRandomChunk()
+	invalidCAC = withData(swarm.RandAddress(tb), invalidCAC.Data())
+	emptyData := withData(swarm.RandAddress(tb), nil)
+	shortSpan := withData(swarm.RandAddress(tb), testutil.RandBytes(tb, swarm.SpanSize-1))
+	cacOversized := withData(swarm.RandAddress(tb), append(span(swarm.ChunkSize+1), testutil.RandBytes(tb, swarm.ChunkSize+1)...))
+
+	// invalid SOC cases
+	invalidSOCSigner := newSigner()
+	invalidSOC := newSOC(invalidSOCSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+	invalidSOC = tamper(invalidSOC, swarm.HashSize, invalidSOC.Data()[swarm.HashSize]^0xff) // first signature byte
+
+	mismatchedSigner := newSigner()
+	mismatchedSOC := newSOC(mismatchedSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+	mismatchedSOC = withData(swarm.RandAddress(tb), mismatchedSOC.Data())
+
+	truncSigner := newSigner()
+	socTruncated := newSOC(truncSigner, testutil.RandBytes(tb, swarm.HashSize), cacSpanOnly)
+	socTruncated = withData(socTruncated.Address(), socTruncated.Data()[:swarm.SocMinChunkSize-1])
+
+	oversizedSigner := newSigner()
+	socOversized := newSOC(oversizedSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+	socOversized = withData(socOversized.Address(), append(append([]byte(nil), socOversized.Data()...), 0))
+
+	recoverySigner := newSigner()
+	socBadRecovery := newSOC(recoverySigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+	socBadRecovery = tamper(socBadRecovery, swarm.HashSize+swarm.SocSignatureSize-1, 0xff)
+
+	tamperedSigner := newSigner()
+	socTampered := newSOC(tamperedSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+	socTampered = tamper(socTampered, swarm.SocMinChunkSize, socTampered.Data()[swarm.SocMinChunkSize]^0xff)
+
+	badReplica := newSOC(replicasSigner, testutil.RandBytes(tb, swarm.HashSize), GenerateTestRandomChunk())
+
+	return []ChunkCase{
+		{Name: "cac", Chunk: cacCh, Valid: true},
+		{Name: "cac_span_only", Chunk: cacSpanOnly, Valid: true},
+		{Name: "cac_span_exceeds_payload", Chunk: cacSpanExceeds, Valid: true},
+		{Name: "soc", Chunk: socCh, Owner: ownerOf(socSigner), Valid: true},
+		{Name: "soc_empty_payload", Chunk: socEmpty, Owner: ownerOf(emptySigner), Valid: true},
+		{Name: "soc_replica", Chunk: socReplica, Owner: ownerOf(replicasSigner), Valid: true},
+		{Name: "invalid_cac", Chunk: invalidCAC},
+		{Name: "empty_data", Chunk: emptyData},
+		{Name: "short_span", Chunk: shortSpan},
+		{Name: "cac_oversized", Chunk: cacOversized},
+		{Name: "invalid_soc", Chunk: invalidSOC, Owner: ownerOf(invalidSOCSigner)},
+		{Name: "soc_mismatched_address", Chunk: mismatchedSOC, Owner: ownerOf(mismatchedSigner)},
+		{Name: "soc_truncated", Chunk: socTruncated, Owner: ownerOf(truncSigner)},
+		{Name: "soc_oversized", Chunk: socOversized, Owner: ownerOf(oversizedSigner)},
+		{Name: "soc_bad_recovery_byte", Chunk: socBadRecovery, Owner: ownerOf(recoverySigner)},
+		{Name: "soc_tampered_payload", Chunk: socTampered, Owner: ownerOf(tamperedSigner)},
+		{Name: "soc_replica_mismatched_id", Chunk: badReplica, Owner: ownerOf(replicasSigner)},
 	}
 }
