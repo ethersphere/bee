@@ -31,7 +31,10 @@ type Monitor interface {
 	io.Closer
 	// WatchTransaction watches the transaction until either there is 1 confirmation or a competing transaction with cancellationDepth confirmations.
 	WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
+	// WatchNonce notifies when the sender's confirmed nonce becomes greater than nonce.
+	WatchNonce(nonce uint64) (<-chan struct{}, <-chan error)
 }
+
 type transactionMonitor struct {
 	lock       sync.Mutex
 	ctx        context.Context    // context which is used for all backend calls
@@ -46,6 +49,7 @@ type transactionMonitor struct {
 	cancellationDepth uint64        // number of blocks until considering a tx cancellation final
 
 	watchesByNonce map[uint64]map[common.Hash][]transactionWatch // active watches grouped by nonce and tx hash
+	nonceWatches   map[uint64][]nonceWatch                       // waiters for confirmed nonce > key
 	watchAdded     chan struct{}                                 // channel to trigger instant pending check
 }
 
@@ -53,6 +57,11 @@ type transactionWatch struct {
 	start    time.Time
 	receiptC chan types.Receipt // channel to which the receipt will be written once available
 	errC     chan error         // error channel (primarily for cancelled transactions)
+}
+
+type nonceWatch struct {
+	doneC chan struct{}
+	errC  chan error
 }
 
 func NewMonitor(logger log.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
@@ -69,6 +78,7 @@ func NewMonitor(logger log.Logger, backend Backend, sender common.Address, polli
 		cancellationDepth: cancellationDepth,
 
 		watchesByNonce: make(map[uint64]map[common.Hash][]transactionWatch),
+		nonceWatches:   make(map[uint64][]nonceWatch),
 		watchAdded:     make(chan struct{}, 1),
 	}
 
@@ -99,14 +109,37 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 		errC:     errC,
 	})
 
-	select {
-	case tm.watchAdded <- struct{}{}:
-	default:
-	}
+	tm.triggerWatchAdded()
 
 	loggerV1.Debug("starting to watch transaction", "tx", txHash, "nonce", nonce)
 
 	return receiptC, errC, nil
+}
+
+func (tm *transactionMonitor) WatchNonce(nonce uint64) (<-chan struct{}, <-chan error) {
+	loggerV1 := tm.logger.V(1).Register()
+
+	tm.lock.Lock()
+	defer tm.lock.Unlock()
+
+	doneC := make(chan struct{}, 1)
+	errC := make(chan error, 1)
+	tm.nonceWatches[nonce] = append(tm.nonceWatches[nonce], nonceWatch{
+		doneC: doneC,
+		errC:  errC,
+	})
+
+	tm.triggerWatchAdded()
+
+	loggerV1.Debug("starting to watch nonce", "nonce", nonce)
+	return doneC, errC
+}
+
+func (tm *transactionMonitor) triggerWatchAdded() {
+	select {
+	case tm.watchAdded <- struct{}{}:
+	default:
+	}
 }
 
 // main watch loop
@@ -125,6 +158,14 @@ func (tm *transactionMonitor) watchPending() {
 					case watch.errC <- ErrMonitorClosed:
 					default:
 					}
+				}
+			}
+		}
+		for _, watches := range tm.nonceWatches {
+			for _, watch := range watches {
+				select {
+				case watch.errC <- ErrMonitorClosed:
+				default:
 				}
 			}
 		}
@@ -176,7 +217,7 @@ func (tm *transactionMonitor) watchPending() {
 func (tm *transactionMonitor) hasWatches() bool {
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
-	return len(tm.watchesByNonce) > 0
+	return len(tm.watchesByNonce) > 0 || len(tm.nonceWatches) > 0
 }
 
 func watchStart(watches []transactionWatch) time.Time {
@@ -203,6 +244,7 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			snapshot[nonce][txHash] = watchStart(watches)
 		}
 	}
+	hasNonceWatches := len(tm.nonceWatches) > 0
 	tm.lock.Unlock()
 
 	// Check receipts without holding lock (RPC calls can be slow).
@@ -235,6 +277,15 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		if nonce < oldNonce {
 			cancelledNonces = append(cancelledNonces, nonce)
 		}
+	}
+
+	var confirmedSenderNonce uint64
+	if hasNonceWatches {
+		n, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block))
+		if err != nil {
+			return err
+		}
+		confirmedSenderNonce = n
 	}
 
 	// Notify subscribers and cleanup.
@@ -272,6 +323,21 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			}
 		}
 		delete(tm.watchesByNonce, nonce)
+	}
+
+	if hasNonceWatches {
+		for nonce, watches := range tm.nonceWatches {
+			if nonce >= confirmedSenderNonce {
+				continue
+			}
+			for _, watch := range watches {
+				select {
+				case watch.doneC <- struct{}{}:
+				default:
+				}
+			}
+			delete(tm.nonceWatches, nonce)
+		}
 	}
 
 	return nil
