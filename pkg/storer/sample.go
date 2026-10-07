@@ -88,7 +88,6 @@ func (db *DB) ReserveSample(
 	// err is the named result, so early returns are recorded too.
 	defer func() {
 		duration := time.Since(t)
-		_ = g.Wait()
 		db.recordReserveSampleMetrics(duration, allStats, workers, err)
 	}()
 
@@ -291,7 +290,6 @@ func (db *DB) ReserveSample(
 
 	if err := g.Wait(); err != nil {
 		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
-
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
