@@ -30,6 +30,7 @@ var (
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
 	ErrInsufficientStake       = errors.New("insufficient stake")
+	ErrOraclePriceUnavailable  = errors.New("oracle price unavailable")
 	ErrNotImplemented          = errors.New("not implemented")
 	ErrNotPaused               = errors.New("contract is not paused")
 	ErrUnexpectedLength        = errors.New("unexpected results length")
@@ -185,7 +186,7 @@ func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
 	if committed.Sign() > 0 {
 		price, err = c.getCurrentPrice(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("staking contract: failed to get oracle price: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrOraclePriceUnavailable, err)
 		}
 	}
 
