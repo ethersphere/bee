@@ -16,9 +16,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// removeRogueChunks removes reserve entries stored with a chunk type other than
-// CAC or SOC, which reserve.Put accepted before it validated the type. Entries
-// whose chunk passes chunkstore.Verify only get their type corrected.
+// removeRogueChunks re-verifies every reserve entry not stored as a CAC: entries
+// of unspecified type, which reserve.Put accepted before it validated the type,
+// and SOCs, which were accepted before SOC validation checked the chunk address.
+// Entries whose chunk fails chunkstore.Verify are removed; the others keep their
+// place and only get their type corrected if needed.
 func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 	return func() error {
 		ctx := context.Background()
@@ -30,8 +32,7 @@ func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 			},
 			func(res storage.Result) (bool, error) {
 				item := res.Entry.(*reserve.ChunkBinItem)
-				if item.ChunkType != swarm.ChunkTypeContentAddressed &&
-					item.ChunkType != swarm.ChunkTypeSingleOwner {
+				if item.ChunkType != swarm.ChunkTypeContentAddressed {
 					rogue = append(rogue, item)
 				}
 				return false, nil
@@ -45,7 +46,7 @@ func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 			return nil
 		}
 
-		logger.Info("removing rogue reserve chunks", "count", len(rogue))
+		logger.Info("verifying non-cac reserve chunks", "count", len(rogue))
 
 		var removed, retyped int
 
@@ -57,6 +58,9 @@ func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 				for _, item := range rogue[i:end] {
 					chunkType, err := chunkstore.Verify(s.ChunkStore().Get(ctx, item.Address))
 					if err == nil {
+						if item.ChunkType == chunkType {
+							continue
+						}
 						item.ChunkType = chunkType
 						if err := s.IndexStore().Put(item); err != nil {
 							return fmt.Errorf("put chunk bin item %s: %w", item.Address, err)

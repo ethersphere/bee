@@ -31,6 +31,9 @@ func TestRemoveRogueChunks(t *testing.T) {
 	validSOC := chunktest.GenerateTestRandomSoChunk(t, chunktest.GenerateTestRandomChunk())
 	// a correctly signed SOC delivered under an address that is not its own
 	misaddressedSOC := swarm.NewChunk(swarm.RandAddress(t), validSOC.Data()).WithStamp(postagetesting.MustNewStamp())
+	// the same SOC data under another wrong address, stored as an SOC because it
+	// was accepted before SOC validation checked the address
+	acceptedMisaddressedSOC := swarm.NewChunk(swarm.RandAddress(t), validSOC.Data()).WithStamp(postagetesting.MustNewStamp())
 	invalid := chunktest.GenerateTestRandomInvalidChunk()
 	mistypedCAC := chunktest.GenerateTestRandomChunk()
 	missing := chunktest.GenerateTestRandomInvalidChunk()
@@ -45,6 +48,7 @@ func TestRemoveRogueChunks(t *testing.T) {
 		{"valid cac", validCAC, swarm.ChunkTypeContentAddressed, true, swarm.ChunkTypeContentAddressed},
 		{"valid soc", validSOC, swarm.ChunkTypeSingleOwner, true, swarm.ChunkTypeSingleOwner},
 		{"misaddressed soc", misaddressedSOC, swarm.ChunkTypeUnspecified, true, swarm.ChunkTypeUnspecified},
+		{"accepted misaddressed soc", acceptedMisaddressedSOC, swarm.ChunkTypeSingleOwner, true, swarm.ChunkTypeUnspecified},
 		{"invalid chunk", invalid, swarm.ChunkTypeUnspecified, true, swarm.ChunkTypeUnspecified},
 		{"mistyped cac", mistypedCAC, swarm.ChunkTypeUnspecified, true, swarm.ChunkTypeContentAddressed},
 		{"missing chunk", missing, swarm.ChunkTypeUnspecified, false, swarm.ChunkTypeUnspecified},
