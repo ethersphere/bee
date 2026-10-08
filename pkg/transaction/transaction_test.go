@@ -583,7 +583,7 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("send with contract fallback", func(t *testing.T) {
 		t.Parallel()
 
-		// When estimation fails for contract call (has data), use FallbackGasLimit (500k)
+		// When estimation fails for contract call (has data), use FallbackGasLimit (900k)
 		contractData := []byte{0xab, 0xcd, 0xef} // Explicit non-empty data for contract call
 		signedTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
