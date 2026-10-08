@@ -192,8 +192,16 @@ func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
 	return calculateMinDeposit(potential, committed, price, c.height, stakeExists), nil
 }
 
-// calculateMinDeposit returns the minimum additional deposit in PLUR that manageStake will accept according to contract.
+// calculateMinDeposit returns the minimum additional deposit in PLUR.
 // stakeExists mirrors Solidity's _stakingSet != 0 (lastUpdatedBlockNumber != 0).
+//
+// The contract requires MIN_STAKE * 2^height only on the first stake, then only
+// that commitment does not decrease. Height above zero also keeps the
+// reserve-capacity floor used before UpdateHeight: after the deposit, potential
+// must be at least MIN_STAKE * 2^height. The contract does not apply that floor
+// once a stake exists, so a price drop would otherwise publish the height with
+// less than a new node must deposit. Height 0 stays on the contract minimum, so
+// an existing stake below MIN_STAKE is not forced back up.
 func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8, stakeExists bool) *big.Int {
 	minAdd := big.NewInt(1)
 
@@ -208,6 +216,14 @@ func calculateMinDeposit(potential, committed *big.Int, price uint32, height uin
 		required = new(big.Int).Lsh(required, uint(height)) // * 2^height
 		required = new(big.Int).Mul(required, committed)    // * committed
 		if gap := new(big.Int).Sub(required, potential); gap.Cmp(minAdd) > 0 {
+			minAdd.Set(gap)
+		}
+	}
+
+	// Publishing height h > 0 requires potential+deposit >= MIN_STAKE * 2^h.
+	if height > 0 {
+		floor := new(big.Int).Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
+		if gap := new(big.Int).Sub(floor, potential); gap.Cmp(minAdd) > 0 {
 			minAdd.Set(gap)
 		}
 	}

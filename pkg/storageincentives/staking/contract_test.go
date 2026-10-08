@@ -98,6 +98,24 @@ func TestCalculateMinDeposit(t *testing.T) {
 			want:        new(big.Int).Mul(committedAtMin, big.NewInt(2)),
 		},
 		{
+			name:        "price drop keeps height floor above commitment",
+			potential:   new(big.Int).Set(minStake),
+			committed:   new(big.Int).Div(new(big.Int).Set(minStake), big.NewInt(48000)),
+			price:       24000,
+			height:      1,
+			stakeExists: true,
+			want:        new(big.Int).Set(minStake),
+		},
+		{
+			name:        "commitment gap stays above height floor",
+			potential:   new(big.Int).Set(minStake),
+			committed:   committedAtMin,
+			price:       1001,
+			height:      1,
+			stakeExists: true,
+			want:        new(big.Int).Mul(committedAtMin, big.NewInt(1002)),
+		},
+		{
 			name:        "existing slashed stake does not restore initial floor",
 			potential:   new(big.Int).Div(minStake, big.NewInt(10)),
 			committed:   committedAtMin,
@@ -126,6 +144,82 @@ func TestCalculateMinDeposit(t *testing.T) {
 				t.Fatalf("got %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestProofHeightBypassViaDeposit asserts the invariant that pkg/node/node.go
+// enforces before UpdateHeight: a node must not write height h on-chain unless
+// its potential stake is at least 2^h * MinimumStakeAmount.
+//
+// Scenario: staked exactly MIN at h=0 with oracle price 48000, price then
+// dropped to 24000, node restarted with --reserve-capacity-doubling=1.
+// node.go skips UpdateHeight (potential 1e17 < 2e17). POST /stake of the
+// reported minimum must not send manageStake with height=1 while potential
+// stays below 2e17. Staking.sol would accept 1 PLUR (no DecreasedCommitment,
+// no BelowMinimumStake on an existing stake).
+func TestProofHeightBypassViaDeposit(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	stakingAddr := common.HexToAddress("ffff")
+	oracleAddr := common.HexToAddress("1111")
+	bzzAddr := common.HexToAddress("eeee")
+	nonce := common.BytesToHash(make([]byte, 32))
+	const height = uint8(1)
+
+	potential := new(big.Int).Set(staking.MinimumStakeAmount)               // 1e17, staked at h=0
+	committed := new(big.Int).Div(potential, big.NewInt(48000))             // committed at price 48000
+	balance := new(big.Int).Mul(staking.MinimumStakeAmount, big.NewInt(10)) // plenty of BZZ
+	const price = uint32(24000)                                             // oracle floor after the drop
+
+	requiredPotential := new(big.Int).Lsh(new(big.Int).Set(staking.MinimumStakeAmount), uint(height))
+
+	manageStakeSig := stakingContractABI.Methods["manageStake"].ID
+	var sentHeight *uint8
+
+	contract := staking.New(
+		owner, stakingAddr, stakingContractABI, bzzAddr,
+		transactionMock.New(
+			transactionMock.WithCallFunc(newStakeCallFunc(t, stakingAddr, oracleAddr, bzzAddr, committed, potential, balance, price)),
+			transactionMock.WithSendFunc(func(_ context.Context, req *transaction.TxRequest, _ int) (common.Hash, error) {
+				if *req.To == stakingAddr && bytes.Equal(req.Data[:4], manageStakeSig) {
+					args, err := stakingContractABI.Methods["manageStake"].Inputs.Unpack(req.Data[4:])
+					if err != nil {
+						return common.Hash{}, err
+					}
+					h := args[2].(uint8)
+					sentHeight = &h
+				}
+				return common.HexToHash("01"), nil
+			}),
+			transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
+				return &types.Receipt{Status: 1}, nil
+			}),
+		),
+		nonce, 0, height,
+	)
+
+	minDeposit, err := contract.GetMinDeposit(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("GET /stake would report minimumDeposit=%s PLUR (potential=%s, needed for h=%d: %s)", minDeposit, potential, height, requiredPotential)
+
+	_, err = contract.DepositStake(ctx, minDeposit)
+
+	var minErr *staking.MinDepositError
+	if errors.As(err, &minErr) {
+		return // correct: deposit refused below the height floor
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	newPotential := new(big.Int).Add(potential, minDeposit)
+	if sentHeight != nil && *sentHeight == height && newPotential.Cmp(requiredPotential) < 0 {
+		t.Fatalf("BYPASS: manageStake sent height=%d with potential %s < required %s (node.go would have refused UpdateHeight)",
+			*sentHeight, newPotential, requiredPotential)
 	}
 }
 
