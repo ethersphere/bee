@@ -26,6 +26,9 @@ const (
 var (
 	// ErrNoCheque is the error returned if there is no prior cheque for a chequebook or beneficiary.
 	ErrNoCheque = errors.New("no cheque")
+	// ErrNilCumulativePayout is returned when a stored cheque has no cumulative payout.
+	// It does not wrap ErrNoCheque: callers treat that as "no cheque" and may start a new payout at zero.
+	ErrNilCumulativePayout = errors.New("nil cumulative payout")
 	// ErrChequeNotIncreasing is the error returned if the cheque amount is the same or lower.
 	ErrChequeNotIncreasing = errors.New("cheque cumulativePayout is not increasing")
 	// ErrChequeInvalid is the error returned if the cheque itself is invalid.
@@ -101,6 +104,10 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 	// nil pointer without an error; guard against returning it for later deref.
 	if cheque == nil {
 		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNoCheque)
+	}
+	// An empty object unmarshals into a cheque with a nil cumulative payout.
+	if cheque.CumulativePayout == nil {
+		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNilCumulativePayout)
 	}
 
 	return cheque, nil
