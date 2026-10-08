@@ -13,6 +13,32 @@ PRs.
 Everything here is read-only. Do not comment on, label, or edit PRs or issues,
 and do not commit. The only output is files under `dist/`, which is gitignored.
 
+## Writing style (ASD-STE100 principles)
+
+Write every plan file (`prs/*.md`, `synthesis.md`, `TEST-PLAN.md`) and every
+user-facing report in **ASD-STE100 principles** (Simplified Technical English).
+
+**Why.** QA text is an instruction radio, not a blog. Short, same-word,
+one-idea sentences cut misreads when someone else runs the steps days later.
+
+Rules (principles, not full dictionary lock):
+
+- One idea per sentence. Prefer short sentences.
+- Use the active voice. Put the actor first: "The node rejects the stamp", not
+  "The stamp is rejected by the node".
+- Use the same term for the same thing every time. Do not switch between
+  synonyms (for example pick `chunk` or `data unit`, not both).
+- Prefer concrete verbs and nouns. Avoid filler ("basically", "simply",
+  "it should be noted that") and vague words ("appropriate", "properly",
+  "correctly") unless you state the measurable check.
+- Keep Bee domain terms as-is (`overlay`, `postage`, `SOC`, `reserve`). Do not
+  invent softer paraphrases for them.
+- Steps must be commands a tester can run. Expect must be an observable result
+  (status code, body field, metric, log line), not a soft wish.
+
+Do not claim full ASD-STE100 dictionary compliance. Swarm terms sit outside that
+word list; follow the grammar and clarity rules above.
+
 ## Inputs
 
 - **Base**: a tag. The default is the highest final `v*` tag; release
