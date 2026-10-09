@@ -2,39 +2,58 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Wire format of SWIP-74 (BPS-lite). Field and enum numbers are shared with
+// SWIP-60, which extends these messages by adding fields and values only.
 syntax = "proto3";
 
 package bps;
 
 option go_package = "pb";
 
-message Broadcast {
-  // either service or broadcast
-  bytes soc = 1;
-}
-
+// What the topic binds to. One binding.
 enum TopicBinding {
-  BINDING_UNDEFINED = 0;
-  BINDING_FEED = 1;
+  TOPIC_BINDING_UNSPECIFIED = 0; // invalid on the wire
+  FEED_TOPIC = 4;                // the stream is a feed on the topic
 }
 
+// The cohort's identity, keyed by its canonical serialisation.
+message CohortSpec {
+  bytes topic = 1;          // 32 bytes
+  TopicBinding binding = 2; // FEED_TOPIC
+  bytes principal = 3;      // 20 bytes, required: the publisher
+}
+
+// Peer -> broker: the first frame on a fresh stream.
 message Join {
-  bytes topic = 1;
-  TopicBinding binding = 2; // which kind of topic binding
-  bytes principal = 3; // the "owner"
-  // ============================
-  bytes identity = 4; // who am i
+  CohortSpec cohort = 1;
+  bytes identity = 2; // 20 bytes, required: the stream's identity
 }
 
 enum Status {
-  STATUS_UNDEFINED = 0;
-  STATUS_OK = 1;
-  STATUS_FULL = 2;
-  STATUS_REJECTED = 3;
+  STATUS_UNSPECIFIED = 0; // invalid on the wire
+  OK = 1;
+  FULL = 2;     // a capacity bound
+  REJECTED = 3; // a spec value outside SWIP-74, or a malformed Join
 }
 
-message JoinAck {
-  bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
-  Status status = 2;
+// Broker -> peer, answering Join. A non-OK Ack ends the stream.
+message Ack {
+  Status status = 1;
+  bytes challenge = 2; // iff OK: 32 random bytes for this stream
 }
 
+// What a chunk on this wire is.
+enum Kind {
+  KIND_UNSPECIFIED = 0; // invalid on the wire
+  DATA = 1;             // an update of the stream's session feed
+  AUTH = 2;             // an empty chunk: authenticates the stream, never delivered
+}
+
+// Every frame after the handshake. soc is an ordinary single-owner chunk
+// whose id is derived from kind, challenge and index (see bps.ID).
+message Broadcast {
+  bytes soc = 1;
+  Kind kind = 2;
+  bytes challenge = 3; // 32 bytes
+  uint64 index = 4;
+}
