@@ -8,6 +8,8 @@ import "github.com/ethersphere/bee/v2/pkg/swarm"
 
 var PeerIntervalKey = peerIntervalKey
 
+const SyncErrorBackoff = syncErrorBackoff
+
 func (p *Puller) IsSyncing(addr swarm.Address) bool {
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
