@@ -53,7 +53,7 @@ type env struct {
 	brokerAddr swarm.Address
 	bl         *blocklister
 	signer     crypto.Signer
-	admin      []byte
+	principal  []byte
 	topic      []byte
 }
 
@@ -73,7 +73,7 @@ func newEnv(t *testing.T, o bps.Options) *env {
 	}
 	topic := make([]byte, swarm.HashSize)
 	copy(topic, "bps-test-topic")
-	return &env{t: t, broker: broker, brokerAddr: swarm.RandAddress(t), bl: bl, signer: signer, admin: admin.Bytes(), topic: topic}
+	return &env{t: t, broker: broker, brokerAddr: swarm.RandAddress(t), bl: bl, signer: signer, principal: admin.Bytes(), topic: topic}
 }
 
 // client returns a node whose streams reach the broker from overlay.
@@ -84,7 +84,7 @@ func (e *env) client(overlay swarm.Address) (*bps.Service, *streamtest.Recorder)
 
 func (e *env) join(c *bps.Service, addr []byte) bps.Session {
 	e.t.Helper()
-	s, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Topic: e.topic, Admin: e.admin, Addr: addr})
+	s, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: addr})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func (e *env) publisher() (bps.Session, swarm.Address) {
 	e.t.Helper()
 	overlay := swarm.RandAddress(e.t)
 	c, _ := e.client(overlay)
-	return e.join(c, e.admin), overlay
+	return e.join(c, e.principal), overlay
 }
 
 func (e *env) chunk(signer crypto.Signer, kind bps.Kind, challenge []byte, index uint64, payload []byte) []byte {
@@ -135,7 +135,7 @@ func (e *env) publish(s bps.Session, kind bps.Kind, index uint64, payload []byte
 
 func (e *env) counters() bps.Counters {
 	e.t.Helper()
-	c, ok := e.broker.Counters(e.topic, e.admin)
+	c, ok := e.broker.Counters(bps.CohortSpec{Topic: e.topic, Principal: e.principal})
 	if !ok {
 		e.t.Fatal("no live cohort")
 	}
@@ -195,7 +195,7 @@ func TestBroadcast(t *testing.T) {
 		t.Fatal("want a distinct 32-byte challenge per stream")
 	}
 
-	// AUTH claims and is never delivered
+	// AUTH authenticates and is never delivered
 	e.publish(pub, bps.KindAuth, 0, nil)
 	c0 := e.publish(pub, bps.KindData, 0, []byte("hello cohort"))
 	expectMessage(t, sub, 0, c0)
@@ -232,7 +232,7 @@ func TestPublisherReconnects(t *testing.T) {
 	expectDone(t, pub1)
 
 	// the cohort and its cursor persist; a valid frame below the cursor
-	// still claims the new stream and is counted as a retransmit
+	// still authenticates the new stream and is counted as a retransmit
 	pub2, _ := e.publisher()
 	if bytes.Equal(pub1.Challenge(), pub2.Challenge()) {
 		t.Fatal("challenge reused")
@@ -345,14 +345,14 @@ func (e *env) raw(join *pb.Join) (protobuf.Writer, protobuf.Reader, *pb.Ack) {
 }
 
 func (e *env) spec() *pb.CohortSpec {
-	return &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC, Admin: e.admin}
+	return &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC, Principal: e.principal}
 }
 
 func TestDroppedFrames(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, bps.Options{})
 	sub := e.subscribe()
-	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Addr: e.admin})
+	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
 	if ack.Status != pb.Status_OK {
 		t.Fatalf("status %s", ack.Status)
 	}
@@ -384,11 +384,11 @@ func TestJoinRejected(t *testing.T) {
 		name string
 		join *pb.Join
 	}{
-		{"no cohort", &pb.Join{Addr: e.admin}},
-		{"unspecified binding", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Admin: e.admin}, Addr: e.admin}},
-		{"short topic", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic[:31], Binding: pb.TopicBinding_FEED_TOPIC, Admin: e.admin}, Addr: e.admin}},
-		{"no admin", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC}, Addr: e.admin}},
-		{"short addr", &pb.Join{Cohort: e.spec(), Addr: e.admin[:19]}},
+		{"no cohort", &pb.Join{Identity: e.principal}},
+		{"unspecified binding", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}},
+		{"short topic", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic[:31], Binding: pb.TopicBinding_FEED_TOPIC, Principal: e.principal}, Identity: e.principal}},
+		{"no admin", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC}, Identity: e.principal}},
+		{"short addr", &pb.Join{Cohort: e.spec(), Identity: e.principal[:19]}},
 	} {
 		_, _, ack := e.raw(tc.join)
 		if ack.Status != pb.Status_REJECTED || len(ack.Challenge) != 0 {
@@ -400,11 +400,11 @@ func TestJoinRejected(t *testing.T) {
 func TestBounds(t *testing.T) {
 	t.Parallel()
 
-	t.Run("subscribers per cohort, admin admitted outside", func(t *testing.T) {
+	t.Run("subscribers per cohort, principal admitted outside", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, bps.Options{MaxSubscribers: 1})
 		sub := e.subscribe()
-		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Addr: make([]byte, 20)}); ack.Status != pb.Status_FULL {
+		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: make([]byte, 20)}); ack.Status != pb.Status_FULL {
 			t.Fatalf("got %s, want FULL", ack.Status)
 		}
 		pub, _ := e.publisher()
@@ -417,7 +417,7 @@ func TestBounds(t *testing.T) {
 		e.subscribe()
 		spec := e.spec()
 		spec.Topic = make([]byte, 32)
-		if _, _, ack := e.raw(&pb.Join{Cohort: spec, Addr: e.admin}); ack.Status != pb.Status_FULL {
+		if _, _, ack := e.raw(&pb.Join{Cohort: spec, Identity: e.principal}); ack.Status != pb.Status_FULL {
 			t.Fatalf("got %s, want FULL", ack.Status)
 		}
 	})
@@ -426,37 +426,37 @@ func TestBounds(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, bps.Options{MaxStreamsPerPeerCohort: 1, MaxCohortsPerPeer: 1})
 		c, _ := e.client(swarm.RandAddress(t))
-		e.join(c, e.admin)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Topic: e.topic, Admin: e.admin, Addr: e.admin}); err == nil {
+		e.join(c, e.principal)
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}); err == nil {
 			t.Fatal("want a second stream on the cohort refused")
 		}
 		other := make([]byte, 32)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Topic: other, Admin: e.admin, Addr: e.admin}); err == nil {
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: other, Principal: e.principal}, Identity: e.principal}); err == nil {
 			t.Fatal("want a second cohort refused")
 		}
 	})
 
-	t.Run("claim deadline", func(t *testing.T) {
+	t.Run("auth timeout", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{ClaimDeadline: 50 * time.Millisecond})
+		e := newEnv(t, bps.Options{AuthTimeout: 50 * time.Millisecond})
 		e.subscribe()
 		pub, overlay := e.publisher()
 		expectDone(t, pub)
 		eventually(t, func() bool { return e.bl.blocklisted(overlay) })
-		if got := e.counters().ClaimTimeout; got != 1 {
-			t.Fatalf("claim_timeout %d, want 1", got)
+		if got := e.counters().AuthTimeout; got != 1 {
+			t.Fatalf("auth_timeout %d, want 1", got)
 		}
 	})
 
 	t.Run("inactivity deadline", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{InactivityDeadline: 100 * time.Millisecond})
+		e := newEnv(t, bps.Options{InactivityTimeout: 100 * time.Millisecond})
 		sub := e.subscribe()
 		pub, _ := e.publisher()
 		e.publish(pub, bps.KindAuth, 0, nil)
 		expectDone(t, sub)
 		expectDone(t, pub)
-		if _, ok := e.broker.Counters(e.topic, e.admin); ok {
+		if _, ok := e.broker.Counters(bps.CohortSpec{Topic: e.topic, Principal: e.principal}); ok {
 			t.Fatal("cohort not reclaimed")
 		}
 	})
@@ -469,16 +469,16 @@ func TestVerify(t *testing.T) {
 	copy(challenge, "challenge")
 
 	c := e.chunk(e.signer, bps.KindData, challenge, 9, []byte("x"))
-	if err := bps.Verify(bps.KindData, challenge, 9, c, e.topic, e.admin); err != nil {
+	if err := bps.Verify(bps.KindData, challenge, 9, c, e.topic, e.principal); err != nil {
 		t.Fatal(err)
 	}
 	other := make([]byte, 20)
 	for _, err := range []error{
 		bps.Verify(bps.KindData, challenge, 9, c, e.topic, other),
-		bps.Verify(bps.KindData, challenge[:31], 9, c, e.topic, e.admin),
-		bps.Verify(bps.KindAuth, challenge, 9, c, e.topic, e.admin),
-		bps.Verify(bps.KindData, challenge, 9, c, make([]byte, 32), e.admin),
-		bps.Verify(bps.KindData, challenge, 9, c[:10], e.topic, e.admin),
+		bps.Verify(bps.KindData, challenge[:31], 9, c, e.topic, e.principal),
+		bps.Verify(bps.KindAuth, challenge, 9, c, e.topic, e.principal),
+		bps.Verify(bps.KindData, challenge, 9, c, make([]byte, 32), e.principal),
+		bps.Verify(bps.KindData, challenge, 9, c[:10], e.topic, e.principal),
 	} {
 		if !errors.Is(err, bps.ErrInvalidSOC) {
 			t.Fatalf("got %v, want invalid soc", err)

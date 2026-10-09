@@ -23,7 +23,7 @@ const ChallengeSize = 32
 var servicePrefix = []byte("bps-service:v1")
 
 // errInvalidSOC is returned for a chunk that does not have the id derived
-// from its frame, or does not validate as the admin's single-owner chunk.
+// from its frame, or does not validate as the principal's single-owner chunk.
 var errInvalidSOC = errors.New("bps: invalid soc")
 
 // Kind is what a chunk on the wire is.
@@ -32,7 +32,7 @@ type Kind int
 const (
 	KindUnspecified Kind = iota
 	KindData             // an update of the stream's session feed
-	KindAuth             // an empty chunk that claims the stream
+	KindAuth             // an empty chunk that authenticates the stream
 )
 
 func (k Kind) proto() pb.Kind {
@@ -76,13 +76,13 @@ func id(kind pb.Kind, topic, challenge []byte, index uint64) ([]byte, error) {
 }
 
 // Verify checks that the frame fields kind, challenge and index give the id of
-// the chunk, and that the chunk validates as admin's single-owner chunk at
-// keccak256(id | admin). An AUTH chunk must moreover be empty.
-func Verify(kind Kind, challenge []byte, index uint64, chunk, topic, admin []byte) error {
-	return verify(&pb.Broadcast{Soc: chunk, Kind: kind.proto(), Challenge: challenge, Index: index}, topic, admin)
+// the chunk, and that the chunk validates as the principal's single-owner chunk
+// at keccak256(id | principal). An AUTH chunk must moreover be empty.
+func Verify(kind Kind, challenge []byte, index uint64, chunk, topic, principal []byte) error {
+	return verify(&pb.Broadcast{Soc: chunk, Kind: kind.proto(), Challenge: challenge, Index: index}, topic, principal)
 }
 
-func verify(f *pb.Broadcast, topic, admin []byte) error {
+func verify(f *pb.Broadcast, topic, principal []byte) error {
 	if len(f.Challenge) != ChallengeSize {
 		return fmt.Errorf("challenge length %d: %w", len(f.Challenge), errInvalidSOC)
 	}
@@ -93,12 +93,12 @@ func verify(f *pb.Broadcast, topic, admin []byte) error {
 	if len(f.Soc) < swarm.HashSize || !bytes.Equal(f.Soc[:swarm.HashSize], want) {
 		return fmt.Errorf("id not derived from frame: %w", errInvalidSOC)
 	}
-	addr, err := soc.CreateAddress(want, admin)
+	addr, err := soc.CreateAddress(want, principal)
 	if err != nil {
 		return err
 	}
 	if !soc.Valid(swarm.NewChunk(addr, f.Soc)) {
-		return fmt.Errorf("not the admin's soc: %w", errInvalidSOC)
+		return fmt.Errorf("not the principal's soc: %w", errInvalidSOC)
 	}
 	if f.Kind == pb.Kind_AUTH {
 		// span 0, no payload

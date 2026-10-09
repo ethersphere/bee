@@ -20,13 +20,13 @@ enum TopicBinding {
 message CohortSpec {
   bytes topic = 1;          // 32 bytes
   TopicBinding binding = 2; // FEED_TOPIC
-  bytes admin = 3;          // 20 bytes, required
+  bytes principal = 3;      // 20 bytes, required: the publisher
 }
 
 // Peer -> broker: the first frame on a fresh stream.
 message Join {
   CohortSpec cohort = 1;
-  bytes addr = 2; // 20 bytes, required: the stream's identity
+  bytes identity = 2; // 20 bytes, required: the stream's identity
 }
 
 enum Status {
@@ -46,7 +46,7 @@ message Ack {
 enum Kind {
   KIND_UNSPECIFIED = 0; // invalid on the wire
   DATA = 1;             // an update of the stream's session feed
-  AUTH = 2;             // an empty chunk: claims the stream, never delivered
+  AUTH = 2;             // an empty chunk: authenticates the stream, never delivered
 }
 
 // Every frame after the handshake. soc is an ordinary single-owner chunk

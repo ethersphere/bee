@@ -34,8 +34,8 @@ const (
 	bpsMaxFrameSize   = bpsFrameHeader + bpsMaxSOCSize
 )
 
-// bpsClaimTimeout bounds how long a publisher may take to send its first frame.
-var bpsClaimTimeout = 30 * time.Second
+// bpsAuthTimeout bounds how long a publisher may take to send its first frame.
+var bpsAuthTimeout = 30 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
 
@@ -231,11 +231,10 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 	}()
 
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
-		Broker: req.broker,
-		Topic:  req.topic,
-		Admin:  req.owner.Bytes(),
-		Addr:   req.identity,
-		Cursor: req.cursor,
+		Broker:   req.broker,
+		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
+		Identity: req.identity,
+		Cursor:   req.cursor,
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -322,12 +321,11 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		_ = conn.Close()
 	}()
 
-	// the publisher declares the admin's address and claims with its first frame
+	// the publisher declares the principal as its identity and authenticates with its first frame
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
-		Broker: req.broker,
-		Topic:  req.topic,
-		Admin:  req.owner.Bytes(),
-		Addr:   req.owner.Bytes(),
+		Broker:   req.broker,
+		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
+		Identity: req.owner.Bytes(),
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -363,11 +361,11 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		return
 	}
 
-	claimTimer := time.NewTimer(bpsClaimTimeout)
-	defer claimTimer.Stop()
+	authTimer := time.NewTimer(bpsAuthTimeout)
+	defer authTimer.Stop()
 
 	frames, gone := bpsReadFrames(conn, quit)
-	claimed := false
+	authenticated := false
 
 	for {
 		select {
@@ -381,13 +379,13 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
 				return
 			}
-			if !claimed {
-				claimed = true
-				claimTimer.Stop()
+			if !authenticated {
+				authenticated = true
+				authTimer.Stop()
 			}
-		case <-claimTimer.C:
-			if !claimed {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "claim timeout")
+		case <-authTimer.C:
+			if !authenticated {
+				s.bpsClose(conn, bpsCloseInvalidMessage, "auth timeout")
 				return
 			}
 		case <-sess.Done():

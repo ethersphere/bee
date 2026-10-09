@@ -18,7 +18,7 @@ type Counters struct {
 	UnknownKind    uint64 // a frame of a kind BPS-lite does not define
 	WrongChallenge uint64 // a frame whose challenge is not its stream's
 	InvalidSOC     uint64 // a chunk that does not validate at the derived id
-	ClaimTimeout   uint64 // a pending stream disconnected at the claim deadline
+	AuthTimeout    uint64 // a pending stream disconnected at the auth timeout
 	Retransmit     uint64 // a DATA frame below the cursor
 	QueueReset     uint64 // a subscriber stream reset for a full queue
 }
@@ -28,7 +28,7 @@ type counters struct {
 	unknownKind    atomic.Uint64
 	wrongChallenge atomic.Uint64
 	invalidSOC     atomic.Uint64
-	claimTimeout   atomic.Uint64
+	authTimeout    atomic.Uint64
 	retransmit     atomic.Uint64
 	queueReset     atomic.Uint64
 }
@@ -39,7 +39,7 @@ func (c *counters) snapshot() Counters {
 		UnknownKind:    c.unknownKind.Load(),
 		WrongChallenge: c.wrongChallenge.Load(),
 		InvalidSOC:     c.invalidSOC.Load(),
-		ClaimTimeout:   c.claimTimeout.Load(),
+		AuthTimeout:    c.authTimeout.Load(),
 		Retransmit:     c.retransmit.Load(),
 		QueueReset:     c.queueReset.Load(),
 	}

@@ -275,7 +275,7 @@ func TestBPSSubscribe(t *testing.T) {
 		f.bps.mu.Lock()
 		req := f.bps.req
 		f.bps.mu.Unlock()
-		if !req.Broker.Equal(f.broker) || !bytes.Equal(req.Admin, f.owner) || !bytes.Equal(req.Addr, f.identity) || !bytes.Equal(req.Topic, f.topic) {
+		if !req.Broker.Equal(f.broker) || !bytes.Equal(req.Spec.Principal, f.owner) || !bytes.Equal(req.Identity, f.identity) || !bytes.Equal(req.Spec.Topic, f.topic) {
 			t.Fatalf("unexpected join request %+v", req)
 		}
 	})
@@ -385,8 +385,8 @@ func TestBPSPublish(t *testing.T) {
 	f.bps.mu.Lock()
 	req := f.bps.req
 	f.bps.mu.Unlock()
-	if !bytes.Equal(req.Addr, f.owner) {
-		t.Fatalf("publisher joined as %x, want the admin %x", req.Addr, f.owner)
+	if !bytes.Equal(req.Identity, f.owner) {
+		t.Fatalf("publisher joined as %x, want the principal %x", req.Identity, f.owner)
 	}
 
 	auth := f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)
@@ -416,6 +416,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "wrong signer",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, otherSigner, bps.KindData, challenge, 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidSOC,
@@ -423,6 +424,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "wrong challenge",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, _ []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidSOC,
@@ -430,6 +432,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "index not the signed one",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 1, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidSOC,
@@ -437,6 +440,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "auth relabelled as data",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)))
 			},
 			code: api.BPSCloseInvalidSOC,
@@ -444,6 +448,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "auth with payload",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidSOC,
@@ -451,6 +456,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "unknown kind",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.Kind(9), 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidMessage,
@@ -458,6 +464,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "short frame",
 			send: func(t *testing.T, _ *bpsFixture, conn *websocket.Conn, _ []byte) {
+				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, []byte{1, 2})
 			},
 			code: api.BPSCloseInvalidMessage,
@@ -465,7 +472,8 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		{
 			name: "text frame",
 			send: func(t *testing.T, _ *bpsFixture, conn *websocket.Conn, _ []byte) {
-				_ = conn.WriteJSON(map[string]string{"type": "claim"})
+				t.Helper()
+				_ = conn.WriteJSON(map[string]string{"type": "auth"})
 			},
 			code: api.BPSCloseInvalidMessage,
 		},
@@ -509,7 +517,7 @@ func TestBPSPublishSessionErrors(t *testing.T) {
 	})
 }
 
-func TestBPSPublishClientGoneBeforeClaim(t *testing.T) {
+func TestBPSPublishClientGoneBeforeAuth(t *testing.T) {
 	t.Parallel()
 	f := newBPSFixture(t)
 	conn := f.dial(t, "publish")
@@ -530,9 +538,9 @@ func TestBPSPublishOversizedFrame(t *testing.T) {
 	waitSessionClosed(t, f)
 }
 
-// Not parallel: mutates the package-level claim timeout.
-func TestBPSPublishClaimTimeout(t *testing.T) {
-	restore := api.SetBPSClaimTimeout(100 * time.Millisecond)
+// Not parallel: mutates the package-level auth timeout.
+func TestBPSPublishAuthTimeout(t *testing.T) {
+	restore := api.SetBPSAuthTimeout(100 * time.Millisecond)
 	defer restore()
 	f := newBPSFixture(t)
 	conn := f.dial(t, "publish")
