@@ -13,10 +13,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -66,8 +64,8 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 
 // validateAndAddLocations iterates every chunk index entry, reads its data from
 // Sharky, and validates the content hash. Valid chunks are registered with the
-// recovery so their slots are preserved. Corrupted entries (unreadable data or
-// hash mismatch) are logged, excluded from the recovery bitmap, and deleted from
+// recovery so their slots are preserved. Entries that chunkstore.Verify judges
+// corrupted (unreadable data or hash mismatch) are logged, excluded from the recovery bitmap, and deleted from
 // the index store — including all associated reserve metadata (BatchRadiusItem,
 // ChunkBinItem, stampindex, chunkstamp) — so the node starts clean without
 // serving invalid data and with correct reserve size accounting.
@@ -86,15 +84,10 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 		default:
 		}
 
-		if err := sharkyRecover.Read(ctx, item.Location, buf[:item.Location.Length]); err != nil {
-			logger.Warning("recovery: unreadable chunk, marking corrupted", "address", item.Address, "err", err)
-			corrupted = append(corrupted, item)
-			return nil
-		}
-
+		readErr := sharkyRecover.Read(ctx, item.Location, buf[:item.Location.Length])
 		ch := swarm.NewChunk(item.Address, buf[:item.Location.Length])
-		if !cac.Valid(ch) && !soc.Valid(ch) {
-			logger.Warning("recovery: invalid chunk hash, marking corrupted", "address", item.Address)
+		if _, err := chunkstore.Verify(ch, readErr); err != nil {
+			logger.Warning("recovery: marking chunk corrupted", "address", item.Address, "err", err)
 			corrupted = append(corrupted, item)
 			return nil
 		}

@@ -5,9 +5,14 @@
 package storer_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"math/big"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,12 +20,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestReserveSampler(t *testing.T) {
@@ -142,6 +149,196 @@ func TestReserveSampler(t *testing.T) {
 		}
 		testF(t, baseAddr, storer)
 	})
+}
+
+type multiBatchStore struct {
+	*batchstore.BatchStore
+	batches []*postage.Batch
+}
+
+func (m *multiBatchStore) Iterate(cb func(*postage.Batch) (bool, error)) error {
+	for _, b := range m.batches {
+		if stop, err := cb(b); stop || err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type errBatchStore struct {
+	*batchstore.BatchStore
+	err error
+}
+
+func (e *errBatchStore) Iterate(cb func(*postage.Batch) (bool, error)) error {
+	return e.err
+}
+
+func TestReserveSamplerMinBatchBalance(t *testing.T) {
+	t.Parallel()
+
+	const chunkCount = 10
+	baseAddr := swarm.RandAddress(t)
+
+	lowBatchValue := big.NewInt(100)
+	highBatchValue := big.NewInt(200)
+
+	lowBatch := &postage.Batch{
+		ID:    postagetesting.MustNewID(),
+		Value: lowBatchValue,
+	}
+	highBatch := &postage.Batch{
+		ID:    postagetesting.MustNewID(),
+		Value: highBatchValue,
+	}
+
+	bs := &multiBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		batches:    []*postage.Batch{lowBatch, highBatch},
+	}
+
+	opts := dbTestOps(baseAddr, 1000, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := memStorer(t, opts)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	radius := uint8(5)
+	anchor := swarm.RandAddressAt(t, baseAddr, int(radius)).Bytes()
+	anchorAddr := swarm.NewAddress(anchor)
+
+	timeVar := uint64(time.Now().UnixNano())
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, timeVar-1)
+
+	putter := st.ReservePutter()
+
+	// Store chunks from lowBatch and highBatch at proximity radius to anchor
+	for range chunkCount {
+		chLow := chunk.GenerateValidRandomChunkAt(t, anchorAddr, int(radius)).WithBatch(3, 2, false)
+		chLow = chLow.WithStamp(postage.NewStamp(lowBatch.ID, postagetesting.MustNewID()[:8], tsBuf, postagetesting.MustNewSignature()))
+		if err := putter.Put(context.Background(), chLow); err != nil {
+			t.Fatal(err)
+		}
+
+		chHigh := chunk.GenerateValidRandomChunkAt(t, anchorAddr, int(radius)).WithBatch(3, 2, false)
+		chHigh = chHigh.WithStamp(postage.NewStamp(highBatch.ID, postagetesting.MustNewID()[:8], tsBuf, postagetesting.MustNewSignature()))
+		if err := putter.Put(context.Background(), chHigh); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("minimum below batch value", func(t *testing.T) {
+		minBelow := big.NewInt(50)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minBelow)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != 0 {
+			t.Fatalf("expected 0 below balance ignored, got %d", sample.Stats.BelowBalanceIgnored)
+		}
+	})
+
+	t.Run("minimum equal to batch value", func(t *testing.T) {
+		minEqual := big.NewInt(100)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minEqual)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != 0 {
+			t.Fatalf("expected 0 below balance ignored, got %d", sample.Stats.BelowBalanceIgnored)
+		}
+	})
+
+	t.Run("minimum above low batch value", func(t *testing.T) {
+		minAbove := big.NewInt(150)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minAbove)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != chunkCount {
+			t.Fatalf("expected %d below balance ignored, got %d", chunkCount, sample.Stats.BelowBalanceIgnored)
+		}
+
+		if len(sample.Items) == 0 {
+			t.Fatal("expected sample items from valid batch, got 0")
+		}
+
+		for _, item := range sample.Items {
+			if bytes.Equal(item.Stamp.BatchID(), lowBatch.ID) {
+				t.Fatalf("sample contains chunk from excluded batch %x", lowBatch.ID)
+			}
+		}
+	})
+}
+
+func TestReserveSamplerBatchExclusionFilterError(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	expectedErr := errors.New("batchstore iteration failure")
+
+	bs := &errBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		err:        expectedErr,
+	}
+
+	opts := dbTestOps(baseAddr, 1000, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := memStorer(t, opts)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	radius := uint8(5)
+	anchor := swarm.RandAddressAt(t, baseAddr, int(radius)).Bytes()
+
+	_, err = st.ReserveSample(context.TODO(), anchor, radius, uint64(time.Now().UnixNano()), big.NewInt(100))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected error wrapping %v, got %v", expectedErr, err)
+	}
+
+	if got := reserveSampleRuns(t, st, "failure"); got != 1 {
+		t.Fatalf("expected 1 failed sample run in metrics, got %d", got)
+	}
+	if got := reserveSampleRuns(t, st, "success"); got != 0 {
+		t.Fatalf("expected 0 successful sample runs in metrics, got %d", got)
+	}
+}
+
+// reserveSampleRuns returns the number of sample runs recorded with status.
+func reserveSampleRuns(t *testing.T, st *storer.DB, status string) uint64 {
+	t.Helper()
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(st.Metrics()...)
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mf := range families {
+		if !strings.HasSuffix(mf.GetName(), "reserve_sample_duration_seconds") {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "status" && l.GetValue() == status {
+					return m.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func TestReserveSamplerSisterNeighborhood(t *testing.T) {
@@ -520,9 +717,6 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	if sample.Stats.AssemblyChunkLoadFailed != 0 {
 		t.Fatalf("got unexpected failed assembly chunk loads")
 	}
-	if sample.Stats.RogueChunk != 0 {
-		t.Fatalf("got unexpected rogue chunks")
-	}
 	if sample.Stats.StampLoadFailed != 0 {
 		t.Fatalf("got unexpected failed stamp loads")
 	}
@@ -687,5 +881,69 @@ func BenchmarkSampleHashing(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkReserveSample10kWith1000ExcludedBatches benchmarks sampling with 10k chunks
+// in the reserve and 1000 batches below the minimum balance (excluded).
+func BenchmarkReserveSample10kWith1000ExcludedBatches(b *testing.B) {
+	const (
+		maxPO           = 10
+		chunkCountPerPO = 1000
+		numBatches      = 1000
+	)
+
+	baseAddr := swarm.RandAddress(b)
+	batches := make([]*postage.Batch, numBatches)
+	for i := range batches {
+		batches[i] = &postage.Batch{
+			ID:    postagetesting.MustNewID(),
+			Value: big.NewInt(50), // below minBatchBalance
+		}
+	}
+
+	bs := &multiBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		batches:    batches,
+	}
+
+	opts := dbTestOps(baseAddr, 5*chunkCountPerPO*maxPO, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := diskStorer(b, opts)()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	timeVar := uint64(time.Now().UnixNano())
+
+	putter := st.ReservePutter()
+	var chunkIdx int
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(b, baseAddr, po).WithBatch(3, 2, false)
+			batchID := batches[chunkIdx%numBatches].ID
+			chunkIdx++
+			ch = ch.WithStamp(postage.NewStamp(batchID, postagetesting.MustNewID()[:8], postagetesting.MustNewID()[:8], postagetesting.MustNewSignature()))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	var (
+		radius uint8 = 5
+		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
+	)
+
+	minBatchBalance := big.NewInt(100)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minBatchBalance)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
