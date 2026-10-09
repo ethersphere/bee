@@ -5,18 +5,29 @@
 package joiner_test
 
 import (
+	"context"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// TestSubtrieSectionTerminatesOnLargeSize guards against an unsatisfiable
-// loop exit: subtrieSize comes from chunk data, and a large value overflowed
-// branchSize, while a payload with no data references made refs non-positive.
+// TestSubtrieSectionTerminatesOnLargeSize checks subtrieSection with sizes
+// read from chunk data that the references cannot hold: it must terminate and
+// report the trie as malformed, at the first and at the last reference. A
+// large size used to overflow branchSize and loop forever, and a payload with
+// no data references made the loop exit unreachable.
 func TestSubtrieSectionTerminatesOnLargeSize(t *testing.T) {
 	t.Parallel()
+
+	const lastIdx = (swarm.Branches - 1) * swarm.HashSize
 
 	for _, tc := range []struct {
 		name        string
@@ -25,27 +36,79 @@ func TestSubtrieSectionTerminatesOnLargeSize(t *testing.T) {
 	}{
 		{"overflowing size", swarm.ChunkSize, 1 << 62},
 		{"maximum size", swarm.ChunkSize, 1<<63 - 1},
+		{"size too small for the references", swarm.ChunkSize, 1 << 20},
 		{"no data references", 0, 1 << 20},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		for _, startIdx := range []int{0, lastIdx} {
+			t.Run(fmt.Sprintf("%s at %d", tc.name, startIdx), func(t *testing.T) {
+				t.Parallel()
+
+				type result struct {
+					sec int64
+					err error
+				}
+				done := make(chan result, 1)
+				go func() {
+					sec, err := joiner.SubtrieSection(128, swarm.HashSize, startIdx, tc.payloadSize, 0, tc.subtrieSize)
+					done <- result{sec, err}
+				}()
+
+				select {
+				case r := <-done:
+					if !errors.Is(r.err, joiner.ErrMalformedTrie) {
+						t.Fatalf("got section %d and error %v, want %v", r.sec, r.err, joiner.ErrMalformedTrie)
+					}
+				case <-time.After(5 * time.Second):
+					// The loop has no context check; the goroutine is reaped at exit.
+					t.Fatal("subtrieSection did not terminate")
+				}
+			})
+		}
+	}
+}
+
+// TestReadInconsistentTrie checks that a root chunk whose span the references
+// cannot hold fails at every offset, instead of serving data for some.
+func TestReadInconsistentTrie(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := inmemchunkstore.New()
+
+	leaf, err := cac.New(make([]byte, swarm.ChunkSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(ctx, leaf); err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]byte, 0, swarm.HashSize*swarm.Branches)
+	for range swarm.Branches {
+		refs = append(refs, leaf.Address().Bytes()...)
+	}
+
+	for _, span := range []uint64{math.MaxInt64, 1 << 20} {
+		t.Run(fmt.Sprintf("span %d", span), func(t *testing.T) {
 			t.Parallel()
 
-			done := make(chan int64, 1)
-			go func() {
-				done <- joiner.SubtrieSection(128, swarm.HashSize, 0, tc.payloadSize, 0, tc.subtrieSize)
-			}()
+			spanBytes := make([]byte, swarm.SpanSize)
+			binary.LittleEndian.PutUint64(spanBytes, span)
+			root, err := cac.NewWithDataSpan(append(spanBytes, refs...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Put(ctx, root); err != nil {
+				t.Fatal(err)
+			}
+			j, size, err := joiner.New(ctx, store, store, root.Address(), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-			select {
-			case sec := <-done:
-				// No value is right for a size the references cannot hold, and
-				// readAtOffset rejects the child when its span disagrees. The
-				// first section must still not have wrapped around.
-				if sec <= 0 {
-					t.Fatalf("got section %d, want a positive value", sec)
+			for _, off := range []int64{0, size / 2, size - swarm.ChunkSize} {
+				if _, err := j.ReadAt(make([]byte, swarm.ChunkSize), off); !errors.Is(err, joiner.ErrMalformedTrie) {
+					t.Fatalf("offset %d: got error %v, want %v", off, err, joiner.ErrMalformedTrie)
 				}
-			case <-time.After(5 * time.Second):
-				// The loop has no context check; the goroutine is reaped at exit.
-				t.Fatal("subtrieSection did not terminate")
 			}
 		})
 	}
@@ -80,7 +143,11 @@ func TestSubtrieSectionValidTries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := joiner.SubtrieSection(refs, swarm.HashSize, tc.startIdx, swarm.ChunkSize, 0, tc.subtrieSize); got != tc.want {
+			got, err := joiner.SubtrieSection(refs, swarm.HashSize, tc.startIdx, swarm.ChunkSize, 0, tc.subtrieSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
 				t.Fatalf("got section %d, want %d", got, tc.want)
 			}
 		})

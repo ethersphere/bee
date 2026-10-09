@@ -288,7 +288,13 @@ func (j *joiner) readAtOffset(
 		}
 
 		// fast forward the cursor
-		sec := j.subtrieSection(cursor, pSize, parity, subTrieSize)
+		sec, err := j.subtrieSection(cursor, pSize, parity, subTrieSize)
+		if err != nil {
+			eg.Go(func() error {
+				return err
+			})
+			return
+		}
 		if cur+sec <= off {
 			cur += sec
 			continue
@@ -342,7 +348,7 @@ func (j *joiner) getShards(payloadSize, parities int) int {
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) int64 {
+func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) (int64, error) {
 	// assume we have a trie of size `y` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -355,25 +361,40 @@ func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize
 		branching  = int64(j.maxBranching)                     // branching factor is chunkSize divided by reference length
 		branchSize = int64(swarm.ChunkSize)
 	)
+	// fullSize returns the size of the refs-1 full branches, or false if it
+	// does not fit in an int64 and so exceeds any subtrie size.
+	fullSize := func() (int64, bool) {
+		if refs > 1 && branchSize > math.MaxInt64/(refs-1) {
+			return 0, false
+		}
+		return branchSize * (refs - 1), true
+	}
 	for {
-		whatsLeft := subtrieSize - (branchSize * (refs - 1))
-		if whatsLeft <= branchSize {
+		full, ok := fullSize()
+		if !ok || subtrieSize-full <= branchSize {
 			break
 		}
 		// subtrieSize comes from chunk data. Stop before the multiplication
 		// overflows: a wrapped branchSize, or a non-positive refs, made the
 		// exit condition unsatisfiable.
 		if branchSize > math.MaxInt64/branching {
-			break
+			return 0, ErrMalformedTrie
 		}
 		branchSize *= branching
 	}
 
+	// The size must leave at least one byte for the last branch; otherwise
+	// it cannot be split into refs branches of this trie.
+	full, ok := fullSize()
+	if !ok || subtrieSize-full <= 0 {
+		return 0, ErrMalformedTrie
+	}
+
 	// handle last branch edge case
 	if startIdx == int(refs-1)*j.refLength {
-		return subtrieSize - (refs-1)*branchSize
+		return subtrieSize - full, nil
 	}
-	return branchSize
+	return branchSize, nil
 }
 
 var (
@@ -443,7 +464,10 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		if j.refLength == encryption.ReferenceSize {
 			cursor += swarm.HashSize * min(i, shardCnt)
 		}
-		sec := j.subtrieSection(cursor, eSize, parity, subTrieSize)
+		sec, err := j.subtrieSection(cursor, eSize, parity, subTrieSize)
+		if err != nil {
+			return err
+		}
 		if sec <= swarm.ChunkSize {
 			continue
 		}

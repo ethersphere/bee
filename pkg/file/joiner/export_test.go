@@ -5,7 +5,7 @@
 package joiner
 
 // SubtrieSection exposes subtrieSection for tests.
-func SubtrieSection(maxBranching, refLength, startIdx, payloadSize, parities int, subtrieSize int64) int64 {
+func SubtrieSection(maxBranching, refLength, startIdx, payloadSize, parities int, subtrieSize int64) (int64, error) {
 	j := &joiner{maxBranching: maxBranching, refLength: refLength}
 	return j.subtrieSection(startIdx, payloadSize, parities, subtrieSize)
 }
