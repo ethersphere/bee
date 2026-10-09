@@ -18,6 +18,8 @@ const (
 	ProtocolName    = protocolName
 	ProtocolVersion = protocolVersion
 	StreamName      = streamName
+
+	FirstChunkTimeout = firstChunkTimeout
 )
 
 const (
@@ -64,4 +66,9 @@ func (s *Syncer) StreamLimitExceededCount() float64 {
 		return -1
 	}
 	return m.GetCounter().GetValue()
+}
+
+// SyncInProgress returns the number of running incoming sync handlers.
+func (s *Syncer) SyncInProgress() int32 {
+	return s.syncInProgress.Load()
 }

@@ -100,6 +100,66 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 	})
 }
 
+// TestIncoming_EmptyIntervalTimeout checks that a request for an interval
+// without chunks is answered with an empty offer after the first chunk timeout.
+func TestIncoming_EmptyIntervalTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(nil, nil))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		begin := time.Now()
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if topmost != 0 || count != 0 {
+			t.Fatalf("got topmost %d and count %d, want 0 and 0", topmost, count)
+		}
+		if got := time.Since(begin); got != pullsync.FirstChunkTimeout {
+			t.Fatalf("got offer after %v, want %v", got, pullsync.FirstChunkTimeout)
+		}
+	})
+}
+
+// TestIncoming_AbandonedStream checks that the handler of a stream abandoned by
+// the client while waiting on an empty interval returns after the first chunk
+// timeout, as the handler context is not canceled by a stream reset.
+func TestIncoming_AbandonedStream(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(nil, nil))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 1)
+			done <- err
+		}()
+
+		synctest.Wait()
+		if got := ps.SyncInProgress(); got != 1 {
+			t.Fatalf("got %d handlers in progress, want 1", got)
+		}
+
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("got error %v, want %v", err, context.Canceled)
+		}
+
+		time.Sleep(pullsync.FirstChunkTimeout)
+		synctest.Wait()
+		if got := ps.SyncInProgress(); got != 0 {
+			t.Fatalf("got %d handlers in progress, want 0", got)
+		}
+	})
+}
+
 func TestIncoming_WantOne(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (

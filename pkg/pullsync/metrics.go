@@ -22,6 +22,7 @@ type metrics struct {
 	DuplicateRuid        prometheus.Counter     // number of duplicate RUID requests we got
 	LastReceived         *prometheus.CounterVec // last timestamp of the received chunks per bin
 	StreamLimitExceeded  prometheus.Counter     // number of peers disconnected for exceeding the concurrent stream limit
+	FirstChunkTimeouts   prometheus.Counter     // number of offers returned empty because no chunk arrived in time
 }
 
 func newMetrics() metrics {
@@ -100,6 +101,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "stream_limit_exceeded",
 			Help:      "Total peers disconnected for exceeding the concurrent stream limit.",
+		}),
+		FirstChunkTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "first_chunk_timeouts",
+			Help:      "Total offers returned empty because no chunk arrived in the requested interval in time.",
 		}),
 	}
 }
