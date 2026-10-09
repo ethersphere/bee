@@ -192,6 +192,10 @@ func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logg
 }
 
 func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
+	if err := checkPostageSnapshotOptions(c.config.GetBool(optionSkipPostageSnapshot), c.config.GetString(optionPostageSnapshotFile)); err != nil {
+		return nil, err
+	}
+
 	var err error
 
 	// If the resolver is specified, resolve all connection strings
@@ -339,6 +343,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		PaymentTolerance:              c.config.GetInt64(optionNamePaymentTolerance),
 		PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
 		PostageContractStartBlock:     c.config.GetUint64(optionNamePostageContractStartBlock),
+		PostageSnapshotFile:           c.config.GetString(optionPostageSnapshotFile),
 		PostageSyncBlockRange:         c.config.GetUint64(optionNamePostageSyncBlockRange),
 		PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
 		RedistributionContractAddress: c.config.GetString(optionNameRedistributionAddress),
@@ -392,6 +397,13 @@ type signerConfig struct {
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
 	session          accesscontrol.Session
+}
+
+func checkPostageSnapshotOptions(skip bool, file string) error {
+	if skip && file != "" {
+		return errors.New("postage-snapshot-file and skip-postage-snapshot cannot be used together")
+	}
+	return nil
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config *signerConfig, err error) {
