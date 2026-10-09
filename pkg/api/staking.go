@@ -119,6 +119,13 @@ func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 
 	minDeposit, err := s.stakingContract.GetMinDeposit(r.Context())
 	if err != nil {
+		if errors.Is(err, staking.ErrOraclePriceUnavailable) {
+			logger.Debug("oracle price unavailable", "overlayAddr", s.overlay, "error", err)
+			jsonhttp.OK(w, getStakeResponse{
+				StakedAmount: bigint.Wrap(stakedAmount),
+			})
+			return
+		}
 		logger.Debug("get minimum deposit failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get minimum deposit failed")
 		jsonhttp.InternalServerError(w, "get minimum deposit failed")
