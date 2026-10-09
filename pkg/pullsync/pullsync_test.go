@@ -16,10 +16,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -100,61 +102,57 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 	})
 }
 
-// TestIncoming_EmptyIntervalTimeout checks that a request for an interval
-// without chunks is answered with an empty offer after the first chunk timeout.
-func TestIncoming_EmptyIntervalTimeout(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		var (
-			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(nil, nil))
-			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-			psClient, _ = newPullSync(t, recorder, 0)
-		)
+// chunkReserve is a reserve whose bin subscription gets chunks only when the test sends them.
+type chunkReserve struct {
+	*mock.ReserveStore
+	chunks chan *storer.BinC
+}
 
-		begin := time.Now()
-		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 1)
+func (r *chunkReserve) SubscribeBin(context.Context, uint8, uint64) (<-chan *storer.BinC, func(), <-chan error) {
+	return r.chunks, func() {}, make(chan error)
+}
+
+// TestIncoming_HalfClosedStream checks that the handler still sends the offer to a
+// client that closes its write side after the request, as only a stream reset
+// abandons the request.
+func TestIncoming_HalfClosedStream(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		reserve := &chunkReserve{ReserveStore: mock.NewReserve(), chunks: make(chan *storer.BinC)}
+		validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+		ps := pullsync.New(nil, reserve, func(swarm.Chunk) {}, func(*soc.SOC) {}, validStamp, log.Noop, pullsync.DefaultMaxPage)
+		t.Cleanup(func() { _ = ps.Close() })
+		recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+
+		stream, err := recorder.NewStream(context.Background(), swarm.ZeroAddress, nil, pullsync.ProtocolName, pullsync.ProtocolVersion, pullsync.StreamName)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if topmost != 0 || count != 0 {
-			t.Fatalf("got topmost %d and count %d, want 0 and 0", topmost, count)
+		w, r := protobuf.NewWriterAndReader(stream)
+		if err := w.WriteMsg(&pb.Get{Bin: 0, Start: 1}); err != nil {
+			t.Fatal(err)
 		}
-		if got := time.Since(begin); got != pullsync.FirstChunkTimeout {
-			t.Fatalf("got offer after %v, want %v", got, pullsync.FirstChunkTimeout)
+		cw, ok := stream.(interface{ CloseWrite() error })
+		if !ok {
+			t.Fatal("stream cannot close its write side")
 		}
-	})
-}
-
-// TestIncoming_AbandonedStream checks that the handler of a stream abandoned by
-// the client while waiting on an empty interval returns as soon as the client
-// resets the stream, although a stream reset does not cancel the handler context.
-func TestIncoming_AbandonedStream(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		var (
-			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(nil, nil))
-			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-			psClient, _ = newPullSync(t, recorder, 0)
-		)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan error, 1)
-		go func() {
-			_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 1)
-			done <- err
-		}()
+		if err := cw.CloseWrite(); err != nil {
+			t.Fatal(err)
+		}
 
 		synctest.Wait()
 		if got := ps.SyncInProgress(); got != 1 {
-			t.Fatalf("got %d handlers in progress, want 1", got)
+			t.Fatalf("got %d handlers in progress after the client closed its write side, want 1", got)
 		}
 
-		cancel()
-		if err := <-done; !errors.Is(err, context.Canceled) {
-			t.Fatalf("got error %v, want %v", err, context.Canceled)
-		}
+		addr := swarm.RandAddress(t)
+		reserve.chunks <- &storer.BinC{Address: addr, BatchID: swarm.RandAddress(t).Bytes(), BinID: 1, StampHash: swarm.RandAddress(t).Bytes()}
 
-		synctest.Wait()
-		if got := ps.SyncInProgress(); got != 0 {
-			t.Fatalf("got %d handlers in progress, want 0", got)
+		var offer pb.Offer
+		if err := r.ReadMsg(&offer); err != nil {
+			t.Fatal(err)
+		}
+		if len(offer.Chunks) != 1 || !bytes.Equal(offer.Chunks[0].Address, addr.Bytes()) {
+			t.Fatalf("got offer %v, want one chunk %s", offer.Chunks, addr)
 		}
 	})
 }

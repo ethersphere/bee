@@ -47,7 +47,6 @@ const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
 	pageTimeout                     = time.Millisecond * 250
-	firstChunkTimeout               = time.Minute * 5 // bounds the wait for a chunk in an empty interval
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
@@ -417,13 +416,14 @@ type collectAddrsResult struct {
 	topmost uint64
 }
 
-// watchStream cancels the request if the peer resets or closes the stream while the
-// handler waits for chunks to offer. The handler context is canceled only when the peer
-// disconnects, and the handler does not read from the stream during this wait, so it
-// cannot see a reset otherwise. The peer must not send data or close its side before it
-// receives the offer, so any result of the read ends the request.
+// watchStream cancels the request if the peer resets the stream while the handler waits
+// for chunks to offer. The handler context is canceled only when the peer disconnects, and
+// the handler does not read from the stream during this wait, so it cannot see a reset
+// otherwise. The peer sends nothing before it receives the offer, so the read returns only
+// when the stream ends. If the peer only closes its write side, the read returns io.EOF;
+// the peer can still read the offer, so the request continues without a watch.
 // The returned function stops the watch. It must be called before the next read from the stream.
-// If the stream does not support read deadlines, nothing is watched and firstChunkTimeout bounds the wait.
+// If the stream does not support read deadlines, nothing is watched.
 func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop func() error) {
 	ds, ok := stream.(interface{ SetReadDeadline(time.Time) error })
 	if !ok || ds.SetReadDeadline(time.Time{}) != nil {
@@ -434,11 +434,12 @@ func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = stream.Read(make([]byte, 1))
-		if !stopped.Load() {
-			s.metrics.AbandonedRequests.Inc()
-			cancel()
+		n, err := stream.Read(make([]byte, 1))
+		if stopped.Load() || (n == 0 && errors.Is(err, io.EOF)) {
+			return
 		}
+		s.metrics.AbandonedRequests.Inc()
+		cancel()
 	}()
 
 	return func() error {
@@ -453,8 +454,7 @@ func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop
 }
 
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
-// The function waits up to firstChunkTimeout for the first chunk to arrive and returns an empty
-// result if none does, so that a handler that does not see an abandoned stream does not wait forever.
+// The function waits for an unbounded amount of time for the first chunk to arrive.
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
@@ -462,12 +462,15 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		var (
 			chs     []*storer.BinC
 			topmost uint64
-			timer   = time.NewTimer(firstChunkTimeout)
+			timer   *time.Timer
+			timerC  <-chan time.Time
 		)
 		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
 		defer func() {
 			unsub()
-			timer.Stop()
+			if timer != nil {
+				timer.Stop()
+			}
 		}()
 
 		limit := s.maxPage
@@ -485,18 +488,20 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					topmost = c.BinID
 				}
 				limit--
-				if !timer.Stop() {
-					<-timer.C
+				if timer == nil {
+					timer = time.NewTimer(pageTimeout)
+				} else {
+					if !timer.Stop() {
+						<-timer.C
+					}
+					timer.Reset(pageTimeout)
 				}
-				timer.Reset(pageTimeout)
+				timerC = timer.C
 			case err := <-errC:
 				return nil, err
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-timer.C:
-				if len(chs) == 0 {
-					s.metrics.FirstChunkTimeouts.Inc()
-				}
+			case <-timerC:
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}

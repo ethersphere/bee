@@ -10,8 +10,6 @@ const (
 	ProtocolName    = protocolName
 	ProtocolVersion = protocolVersion
 	StreamName      = streamName
-
-	FirstChunkTimeout = firstChunkTimeout
 )
 
 // SyncInProgress returns the number of running incoming sync handlers.
