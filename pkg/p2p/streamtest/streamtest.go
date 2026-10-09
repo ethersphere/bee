@@ -343,6 +343,12 @@ func (s *stream) FullClose() error {
 	return nil
 }
 
+// CloseWrite closes the write side of the stream; reads on the other side return io.EOF.
+func (s *stream) CloseWrite() error {
+	s.in.close()
+	return nil
+}
+
 func (s *stream) Reset() (err error) {
 	return s.FullClose()
 }
