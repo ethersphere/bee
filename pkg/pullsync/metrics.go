@@ -9,12 +9,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	offerSkipNil              = "nil"
+	offerSkipBadAddressLength = "bad_address_length"
+	offerSkipZeroAddress      = "zero_address"
+	offerSkipBadSumLength     = "bad_sum_length"
+)
+
 type metrics struct {
 	Offered              prometheus.Counter     // number of chunks offered
+	OfferSkipped         *prometheus.CounterVec // offer entries skipped while checking an offer, by reason
 	Wanted               prometheus.Counter     // number of chunks wanted
 	MissingChunks        prometheus.Counter     // number of reserve get errs
 	ReceivedZeroAddress  prometheus.Counter     // number of delivered chunks with invalid address
 	ReceivedInvalidChunk prometheus.Counter     // number of delivered chunks with invalid address
+	DivergentRejected    prometheus.Counter     // number of delivered chunks that lost the divergence tie-break
 	Delivered            prometheus.Counter     // number of chunk deliveries
 	SentOffered          prometheus.Counter     // number of chunks offered
 	SentWanted           prometheus.Counter     // number of chunks wanted
@@ -33,6 +42,15 @@ func newMetrics() metrics {
 			Name:      "chunks_offered",
 			Help:      "Total chunks offered.",
 		}),
+		OfferSkipped: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "chunks_offer_skipped",
+				Help:      "Total offer entries skipped while checking an offer.",
+			},
+			[]string{"reason"},
+		),
 		Wanted: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -56,6 +74,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "received_invalid_chunks",
 			Help:      "Total invalid chunks delivered.",
+		}),
+		DivergentRejected: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "divergent_rejected",
+			Help:      "Total delivered chunks discarded for losing the divergence tie-break.",
 		}),
 		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
