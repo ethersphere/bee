@@ -64,7 +64,7 @@ type Options struct {
 	AuthTimeout             time.Duration // disconnects a pending stream that has not authenticated
 	QueueSize               int           // outbound frames per subscriber stream
 	ViolationBlocklist      time.Duration // blocklist duration for a protocol violation
-	AuthTimeoutBlocklist    time.Duration // blocklist duration for an auth timeout
+	BlocklistDuration       time.Duration // blocklist duration for an auth timeout
 }
 
 // DefaultOptions are the SWIP-74 recommended bounds.
@@ -77,7 +77,7 @@ var DefaultOptions = Options{
 	AuthTimeout:             30 * time.Second,
 	QueueSize:               64,
 	ViolationBlocklist:      10 * time.Minute,
-	AuthTimeoutBlocklist:    time.Minute,
+	BlocklistDuration:       time.Minute,
 }
 
 func (o Options) withDefaults() Options {
@@ -106,8 +106,8 @@ func (o Options) withDefaults() Options {
 	if o.ViolationBlocklist > 0 {
 		d.ViolationBlocklist = o.ViolationBlocklist
 	}
-	if o.AuthTimeoutBlocklist > 0 {
-		d.AuthTimeoutBlocklist = o.AuthTimeoutBlocklist
+	if o.BlocklistDuration > 0 {
+		d.BlocklistDuration = o.BlocklistDuration
 	}
 	return d
 }
@@ -702,7 +702,7 @@ func (s *Service) authTimeout(peer swarm.Address, co *cohort, m *member) {
 	}
 	s.count(&co.counters.authTimeout, "auth_timeout")
 	if s.blocklister != nil {
-		if err := s.blocklister.Blocklist(peer, s.opts.AuthTimeoutBlocklist, "bps auth timeout"); err != nil {
+		if err := s.blocklister.Blocklist(peer, s.opts.BlocklistDuration, "bps auth timeout"); err != nil {
 			s.logger.Debug("blocklist failed", "peer_address", peer, "error", err)
 		}
 	}
