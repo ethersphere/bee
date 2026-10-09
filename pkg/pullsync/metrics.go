@@ -21,6 +21,7 @@ type metrics struct {
 	Sent                 prometheus.Counter     // number of chunks sent
 	DuplicateRuid        prometheus.Counter     // number of duplicate RUID requests we got
 	LastReceived         *prometheus.CounterVec // last timestamp of the received chunks per bin
+	FirstChunkTimeouts   prometheus.Counter     // number of offers returned empty because no chunk arrived in time
 }
 
 func newMetrics() metrics {
@@ -94,6 +95,12 @@ func newMetrics() metrics {
 				Name:      "last_received",
 				Help:      `The last timestamp of the received chunks per bin.`,
 			}, []string{"bin"}),
+		FirstChunkTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "first_chunk_timeouts",
+			Help:      "Total offers returned empty because no chunk arrived in the requested interval in time.",
+		}),
 	}
 }
 

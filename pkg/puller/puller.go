@@ -73,6 +73,8 @@ const (
 	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
 
+	syncErrorBackoff = time.Second * 5 // wait before retrying a failed sync, so a peer that refuses streams is not hammered
+
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
 
 	maxPODelta = 2 // the lowest level of proximity order (of peers) subtracted from the storage radius allowed for chunk syncing.
@@ -385,6 +387,12 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				}
 				errCount := countErrors(err)
 				p.logger.Debug("syncWorker interval failed", "error_count", errCount, "example_error", errors.Unwrap(err), "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
+
+				// partial progress is still recorded below; cancellation is handled at the top of the loop
+				select {
+				case <-ctx.Done():
+				case <-time.After(syncErrorBackoff):
+				}
 			}
 
 			_ = p.limiter.WaitN(ctx, count)

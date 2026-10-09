@@ -47,6 +47,7 @@ const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
 	pageTimeout                     = time.Millisecond * 250
+	firstChunkTimeout               = time.Minute * 5 // bounds the wait for a chunk in an empty interval
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
@@ -413,7 +414,8 @@ type collectAddrsResult struct {
 }
 
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
-// The function waits for an unbounded amount of time for the first chunk to arrive.
+// The function waits up to firstChunkTimeout for the first chunk to arrive and returns an empty
+// result if none does, so that handlers of abandoned streams do not wait on an empty interval forever.
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
@@ -421,15 +423,12 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		var (
 			chs     []*storer.BinC
 			topmost uint64
-			timer   *time.Timer
-			timerC  <-chan time.Time
+			timer   = time.NewTimer(firstChunkTimeout)
 		)
 		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
 		defer func() {
 			unsub()
-			if timer != nil {
-				timer.Stop()
-			}
+			timer.Stop()
 		}()
 
 		limit := s.maxPage
@@ -447,20 +446,18 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					topmost = c.BinID
 				}
 				limit--
-				if timer == nil {
-					timer = time.NewTimer(pageTimeout)
-				} else {
-					if !timer.Stop() {
-						<-timer.C
-					}
-					timer.Reset(pageTimeout)
+				if !timer.Stop() {
+					<-timer.C
 				}
-				timerC = timer.C
+				timer.Reset(pageTimeout)
 			case err := <-errC:
 				return nil, err
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-timerC:
+			case <-timer.C:
+				if len(chs) == 0 {
+					s.metrics.FirstChunkTimeouts.Inc()
+				}
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
