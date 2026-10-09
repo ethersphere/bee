@@ -721,6 +721,12 @@ func (s *Service) serveManifestEntry(
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
+		// Files uploaded in a collection with an unknown extension are stored
+		// with an empty type and served without one. Leave those for the
+		// browser to sniff: with nosniff it would not load or render them.
+		if mimeType == "" {
+			w.Header().Del(xContentTypeOptionsHeader)
+		}
 	}
 
 	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)

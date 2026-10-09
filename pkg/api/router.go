@@ -5,10 +5,8 @@
 package api
 
 import (
-	"bufio"
 	"expvar"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -57,71 +55,16 @@ func (s *Service) Mount() {
 
 // noSniffHandler stops browsers from guessing a content type other than the
 // one the uploader declared, so content is handled as the declared type.
-// Responses without a declared type, such as files uploaded in a collection
-// with an unknown extension, are left for the browser to sniff as before.
 func noSniffHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.ServeHTTP(&noSniffWriter{ResponseWriter: w}, r)
+		w.Header().Set(xContentTypeOptionsHeader, "nosniff")
+		h.ServeHTTP(w, r)
 	})
 }
 
-// noSniffWriter adds X-Content-Type-Options: nosniff when the header is
-// written, if a Content-Type has been set by then.
-type noSniffWriter struct {
-	http.ResponseWriter
-	wroteHeader bool
-	statusCode  int
-}
-
-func (w *noSniffWriter) WriteHeader(code int) {
-	if !w.wroteHeader {
-		w.wroteHeader = true
-		w.statusCode = code
-		if w.Header().Get("Content-Type") != "" {
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-		}
-	}
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *noSniffWriter) Write(b []byte) (int, error) {
-	if !w.wroteHeader {
-		w.WriteHeader(http.StatusOK)
-	}
-	return w.ResponseWriter.Write(b)
-}
-
-// Status reports the response status to handlers that read it, such as the
-// tracing middleware, as the wrapped writer would.
-func (w *noSniffWriter) Status() int {
-	if sw, ok := w.ResponseWriter.(interface{ Status() int }); ok {
-		return sw.Status()
-	}
-	if !w.wroteHeader {
-		return http.StatusOK
-	}
-	return w.statusCode
-}
-
-// Flush, Hijack and Unwrap keep streaming responses and websocket upgrades
-// working through the wrapper.
-func (w *noSniffWriter) Flush() {
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-func (w *noSniffWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	h, ok := w.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, http.ErrNotSupported
-	}
-	return h.Hijack()
-}
-
-func (w *noSniffWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
+// xContentTypeOptionsHeader carries nosniff, which stops browsers from
+// guessing the content type of a response.
+const xContentTypeOptionsHeader = "X-Content-Type-Options"
 
 // EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
 func (s *Service) EnableFullAPI() {
