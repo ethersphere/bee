@@ -18,8 +18,6 @@ const (
 	ProtocolName    = protocolName
 	ProtocolVersion = protocolVersion
 	StreamName      = streamName
-
-	FirstChunkTimeout = firstChunkTimeout
 )
 
 const (
