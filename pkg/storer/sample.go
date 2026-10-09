@@ -25,6 +25,7 @@ import (
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
@@ -72,6 +73,20 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
+	return db.reserveSample(ctx, anchor, committedDepth, consensusTime, minBatchBalance, db.storage.NewSamplingView)
+}
+
+// openSamplingViewFn opens the view the sampler workers read chunks through.
+type openSamplingViewFn func(ctx context.Context, anchor []byte, depth uint8) (*transaction.SamplingView, error)
+
+func (db *DB) reserveSample(
+	ctx context.Context,
+	anchor []byte,
+	committedDepth uint8,
+	consensusTime uint64,
+	minBatchBalance *big.Int,
+	openSamplingView openSamplingViewFn,
+) (Sample, error) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -97,6 +112,15 @@ func (db *DB) ReserveSample(
 	}
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
+
+	viewStart := time.Now()
+	view, err := openSamplingView(ctx, anchor, committedDepth)
+	if err != nil {
+		return Sample{}, fmt.Errorf("open sampling view: %w", err)
+	}
+	defer view.Close()
+	allStats.LocationTableBuildDuration = time.Since(viewStart)
+	allStats.LocationTableSize = int64(view.Len())
 
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
@@ -134,11 +158,6 @@ func (db *DB) ReserveSample(
 		g.Go(safe.RunFunc(db.logger, "storer-sample-worker", func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewPrefixHasher(anchor)
-			// One handle per worker rather than one per chunk: building it
-			// allocates, and the sampler asks for a chunk millions of times per
-			// round. It is not shared between workers because the read-only
-			// chunk store makes no thread-safety promise.
-			chunkStore := db.ChunkStore()
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			defer func() {
 				addStats(wstat)
@@ -160,7 +179,7 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				n, err := chunkStore.GetInto(gCtx, chItem.Address, buf)
+				n, err := view.GetInto(gCtx, chItem.Address, buf)
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {
@@ -284,6 +303,7 @@ func (db *DB) ReserveSample(
 		}
 	}
 	addStats(stats)
+	allStats.LocationTableMisses = view.Misses()
 
 	allStats.TotalDuration = time.Since(t)
 
@@ -376,21 +396,24 @@ func transformedAddressSOC(hasher bmt.Hasher, socAddr swarm.Address, data []byte
 }
 
 type SampleStats struct {
-	TotalDuration             time.Duration
-	TotalIterated             int64
-	IterationDuration         time.Duration
-	SampleInserts             int64
-	NewIgnored                int64
-	InvalidStamp              int64
-	BelowBalanceIgnored       int64
-	TaddrDuration             time.Duration
-	ValidStampDuration        time.Duration
-	BatchesBelowValueDuration time.Duration
-	RogueChunk                int64
-	ChunkLoadDuration         time.Duration
-	ChunkLoadFailed           int64
-	AssemblyChunkLoadFailed   int64
-	StampLoadFailed           int64
+	TotalDuration              time.Duration
+	TotalIterated              int64
+	IterationDuration          time.Duration
+	SampleInserts              int64
+	NewIgnored                 int64
+	InvalidStamp               int64
+	BelowBalanceIgnored        int64
+	TaddrDuration              time.Duration
+	ValidStampDuration         time.Duration
+	BatchesBelowValueDuration  time.Duration
+	RogueChunk                 int64
+	ChunkLoadDuration          time.Duration
+	ChunkLoadFailed            int64
+	AssemblyChunkLoadFailed    int64
+	StampLoadFailed            int64
+	LocationTableSize          int64
+	LocationTableBuildDuration time.Duration
+	LocationTableMisses        int64
 }
 
 func (s *SampleStats) add(other SampleStats) {
@@ -477,20 +500,23 @@ func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleSt
 	db.metrics.ReserveSampleDuration.WithLabelValues(status).Observe(duration.Seconds())
 
 	summaryMetrics := map[string]float64{
-		"duration_seconds":                     duration.Seconds(),
-		"chunks_iterated":                      float64(stats.TotalIterated),
-		"chunks_load_failed":                   float64(stats.ChunkLoadFailed),
-		"assembly_chunks_load_failed":          float64(stats.AssemblyChunkLoadFailed),
-		"stamp_validations":                    float64(stats.SampleInserts),
-		"invalid_stamps":                       float64(stats.InvalidStamp),
-		"below_balance_ignored":                float64(stats.BelowBalanceIgnored),
-		"workers":                              float64(workers),
-		"chunks_per_second":                    float64(stats.TotalIterated) / duration.Seconds(),
-		"stamp_validation_duration_seconds":    stats.ValidStampDuration.Seconds(),
-		"batches_below_value_duration_seconds": stats.BatchesBelowValueDuration.Seconds(),
-		"taddr_duration_seconds":               stats.TaddrDuration.Seconds(),
-		"chunk_load_duration_seconds":          stats.ChunkLoadDuration.Seconds(),
-		"iteration_duration_seconds":           stats.IterationDuration.Seconds(),
+		"duration_seconds":                      duration.Seconds(),
+		"chunks_iterated":                       float64(stats.TotalIterated),
+		"chunks_load_failed":                    float64(stats.ChunkLoadFailed),
+		"assembly_chunks_load_failed":           float64(stats.AssemblyChunkLoadFailed),
+		"stamp_validations":                     float64(stats.SampleInserts),
+		"invalid_stamps":                        float64(stats.InvalidStamp),
+		"below_balance_ignored":                 float64(stats.BelowBalanceIgnored),
+		"workers":                               float64(workers),
+		"chunks_per_second":                     float64(stats.TotalIterated) / duration.Seconds(),
+		"stamp_validation_duration_seconds":     stats.ValidStampDuration.Seconds(),
+		"batches_below_value_duration_seconds":  stats.BatchesBelowValueDuration.Seconds(),
+		"taddr_duration_seconds":                stats.TaddrDuration.Seconds(),
+		"chunk_load_duration_seconds":           stats.ChunkLoadDuration.Seconds(),
+		"iteration_duration_seconds":            stats.IterationDuration.Seconds(),
+		"location_table_size":                   float64(stats.LocationTableSize),
+		"location_table_misses":                 float64(stats.LocationTableMisses),
+		"location_table_build_duration_seconds": stats.LocationTableBuildDuration.Seconds(),
 	}
 
 	for metric, value := range summaryMetrics {
