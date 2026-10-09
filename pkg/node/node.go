@@ -114,6 +114,7 @@ type Bee struct {
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
+	bpsCloser                io.Closer
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -1105,7 +1106,8 @@ func NewBee(
 	b.pssCloser = pssService
 	b.gsocCloser = gsocService
 
-	bpsService := bps.New(p2ps, swarmAddress, o.FullNodeMode, logger)
+	bpsService := bps.New(p2ps, p2ps, o.FullNodeMode, logger, bps.DefaultOptions)
+	b.bpsCloser = bpsService
 	if o.FullNodeMode {
 		if err = p2ps.AddProtocol(bpsService.Protocol()); err != nil {
 			return nil, fmt.Errorf("bps protocol: %w", err)
@@ -1402,6 +1404,7 @@ func NewBee(
 	if o.APIAddr != "" {
 		// register metrics from components
 		apiService.MustRegisterMetrics(p2ps.Metrics()...)
+		apiService.MustRegisterMetrics(bpsService.Metrics()...)
 		apiService.MustRegisterMetrics(pingPong.Metrics()...)
 		apiService.MustRegisterMetrics(acc.Metrics()...)
 		apiService.MustRegisterMetrics(localStore.Metrics()...)
@@ -1488,6 +1491,7 @@ func (b *Bee) shutdownClosers() []namedCloser {
 	return []namedCloser{
 		{b.pssCloser, "pss"},
 		{b.gsocCloser, "gsoc"},
+		{b.bpsCloser, "bps"},
 		{b.pusherCloser, "pusher"},
 		{b.pullerCloser, "puller"},
 		{b.accountingCloser, "accounting"},
