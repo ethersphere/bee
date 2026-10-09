@@ -50,6 +50,8 @@ var (
 	errWrongStream     = errors.New("bps: frame from subscriber stream")
 	errCohortReclaimed = errors.New("bps: cohort reclaimed")
 	errFull            = errors.New("bps: capacity bound")
+	errNotPublisher    = errors.New("bps: session is not a publisher")
+	errInvalidDelivery = errors.New("bps: invalid delivery")
 )
 
 // Options are the broker's resource bounds. Zero values take the defaults.
@@ -193,7 +195,8 @@ type Session interface {
 	// Cursor is the lowest DATA index the session will deliver next.
 	Cursor() uint64
 	// Publish writes a chunk of the given kind and index, signed under the
-	// session challenge, to the broker. The broker does not reply.
+	// session challenge, to the broker. The broker does not reply. Only a
+	// session whose identity is the cohort principal may publish.
 	Publish(ctx context.Context, kind Kind, index uint64, soc []byte) error
 	// Done is closed when the p2p stream ends.
 	Done() <-chan struct{}
@@ -259,51 +262,57 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 		cancel:    cancel,
 		w:         w,
 		challenge: ack.Challenge,
+		publisher: bytes.Equal(req.Identity, req.Spec.Principal),
 		rx:        make(chan Message),
 		done:      make(chan struct{}),
 	}
 	sess.cursor.Store(req.Cursor)
 
-	go func() {
-		var readErr error
-		defer func() {
-			sess.finish(readErr)
-			if readErr != nil && ctx.Err() == nil {
-				_ = stream.Reset()
-			} else {
-				_ = stream.FullClose()
-			}
-		}()
-		go func() {
-			<-ctx.Done()
-			_ = stream.Reset()
-		}()
-
-		for {
-			var f pb.Broadcast
-			if err := r.ReadMsgWithContext(ctx, &f); err != nil {
-				readErr = err
-				return
-			}
-			// re-verify end to end: drop what is below the cursor or does
-			// not validate against the spec; never compare the challenge
-			if f.Kind != pb.Kind_DATA || f.Index < sess.cursor.Load() {
-				continue
-			}
-			if err := verify(&f, req.Spec.Topic, req.Spec.Principal); err != nil {
-				s.logger.Debug("dropping delivery", "error", err)
-				continue
-			}
-			sess.cursor.Store(f.Index + 1)
-			select {
-			case sess.rx <- Message{SOC: f.Soc, Challenge: f.Challenge, Index: f.Index}:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	go sess.readLoop(stream, r, req.Spec)
 
 	return sess, nil
+}
+
+// readLoop delivers the broker's frames until the stream ends.
+func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader, spec CohortSpec) {
+	var readErr error
+	defer func() {
+		s.finish(readErr)
+		if readErr != nil && s.ctx.Err() == nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
+	go func() {
+		<-s.ctx.Done()
+		_ = stream.Reset()
+	}()
+
+	for {
+		var f pb.Broadcast
+		if err := r.ReadMsgWithContext(s.ctx, &f); err != nil {
+			readErr = err
+			return
+		}
+		// a retransmit below the cursor is skipped. The challenge is not
+		// compared: it is the publisher stream's, which the subscriber never sees.
+		if f.Kind != pb.Kind_DATA || f.Index < s.cursor.Load() {
+			continue
+		}
+		// re-verify end to end: a broker that forwards a chunk not valid
+		// for the spec is misbehaving, so the stream is ended
+		if err := verify(&f, spec.Topic, spec.Principal); err != nil {
+			readErr = fmt.Errorf("%w: %w", errInvalidDelivery, err)
+			return
+		}
+		s.cursor.Store(f.Index + 1)
+		select {
+		case s.rx <- Message{SOC: f.Soc, Challenge: f.Challenge, Index: f.Index}:
+		case <-s.ctx.Done():
+			return
+		}
+	}
 }
 
 // session is the concrete Session implementation.
@@ -313,6 +322,7 @@ type session struct {
 	wmtx      sync.Mutex
 	w         protobuf.Writer
 	challenge []byte
+	publisher bool // the identity is the cohort principal
 	cursor    atomic.Uint64
 	rx        chan Message
 	done      chan struct{}
@@ -331,6 +341,9 @@ func (s *session) Close() error {
 }
 
 func (s *session) Publish(ctx context.Context, kind Kind, index uint64, soc []byte) error {
+	if !s.publisher {
+		return errNotPublisher
+	}
 	select {
 	case <-s.done:
 		return errSessionClosed
@@ -551,10 +564,10 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 
 	pc := s.peers[peer.ByteString()]
 	if pc[k] == 0 && len(pc) >= s.opts.MaxCohortsPerPeer {
-		return nil, nil, fmt.Errorf("cohorts per peer: %w", errFull)
+		return nil, nil, fmt.Errorf("too many cohorts per peer: %w", errFull)
 	}
 	if pc[k] >= s.opts.MaxStreamsPerPeerCohort {
-		return nil, nil, fmt.Errorf("streams per peer per cohort: %w", errFull)
+		return nil, nil, fmt.Errorf("too many streams per peer per cohort: %w", errFull)
 	}
 
 	role := roleSubscriber
@@ -565,7 +578,7 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 	co, ok := s.cohorts[k]
 	if !ok {
 		if len(s.cohorts) >= s.opts.MaxCohorts {
-			return nil, nil, fmt.Errorf("cohorts per broker: %w", errFull)
+			return nil, nil, fmt.Errorf("too many cohorts per broker: %w", errFull)
 		}
 		co = &cohort{
 			key:          k,
@@ -584,7 +597,7 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 		if len(co.members) == 0 {
 			s.removeCohort(co)
 		}
-		return nil, nil, fmt.Errorf("subscribers per cohort: %w", errFull)
+		return nil, nil, fmt.Errorf("too many subscribers per cohort: %w", errFull)
 	}
 
 	challenge := make([]byte, ChallengeSize)

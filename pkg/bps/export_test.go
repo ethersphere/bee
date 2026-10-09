@@ -10,4 +10,8 @@ const (
 	StreamName      = streamName
 )
 
-var ErrInvalidSOC = errInvalidSOC
+var (
+	ErrInvalidSOC      = errInvalidSOC
+	ErrNotPublisher    = errNotPublisher
+	ErrInvalidDelivery = errInvalidDelivery
+)

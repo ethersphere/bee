@@ -269,15 +269,32 @@ func TestViolations(t *testing.T) {
 	}
 	otherSigner := crypto.NewDefaultSigner(other)
 
+	t.Run("publish on a subscriber session", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, bps.Options{})
+		sub := e.subscribe()
+		c := e.chunk(e.signer, bps.KindData, sub.Challenge(), 0, []byte("x"))
+		if err := sub.Publish(context.Background(), bps.KindData, 0, c); !errors.Is(err, bps.ErrNotPublisher) {
+			t.Fatalf("got %v, want %v", err, bps.ErrNotPublisher)
+		}
+	})
+
 	t.Run("publication from a subscriber stream", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, bps.Options{})
 		overlay := swarm.RandAddress(t)
-		c, _ := e.client(overlay)
-		sub := e.join(c, swarm.RandAddress(t).Bytes()[:20])
 		keep := e.subscribe()
-		e.publish(sub, bps.KindData, 0, []byte("x"))
-		expectDone(t, sub)
+		w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: swarm.RandAddress(t).Bytes()[:20]})
+		if ack.Status != pb.Status_OK {
+			t.Fatalf("status %s", ack.Status)
+		}
+		c := e.chunk(e.signer, bps.KindData, ack.Challenge, 0, []byte("x"))
+		if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ack.Challenge, Soc: c}); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.ReadMsg(&pb.Broadcast{}); err == nil {
+			t.Fatal("stream not ended")
+		}
 		eventually(t, func() bool { return e.bl.blocklisted(overlay) })
 		if got := e.counters().WrongStream; got != 1 {
 			t.Fatalf("wrong_stream %d, want 1", got)
@@ -327,7 +344,13 @@ func TestViolations(t *testing.T) {
 // raw opens a stream to the broker and joins with join, returning the Ack.
 func (e *env) raw(join *pb.Join) (protobuf.Writer, protobuf.Reader, *pb.Ack) {
 	e.t.Helper()
-	rec := streamtest.New(streamtest.WithProtocols(e.broker.Protocol()), streamtest.WithBaseAddr(swarm.RandAddress(e.t)))
+	return e.rawFrom(swarm.RandAddress(e.t), join)
+}
+
+// rawFrom is raw from the given overlay.
+func (e *env) rawFrom(overlay swarm.Address, join *pb.Join) (protobuf.Writer, protobuf.Reader, *pb.Ack) {
+	e.t.Helper()
+	rec := streamtest.New(streamtest.WithProtocols(e.broker.Protocol()), streamtest.WithBaseAddr(overlay))
 	stream, err := rec.NewStream(context.Background(), e.brokerAddr, nil, bps.ProtocolName, bps.ProtocolVersion, bps.StreamName)
 	if err != nil {
 		e.t.Fatal(err)
@@ -374,6 +397,48 @@ func TestDroppedFrames(t *testing.T) {
 	got := e.counters()
 	if got.UnknownKind != 1 || got.WrongChallenge != 1 || got.InvalidSOC != 0 {
 		t.Fatalf("counters %+v", got)
+	}
+}
+
+// TestInvalidDelivery checks that a subscriber ends the session when the
+// broker forwards a chunk that does not verify against the cohort spec.
+func TestInvalidDelivery(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	other, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge := make([]byte, bps.ChallengeSize)
+	bad := e.chunk(crypto.NewDefaultSigner(other), bps.KindData, challenge, 0, []byte("x"))
+	broker := p2p.ProtocolSpec{
+		Name:    bps.ProtocolName,
+		Version: bps.ProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{{
+			Name: bps.StreamName,
+			Handler: func(ctx context.Context, _ p2p.Peer, stream p2p.Stream) error {
+				w, r := protobuf.NewWriterAndReader(stream)
+				if err := r.ReadMsgWithContext(ctx, &pb.Join{}); err != nil {
+					return err
+				}
+				if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: challenge}); err != nil {
+					return err
+				}
+				if err := w.WriteMsgWithContext(ctx, &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: challenge, Soc: bad}); err != nil {
+					return err
+				}
+				// hold the stream until the subscriber ends it
+				_ = r.ReadMsgWithContext(ctx, &pb.Broadcast{})
+				return nil
+			},
+		}},
+	}
+	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
+	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
+	sub := e.join(c, swarm.RandAddress(t).Bytes()[:20])
+	expectDone(t, sub)
+	if err := sub.Err(); !errors.Is(err, bps.ErrInvalidDelivery) {
+		t.Fatalf("got %v, want %v", err, bps.ErrInvalidDelivery)
 	}
 }
 
