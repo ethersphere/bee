@@ -105,7 +105,7 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 	if cheque == nil {
 		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNoCheque)
 	}
-	// An empty object unmarshals into a cheque with a nil cumulative payout.
+
 	if cheque.CumulativePayout == nil {
 		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNilCumulativePayout)
 	}
