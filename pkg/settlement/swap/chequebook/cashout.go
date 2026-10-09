@@ -134,12 +134,6 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		return common.Hash{}, err
 	}
 
-	// a corrupt statestore entry unmarshals into a non-nil cheque with a nil
-	// cumulativePayout; guard against packing it below.
-	if cheque.CumulativePayout == nil {
-		return common.Hash{}, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNoCheque)
-	}
-
 	callData, err := chequebookABI.Pack("cashChequeBeneficiary", recipient, cheque.CumulativePayout, cheque.Signature)
 	if err != nil {
 		return common.Hash{}, err
@@ -174,12 +168,6 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
 	if err != nil {
 		return nil, err
-	}
-
-	// a corrupt statestore entry unmarshals into a non-nil cheque with a nil
-	// cumulativePayout; guard against the arithmetic below.
-	if cheque.CumulativePayout == nil {
-		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for chequebook %x: %w", chequebookAddress, ErrNoCheque)
 	}
 
 	var action cashoutAction
