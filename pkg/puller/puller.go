@@ -388,10 +388,13 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				errCount := countErrors(err)
 				p.logger.Debug("syncWorker interval failed", "error_count", errCount, "example_error", errors.Unwrap(err), "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 
-				// partial progress is still recorded below; cancellation is handled at the top of the loop
-				select {
-				case <-ctx.Done():
-				case <-time.After(syncErrorBackoff):
+				// back off only if nothing was synced; partial progress is recorded below and syncing continues
+				// at once. Cancellation is handled at the top of the loop.
+				if top < start {
+					select {
+					case <-ctx.Done():
+					case <-time.After(syncErrorBackoff):
+					}
 				}
 			}
 

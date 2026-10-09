@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -504,6 +505,78 @@ func TestContinueSyncing(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSyncErrorBackoff checks that the sync worker waits before it retries a failed
+// sync that pulled nothing, and that it continues at once after a partial failure.
+func TestSyncErrorBackoff(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		replies func(addr swarm.Address) []mockps.SyncReply
+		backoff bool
+	}{
+		{
+			name: "no progress",
+			replies: func(addr swarm.Address) []mockps.SyncReply {
+				return []mockps.SyncReply{
+					{Start: 1, Topmost: 0, Peer: addr},
+					{Start: 1, Topmost: 0, Peer: addr},
+				}
+			},
+			backoff: true,
+		},
+		{
+			name: "partial progress",
+			replies: func(addr swarm.Address) []mockps.SyncReply {
+				return []mockps.SyncReply{
+					{Start: 1, Topmost: 2, Peer: addr},
+					{Start: 3, Topmost: 3, Peer: addr},
+				}
+			},
+			backoff: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				addr := swarm.RandAddress(t)
+
+				_, kad, pullsync := newPullerWithState(t, mock.NewStateStore(), opts{
+					kad: []kadMock.Option{
+						kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
+					},
+					pullSync: []mockps.Option{
+						mockps.WithCursors([]uint64{0}, 0), // live sync only, from BinID 1
+						mockps.WithSyncError(errors.New("sync error")),
+						mockps.WithReplies(tc.replies(addr)...),
+					},
+					bins: 1,
+					rs:   resMock.NewReserve(resMock.WithRadius(0)),
+				})
+
+				kad.Trigger()
+				synctest.Wait()
+
+				want := 2
+				if tc.backoff {
+					want = 1
+				}
+				if got := len(pullsync.SyncCalls(addr)); got != want {
+					t.Fatalf("got %d sync calls before the backoff, want %d", got, want)
+				}
+
+				time.Sleep(puller.SyncErrorBackoff)
+				synctest.Wait()
+
+				if got := len(pullsync.SyncCalls(addr)); got != 2 {
+					t.Fatalf("got %d sync calls after the backoff, want 2", got)
+				}
+			})
+		})
 	}
 }
 
