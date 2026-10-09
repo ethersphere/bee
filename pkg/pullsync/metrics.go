@@ -22,6 +22,7 @@ type metrics struct {
 	DuplicateRuid        prometheus.Counter     // number of duplicate RUID requests we got
 	LastReceived         *prometheus.CounterVec // last timestamp of the received chunks per bin
 	FirstChunkTimeouts   prometheus.Counter     // number of offers returned empty because no chunk arrived in time
+	AbandonedRequests    prometheus.Counter     // number of requests canceled because the peer reset or closed the stream before the offer
 }
 
 func newMetrics() metrics {
@@ -100,6 +101,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "first_chunk_timeouts",
 			Help:      "Total offers returned empty because no chunk arrived in the requested interval in time.",
+		}),
+		AbandonedRequests: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "abandoned_requests",
+			Help:      "Total requests canceled because the peer reset or closed the stream before it received the offer.",
 		}),
 	}
 }

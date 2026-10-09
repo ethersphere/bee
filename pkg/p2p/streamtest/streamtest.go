@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -265,10 +266,11 @@ type stream struct {
 	lock            sync.Mutex
 	version         *semver.Version
 	versionErr      error
+	readDeadline    *deadline
 }
 
 func newStream(in, out *record, version *semver.Version, versionErr error) *stream {
-	return &stream{in: in, out: out, version: version, versionErr: versionErr}
+	return &stream{in: in, out: out, version: version, versionErr: versionErr, readDeadline: newDeadline()}
 }
 
 func (s *stream) Read(p []byte) (int, error) {
@@ -276,7 +278,13 @@ func (s *stream) Read(p []byte) (int, error) {
 		return 0, ErrStreamClosed
 	}
 
-	return s.out.Read(p)
+	return s.out.read(p, s.readDeadline.wait())
+}
+
+// SetReadDeadline sets the deadline for pending and future Read calls, like net.Conn.
+func (s *stream) SetReadDeadline(t time.Time) error {
+	s.readDeadline.set(t)
+	return nil
 }
 
 func (s *stream) Write(p []byte) (int, error) {
@@ -355,13 +363,17 @@ func newRecord(latency time.Duration) *record {
 	}
 }
 
-func (r *record) Read(p []byte) (n int, err error) {
+func (r *record) read(p []byte, deadline <-chan struct{}) (n int, err error) {
 	defer time.Sleep(r.latency)
 
 	for r.c == r.bytesSize() {
-		_, ok := <-r.dataSigC
-		if !ok {
-			return 0, io.EOF
+		select {
+		case _, ok := <-r.dataSigC:
+			if !ok {
+				return 0, io.EOF
+			}
+		case <-deadline:
+			return 0, os.ErrDeadlineExceeded
 		}
 	}
 
@@ -409,6 +421,63 @@ func (r *record) bytes() []byte {
 	cp := make([]byte, len(r.b))
 	copy(cp, r.b)
 	return cp
+}
+
+// deadline is closed when its time passes. A zero time means no deadline.
+type deadline struct {
+	mu    sync.Mutex
+	timer *time.Timer
+	c     chan struct{}
+}
+
+func newDeadline() *deadline {
+	return &deadline{c: make(chan struct{})}
+}
+
+func (d *deadline) set(t time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.timer != nil && !d.timer.Stop() {
+		<-d.c // wait for the timer to close the channel
+	}
+	d.timer = nil
+
+	closed := isClosed(d.c)
+	if t.IsZero() {
+		if closed {
+			d.c = make(chan struct{})
+		}
+		return
+	}
+
+	if dur := time.Until(t); dur > 0 {
+		if closed {
+			d.c = make(chan struct{})
+		}
+		c := d.c
+		d.timer = time.AfterFunc(dur, func() { close(c) })
+		return
+	}
+
+	if !closed {
+		close(d.c)
+	}
+}
+
+func (d *deadline) wait() <-chan struct{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.c
+}
+
+func isClosed(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *record) bytesSize() int {

@@ -166,7 +166,11 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	// make an offer to the upstream peer in return for the requested range
+	stopWatch := s.watchStream(stream, cancel)
 	offer, err := s.makeOffer(ctx, rn)
+	if stopErr := stopWatch(); stopErr != nil {
+		return fmt.Errorf("stop stream watch: %w", stopErr)
+	}
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -413,9 +417,44 @@ type collectAddrsResult struct {
 	topmost uint64
 }
 
+// watchStream cancels the request if the peer resets or closes the stream while the
+// handler waits for chunks to offer. The handler context is canceled only when the peer
+// disconnects, and the handler does not read from the stream during this wait, so it
+// cannot see a reset otherwise. The peer must not send data or close its side before it
+// receives the offer, so any result of the read ends the request.
+// The returned function stops the watch. It must be called before the next read from the stream.
+// If the stream does not support read deadlines, nothing is watched and firstChunkTimeout bounds the wait.
+func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop func() error) {
+	ds, ok := stream.(interface{ SetReadDeadline(time.Time) error })
+	if !ok || ds.SetReadDeadline(time.Time{}) != nil {
+		return func() error { return nil }
+	}
+
+	var stopped atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = stream.Read(make([]byte, 1))
+		if !stopped.Load() {
+			s.metrics.AbandonedRequests.Inc()
+			cancel()
+		}
+	}()
+
+	return func() error {
+		stopped.Store(true)
+		// unblock the read; if this fails, the read may still be running, and the caller resets the stream
+		if err := ds.SetReadDeadline(time.Now()); err != nil {
+			return err
+		}
+		<-done
+		return ds.SetReadDeadline(time.Time{})
+	}
+}
+
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
 // The function waits up to firstChunkTimeout for the first chunk to arrive and returns an empty
-// result if none does, so that handlers of abandoned streams do not wait on an empty interval forever.
+// result if none does, so that a handler that does not see an abandoned stream does not wait forever.
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
