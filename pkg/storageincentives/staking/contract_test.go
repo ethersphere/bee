@@ -153,10 +153,11 @@ func TestCalculateMinDeposit(t *testing.T) {
 //
 // Scenario: staked exactly MIN at h=0 with oracle price 48000, price then
 // dropped to 24000, node restarted with --reserve-capacity-doubling=1.
-// node.go skips UpdateHeight (potential 1e17 < 2e17). POST /stake of the
-// reported minimum must not send manageStake with height=1 while potential
-// stays below 2e17. Staking.sol would accept 1 PLUR (no DecreasedCommitment,
-// no BelowMinimumStake on an existing stake).
+// node.go skips UpdateHeight (potential 1e17 < 2e17). Staking.sol would accept
+// 1 PLUR on an existing stake (no DecreasedCommitment, no BelowMinimumStake).
+// GetMinDeposit must return MIN*2^h - potential; one PLUR less returns
+// *MinDepositError; the reported minimum sends manageStake at height h with
+// potential+deposit >= MIN*2^h.
 func TestProofHeightBypassViaDeposit(t *testing.T) {
 	t.Parallel()
 
@@ -206,20 +207,32 @@ func TestProofHeightBypassViaDeposit(t *testing.T) {
 	}
 	t.Logf("GET /stake would report minimumDeposit=%s PLUR (potential=%s, needed for h=%d: %s)", minDeposit, potential, height, requiredPotential)
 
-	_, err = contract.DepositStake(ctx, minDeposit)
+	wantMin := new(big.Int).Sub(requiredPotential, potential)
+	if minDeposit.Cmp(wantMin) != 0 {
+		t.Fatalf("GetMinDeposit = %s, want MIN*2^h - potential = %s", minDeposit, wantMin)
+	}
 
+	oneLess := new(big.Int).Sub(new(big.Int).Set(minDeposit), big.NewInt(1))
+	_, err = contract.DepositStake(ctx, oneLess)
 	var minErr *staking.MinDepositError
-	if errors.As(err, &minErr) {
-		return // correct: deposit refused below the height floor
-	}
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.As(err, &minErr) {
+		t.Fatalf("deposit one PLUR below minimum: got %v, want *MinDepositError", err)
 	}
 
+	sentHeight = nil
+	_, err = contract.DepositStake(ctx, minDeposit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sentHeight == nil {
+		t.Fatal("manageStake was not sent")
+	}
+	if *sentHeight != height {
+		t.Fatalf("manageStake height = %d, want %d", *sentHeight, height)
+	}
 	newPotential := new(big.Int).Add(potential, minDeposit)
-	if sentHeight != nil && *sentHeight == height && newPotential.Cmp(requiredPotential) < 0 {
-		t.Fatalf("BYPASS: manageStake sent height=%d with potential %s < required %s (node.go would have refused UpdateHeight)",
-			*sentHeight, newPotential, requiredPotential)
+	if newPotential.Cmp(requiredPotential) < 0 {
+		t.Fatalf("potential %s + deposit %s = %s, want >= %s", potential, minDeposit, newPotential, requiredPotential)
 	}
 }
 
