@@ -17,6 +17,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -676,20 +677,33 @@ const secFetchSiteHeader = "Sec-Fetch-Site"
 // sent by a browser from a page that is not allowed to use the API. Such
 // requests are not always preflighted, for example a form POST, so the CORS
 // headers alone do not stop their side effects.
+//
+// Sec-Fetch-Site is set by the browser and cannot be changed by the page, so
+// it decides when present. Otherwise, as with older browsers, the Origin host
+// is compared with the request host. The scheme is ignored in both cases: the
+// API serves plain HTTP, and a TLS-terminating proxy in front of it makes
+// same-origin pages send an https origin.
 func (s *Service) isForbiddenCrossOriginRequest(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return false
 	}
-	if !s.checkOrigin(r) {
-		return true
-	}
+
+	origin := r.Header.Get(OriginHeader)
+	allowed := s.isOriginListed(origin) || slices.Contains(s.CORSAllowedOrigins, "*")
+
 	switch r.Header.Get(secFetchSiteHeader) {
-	case "cross-site", "same-site":
-		o := r.Header.Get(OriginHeader)
-		return !s.isOriginListed(o) && !slices.Contains(s.CORSAllowedOrigins, "*")
+	case "same-origin", "none":
+		return false
+	case "same-site", "cross-site":
+		return !allowed
 	}
-	return false
+
+	if origin == "" || allowed {
+		return false
+	}
+	u, err := url.Parse(origin)
+	return err != nil || !strings.EqualFold(u.Host, r.Host)
 }
 
 // isOriginListed reports whether origin is explicitly configured as allowed.
