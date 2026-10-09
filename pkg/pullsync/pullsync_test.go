@@ -125,8 +125,8 @@ func TestIncoming_EmptyIntervalTimeout(t *testing.T) {
 }
 
 // TestIncoming_AbandonedStream checks that the handler of a stream abandoned by
-// the client while waiting on an empty interval returns after the first chunk
-// timeout, as the handler context is not canceled by a stream reset.
+// the client while waiting on an empty interval returns as soon as the client
+// resets the stream, although a stream reset does not cancel the handler context.
 func TestIncoming_AbandonedStream(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
@@ -152,7 +152,6 @@ func TestIncoming_AbandonedStream(t *testing.T) {
 			t.Fatalf("got error %v, want %v", err, context.Canceled)
 		}
 
-		time.Sleep(pullsync.FirstChunkTimeout)
 		synctest.Wait()
 		if got := ps.SyncInProgress(); got != 0 {
 			t.Fatalf("got %d handlers in progress, want 0", got)
