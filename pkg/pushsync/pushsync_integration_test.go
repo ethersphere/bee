@@ -70,7 +70,6 @@ func TestPushSyncIntegration(t *testing.T) {
 		serverSigner,
 		nil,
 		stabilizationmock.NewSubscriber(true),
-		0,
 	)
 	t.Cleanup(func() { serverPushSync.Close() })
 
@@ -106,7 +105,6 @@ func TestPushSyncIntegration(t *testing.T) {
 		clientSigner,
 		nil,
 		stabilizationmock.NewSubscriber(true),
-		0,
 	)
 	t.Cleanup(func() { clientPushSync.Close() })
 

@@ -68,6 +68,11 @@ const (
 	DefaultRetryCount = 6
 )
 
+// ErrCouldNotSync is returned for a direct upload when the retry budget is
+// exhausted without a valid receipt. It intentionally does not wrap
+// pushsync.ErrShallowReceipt, which callers treat as retryable.
+var ErrCouldNotSync = errors.New("pusher: could not sync chunk")
+
 func New(
 	networkID uint64,
 	storer Storer,
@@ -286,11 +291,14 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed reporting chunk")
 			return true, err
 		}
+		s.attempts.delete(op.identityAddress)
 	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
-		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+		// budget exhausted; report CouldNotSync so the chunk isn't marked delivered
+		s.metrics.TotalCouldNotSync.Inc()
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
@@ -299,6 +307,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
+		s.attempts.delete(op.identityAddress)
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 		return true, err
@@ -340,13 +349,19 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
+		s.attempts.delete(op.identityAddress)
 	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
 			return err
 		}
-		// out of attempts for retry, swallow error
-		err = nil
-	case err != nil:
+		// budget exhausted; return a terminal error instead of falsely
+		// reporting success or asking the caller to retry forever
+		s.metrics.TotalCouldNotSync.Inc()
+		loggerV1.Debug("direct upload: retries exhausted on shallow receipts", "chunk_address", op.Chunk.Address())
+		err = ErrCouldNotSync
+	case err == nil:
+		s.attempts.delete(op.identityAddress)
+	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
 
