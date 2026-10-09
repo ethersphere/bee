@@ -275,7 +275,7 @@ func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) 
 	if lastCheque == nil {
 		return nil, fmt.Errorf("nil cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
 	}
-	
+
 	if lastCheque.CumulativePayout == nil {
 		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNilCumulativePayout)
 	}
