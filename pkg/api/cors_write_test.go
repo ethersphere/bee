@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -76,6 +77,26 @@ func TestCrossOriginWriteRejected(t *testing.T) {
 			wantStatus: http.StatusCreated,
 		},
 		{
+			// A TLS-terminating proxy in front of the node: the page is
+			// https, the API sees plain HTTP.
+			name:       "same origin through TLS proxy",
+			method:     http.MethodPost,
+			headers:    map[string]string{api.OriginHeader: "https://{host}", "Sec-Fetch-Site": "same-origin"},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "same host through TLS proxy without fetch metadata",
+			method:     http.MethodPost,
+			headers:    map[string]string{api.OriginHeader: "https://{host}"},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "other origin without fetch metadata",
+			method:     http.MethodPost,
+			headers:    map[string]string{api.OriginHeader: "https://other.example"},
+			wantStatus: http.StatusForbidden,
+		},
+		{
 			name:       "foreign origin get",
 			method:     http.MethodGet,
 			headers:    map[string]string{api.OriginHeader: other, "Sec-Fetch-Site": "cross-site"},
@@ -85,14 +106,14 @@ func TestCrossOriginWriteRejected(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			client, _, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, addr, _, _ := newTestServer(t, testServerOptions{
 				Storer:             mockstorer.New(),
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 
 			opts := make([]jsonhttptest.Option, 0, len(tc.headers))
 			for k, v := range tc.headers {
-				opts = append(opts, jsonhttptest.WithRequestHeader(k, v))
+				opts = append(opts, jsonhttptest.WithRequestHeader(k, strings.ReplaceAll(v, "{host}", addr)))
 			}
 			jsonhttptest.Request(t, client, tc.method, "/tags", tc.wantStatus, opts...)
 		})
