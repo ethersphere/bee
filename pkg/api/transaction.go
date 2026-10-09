@@ -178,6 +178,11 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 		response("invalid header params", logger, w)
 		return
 	}
+	if gasPriceOutOfRange(headers.GasPrice) {
+		logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+		jsonhttp.BadRequest(w, "gas price out of range")
+		return
+	}
 	ctx := sctx.SetGasPrice(r.Context(), headers.GasPrice)
 
 	txHash, err := s.transaction.CancelTransaction(ctx, paths.Hash)

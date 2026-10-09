@@ -112,6 +112,10 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 		jsonhttp.BadRequest(w, "upgrade failed")
 		return
 	}
+	// ReadMessage buffers a whole message before returning, and gorilla's
+	// default limit is none. The largest valid message is a stamp followed by
+	// a maximum-size single owner chunk.
+	wsConn.SetReadLimit(chunkStreamMaxMessageSize)
 
 	s.wsWg.Add(1)
 	var decode chunkDecoder
@@ -122,6 +126,9 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 	go s.handleUploadStream(logger, wsConn, putter, tag, decode)
 }
+
+// chunkStreamMaxMessageSize is the largest message accepted on /chunks/stream.
+const chunkStreamMaxMessageSize = postage.StampSize + swarm.SocMaxChunkSize
 
 // chunkDecoder extracts chunk data and optionally a stamp from a websocket message.
 // When BatchID is provided in headers, decodeChunkWithoutStamp is used (no stamp in message).
