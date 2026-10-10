@@ -7,10 +7,11 @@
 //
 // A cohort is identified by its spec {topic, FEED_TOPIC, principal}. Every
 // peer joins with the spec and its own identity and is answered with a random
-// per-stream challenge. The principal publishes ordinary single-owner chunks that
-// are updates of the session feed on keccak256(topic | challenge); its first
-// valid frame authenticates the stream. The broker keeps one cursor per cohort and
-// delivers every accepted update to every subscriber stream.
+// per-stream challenge. A stream declaring the principal is pending until its
+// AUTH — the empty chunk at index 0 of the session's AUTH feed — authenticates
+// it; a publisher stream then sends ordinary single-owner chunks that are updates
+// of the session feed on keccak256(topic | challenge). The broker keeps one cursor
+// per cohort and delivers every accepted update to every subscriber stream.
 package bps
 
 import (
@@ -487,8 +488,9 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	role, cursor := m.role, co.cursor
 	co.mtx.Unlock()
 
-	// 1. only a publisher or pending stream may send
-	if role == roleSubscriber {
+	// 1. a publisher stream sends publications and heartbeats, a pending stream
+	// its AUTH; anything else is not what the stream may send
+	if role == roleSubscriber || role == rolePending && f.Kind != pb.Kind_AUTH {
 		s.count(&co.counters.wrongStream, "wrong_stream")
 		return fmt.Errorf("%w: %w", errViolation, errWrongStream)
 	}
@@ -502,13 +504,13 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 		s.count(&co.counters.wrongChallenge, "wrong_challenge")
 		return nil
 	}
-	// 4. on a publisher stream a DATA frame below the cursor is a retransmit;
-	// on a pending stream it is checked after the signature, so that it authenticates
-	if role == rolePublisher && f.Kind == pb.Kind_DATA && f.Index < cursor {
+	// 4. a DATA frame below the cursor is a retransmit
+	if f.Kind == pb.Kind_DATA && f.Index < cursor {
 		s.count(&co.counters.retransmit, "retransmit")
 		return nil
 	}
-	// 5. the chunk must be the principal's at the id derived from the frame
+	// 5. the chunk must be the principal's at the id derived from the frame;
+	// an AUTH is moreover the empty chunk at index 0
 	if err := verify(f, co.spec.Topic, co.spec.Principal); err != nil {
 		s.count(&co.counters.invalidSOC, "invalid_soc")
 		return fmt.Errorf("%w: %w", errViolation, err)
@@ -516,14 +518,16 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 
 	var overflow []*member
 	co.mtx.Lock()
-	if m.role == rolePending {
-		m.role = rolePublisher
-		m.authTimer.Stop()
-	}
 	switch {
 	case f.Kind == pb.Kind_AUTH:
+		// the auth of a pending stream, a heartbeat on a publisher stream
+		if m.role == rolePending {
+			m.role = rolePublisher
+			m.authTimer.Stop()
+		}
 		co.inactiveSince = time.Now()
 	case f.Index < co.cursor:
+		// raced with another publisher stream of the principal's
 		s.count(&co.counters.retransmit, "retransmit")
 	default:
 		co.cursor = f.Index + 1
@@ -730,8 +734,8 @@ type role int
 
 const (
 	roleSubscriber role = iota + 1 // receives, never publishes
-	rolePending                    // declared the principal as identity, not authenticated yet
-	rolePublisher                  // authenticated: may publish, receives nothing
+	rolePending                    // declared the principal as identity, no AUTH yet
+	rolePublisher                  // authenticated by its AUTH: may publish, receives nothing
 )
 
 type cohort struct {

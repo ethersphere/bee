@@ -1058,12 +1058,15 @@ paths:
            `authTopic` is `keccak256("bps-service:v1" | 0x02 | topic | challenge)`.
         2. Client sends binary frames `kind (1) | index (8, big-endian) | soc`, where `kind` is
            1 (DATA) or 2 (AUTH) and `soc` is a single-owner chunk signed by `owner` with
-           `id = keccak256(sessionTopic | index)`. An AUTH chunk is empty and only authenticates
-           the stream. The first frame must arrive within 30 seconds. Indexes must not be reused
-           across sessions; frames below the broker's cursor are dropped silently.
+           `id = keccak256(sessionTopic | index)`. The first frame must be the AUTH — the empty
+           chunk at index 0 of `authTopic`, which authenticates the stream — and must arrive within
+           30 seconds; sent again later it is a heartbeat. DATA frames are updates of
+           `dataTopic`. Indexes must not be reused across sessions; frames below the broker's
+           cursor are dropped silently.
 
-        Close codes: 4001 invalid soc, 4002 invalid message (wrong frame type, unknown kind,
-        auth timeout), 4003 broker stream closed.
+        Close codes: 4001 invalid soc (an AUTH at another index or with a payload included),
+        4002 invalid message (wrong frame type, unknown kind, a frame before the AUTH, auth
+        timeout), 4003 broker stream closed.
       tags:
         - BPS
       parameters:
