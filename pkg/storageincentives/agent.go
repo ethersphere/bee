@@ -76,6 +76,13 @@ type Agent struct {
 	health                 Health
 	sampleFlight           singleflight.Group[string, sampleResult]
 	disabled               atomic.Bool
+
+	// blockTime, blocksPerPhase and blockObservedAt are used by SafeToRestart.
+	// blockObservedAt is the Unix time in nanoseconds of the last recorded
+	// block height, or 0 if none has been recorded yet.
+	blockTime       time.Duration
+	blocksPerPhase  uint64
+	blockObservedAt atomic.Int64
 }
 
 func New(overlay swarm.Address,
@@ -106,6 +113,8 @@ func New(overlay swarm.Address,
 		store:                  store,
 		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
+		blockTime:              blockTime,
+		blocksPerPhase:         blocksPerPhase,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
@@ -200,6 +209,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		a.state.SetCurrentBlock(block)
+		a.blockObservedAt.Store(time.Now().UnixNano())
 
 		round := block / blocksPerRound
 
@@ -251,11 +261,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	// manually invoke phaseCheck initially in order to set initial data asap
 	phaseCheck(ctx)
 
-	phaseCheckInterval := blockTime
-	// optimization, we do not need to check the phase change at every new block
-	if blocksPerPhase > 10 {
-		phaseCheckInterval = blockTime * 5
-	}
+	phaseCheckInterval := phaseCheckPeriod(blockTime, blocksPerPhase)
 
 	for {
 		select {
