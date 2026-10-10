@@ -191,6 +191,16 @@ func (f *bpsFixture) signedSOC(t *testing.T, signer crypto.Signer, kind bps.Kind
 	return c.Data()
 }
 
+// authenticate sends the session's AUTH and waits for the bridge to forward it.
+func authenticate(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+	t.Helper()
+	auth := f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindAuth, 0, auth)
+}
+
 // frame returns a publish frame kind | index | soc.
 func frame(kind bps.Kind, index uint64, chunk []byte) []byte {
 	b := []byte{byte(kind)}
@@ -286,6 +296,16 @@ func TestBPSSubscribe(t *testing.T) {
 		jsonhttptest.Request(t, f.client, http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String(), http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code: http.StatusBadRequest, Message: "missing identity",
+			}),
+		)
+	})
+
+	t.Run("identity is the owner", func(t *testing.T) {
+		t.Parallel()
+		f := newBPSFixture(t)
+		jsonhttptest.Request(t, f.client, http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String()+"&identity="+hex.EncodeToString(f.owner), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code: http.StatusBadRequest, Message: "identity is the owner: use publish",
 			}),
 		)
 	})
@@ -410,11 +430,13 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
+		auth bool // authenticate the socket first
 		send func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte)
 		code int
 	}{
 		{
 			name: "wrong signer",
+			auth: true,
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
 				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, otherSigner, bps.KindData, challenge, 0, []byte("x"))))
@@ -423,6 +445,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		},
 		{
 			name: "wrong challenge",
+			auth: true,
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, _ []byte) {
 				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))))
@@ -431,6 +454,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		},
 		{
 			name: "index not the signed one",
+			auth: true,
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
 				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 1, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
@@ -439,6 +463,7 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 		},
 		{
 			name: "auth relabelled as data",
+			auth: true,
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
 				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)))
@@ -466,6 +491,14 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
 				t.Helper()
 				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
+			},
+			code: api.BPSCloseInvalidMessage,
+		},
+		{
+			name: "invalid data before auth is still a message error",
+			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
+				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, otherSigner, bps.KindData, challenge, 0, []byte("x"))))
 			},
 			code: api.BPSCloseInvalidMessage,
 		},
@@ -499,6 +532,9 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 			f := newBPSFixture(t)
 			conn := f.dial(t, "publish")
 			challenge := readChallenge(t, f, conn)
+			if tc.auth {
+				authenticate(t, f, conn, challenge)
+			}
 			tc.send(t, f, conn, challenge)
 			expectClose(t, conn, tc.code)
 			waitSessionClosed(t, f)

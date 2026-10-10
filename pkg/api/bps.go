@@ -5,6 +5,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -34,7 +35,9 @@ const (
 	bpsMaxFrameSize   = bpsFrameHeader + bpsMaxSOCSize
 )
 
-// bpsAuthTimeout bounds how long a publisher may take to send its AUTH.
+// bpsAuthTimeout bounds how long a publisher may take to send its AUTH. It is
+// counted from before the join, so that it runs out before the broker's auth
+// deadline does and the broker never blocklists this node for a slow dApp.
 var bpsAuthTimeout = 30 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
@@ -63,6 +66,12 @@ func (s *Service) bpsSubscribeWsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	if len(req.identity) == 0 {
 		jsonhttp.BadRequest(w, "missing identity")
+		return
+	}
+	// a stream declaring the owner is a pending publisher stream at the broker: it
+	// would receive nothing and be blocklisted at the auth deadline
+	if bytes.Equal(req.identity, req.owner.Bytes()) {
+		jsonhttp.BadRequest(w, "identity is the owner: use publish")
 		return
 	}
 	conn, ok := s.bpsUpgrade(w, r, logger)
@@ -280,9 +289,9 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 	}
 }
 
-// bpsParseFrame checks a publish frame kind | index | soc the same way the
-// broker will, or returns a close code and reason on failure.
-func bpsParseFrame(f bpsFrame, req bpsRequest, challenge []byte) (bps.Kind, uint64, []byte, int, string) {
+// bpsParseFrame checks a publish frame kind | index | soc the same way, and in
+// the same order, as the broker will, or returns a close code and reason.
+func bpsParseFrame(f bpsFrame, req bpsRequest, challenge []byte, authenticated bool) (bps.Kind, uint64, []byte, int, string) {
 	if f.typ != websocket.BinaryMessage {
 		return 0, 0, nil, bpsCloseInvalidMessage, "expected binary frame"
 	}
@@ -290,6 +299,10 @@ func bpsParseFrame(f bpsFrame, req bpsRequest, challenge []byte) (bps.Kind, uint
 		return 0, 0, nil, bpsCloseInvalidMessage, "short frame"
 	}
 	kind := bps.Kind(f.data[0])
+	// a pending stream may send nothing but its AUTH; the broker would reset it
+	if !authenticated && kind != bps.KindAuth {
+		return 0, 0, nil, bpsCloseInvalidMessage, "expected auth"
+	}
 	if kind != bps.KindData && kind != bps.KindAuth {
 		return 0, 0, nil, bpsCloseInvalidMessage, "unknown kind"
 	}
@@ -320,6 +333,9 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		cancel()
 		_ = conn.Close()
 	}()
+
+	authTimer := time.NewTimer(bpsAuthTimeout)
+	defer authTimer.Stop()
 
 	// the publisher declares the principal as its identity and authenticates with its AUTH
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
@@ -361,23 +377,15 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		return
 	}
 
-	authTimer := time.NewTimer(bpsAuthTimeout)
-	defer authTimer.Stop()
-
 	frames, gone := bpsReadFrames(conn, quit)
 	authenticated := false
 
 	for {
 		select {
 		case f := <-frames:
-			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge)
+			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge, authenticated)
 			if code != 0 {
 				s.bpsClose(conn, code, reason)
-				return
-			}
-			// the broker resets a pending stream that sends anything but its AUTH
-			if !authenticated && kind != bps.KindAuth {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "expected auth")
 				return
 			}
 			if err := sess.Publish(ctx, kind, index, chunk); err != nil {
