@@ -1027,7 +1027,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
-          description: Ethereum address identifying the joiner.
+          description: Ethereum address identifying the joiner. Must not be the owner, whose stream would be a pending publisher stream; publish instead.
         - in: query
           name: cursor
           schema:
@@ -1065,7 +1065,7 @@ paths:
            cursor are dropped silently.
 
         Close codes: 4001 invalid soc (an AUTH at another index or with a payload included),
-        4002 invalid message (wrong frame type, unknown kind, a frame before the AUTH, auth
+        4002 invalid message (wrong frame type, any frame before the AUTH, unknown kind, auth
         timeout), 4003 broker stream closed.
       tags:
         - BPS

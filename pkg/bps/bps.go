@@ -48,7 +48,7 @@ var (
 	errSessionClosed   = errors.New("bps: session closed")
 	errProtocolError   = errors.New("bps: protocol error")
 	errViolation       = errors.New("bps: protocol violation")
-	errWrongStream     = errors.New("bps: frame from subscriber stream")
+	errWrongStream     = errors.New("bps: frame not what the stream may send")
 	errCohortReclaimed = errors.New("bps: cohort reclaimed")
 	errFull            = errors.New("bps: capacity bound")
 	errNotPublisher    = errors.New("bps: session is not a publisher")
