@@ -33,7 +33,9 @@ type Kind int
 const (
 	KindUnspecified Kind = iota
 	KindData             // an update of the stream's session feed
-	KindAuth             // an empty chunk that authenticates the stream
+	// KindAuth is the empty chunk at index 0 of the session's AUTH feed: it authenticates
+	// a pending stream, is a heartbeat on a publisher stream, and is never delivered.
+	KindAuth
 )
 
 func (k Kind) proto() pb.Kind {
@@ -78,7 +80,7 @@ func id(kind pb.Kind, topic, challenge []byte, index uint64) ([]byte, error) {
 
 // Verify checks that the frame fields kind, challenge and index give the id of
 // the chunk, and that the chunk validates as the principal's single-owner chunk
-// at keccak256(id | principal). An AUTH chunk must moreover be empty.
+// at keccak256(id | principal). An AUTH chunk must moreover be at index 0 and empty.
 func Verify(kind Kind, challenge []byte, index uint64, chunk, topic, principal []byte) error {
 	return verify(&pb.Broadcast{Soc: chunk, Kind: kind.proto(), Challenge: challenge, Index: index}, topic, principal)
 }
@@ -90,6 +92,10 @@ func verify(f *pb.Broadcast, topic, principal []byte) error {
 	// the last index is one no feed has: the cursor, set to index+1, never wraps
 	if f.Index == math.MaxUint64 {
 		return fmt.Errorf("index %d: %w", f.Index, errInvalidSOC)
+	}
+	// a session has one AUTH chunk, at index 0 of its AUTH feed
+	if f.Kind == pb.Kind_AUTH && f.Index != 0 {
+		return fmt.Errorf("auth chunk at index %d: %w", f.Index, errInvalidSOC)
 	}
 	want, err := id(f.Kind, topic, f.Challenge, f.Index)
 	if err != nil {

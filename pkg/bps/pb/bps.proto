@@ -46,7 +46,8 @@ message Ack {
 enum Kind {
   KIND_UNSPECIFIED = 0; // invalid on the wire
   DATA = 1;             // an update of the stream's session feed
-  AUTH = 2;             // an empty chunk: authenticates the stream, never delivered
+  AUTH = 2;             // the empty chunk at index 0 of the session's AUTH feed: authenticates
+                        // a pending stream, a heartbeat on a publisher stream, never delivered
 }
 
 // Every frame after the handshake. soc is an ordinary single-owner chunk
