@@ -34,7 +34,7 @@ const (
 	bpsMaxFrameSize   = bpsFrameHeader + bpsMaxSOCSize
 )
 
-// bpsAuthTimeout bounds how long a publisher may take to send its first frame.
+// bpsAuthTimeout bounds how long a publisher may take to send its AUTH.
 var bpsAuthTimeout = 30 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
@@ -321,7 +321,7 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		_ = conn.Close()
 	}()
 
-	// the publisher declares the principal as its identity and authenticates with its first frame
+	// the publisher declares the principal as its identity and authenticates with its AUTH
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
 		Broker:   req.broker,
 		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
@@ -373,6 +373,11 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge)
 			if code != 0 {
 				s.bpsClose(conn, code, reason)
+				return
+			}
+			// the broker resets a pending stream that sends anything but its AUTH
+			if !authenticated && kind != bps.KindAuth {
+				s.bpsClose(conn, bpsCloseInvalidMessage, "expected auth")
 				return
 			}
 			if err := sess.Publish(ctx, kind, index, chunk); err != nil {
