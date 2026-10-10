@@ -454,6 +454,22 @@ func TestBPSPublishFrameErrors(t *testing.T) {
 			code: api.BPSCloseInvalidSOC,
 		},
 		{
+			name: "auth at index 1",
+			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
+				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 1, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 1, nil)))
+			},
+			code: api.BPSCloseInvalidSOC,
+		},
+		{
+			name: "data before auth",
+			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
+				t.Helper()
+				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
+			},
+			code: api.BPSCloseInvalidMessage,
+		},
+		{
 			name: "unknown kind",
 			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
 				t.Helper()
@@ -512,7 +528,7 @@ func TestBPSPublishSessionErrors(t *testing.T) {
 		f.sess.publishErr = errors.New("write failed")
 		conn := f.dial(t, "publish")
 		challenge := readChallenge(t, f, conn)
-		_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
+		_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)))
 		expectClose(t, conn, api.BPSCloseBrokerGone)
 	})
 }

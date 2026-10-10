@@ -101,11 +101,20 @@ func (e *env) subscribe() bps.Session {
 	return e.join(c, addr)
 }
 
-func (e *env) publisher() (bps.Session, swarm.Address) {
+// pending joins as the principal and sends nothing: a pending stream.
+func (e *env) pending() (bps.Session, swarm.Address) {
 	e.t.Helper()
 	overlay := swarm.RandAddress(e.t)
 	c, _ := e.client(overlay)
 	return e.join(c, e.principal), overlay
+}
+
+// publisher joins as the principal and authenticates the stream with its AUTH.
+func (e *env) publisher() (bps.Session, swarm.Address) {
+	e.t.Helper()
+	s, overlay := e.pending()
+	e.publish(s, bps.KindAuth, 0, nil)
+	return s, overlay
 }
 
 func (e *env) chunk(signer crypto.Signer, kind bps.Kind, challenge []byte, index uint64, payload []byte) []byte {
@@ -196,7 +205,7 @@ func TestBroadcast(t *testing.T) {
 		t.Fatal("want a distinct 32-byte challenge per stream")
 	}
 
-	// AUTH authenticates and is never delivered
+	// the AUTH that authenticated the stream was not delivered; sent again it is a heartbeat
 	e.publish(pub, bps.KindAuth, 0, nil)
 	c0 := e.publish(pub, bps.KindData, 0, []byte("hello cohort"))
 	expectMessage(t, sub, 0, c0)
@@ -232,8 +241,8 @@ func TestPublisherReconnects(t *testing.T) {
 	_ = pub1.Close()
 	expectDone(t, pub1)
 
-	// the cohort and its cursor persist; a valid frame below the cursor
-	// still authenticates the new stream and is counted as a retransmit
+	// the cohort and its cursor persist; the new stream authenticates with its AUTH and
+	// an update below the cursor is counted as a retransmit
 	pub2, _ := e.publisher()
 	if bytes.Equal(pub1.Challenge(), pub2.Challenge()) {
 		t.Fatal("challenge reused")
@@ -322,6 +331,9 @@ func TestViolations(t *testing.T) {
 		{"auth with payload", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
 			return bps.KindAuth, 0, e.chunk(e.signer, bps.KindAuth, ch, 0, []byte("x"))
 		}},
+		{"auth at index 1", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindAuth, 1, e.chunk(e.signer, bps.KindAuth, ch, 1, nil)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -336,6 +348,43 @@ func TestViolations(t *testing.T) {
 			eventually(t, func() bool { return e.bl.blocklisted(overlay) })
 			if got := e.counters().InvalidSOC; got != 1 {
 				t.Fatalf("invalid_soc %d, want 1", got)
+			}
+			expectNoMessage(t, sub)
+		})
+	}
+
+	// a pending stream may send nothing but its AUTH: a valid update, or a kind the
+	// broker does not know, is a violation before any signature is checked
+	for _, tc := range []struct {
+		name  string
+		frame func(e *env, challenge []byte) *pb.Broadcast
+	}{
+		{"data before auth", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Index: 0, Soc: e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))}
+		}},
+		{"unknown kind before auth", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind(7), Challenge: ch, Soc: []byte("roster")}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, bps.Options{})
+			sub := e.subscribe()
+			overlay := swarm.RandAddress(t)
+			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: e.principal})
+			if ack.Status != pb.Status_OK {
+				t.Fatalf("status %s", ack.Status)
+			}
+			if err := w.WriteMsg(tc.frame(e, ack.Challenge)); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ReadMsg(&pb.Broadcast{}); err == nil {
+				t.Fatal("stream not ended")
+			}
+			eventually(t, func() bool { return e.bl.blocklisted(overlay) })
+			got := e.counters()
+			if got.WrongStream != 1 || got.InvalidSOC != 0 || got.UnknownKind != 0 {
+				t.Fatalf("counters %+v", got)
 			}
 			expectNoMessage(t, sub)
 		})
@@ -387,7 +436,9 @@ func TestDroppedFrames(t *testing.T) {
 		}
 	}
 
-	// another kind and another challenge are dropped, not punished
+	write(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Index: 0, Soc: e.chunk(e.signer, bps.KindAuth, ack.Challenge, 0, nil)})
+
+	// on a publisher stream another kind and another challenge are dropped, not punished
 	write(&pb.Broadcast{Kind: pb.Kind(7), Challenge: ack.Challenge, Soc: []byte("roster")})
 	other := make([]byte, 32)
 	write(&pb.Broadcast{Kind: pb.Kind_DATA, Challenge: other, Soc: e.chunk(e.signer, bps.KindData, other, 0, []byte("old"))})
@@ -506,7 +557,7 @@ func TestBounds(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, bps.Options{AuthWaitTimeout: 50 * time.Millisecond})
 		e.subscribe()
-		pub, overlay := e.publisher()
+		pub, overlay := e.pending()
 		expectDone(t, pub)
 		eventually(t, func() bool { return e.bl.blocklisted(overlay) })
 		if got := e.counters().AuthTimeout; got != 1 {
@@ -519,7 +570,6 @@ func TestBounds(t *testing.T) {
 		e := newEnv(t, bps.Options{InactiveTimeout: 100 * time.Millisecond})
 		sub := e.subscribe()
 		pub, _ := e.publisher()
-		e.publish(pub, bps.KindAuth, 0, nil)
 		expectDone(t, sub)
 		expectDone(t, pub)
 		if _, ok := e.broker.Counters(bps.CohortSpec{Topic: e.topic, Principal: e.principal}); ok {
@@ -538,8 +588,13 @@ func TestVerify(t *testing.T) {
 	if err := bps.Verify(bps.KindData, challenge, 9, c, e.topic, e.principal); err != nil {
 		t.Fatal(err)
 	}
+	auth := e.chunk(e.signer, bps.KindAuth, challenge, 0, nil)
+	if err := bps.Verify(bps.KindAuth, challenge, 0, auth, e.topic, e.principal); err != nil {
+		t.Fatal(err)
+	}
 	other := make([]byte, 20)
 	for _, err := range []error{
+		bps.Verify(bps.KindAuth, challenge, 1, e.chunk(e.signer, bps.KindAuth, challenge, 1, nil), e.topic, e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c, e.topic, other),
 		bps.Verify(bps.KindData, challenge[:31], 9, c, e.topic, e.principal),
 		bps.Verify(bps.KindAuth, challenge, 9, c, e.topic, e.principal),
