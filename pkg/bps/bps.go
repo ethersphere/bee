@@ -56,58 +56,60 @@ var (
 
 // Options are the broker's resource bounds. Zero values take the defaults.
 type Options struct {
-	MaxSubscribers          int           // subscriber streams per cohort
-	MaxCohorts              int           // live cohorts per broker
-	MaxCohortsPerPeer       int           // cohorts per peer connection
-	MaxStreamsPerPeerCohort int           // streams per peer connection per cohort
-	InactivityTimeout       time.Duration // reclaims a cohort with no accepted frame
-	AuthTimeout             time.Duration // disconnects a pending stream that has not authenticated
-	QueueSize               int           // outbound frames per subscriber stream
-	ViolationBlocklist      time.Duration // blocklist duration for a protocol violation
-	BlocklistDuration       time.Duration // blocklist duration for an auth timeout
+	MaxSubsPerCohort        int // subscriber streams per cohort
+	MaxBrokerCohorts        int // live cohorts per broker
+	MaxCohortsPerConnection int // cohorts per peer connection
+	MaxPeerStreamsPerCohort int // streams per peer connection per cohort
+	QueueCap                int // outbound frames per subscriber stream
+	//
+	InactiveTimeout time.Duration // reclaims a cohort with no accepted frame
+	AuthWaitTimeout time.Duration // disconnects a pending stream that has not authenticated
+	//
+	ProtoBreachBlocklistDuration time.Duration // blocklist duration for a protocol violation
+	InvalidAuthBlocklistDuration time.Duration // blocklist duration for an auth timeout
 }
 
 // DefaultOptions are the SWIP-74 recommended bounds.
 var DefaultOptions = Options{
-	MaxSubscribers:          1024,
-	MaxCohorts:              512,
-	MaxCohortsPerPeer:       16,
-	MaxStreamsPerPeerCohort: 2,
-	InactivityTimeout:       10 * time.Minute,
-	AuthTimeout:             30 * time.Second,
-	QueueSize:               64,
-	ViolationBlocklist:      10 * time.Minute,
-	BlocklistDuration:       time.Minute,
+	MaxSubsPerCohort:             1024,
+	MaxBrokerCohorts:             512,
+	MaxCohortsPerConnection:      16,
+	MaxPeerStreamsPerCohort:      2,
+	InactiveTimeout:              10 * time.Minute,
+	AuthWaitTimeout:              30 * time.Second,
+	QueueCap:                     64,
+	ProtoBreachBlocklistDuration: 10 * time.Minute,
+	InvalidAuthBlocklistDuration: time.Minute,
 }
 
 func (o Options) withDefaults() Options {
 	d := DefaultOptions
-	if o.MaxSubscribers > 0 {
-		d.MaxSubscribers = o.MaxSubscribers
+	if o.MaxSubsPerCohort > 0 {
+		d.MaxSubsPerCohort = o.MaxSubsPerCohort
 	}
-	if o.MaxCohorts > 0 {
-		d.MaxCohorts = o.MaxCohorts
+	if o.MaxBrokerCohorts > 0 {
+		d.MaxBrokerCohorts = o.MaxBrokerCohorts
 	}
-	if o.MaxCohortsPerPeer > 0 {
-		d.MaxCohortsPerPeer = o.MaxCohortsPerPeer
+	if o.MaxCohortsPerConnection > 0 {
+		d.MaxCohortsPerConnection = o.MaxCohortsPerConnection
 	}
-	if o.MaxStreamsPerPeerCohort > 0 {
-		d.MaxStreamsPerPeerCohort = o.MaxStreamsPerPeerCohort
+	if o.MaxPeerStreamsPerCohort > 0 {
+		d.MaxPeerStreamsPerCohort = o.MaxPeerStreamsPerCohort
 	}
-	if o.InactivityTimeout > 0 {
-		d.InactivityTimeout = o.InactivityTimeout
+	if o.InactiveTimeout > 0 {
+		d.InactiveTimeout = o.InactiveTimeout
 	}
-	if o.AuthTimeout > 0 {
-		d.AuthTimeout = o.AuthTimeout
+	if o.AuthWaitTimeout > 0 {
+		d.AuthWaitTimeout = o.AuthWaitTimeout
 	}
-	if o.QueueSize > 0 {
-		d.QueueSize = o.QueueSize
+	if o.QueueCap > 0 {
+		d.QueueCap = o.QueueCap
 	}
-	if o.ViolationBlocklist > 0 {
-		d.ViolationBlocklist = o.ViolationBlocklist
+	if o.ProtoBreachBlocklistDuration > 0 {
+		d.ProtoBreachBlocklistDuration = o.ProtoBreachBlocklistDuration
 	}
-	if o.BlocklistDuration > 0 {
-		d.BlocklistDuration = o.BlocklistDuration
+	if o.InvalidAuthBlocklistDuration > 0 {
+		d.InvalidAuthBlocklistDuration = o.InvalidAuthBlocklistDuration
 	}
 	return d
 }
@@ -457,7 +459,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		}
 		if err := s.handleFrame(co, m, &f); err != nil {
 			if errors.Is(err, errViolation) && s.blocklister != nil {
-				if berr := s.blocklister.Blocklist(p.Address, s.opts.ViolationBlocklist, err.Error()); berr != nil {
+				if berr := s.blocklister.Blocklist(p.Address, s.opts.ProtoBreachBlocklistDuration, err.Error()); berr != nil {
 					s.logger.Debug("blocklist failed", "peer_address", p.Address, "error", berr)
 				}
 			}
@@ -563,10 +565,10 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 	}
 
 	pc := s.peers[peer.ByteString()]
-	if pc[k] == 0 && len(pc) >= s.opts.MaxCohortsPerPeer {
+	if pc[k] == 0 && len(pc) >= s.opts.MaxCohortsPerConnection {
 		return nil, nil, fmt.Errorf("too many cohorts per peer: %w", errFull)
 	}
-	if pc[k] >= s.opts.MaxStreamsPerPeerCohort {
+	if pc[k] >= s.opts.MaxPeerStreamsPerCohort {
 		return nil, nil, fmt.Errorf("too many streams per peer per cohort: %w", errFull)
 	}
 
@@ -577,7 +579,7 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 
 	co, ok := s.cohorts[k]
 	if !ok {
-		if len(s.cohorts) >= s.opts.MaxCohorts {
+		if len(s.cohorts) >= s.opts.MaxBrokerCohorts {
 			return nil, nil, fmt.Errorf("too many cohorts per broker: %w", errFull)
 		}
 		co = &cohort{
@@ -586,14 +588,14 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 			members:      make(map[*member]struct{}),
 			lastActivity: time.Now(),
 		}
-		co.inactivity = time.AfterFunc(s.opts.InactivityTimeout, func() { s.reclaim(co) })
+		co.inactivity = time.AfterFunc(s.opts.InactiveTimeout, func() { s.reclaim(co) })
 		s.cohorts[k] = co
 		s.metrics.Cohorts.Set(float64(len(s.cohorts)))
 	}
 
 	co.mtx.Lock()
 	defer co.mtx.Unlock()
-	if role == roleSubscriber && co.subscribers >= s.opts.MaxSubscribers {
+	if role == roleSubscriber && co.subscribers >= s.opts.MaxSubsPerCohort {
 		if len(co.members) == 0 {
 			s.removeCohort(co)
 		}
@@ -610,12 +612,12 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 	m := &member{
 		role:      role,
 		challenge: challenge,
-		queue:     make(chan *pb.Broadcast, s.opts.QueueSize),
+		queue:     make(chan *pb.Broadcast, s.opts.QueueCap),
 	}
 	var once sync.Once
 	m.reset = func() { once.Do(reset) }
 	if role == rolePending {
-		m.authTimer = time.AfterFunc(s.opts.AuthTimeout, func() { s.authTimeout(peer, co, m) })
+		m.authTimer = time.AfterFunc(s.opts.AuthWaitTimeout, func() { s.authTimeout(peer, co, m) })
 	} else {
 		co.subscribers++
 	}
@@ -676,8 +678,8 @@ func (s *Service) reclaim(co *cohort) {
 		return
 	}
 	co.mtx.Lock()
-	if idle := time.Since(co.lastActivity); idle < s.opts.InactivityTimeout {
-		co.inactivity.Reset(s.opts.InactivityTimeout - idle)
+	if idle := time.Since(co.lastActivity); idle < s.opts.InactiveTimeout {
+		co.inactivity.Reset(s.opts.InactiveTimeout - idle)
 		co.mtx.Unlock()
 		s.mtx.Unlock()
 		return
@@ -702,7 +704,7 @@ func (s *Service) authTimeout(peer swarm.Address, co *cohort, m *member) {
 	}
 	s.count(&co.counters.authTimeout, "auth_timeout")
 	if s.blocklister != nil {
-		if err := s.blocklister.Blocklist(peer, s.opts.BlocklistDuration, "bps auth timeout"); err != nil {
+		if err := s.blocklister.Blocklist(peer, s.opts.InvalidAuthBlocklistDuration, "bps auth timeout"); err != nil {
 			s.logger.Debug("blocklist failed", "peer_address", peer, "error", err)
 		}
 	}

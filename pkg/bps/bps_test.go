@@ -467,7 +467,7 @@ func TestBounds(t *testing.T) {
 
 	t.Run("subscribers per cohort, principal admitted outside", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{MaxSubscribers: 1})
+		e := newEnv(t, bps.Options{MaxSubsPerCohort: 1})
 		sub := e.subscribe()
 		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: make([]byte, 20)}); ack.Status != pb.Status_FULL {
 			t.Fatalf("got %s, want FULL", ack.Status)
@@ -478,7 +478,7 @@ func TestBounds(t *testing.T) {
 
 	t.Run("cohorts per broker", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{MaxCohorts: 1})
+		e := newEnv(t, bps.Options{MaxBrokerCohorts: 1})
 		e.subscribe()
 		spec := e.spec()
 		spec.Topic = make([]byte, 32)
@@ -489,7 +489,7 @@ func TestBounds(t *testing.T) {
 
 	t.Run("streams and cohorts per peer", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{MaxStreamsPerPeerCohort: 1, MaxCohortsPerPeer: 1})
+		e := newEnv(t, bps.Options{MaxPeerStreamsPerCohort: 1, MaxCohortsPerConnection: 1})
 		c, _ := e.client(swarm.RandAddress(t))
 		e.join(c, e.principal)
 		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}); err == nil {
@@ -503,7 +503,7 @@ func TestBounds(t *testing.T) {
 
 	t.Run("auth timeout", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{AuthTimeout: 50 * time.Millisecond})
+		e := newEnv(t, bps.Options{AuthWaitTimeout: 50 * time.Millisecond})
 		e.subscribe()
 		pub, overlay := e.publisher()
 		expectDone(t, pub)
@@ -515,7 +515,7 @@ func TestBounds(t *testing.T) {
 
 	t.Run("inactivity deadline", func(t *testing.T) {
 		t.Parallel()
-		e := newEnv(t, bps.Options{InactivityTimeout: 100 * time.Millisecond})
+		e := newEnv(t, bps.Options{InactiveTimeout: 100 * time.Millisecond})
 		sub := e.subscribe()
 		pub, _ := e.publisher()
 		e.publish(pub, bps.KindAuth, 0, nil)
