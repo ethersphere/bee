@@ -17,21 +17,22 @@ import (
 )
 
 type statusSnapshotResponse struct {
-	Overlay                 string  `json:"overlay"`
-	Proximity               uint    `json:"proximity"`
-	BeeMode                 string  `json:"beeMode"`
-	ReserveSize             uint64  `json:"reserveSize"`
-	ReserveSizeWithinRadius uint64  `json:"reserveSizeWithinRadius"`
-	PullsyncRate            float64 `json:"pullsyncRate"`
-	StorageRadius           uint8   `json:"storageRadius"`
-	ConnectedPeers          uint64  `json:"connectedPeers"`
-	NeighborhoodSize        uint64  `json:"neighborhoodSize"`
-	RequestFailed           bool    `json:"requestFailed,omitempty"`
-	BatchCommitment         uint64  `json:"batchCommitment"`
-	IsReachable             bool    `json:"isReachable"`
-	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
-	CommittedDepth          uint8   `json:"committedDepth"`
-	IsWarmingUp             bool    `json:"isWarmingUp"`
+	Overlay                 string   `json:"overlay"`
+	Proximity               uint     `json:"proximity"`
+	BeeMode                 string   `json:"beeMode"`
+	ReserveSize             uint64   `json:"reserveSize"`
+	ReserveSizeWithinRadius uint64   `json:"reserveSizeWithinRadius"`
+	PullsyncRate            float64  `json:"pullsyncRate"`
+	PullsyncRateOutside     *float64 `json:"pullsyncRateOutsideRadius,omitempty"`
+	StorageRadius           uint8    `json:"storageRadius"`
+	ConnectedPeers          uint64   `json:"connectedPeers"`
+	NeighborhoodSize        uint64   `json:"neighborhoodSize"`
+	RequestFailed           bool     `json:"requestFailed,omitempty"`
+	BatchCommitment         uint64   `json:"batchCommitment"`
+	IsReachable             bool     `json:"isReachable"`
+	LastSyncedBlock         uint64   `json:"lastSyncedBlock"`
+	CommittedDepth          uint8    `json:"committedDepth"`
+	IsWarmingUp             bool     `json:"isWarmingUp"`
 }
 
 type statusResponse struct {
@@ -77,7 +78,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, statusSnapshotResponse{
+	resp := statusSnapshotResponse{
 		Proximity:               256,
 		Overlay:                 s.overlay.String(),
 		BeeMode:                 ss.BeeMode,
@@ -92,7 +93,13 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
 		IsWarmingUp:             s.isWarmingUp,
-	})
+	}
+	if s.syncRateOutsideRadius != nil {
+		rate := s.syncRateOutsideRadius()
+		resp.PullsyncRateOutside = &rate
+	}
+
+	jsonhttp.OK(w, resp)
 }
 
 // statusGetPeersHandler returns the status of currently connected peers.

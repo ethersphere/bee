@@ -27,7 +27,7 @@ func TestRateFirstBucket(t *testing.T) {
 	}
 }
 
-// TestIgnoreOldBuckets tests that the buckets older than the most recent two buckets are ignored in rate calculation.
+// TestIgnoreOldBuckets tests that counts older than one window are ignored in rate calculation.
 func TestIgnoreOldBuckets(t *testing.T) {
 	t.Parallel()
 
@@ -39,8 +39,7 @@ func TestIgnoreOldBuckets(t *testing.T) {
 	rate.SetTimeFunc(func() time.Time { return setTime(windowSize) })
 	rate.Add(10)
 
-	// windowSize * 3 ensures that the previous bucket is ignored
-	rate.SetTimeFunc(func() time.Time { return setTime(windowSize * 3) })
+	rate.SetTimeFunc(func() time.Time { return setTime(windowSize * 2) })
 	rate.Add(r)
 
 	got := rate.Rate()
@@ -49,37 +48,83 @@ func TestIgnoreOldBuckets(t *testing.T) {
 	}
 }
 
+// TestRate tests that all counts within the window contribute at full weight.
 func TestRate(t *testing.T) {
 	t.Parallel()
 
-	// windowSizeMs := 1000
-	windowSize := 1000 * time.Millisecond
-	const r = 100
+	windowSize := 3000 * time.Millisecond
+	rate := rate.New(windowSize)
 
-	// tc represents the different ratios that will applied to the previous bucket in the Rate calculation
-	// eg: the ratio is x, so (1 - 1/x) will be applied to the previous bucket
-	for _, tc := range []struct {
-		ratio int
-		rate  float64
-	}{
-		{ratio: 2, rate: 150},
-		{ratio: 4, rate: 175},
-		{ratio: 5, rate: 180},
-		{ratio: 10, rate: 190},
-		{ratio: 100, rate: 199},
-	} {
+	for _, at := range []time.Duration{0, 1000 * time.Millisecond, 2500 * time.Millisecond} {
+		rate.SetTimeFunc(func() time.Time { return setTime(windowSize + at) })
+		rate.Add(100)
+	}
 
-		rate := rate.New(windowSize)
+	if got, want := rate.Rate(), 100.0; got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
 
-		rate.SetTimeFunc(func() time.Time { return setTime(windowSize) })
-		rate.Add(r)
+// TestRateDecaysLinearly tests that the rate drops by an equal step as each
+// bucket leaves the window.
+func TestRateDecaysLinearly(t *testing.T) {
+	t.Parallel()
 
-		rate.SetTimeFunc(func() time.Time { return setTime(windowSize*2 + windowSize/time.Duration(tc.ratio)) })
-		rate.Add(r)
+	const buckets = 30
+	windowSize := 30 * time.Second
+	bucket := windowSize / buckets
 
+	rate := rate.New(windowSize)
+
+	start := windowSize
+	for i := range buckets {
+		rate.SetTimeFunc(func() time.Time { return setTime(start + time.Duration(i)*bucket) })
+		rate.Add(10)
+	}
+	last := start + (buckets-1)*bucket
+
+	full := rate.Rate()
+	if want := 10.0; full != want {
+		t.Fatalf("full window: got %v, want %v", full, want)
+	}
+
+	step := full / buckets
+	for i := 1; i <= buckets; i++ {
+		rate.SetTimeFunc(func() time.Time { return setTime(last + time.Duration(i)*bucket) })
 		got := rate.Rate()
-		if got != tc.rate {
-			t.Fatalf("ratio %v, got %v, want %v", tc.ratio, got, tc.rate)
+		want := full - float64(i)*step
+		if diff := got - want; diff > 1e-9 || diff < -1e-9 {
+			t.Fatalf("%d buckets after the last add: got %v, want %v", i, got, want)
+		}
+	}
+}
+
+// TestRateReachesZeroWithinWindow tests that the rate is zero one window after
+// the last Add, wherever in a bucket that Add landed.
+func TestRateReachesZeroWithinWindow(t *testing.T) {
+	t.Parallel()
+
+	windowSize := 5 * time.Minute
+
+	for _, offset := range []time.Duration{
+		0,
+		time.Millisecond,
+		30 * time.Second,
+		150 * time.Second,
+		299*time.Second + 999*time.Millisecond,
+	} {
+		rate := rate.New(windowSize)
+		addAt := windowSize + offset
+
+		rate.SetTimeFunc(func() time.Time { return setTime(addAt) })
+		rate.Add(1000)
+		if rate.Rate() == 0 {
+			t.Fatalf("offset %v: rate is zero straight after an add", offset)
+		}
+
+		rate.SetTimeFunc(func() time.Time { return setTime(addAt + windowSize) })
+		if got := rate.Rate(); got != 0 {
+			t.Fatalf("offset %v: one window after the last add, got %v, want 0", offset, got)
 		}
 	}
 }
