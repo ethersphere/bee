@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/ethersphere/bee/v2/pkg/bps/pb"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -85,6 +86,10 @@ func Verify(kind Kind, challenge []byte, index uint64, chunk, topic, principal [
 func verify(f *pb.Broadcast, topic, principal []byte) error {
 	if len(f.Challenge) != ChallengeSize {
 		return fmt.Errorf("challenge length %d: %w", len(f.Challenge), errInvalidSOC)
+	}
+	// the last index is one no feed has: the cursor, set to index+1, never wraps
+	if f.Index == math.MaxUint64 {
+		return fmt.Errorf("index %d: %w", f.Index, errInvalidSOC)
 	}
 	want, err := id(f.Kind, topic, f.Challenge, f.Index)
 	if err != nil {
