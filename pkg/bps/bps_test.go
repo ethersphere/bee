@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -544,6 +545,8 @@ func TestVerify(t *testing.T) {
 		bps.Verify(bps.KindAuth, challenge, 9, c, e.topic, e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c, make([]byte, 32), e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c[:10], e.topic, e.principal),
+		bps.Verify(bps.KindData, challenge, math.MaxUint64,
+			e.chunk(e.signer, bps.KindData, challenge, math.MaxUint64, []byte("x")), e.topic, e.principal),
 	} {
 		if !errors.Is(err, bps.ErrInvalidSOC) {
 			t.Fatalf("got %v, want invalid soc", err)
