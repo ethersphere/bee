@@ -522,12 +522,12 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	}
 	switch {
 	case f.Kind == pb.Kind_AUTH:
-		co.lastActivity = time.Now()
+		co.inactiveSince = time.Now()
 	case f.Index < co.cursor:
 		s.count(&co.counters.retransmit, "retransmit")
 	default:
 		co.cursor = f.Index + 1
-		co.lastActivity = time.Now()
+		co.inactiveSince = time.Now()
 		s.metrics.Delivered.Inc()
 		for sub := range co.members {
 			if sub.role != roleSubscriber {
@@ -583,10 +583,10 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset func()) (*cohort
 			return nil, nil, fmt.Errorf("too many cohorts per broker: %w", errFull)
 		}
 		co = &cohort{
-			key:          k,
-			spec:         join.Cohort,
-			members:      make(map[*member]struct{}),
-			lastActivity: time.Now(),
+			key:           k,
+			spec:          join.Cohort,
+			members:       make(map[*member]struct{}),
+			inactiveSince: time.Now(),
 		}
 		co.inactivity = time.AfterFunc(s.opts.InactiveTimeout, func() { s.reclaim(co) })
 		s.cohorts[k] = co
@@ -678,7 +678,7 @@ func (s *Service) reclaim(co *cohort) {
 		return
 	}
 	co.mtx.Lock()
-	if idle := time.Since(co.lastActivity); idle < s.opts.InactiveTimeout {
+	if idle := time.Since(co.inactiveSince); idle < s.opts.InactiveTimeout {
 		co.inactivity.Reset(s.opts.InactiveTimeout - idle)
 		co.mtx.Unlock()
 		s.mtx.Unlock()
@@ -740,11 +740,11 @@ type cohort struct {
 	inactivity *time.Timer
 	counters   counters
 
-	mtx          sync.Mutex
-	cursor       uint64 // the lowest DATA index accepted next
-	lastActivity time.Time
-	members      map[*member]struct{}
-	subscribers  int
+	mtx           sync.Mutex
+	cursor        uint64 // the lowest DATA index accepted next
+	inactiveSince time.Time
+	members       map[*member]struct{}
+	subscribers   int
 }
 
 // shutdown returns the cohort's streams, for the caller to reset.
