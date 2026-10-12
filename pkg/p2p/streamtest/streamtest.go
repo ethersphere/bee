@@ -279,7 +279,7 @@ func (s *stream) Read(p []byte) (int, error) {
 		return 0, ErrStreamClosed
 	}
 
-	return s.out.read(p, s.readDeadline.wait())
+	return s.out.Read(p, s.readDeadline.wait())
 }
 
 // SetReadDeadline sets the deadline for current and future Read calls, as net.Conn does.
@@ -370,7 +370,7 @@ func newRecord(latency time.Duration) *record {
 	}
 }
 
-func (r *record) read(p []byte, deadline <-chan struct{}) (n int, err error) {
+func (r *record) Read(p []byte, deadline <-chan struct{}) (n int, err error) {
 	defer time.Sleep(r.latency)
 
 	for r.c == r.bytesSize() {
