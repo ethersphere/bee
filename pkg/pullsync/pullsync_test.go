@@ -118,8 +118,7 @@ func TestIncoming_HalfClosedStream(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reserve := &chunkReserve{ReserveStore: mock.NewReserve(), chunks: make(chan *storer.BinC)}
 		validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
-		ps := pullsync.New(nil, reserve, func(swarm.Chunk) {}, func(*soc.SOC) {}, validStamp, log.Noop, pullsync.DefaultMaxPage)
-		t.Cleanup(func() { _ = ps.Close() })
+		ps := newPullSyncWithReserve(t, nil, pullsync.DefaultMaxPage, validStamp, reserve)
 		recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 
 		stream, err := recorder.NewStream(context.Background(), swarm.ZeroAddress, nil, pullsync.ProtocolName, pullsync.ProtocolVersion, pullsync.StreamName)
@@ -497,6 +496,18 @@ func newPullSyncWithStamperValidator(
 	t.Helper()
 
 	storage := mock.NewReserve(o...)
+	return newPullSyncWithReserve(t, s, maxPage, validStamp, storage), storage
+}
+
+func newPullSyncWithReserve(
+	t *testing.T,
+	s p2p.Streamer,
+	maxPage uint64,
+	validStamp postage.ValidStampFn,
+	storage storer.Reserve,
+) *pullsync.Syncer {
+	t.Helper()
+
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	socHandler := func(*soc.SOC) {}
@@ -516,5 +527,5 @@ func newPullSyncWithStamperValidator(
 			t.Errorf("failed closing pullsync: %v", err)
 		}
 	})
-	return ps, storage
+	return ps
 }
