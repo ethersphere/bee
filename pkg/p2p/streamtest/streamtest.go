@@ -281,7 +281,7 @@ func (s *stream) Read(p []byte) (int, error) {
 	return s.out.read(p, s.readDeadline.wait())
 }
 
-// SetReadDeadline sets the deadline for pending and future Read calls, like net.Conn.
+// SetReadDeadline sets the deadline for current and future Read calls, as net.Conn does.
 func (s *stream) SetReadDeadline(t time.Time) error {
 	s.readDeadline.set(t)
 	return nil
@@ -343,7 +343,7 @@ func (s *stream) FullClose() error {
 	return nil
 }
 
-// CloseWrite closes the write side of the stream; reads on the other side return io.EOF.
+// CloseWrite closes the write side of the stream. Reads on the other side return io.EOF.
 func (s *stream) CloseWrite() error {
 	s.in.close()
 	return nil
@@ -429,7 +429,7 @@ func (r *record) bytes() []byte {
 	return cp
 }
 
-// deadline is closed when its time passes. A zero time means no deadline.
+// deadline closes its channel when the deadline time passes. A zero time means no deadline.
 type deadline struct {
 	mu    sync.Mutex
 	timer *time.Timer
@@ -445,7 +445,7 @@ func (d *deadline) set(t time.Time) {
 	defer d.mu.Unlock()
 
 	if d.timer != nil && !d.timer.Stop() {
-		<-d.c // wait for the timer to close the channel
+		<-d.c // wait until the timer closes the channel
 	}
 	d.timer = nil
 

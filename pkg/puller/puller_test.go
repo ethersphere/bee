@@ -508,8 +508,8 @@ func TestContinueSyncing(t *testing.T) {
 	}
 }
 
-// TestSyncErrorBackoff checks that the sync worker waits before it retries a failed
-// sync that pulled nothing, and that it continues at once after a partial failure.
+// TestSyncErrorBackoff checks that the sync worker waits after a failed sync that got no chunks.
+// It also checks that the worker continues immediately after a failed sync that got some chunks.
 func TestSyncErrorBackoff(t *testing.T) {
 	t.Parallel()
 
@@ -550,7 +550,7 @@ func TestSyncErrorBackoff(t *testing.T) {
 						kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
 					},
 					pullSync: []mockps.Option{
-						mockps.WithCursors([]uint64{0}, 0), // live sync only, from BinID 1
+						mockps.WithCursors([]uint64{0}, 0), // live sync only, starts at BinID 1
 						mockps.WithSyncError(errors.New("sync error")),
 						mockps.WithReplies(tc.replies(addr)...),
 					},

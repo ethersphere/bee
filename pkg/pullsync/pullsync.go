@@ -431,14 +431,14 @@ type collectAddrsResult struct {
 	topmost uint64
 }
 
-// watchStream cancels the request if the peer resets the stream while the handler waits
-// for chunks to offer. The handler context is canceled only when the peer disconnects, and
-// the handler does not read from the stream during this wait, so it cannot see a reset
-// otherwise. The peer sends nothing before it receives the offer, so the read returns only
-// when the stream ends. If the peer only closes its write side, the read returns io.EOF;
-// the peer can still read the offer, so the request continues without a watch.
-// The returned function stops the watch. It must be called before the next read from the stream.
-// If the stream does not support read deadlines, nothing is watched.
+// watchStream cancels the request when the peer resets the stream.
+// The handler does not read the stream while it waits for chunks, so it cannot see a reset.
+// The handler context stops only when the peer disconnects.
+// The peer sends nothing before it gets the offer, so the read returns only when the stream ends.
+// If the peer only closes its write side, the read returns io.EOF. The peer can still read
+// the offer, so the request continues without a watch.
+// Call the returned function before the next read from the stream. It stops the watch.
+// If the stream does not support read deadlines, the function does not watch the stream.
 func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop func() error) {
 	ds, ok := stream.(interface{ SetReadDeadline(time.Time) error })
 	if !ok || ds.SetReadDeadline(time.Time{}) != nil {
@@ -459,7 +459,7 @@ func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop
 
 	return func() error {
 		stopped.Store(true)
-		// unblock the read; if this fails, the read may still be running, and the caller resets the stream
+		// stop the read. If this fails, the read can continue, and the caller resets the stream.
 		if err := ds.SetReadDeadline(time.Now()); err != nil {
 			return err
 		}

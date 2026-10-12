@@ -20,8 +20,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// emptyBinReserve is a reserve with an empty bin. Each subscription waits for
-// chunks that never arrive, like a live sync of a bin without new chunks.
+// emptyBinReserve is a reserve with an empty bin. Each subscription waits for chunks
+// that do not arrive, as in a live sync of a bin that gets no new chunks.
 type emptyBinReserve struct {
 	*mockstorer.ReserveStore
 
@@ -29,7 +29,7 @@ type emptyBinReserve struct {
 	subscribed   map[uint64]chan struct{}
 	unsubscribed atomic.Int64
 	want         int64
-	released     chan struct{} // closed when want subscriptions have ended
+	released     chan struct{} // closed when want subscriptions end
 }
 
 func newEmptyBinReserve(want int64) *emptyBinReserve {
@@ -51,7 +51,7 @@ func (r *emptyBinReserve) SubscribeBin(_ context.Context, _ uint8, start uint64)
 	return make(chan *storer.BinC), unsubscribe, make(chan error)
 }
 
-// subscription returns a channel that is closed when the server subscribes to the bin from start.
+// subscription returns a channel. The channel closes when the server subscribes to the bin from start.
 func (r *emptyBinReserve) subscription(start uint64) chan struct{} {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -63,20 +63,20 @@ func (r *emptyBinReserve) subscription(start uint64) chan struct{} {
 	return c
 }
 
-// TestPullsyncAbandonedStreams checks over a real libp2p connection that pullsync
-// streams which the client abandons while the server waits on an empty bin do not
-// use up the inbound stream limit of the server. A stream reset does not cancel the
-// handler context, so the server must see the reset in some other way.
+// TestPullsyncAbandonedStreams uses a real libp2p connection. The client stops pullsync
+// requests while the server waits on an empty bin. The test checks that these streams
+// do not use all inbound streams of the server. A stream reset does not cancel the handler
+// context, so the server must find the reset in a different way.
 //
-// The test is not parallel: it opens thousands of streams, which would slow down
-// the parallel connection tests that use short timeouts.
+// The test is not parallel. It opens thousands of streams, and these make the parallel
+// connection tests slower. Those tests use short timeouts.
 func TestPullsyncAbandonedStreams(t *testing.T) {
 	ctx := t.Context()
 
 	server, serverOverlay := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{FullNode: true}})
 	client, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{FullNode: true}})
 
-	// abandon as many requests as the inbound stream limit allows
+	// stop as many requests as the inbound stream limit
 	const (
 		requests    = libp2p.IncomingStreamCountLimit
 		concurrency = 100
@@ -96,14 +96,14 @@ func TestPullsyncAbandonedStreams(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// each request is canceled after the server starts to wait for chunks, so the client resets the stream
+	// cancel each request after the server starts to wait for chunks. Then the client resets the stream.
 	var (
 		wg   sync.WaitGroup
 		sem  = make(chan struct{}, concurrency)
 		errC = make(chan error, 1)
 	)
 	for i := range requests {
-		start := uint64(i + 1) // a different interval for each request, so that the requests do not share a wait
+		start := uint64(i + 1) // each request uses a different interval, so the requests do not share a wait
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
@@ -136,7 +136,7 @@ func TestPullsyncAbandonedStreams(t *testing.T) {
 	default:
 	}
 
-	// the server must stop waiting for all abandoned requests
+	// the server must stop the wait for all stopped requests
 	select {
 	case <-reserve.released:
 	case <-time.After(10 * time.Second):

@@ -430,7 +430,7 @@ func TestRecorder_readDeadline(t *testing.T) {
 			t.Fatal("stream does not support read deadlines")
 		}
 
-		// a deadline in the future unblocks a pending read when it passes
+		// a future deadline stops a waiting read when the time passes
 		if err := ds.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 			t.Fatal(err)
 		}
@@ -438,7 +438,7 @@ func TestRecorder_readDeadline(t *testing.T) {
 			t.Fatalf("got error %v, want %v", err, os.ErrDeadlineExceeded)
 		}
 
-		// a deadline set to now unblocks a read that is already pending
+		// a deadline set to now stops a read that already waits
 		if err := ds.SetReadDeadline(time.Time{}); err != nil {
 			t.Fatal(err)
 		}
@@ -455,7 +455,7 @@ func TestRecorder_readDeadline(t *testing.T) {
 			t.Fatalf("got error %v, want %v", err, os.ErrDeadlineExceeded)
 		}
 
-		// the stream can be read after the deadline is cleared
+		// after the deadline is removed, the stream can be read
 		if err := ds.SetReadDeadline(time.Time{}); err != nil {
 			t.Fatal(err)
 		}

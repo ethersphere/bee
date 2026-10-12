@@ -102,7 +102,7 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 	})
 }
 
-// chunkReserve is a reserve whose bin subscription gets chunks only when the test sends them.
+// chunkReserve is a reserve. Its bin subscription gets a chunk only when the test sends one.
 type chunkReserve struct {
 	*mock.ReserveStore
 	chunks chan *storer.BinC
@@ -112,9 +112,8 @@ func (r *chunkReserve) SubscribeBin(context.Context, uint8, uint64) (<-chan *sto
 	return r.chunks, func() {}, make(chan error)
 }
 
-// TestIncoming_HalfClosedStream checks that the handler still sends the offer to a
-// client that closes its write side after the request, as only a stream reset
-// abandons the request.
+// TestIncoming_HalfClosedStream checks that the handler sends the offer to a client
+// that closes its write side after the request. Only a stream reset stops the request.
 func TestIncoming_HalfClosedStream(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reserve := &chunkReserve{ReserveStore: mock.NewReserve(), chunks: make(chan *storer.BinC)}
