@@ -244,7 +244,7 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 		Broker:   req.broker,
 		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
 		Identity: req.identity,
-		Cursor:   req.cursor,
+		Position: bps.Position{Cursors: map[string]uint64{string(req.owner.Bytes()): req.cursor}},
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -261,6 +261,12 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 			if !ok {
 				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(sess.Err()))
 				return
+			}
+			// the lite bridge carries the owner's updates only: the frame names no
+			// kind and no owner, so a roster, an end of stream and a grantee's
+			// update have no shape here yet (SWIP-87's bridge is not settled)
+			if msg.Kind != bps.KindData || !bytes.Equal(msg.Owner, req.owner.Bytes()) {
+				continue
 			}
 			// challenge | index | soc: what the client needs to re-verify the chunk
 			data := make([]byte, 0, bps.ChallengeSize+8+len(msg.SOC))

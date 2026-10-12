@@ -81,7 +81,8 @@ func newFakeSession() *fakeSession {
 
 func (f *fakeSession) Challenge() []byte            { return f.challenge }
 func (f *fakeSession) Messages() <-chan bps.Message { return f.msgs }
-func (f *fakeSession) Cursor() uint64               { return 0 }
+func (f *fakeSession) Position() bps.Position       { return bps.Position{} }
+func (f *fakeSession) Granted() <-chan struct{}     { return nil }
 func (f *fakeSession) Done() <-chan struct{}        { return f.done }
 func (f *fakeSession) Err() error                   { return f.err }
 
@@ -272,7 +273,7 @@ func TestBPSSubscribe(t *testing.T) {
 		f := newBPSFixture(t)
 		conn := f.dial(t, "subscribe")
 		chunk := f.signedSOC(t, f.signer, bps.KindData, f.sess.challenge, 7, []byte("hello cohort"))
-		f.sess.msgs <- bps.Message{SOC: chunk, Challenge: f.sess.challenge, Index: 7}
+		f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: chunk, Challenge: f.sess.challenge, Index: 7}
 		typ, got, err := conn.ReadMessage()
 		if err != nil {
 			t.Fatal(err)
