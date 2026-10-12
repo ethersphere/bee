@@ -40,6 +40,7 @@ type metrics struct {
 	ClosedStreamCount          prometheus.Counter
 	StreamResetCount           prometheus.Counter
 	HandledStreamCount         prometheus.Counter
+	ProtocolHandlerCallCount   *prometheus.CounterVec
 	BlocklistedPeerCount       prometheus.Counter
 	BlocklistedPeerErrCount    prometheus.Counter
 	DisconnectCount            prometheus.Counter
@@ -113,6 +114,15 @@ func newMetrics() metrics {
 			Name:      "handled_stream_count",
 			Help:      "Number of handled incoming libp2p streams.",
 		}),
+		ProtocolHandlerCallCount: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "protocol_handler_call_count",
+				Help:      "Number of incoming streams passed to the protocol stream handler.",
+			},
+			[]string{"protocol", "version", "stream"},
+		),
 		BlocklistedPeerCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
