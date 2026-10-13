@@ -403,7 +403,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("read join: %w", err)
 	}
 	if err := validateJoin(&join); err != nil {
-		return s.refuse(ctx, w, stream, pb.Status_REJECTED, err)
+		return s.refuse(ctx, w, stream, err)
 	}
 	// re-marshal so that the cohort key ignores fields BPS-lite does not define
 	join.Cohort = &pb.CohortSpec{Topic: join.Cohort.Topic, Binding: join.Cohort.Binding, Principal: join.Cohort.Principal}
@@ -416,11 +416,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		_ = stream.Reset()
 	})
 	if err != nil {
-		status := pb.Status_REJECTED
-		if errors.Is(err, errFull) {
-			status = pb.Status_FULL
-		}
-		return s.refuse(ctx, w, stream, status, err)
+		return s.refuse(ctx, w, stream, err)
 	}
 	// detach on every exit, normal or not
 	defer s.leave(p.Address, co, m)
@@ -470,8 +466,14 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	}
 }
 
-// refuse answers a Join with a non-OK Ack, which ends the stream.
-func (s *Service) refuse(ctx context.Context, w protobuf.Writer, stream p2p.Stream, status pb.Status, cause error) error {
+// refuse answers a Join with a non-OK Ack and ends the stream. The status
+// follows from the cause — FULL for a capacity bound, REJECTED for anything
+// else — so that no caller can answer a refusal with OK.
+func (s *Service) refuse(ctx context.Context, w protobuf.Writer, stream p2p.Stream, cause error) error {
+	status := pb.Status_REJECTED
+	if errors.Is(cause, errFull) {
+		status = pb.Status_FULL
+	}
 	if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: status}); err != nil {
 		_ = stream.Reset()
 		return fmt.Errorf("write ack: %w", err)
