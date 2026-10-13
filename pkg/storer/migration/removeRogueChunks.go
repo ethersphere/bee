@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -67,6 +68,11 @@ func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 						}
 						retyped++
 						continue
+					}
+
+					// RemoveChunkWithItem silently skips the stamp indexes when the stamp is not found.
+					if _, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash); err != nil {
+						logger.Warning("rogue chunk stamp not found, stamp indexes may be left behind", "chunk_address", item.Address, "batch_id", item.BatchID, "error", err)
 					}
 
 					err = reserve.RemoveChunkWithItem(ctx, s, &reserve.BatchRadiusItem{
