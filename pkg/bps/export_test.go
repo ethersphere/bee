@@ -17,6 +17,5 @@ var (
 )
 
 var (
-	ErrEndOfStream  = errEndOfStream
 	ErrChannelEnded = errChannelEnded
 )

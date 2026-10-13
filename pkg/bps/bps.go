@@ -56,7 +56,9 @@ var (
 	errNotPublisher    = errors.New("bps: session is not a publisher")
 	errInvalidDelivery = errors.New("bps: invalid delivery")
 	errEndOfStream     = errors.New("bps: end of stream")
-	errChannelEnded    = errors.New("bps: channel ended")
+	// ErrEndOfStream is a session's Err after the admin's EOS ended the channel.
+	ErrEndOfStream  = errEndOfStream
+	errChannelEnded = errors.New("bps: channel ended")
 )
 
 // Options are the broker's resource bounds. Zero values take the defaults.

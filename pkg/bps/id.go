@@ -186,6 +186,12 @@ func decodeRoster(chunk []byte) ([][]byte, error) {
 	return r.Publishers, nil
 }
 
+// ParseRoster returns the publisher set a ROSTER chunk's payload names, or an
+// error if it does not decode as a Roster of 20-byte addresses.
+func ParseRoster(chunk []byte) ([][]byte, error) {
+	return decodeRoster(chunk)
+}
+
 // RosterPayload returns the payload of a ROSTER chunk naming the publishers.
 func RosterPayload(publishers [][]byte) ([]byte, error) {
 	return (&pb.Roster{Publishers: publishers}).Marshal()
