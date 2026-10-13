@@ -28,6 +28,9 @@ func FuzzStampIssuerUnmarshalBinary(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte{0xff})
 	f.Add(make([]byte, 32))
+	for _, data := range oversizedStampIssuers {
+		f.Add(data)
+	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		si := new(postage.StampIssuer)
