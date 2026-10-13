@@ -44,7 +44,7 @@ func encryptChunk(seed []byte, dataLen uint64) []byte {
 
 // FuzzDecryptChunkData drives store.DecryptChunkData over fuzzed persisted chunk
 // bytes and a fuzzed key seed. This is the true offset/length-driven parser: it
-// slices chunkData[:SpanSize] / chunkData[SpanSize:] with no length guard, decodes
+// slices chunkData[:SpanSize] / chunkData[SpanSize:], decodes
 // a redundancy span, and copies decryptedData[:length] where length derives from
 // the (decrypted, attacker-influenced) span and may be re-expanded by
 // file.ReferenceCount. The parser must never panic on any input.
