@@ -152,9 +152,10 @@ func (s *Service) bpsUpgrade(w http.ResponseWriter, r *http.Request, logger log.
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Debug("upgrade failed", "error", err)
-		logger.Error(nil, "upgrade failed")
-		jsonhttp.InternalServerError(w, "upgrade failed")
+		e := "upgrade failed"
+		logger.Debug(e, "error", err)
+		logger.Error(nil, e)
+		jsonhttp.InternalServerError(w, e)
 		return nil, false
 	}
 	conn.SetReadLimit(bpsMaxFrameSize)
