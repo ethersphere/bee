@@ -535,6 +535,12 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 		co.cursor = f.Index + 1
 		co.inactiveSince = time.Now()
 		s.metrics.Delivered.Inc()
+		// fan-out: the accepted frame goes, unchanged, into every subscriber
+		// stream's queue. The send is non-blocking, so that one slow subscriber
+		// cannot stall the cohort; a stream whose queue is full is collected
+		// here and reset below, after co.mtx is released — reset ends the
+		// stream, whose handler then calls leave, which takes s.mtx and co.mtx,
+		// so resetting under the lock would deadlock.
 		for sub := range co.members {
 			if sub.role != roleSubscriber {
 				continue
@@ -548,6 +554,7 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 		}
 	}
 	co.mtx.Unlock()
+	// the resets of the overflowed streams, outside the lock (see the fan-out above)
 	for _, sub := range overflow {
 		sub.reset()
 	}
