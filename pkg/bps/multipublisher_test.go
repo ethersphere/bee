@@ -45,6 +45,38 @@ func (e *env) joinAs(st seat) (bps.Session, swarm.Address) {
 	return e.join(c, st.addr), overlay
 }
 
+// joinSeated joins as the seat's address knowing it rostered — as a grantee
+// that saw itself on a roster rejoins with the Position of that session.
+func (e *env) joinSeated(st seat) (bps.Session, swarm.Address) {
+	e.t.Helper()
+	overlay := swarm.RandAddress(e.t)
+	c, _ := e.client(overlay)
+	s, err := c.Join(context.Background(), bps.JoinRequest{
+		Broker:   e.brokerAddr,
+		Spec:     bps.CohortSpec{Topic: e.topic, Principal: e.principal},
+		Identity: st.addr,
+		Position: bps.Position{Roster: [][]byte{st.addr}},
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.t.Cleanup(func() { _ = s.Close() })
+	return s, overlay
+}
+
+// grant publishes a roster and waits until the broker has accepted it.
+func (e *env) grant(admin bps.Session, index uint64, seats ...seat) {
+	e.t.Helper()
+	probe := e.subscribe()
+	e.roster(admin, index, seats...)
+	for {
+		m := <-probe.Messages()
+		if m.Kind == bps.KindRoster && m.Index == index {
+			return
+		}
+	}
+}
+
 // publishAs signs a chunk with the seat's key under the session's challenge
 // and publishes it.
 func (e *env) publishAs(st seat, s bps.Session, kind bps.Kind, index uint64, payload []byte) []byte {
@@ -110,7 +142,7 @@ func TestGrant(t *testing.T) {
 	}
 
 	// the seat's stream is pending: the roster naming it is its cue
-	seatSess, _ := e.joinAs(st)
+	seatSess, _ := e.joinSeated(st)
 	expectKind(t, seatSess, bps.KindRoster, e.principal, 0)
 	waitGranted(t, seatSess)
 	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
@@ -139,12 +171,25 @@ func TestSpectatorUpgrade(t *testing.T) {
 	sub := e.subscribe()
 
 	// not rostered: a spectator, which may not publish
-	seatSess, _ := e.joinAs(st)
-	if err := seatSess.Publish(context.Background(), bps.KindAuth, 0, nil); !errors.Is(err, bps.ErrNotPublisher) {
+	spectator, _ := e.joinAs(st)
+	if err := spectator.Publish(context.Background(), bps.KindAuth, 0, nil); !errors.Is(err, bps.ErrNotPublisher) {
 		t.Fatalf("got %v, want %v", err, bps.ErrNotPublisher)
 	}
 
+	// a roster naming it reaches the spectator; it stays a spectator, and
+	// rejoins to publish
 	e.roster(admin, 0, st)
+	m := expectKind(t, spectator, bps.KindRoster, e.principal, 0)
+	if len(m.Roster) != 1 || !bytes.Equal(m.Roster[0], st.addr) {
+		t.Fatalf("roster %x", m.Roster)
+	}
+	select {
+	case <-spectator.Granted():
+		t.Fatal("a spectator stream is never granted")
+	default:
+	}
+
+	seatSess, _ := e.joinSeated(st)
 	expectKind(t, seatSess, bps.KindRoster, e.principal, 0)
 	waitGranted(t, seatSess)
 	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
@@ -154,6 +199,33 @@ func TestSpectatorUpgrade(t *testing.T) {
 	if !bytes.Equal(got.SOC, c) {
 		t.Fatal("wrong chunk")
 	}
+	// the old spectator stream is bound to the same identity: its own update
+	// is not delivered there either
+	expectNoMessage(t, spectator)
+}
+
+func TestNamedSpectatorAuth(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	st := e.newSeat()
+	admin, _ := e.publisher()
+
+	// joined before the grant: a spectator, which never authenticates in place
+	overlay := swarm.RandAddress(t)
+	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
+	if ack.Status != pb.Status_OK {
+		t.Fatalf("status %s", ack.Status)
+	}
+	e.roster(admin, 0, st)
+	var ros pb.Broadcast
+	if err := r.ReadMsg(&ros); err != nil || ros.Kind != pb.Kind_ROSTER {
+		t.Fatalf("want the roster, got %s %v", ros.Kind, err)
+	}
+	auth := e.chunk(st.signer, bps.KindAuth, ack.Challenge, 0, nil)
+	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { return e.bl.blocklisted(overlay) && e.counters().WrongStream == 1 })
 }
 
 func TestUnrosteredAuth(t *testing.T) {
@@ -196,17 +268,16 @@ func TestRevocation(t *testing.T) {
 		t.Helper()
 		c := e.chunk(st.signer, kind, ack.Challenge, index, payload)
 		f := &pb.Broadcast{Kind: pb.Kind(kind), Challenge: ack.Challenge, Index: index, Soc: c}
-		if err := w.WriteMsg(f); err != nil {
-			t.Fatal(err)
-		}
+		_ = w.WriteMsg(f)
 	}
 	send(bps.KindAuth, 0, nil)
 	send(bps.KindData, 0, []byte("before"))
 	expectKind(t, sub, bps.KindData, st.addr, 0)
 
-	// the reduced roster revokes the seat at once: it is what the stream
-	// receives next, and anything it sends after is a violation
-	e.roster(admin, 1)
+	// the reduced roster revokes the seat: the stream is written that roster
+	// and closed; what it sends meanwhile is dropped, unpunished
+	e.grant(admin, 1)
+	send(bps.KindData, 1, []byte("in flight"))
 	m := expectKind(t, sub, bps.KindRoster, e.principal, 1)
 	if len(m.Roster) != 0 {
 		t.Fatalf("roster %x", m.Roster)
@@ -215,13 +286,45 @@ func TestRevocation(t *testing.T) {
 	if err := r.ReadMsg(&next); err != nil || next.Kind != pb.Kind_ROSTER || next.Index != 1 {
 		t.Fatalf("want the reduced roster, got %s %d %v", next.Kind, next.Index, err)
 	}
-	send(bps.KindData, 1, []byte("after"))
-	eventually(t, func() bool { return e.bl.blocklisted(overlay) && e.counters().WrongStream == 1 })
+	if err := r.ReadMsg(&next); err == nil {
+		t.Fatalf("want the stream closed, got %s", next.Kind)
+	}
 	expectNoMessage(t, sub)
+	if e.bl.blocklisted(overlay) || e.counters().WrongStream != 0 {
+		t.Fatal("a revoked peer is not punished")
+	}
 
 	// the subscriber no longer admits the seat
 	if pos := sub.Position(); len(pos.Roster) != 0 || pos.RosterCursor != 2 {
 		t.Fatalf("position %+v", pos)
+	}
+
+	// rejoining, the seat is a spectator
+	spectator, _ := e.joinAs(st)
+	expectKind(t, spectator, bps.KindRoster, e.principal, 1)
+	select {
+	case <-spectator.Granted():
+		t.Fatal("a revoked identity is not granted")
+	default:
+	}
+}
+
+func TestRevokedSession(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	st := e.newSeat()
+	admin, _ := e.publisher()
+	e.grant(admin, 0, st)
+	seatSess, _ := e.joinSeated(st)
+	expectKind(t, seatSess, bps.KindRoster, e.principal, 0)
+	waitGranted(t, seatSess)
+	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
+
+	e.roster(admin, 1)
+	expectKind(t, seatSess, bps.KindRoster, e.principal, 1)
+	expectDone(t, seatSess)
+	if err := seatSess.Publish(context.Background(), bps.KindData, 0, nil); !errors.Is(err, bps.ErrNotPublisher) {
+		t.Fatalf("got %v, want %v", err, bps.ErrNotPublisher)
 	}
 }
 
@@ -233,7 +336,7 @@ func TestCursorsPerPublisher(t *testing.T) {
 	sub := e.subscribe()
 	e.roster(admin, 0, st)
 	expectKind(t, sub, bps.KindRoster, e.principal, 0)
-	seatSess, _ := e.joinAs(st)
+	seatSess, _ := e.joinSeated(st)
 	waitGranted(t, seatSess)
 	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
 
@@ -285,7 +388,7 @@ func TestServiceKindsAdminOnly(t *testing.T) {
 	e := newEnv(t, bps.Options{})
 	st := e.newSeat()
 	admin, _ := e.publisher()
-	e.roster(admin, 0, st)
+	e.grant(admin, 0, st)
 
 	overlay := swarm.RandAddress(t)
 	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
@@ -343,11 +446,11 @@ func TestPublisherStreamsBound(t *testing.T) {
 	e := newEnv(t, bps.Options{MaxPublisherStreams: 2})
 	st := e.newSeat()
 	admin, _ := e.publisher()
-	e.roster(admin, 0, st)
+	e.grant(admin, 0, st)
 
 	var sess []bps.Session
 	for range 3 {
-		s, _ := e.joinAs(st)
+		s, _ := e.joinSeated(st)
 		go func() {
 			for range s.Messages() {
 			}

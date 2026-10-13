@@ -22,6 +22,7 @@ type Counters struct {
 	Retransmit     uint64 // a DATA frame below the cursor
 	QueueReset     uint64 // a receiving stream reset for a full queue
 	InvalidRoster  uint64 // a valid ROSTER chunk whose payload does not decode
+	Revoked        uint64 // a frame from a revoked stream, dropped unread
 }
 
 type counters struct {
@@ -33,6 +34,7 @@ type counters struct {
 	retransmit     atomic.Uint64
 	queueReset     atomic.Uint64
 	invalidRoster  atomic.Uint64
+	revoked        atomic.Uint64
 }
 
 func (c *counters) snapshot() Counters {
@@ -45,6 +47,7 @@ func (c *counters) snapshot() Counters {
 		Retransmit:     c.retransmit.Load(),
 		QueueReset:     c.queueReset.Load(),
 		InvalidRoster:  c.invalidRoster.Load(),
+		Revoked:        c.revoked.Load(),
 	}
 }
 
