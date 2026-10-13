@@ -186,6 +186,13 @@ func decodeRoster(chunk []byte) ([][]byte, error) {
 	return r.Publishers, nil
 }
 
+// rosterOf returns the publisher set of a validated ROSTER chunk, and false if
+// its payload does not decode: the admin's mistake, which is dropped, not an error.
+func rosterOf(chunk []byte) ([][]byte, bool) {
+	roster, err := decodeRoster(chunk)
+	return roster, err == nil
+}
+
 // ParseRoster returns the publisher set a ROSTER chunk's payload names, or an
 // error if it does not decode as a Roster of 20-byte addresses.
 func ParseRoster(chunk []byte) ([][]byte, error) {

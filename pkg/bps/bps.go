@@ -412,8 +412,8 @@ func (s *session) accept(f *pb.Broadcast, spec CohortSpec) (Message, bool, error
 		if err := verify(f, spec.Topic, spec.Principal); err != nil {
 			return msg, false, err
 		}
-		roster, err := decodeRoster(f.Soc)
-		if err != nil {
+		roster, ok := rosterOf(f.Soc)
+		if !ok {
 			return msg, false, nil
 		}
 		s.mtx.Lock()
@@ -741,8 +741,8 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	// 6. a ROSTER must decode; one that does not changes nothing
 	var roster [][]byte
 	if f.Kind == pb.Kind_ROSTER {
-		var err error
-		if roster, err = decodeRoster(f.Soc); err != nil {
+		var ok bool
+		if roster, ok = rosterOf(f.Soc); !ok {
 			s.count(&co.counters.invalidRoster, "invalid_roster")
 			return nil
 		}

@@ -448,7 +448,7 @@ func TestPublisherStreamsBound(t *testing.T) {
 	admin, _ := e.publisher()
 	e.grant(admin, 0, st)
 
-	var sess []bps.Session
+	sess := make([]bps.Session, 0, 3)
 	for range 3 {
 		s, _ := e.joinSeated(st)
 		go func() {
