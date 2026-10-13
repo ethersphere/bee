@@ -275,8 +275,8 @@ func (m *Ack) GetChallenge() []byte {
 	return nil
 }
 
-// Every frame after the handshake. soc is an ordinary single-owner chunk
-// whose id is derived from kind, challenge and index (see bps.ID).
+// Every frame after the handshake. soc is the index-th update of the session feed:
+// a single-owner chunk whose id is derived from kind, challenge and index (see bps.ID).
 type Broadcast struct {
 	Soc       []byte `protobuf:"bytes,1,opt,name=soc,proto3" json:"soc,omitempty"`
 	Kind      Kind   `protobuf:"varint,2,opt,name=kind,proto3,enum=bps.Kind" json:"kind,omitempty"`
