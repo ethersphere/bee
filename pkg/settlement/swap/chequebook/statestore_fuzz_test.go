@@ -85,10 +85,10 @@ func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 			func(*chequebook.SignedCheque, int64) (common.Address, error) { return common.Address{}, nil },
 		)
 
-		// 1. LastCheque must never panic
+		// 1. LastCheque must never panic, and a success must carry a payout.
 		lastCheque, err := cs.LastCheque(chequebookAddr)
-		if err == nil && lastCheque == nil {
-			t.Fatal("NIL-02: LastCheque returned (nil, nil)")
+		if err == nil && (lastCheque == nil || lastCheque.CumulativePayout == nil) {
+			t.Fatal("LastCheque returned a cheque with no cumulative payout")
 		}
 
 		// 2. ReceiveCheque must never panic when reading corrupted last-received cheque
@@ -106,8 +106,8 @@ func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 		svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
 		if err == nil {
 			issuedCheque, err := svc.LastCheque(beneficiary)
-			if err == nil && issuedCheque == nil {
-				t.Fatal("NIL-04: svc.LastCheque returned (nil, nil)")
+			if err == nil && (issuedCheque == nil || issuedCheque.CumulativePayout == nil) {
+				t.Fatal("svc.LastCheque returned a cheque with no cumulative payout")
 			}
 		}
 	})

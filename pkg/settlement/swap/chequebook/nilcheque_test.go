@@ -104,6 +104,58 @@ func TestServiceLastChequeNilEntry(t *testing.T) {
 	}
 }
 
+// TestServiceLastChequeNilCumulativePayout covers a last-issued-cheque entry of
+// `{}`: it unmarshals into a non-nil cheque whose CumulativePayout is nil.
+// LastCheque must reject it with its own error, not ErrNoCheque, so Issue does
+// not treat the row as a first cheque and start the payout at zero.
+func TestServiceLastChequeNilCumulativePayout(t *testing.T) {
+	t.Parallel()
+
+	store := newRawStore()
+	beneficiary := common.HexToAddress("0xbe")
+	store.setRaw(chequebook.LastIssuedChequeKey(beneficiary), []byte(`{}`))
+
+	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cheque, err := svc.LastCheque(beneficiary)
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
+	}
+	if cheque != nil {
+		t.Fatalf("expected nil cheque, got %v", cheque)
+	}
+}
+
+// TestChequeStoreLastChequeNilCumulativePayout covers a last-received-cheque
+// entry of `{}`. Readers such as settlements add CumulativePayout, so LastCheque
+// must reject the blank amount before it is returned.
+func TestChequeStoreLastChequeNilCumulativePayout(t *testing.T) {
+	t.Parallel()
+
+	store := newRawStore()
+	chequebookAddr := common.HexToAddress("0xcb")
+	store.setRaw(chequebook.LastReceivedChequeKey(chequebookAddr), []byte(`{}`))
+
+	cs := chequebook.NewChequeStore(store, nil, 1, common.HexToAddress("0xbe"), nil, nil)
+
+	cheque, err := cs.LastCheque(chequebookAddr)
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
+	}
+	if cheque != nil {
+		t.Fatalf("expected nil cheque, got %v", cheque)
+	}
+}
+
 // TestChequeStoreReceiveChequeNilCumulativePayout is a regression test for a
 // peer-supplied cheque that simply omits cumulativePayout: it unmarshals into a
 // non-nil cheque whose CumulativePayout is a nil *big.Int, which big.Int.Sub
@@ -148,8 +200,14 @@ func TestChequeStoreEmptyObjectLastReceived(t *testing.T) {
 	cs := chequebook.NewChequeStore(store, nil, 1, beneficiary, nil, nil)
 
 	lastCheque, err := cs.LastCheque(chequebookAddr)
-	if err == nil && lastCheque == nil {
-		t.Fatal("LastCheque returned a nil cheque with a nil error")
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
+	}
+	if lastCheque != nil {
+		t.Fatalf("expected nil cheque, got %v", lastCheque)
 	}
 
 	cheque := &chequebook.SignedCheque{
