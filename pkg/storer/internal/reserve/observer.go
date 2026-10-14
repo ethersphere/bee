@@ -96,33 +96,51 @@ func (r *Reserve) loadObserver() Observer {
 	return r.observer
 }
 
-// run executes one transaction that may change the reserve's set. f receives
-// the transaction and the address index writer for it, which is nil when the
-// address index is disabled. With an observer registered the transaction is
-// wrapped by Commit and its exact delta is reported.
-//
-// run takes the registration read lock for the duration of the transaction,
-// in the calling goroutine. Callers must not hold it already, nor wait for
-// other run calls while inside f.
-func (r *Reserve) run(ctx context.Context, f func(transaction.Store, *addrTx) error) error {
+// newAddrTx returns the address index writer for one transaction: nil, with
+// no allocation, when the address index is disabled.
+func (r *Reserve) newAddrTx() *addrTx {
 	if !r.addrIndex {
-		return r.st.Run(ctx, func(s transaction.Store) error { return f(s, nil) })
+		return nil
+	}
+	return &addrTx{}
+}
+
+// run executes one transaction that may change the reserve's set. tx is the
+// transaction's address index writer from newAddrTx, used by f; with the
+// address index disabled (tx == nil) run is exactly r.st.Run(ctx, f). With an
+// observer registered the transaction is wrapped by Commit and its exact
+// delta is reported.
+//
+// With the address index enabled run takes the registration read lock for the
+// duration of the transaction, in the calling goroutine. Callers must not hold
+// it already, nor wait for other run calls while inside f.
+func (r *Reserve) run(ctx context.Context, tx *addrTx, f func(transaction.Store) error) error {
+	if tx == nil {
+		return r.st.Run(ctx, f)
 	}
 
 	r.obsMu.RLock()
 	defer r.obsMu.RUnlock()
 
-	if r.observer == nil {
-		return r.st.Run(ctx, func(s transaction.Store) error { return f(s, addrIndexOnly) })
+	o := r.observer
+	if o == nil {
+		return r.st.Run(ctx, f)
 	}
+	tx.record = true
 
 	// An error reported after the batch was written (a sharky release) is
 	// kept out of the observer, which must apply the committed delta, and
 	// returned to the caller afterwards.
-	var afterCommitErr error
-	err := r.observer.Commit(func() (adds, removes []ChunkID, err error) {
-		tx := &addrTx{record: true}
-		err = r.st.Run(ctx, func(s transaction.Store) error { return f(s, tx) })
+	var (
+		afterCommitErr error
+		ran            bool
+	)
+	err := o.Commit(func() (adds, removes []ChunkID, err error) {
+		if ran {
+			return nil, nil, fmt.Errorf("transaction run twice: %w", ErrObserverContract)
+		}
+		ran = true
+		err = r.st.Run(ctx, f)
 		switch {
 		case errors.Is(err, transaction.ErrAfterCommit):
 			afterCommitErr = err
@@ -131,75 +149,110 @@ func (r *Reserve) run(ctx context.Context, f func(transaction.Store, *addrTx) er
 		}
 		return tx.adds, tx.removes, nil
 	})
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
+	case !ran:
+		return fmt.Errorf("transaction not run: %w", ErrObserverContract)
 	}
 	return afterCommitErr
 }
 
 // addrTx writes the ChunkAddrItems of one transaction and, when record is
 // set, collects the exact delta of the set. A nil *addrTx means the address
-// index is disabled and every method is a no-op.
+// index is disabled and every method is a no-op. A writer belongs to one
+// transaction; record is set by run before the transaction starts.
 type addrTx struct {
 	record  bool
 	adds    []ChunkID
 	removes []ChunkID
+	// present holds, for each key this transaction wrote or deleted, whether
+	// the entry exists after it: the transaction's reads (Has) see the
+	// committed state only, not its own pending writes.
+	present map[string]bool
 }
 
-// addrIndexOnly maintains the address index without recording a delta. It is
-// shared and, since record is false, never written to.
-var addrIndexOnly = &addrTx{}
-
+// addrTxFor returns a writer that maintains the address index without
+// recording a delta, or nil when addrIndex is false. Each call returns a new
+// writer.
 func addrTxFor(addrIndex bool) *addrTx {
 	if addrIndex {
-		return addrIndexOnly
+		return &addrTx{}
 	}
 	return nil
 }
 
-// put writes the ChunkAddrItem of (addr, stampHash) and records +id if no
-// entry existed.
+// exists reports whether the entry exists at this point of the transaction.
+func (tx *addrTx) exists(s storage.IndexStore, item *ChunkAddrItem) (bool, error) {
+	if v, ok := tx.present[item.ID()]; ok {
+		return v, nil
+	}
+	has, err := s.Has(item)
+	if err != nil {
+		return false, fmt.Errorf("check chunk address item: %w", err)
+	}
+	return has, nil
+}
+
+func (tx *addrTx) mark(item *ChunkAddrItem, present bool) {
+	if tx.present == nil {
+		tx.present = make(map[string]bool)
+	}
+	tx.present[item.ID()] = present
+}
+
+// put writes the ChunkAddrItem of (addr, stampHash) and, when recording,
+// records +id if no entry existed.
 func (tx *addrTx) put(s storage.IndexStore, addr swarm.Address, stampHash, batchID []byte, chunkType swarm.ChunkType) error {
 	if tx == nil {
 		return nil
 	}
 	item := &ChunkAddrItem{Address: addr, StampHash: stampHash, BatchID: batchID, ChunkType: chunkType}
-	var existed bool
-	if tx.record {
-		var err error
-		if existed, err = s.Has(item); err != nil {
-			return fmt.Errorf("check chunk address item: %w", err)
+	if !tx.record {
+		if err := s.Put(item); err != nil {
+			return fmt.Errorf("put chunk address item: %w", err)
 		}
+		return nil
+	}
+	existed, err := tx.exists(s, item)
+	if err != nil {
+		return err
 	}
 	if err := s.Put(item); err != nil {
 		return fmt.Errorf("put chunk address item: %w", err)
 	}
-	if tx.record && !existed {
+	tx.mark(item, true)
+	if !existed {
 		tx.adds = append(tx.adds, ChunkID{Address: addr, StampHash: stampHash, BatchID: batchID})
 	}
 	return nil
 }
 
-// delete deletes the ChunkAddrItem of (addr, stampHash) if it exists and then
-// records -id. An absent entry (an interrupted or running fill) records
-// nothing.
+// delete deletes the ChunkAddrItem of (addr, stampHash). When recording, it
+// records -id only if the entry existed; an absent entry (an interrupted or
+// running fill) records nothing.
 func (tx *addrTx) delete(s storage.IndexStore, addr swarm.Address, stampHash, batchID []byte) error {
 	if tx == nil {
 		return nil
 	}
 	item := &ChunkAddrItem{Address: addr, StampHash: stampHash}
-	has, err := s.Has(item)
-	if err != nil {
-		return fmt.Errorf("check chunk address item: %w", err)
+	if !tx.record {
+		if err := s.Delete(item); err != nil {
+			return fmt.Errorf("delete chunk address item: %w", err)
+		}
+		return nil
 	}
-	if !has {
+	existed, err := tx.exists(s, item)
+	if err != nil {
+		return err
+	}
+	if !existed {
 		return nil
 	}
 	if err := s.Delete(item); err != nil {
 		return fmt.Errorf("delete chunk address item: %w", err)
 	}
-	if tx.record {
-		tx.removes = append(tx.removes, ChunkID{Address: addr, StampHash: stampHash, BatchID: batchID})
-	}
+	tx.mark(item, false)
+	tx.removes = append(tx.removes, ChunkID{Address: addr, StampHash: stampHash, BatchID: batchID})
 	return nil
 }

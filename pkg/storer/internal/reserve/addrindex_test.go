@@ -1223,27 +1223,45 @@ func TestAddrIndexProperty(t *testing.T) {
 			rnd := rand.New(rand.NewSource(seed))
 			batches := [][]byte{postagetesting.MustNewBatch().ID, postagetesting.MustNewBatch().ID}
 			var stored []swarm.Chunk
+			pinned := make(map[string]bool)
 			ts := uint64(10)
-			for step := range 150 {
+			for step := range 200 {
 				ts++
 				batch := batches[rnd.Intn(len(batches))]
 				index := uint64(rnd.Intn(12))
 				var err error
-				switch op := rnd.Intn(10); {
-				case op < 5 || len(stored) == 0: // new chunk, maybe replacing a different address
+				switch op := rnd.Intn(20); {
+				case op < 9 || len(stored) == 0: // new chunk, maybe replacing a different address
 					ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, rnd.Intn(3)).WithStamp(postagetesting.MustNewFields(batch, index, ts))
 					err = r.Put(ctx, ch)
 					stored = append(stored, ch)
-				case op < 7: // same address, newer stamp
+				case op < 12: // same address, newer stamp
 					prev := stored[rnd.Intn(len(stored))]
 					ch := swarm.NewChunk(prev.Address(), prev.Data()).WithStamp(postagetesting.MustNewFields(prev.Stamp().BatchID(), indexOf(prev), ts))
 					err = r.Put(ctx, ch)
 					stored = append(stored, ch)
-				case op < 8: // stale stamp
+				case op < 13: // stale stamp
 					ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, rnd.Intn(3)).WithStamp(postagetesting.MustNewFields(batch, index, 0))
 					err = r.Put(ctx, ch)
-				default: // eviction
+				case op < 17: // eviction, pinned chunks keep their data
 					_, err = r.EvictBatchBin(ctx, batch, 1+rnd.Intn(3), uint8(1+rnd.Intn(3)))
+				case op < 18: // the same address under the other batch
+					prev := stored[rnd.Intn(len(stored))]
+					other := batches[0]
+					if string(other) == string(prev.Stamp().BatchID()) {
+						other = batches[1]
+					}
+					ch := swarm.NewChunk(prev.Address(), prev.Data()).WithStamp(postagetesting.MustNewFields(other, index, ts))
+					err = r.Put(ctx, ch)
+					stored = append(stored, ch)
+				case op < 19: // pin a chunk, so its eviction takes the metadata-only path
+					ch := stored[rnd.Intn(len(stored))]
+					if !pinned[ch.Address().ByteString()] {
+						pinChunks(t, st, ch)
+						pinned[ch.Address().ByteString()] = true
+					}
+				default:
+					err = r.Reset(ctx)
 				}
 				if err != nil && !errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					t.Fatalf("step %d: %v", step, err)
@@ -1255,6 +1273,179 @@ func TestAddrIndexProperty(t *testing.T) {
 			}
 			if m.dropped.Load() != 0 {
 				t.Fatalf("%d commits dropped after the first rebuild", m.dropped.Load())
+			}
+		})
+	}
+}
+
+// gatedStorage blocks the next transaction after its writes and before its
+// commit, once armed, until gate is closed; entered is closed when it blocks.
+type gatedStorage struct {
+	transaction.Storage
+	armed   atomic.Bool
+	entered chan struct{}
+	gate    chan struct{}
+}
+
+func (g *gatedStorage) Run(ctx context.Context, f func(transaction.Store) error) error {
+	if !g.armed.CompareAndSwap(true, false) {
+		return g.Storage.Run(ctx, f)
+	}
+	return g.Storage.Run(ctx, func(s transaction.Store) error {
+		err := f(s)
+		close(g.entered)
+		<-g.gate
+		return err
+	})
+}
+
+// TestAddrIndexSetObserverWaits checks deterministically that registration
+// returns only after a transaction that started without the observer has
+// committed, and that such a transaction is not reported.
+func TestAddrIndexSetObserverWaits(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	st := &gatedStorage{Storage: newReserveDiskStorage(t), entered: make(chan struct{}), gate: make(chan struct{})}
+	r := newAddrIndexReserve(t, baseAddr, st, true)
+
+	ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0)
+	st.armed.Store(true)
+	putErr := make(chan error, 1)
+	go func() { putErr <- r.Put(ctx, ch) }()
+	<-st.entered // the Put is inside its transaction, not yet committed
+
+	o := &recordingObserver{r: r}
+	registered := make(chan error, 1)
+	go func() { registered <- r.SetObserver(o) }()
+	select {
+	case err := <-registered:
+		t.Fatalf("SetObserver returned (%v) while an unwrapped transaction was in flight", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(st.gate)
+	if err := <-registered; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-putErr; err != nil {
+		t.Fatal(err)
+	}
+	if events := o.take(t); len(events) != 0 {
+		t.Fatalf("the unwrapped transaction was reported: %d events", len(events))
+	}
+	if n := countAddrIndex(t, st); n != 1 {
+		t.Fatalf("%d chunkAddr keys, want 1", n)
+	}
+}
+
+// TestAddrIndexSharedAddress covers one chunk address held under two stamps
+// (the chunk store refcount is 2): evicting or resetting one stamp removes only
+// its own ChunkAddrItem and emits exactly that id.
+func TestAddrIndexSharedAddress(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	for _, pinned := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pinned=%v", pinned), func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := newReserveDiskStorage(t)
+			r := newAddrIndexReserve(t, baseAddr, st, true)
+
+			batchA, batchB := postagetesting.MustNewBatch().ID, postagetesting.MustNewBatch().ID
+			chA := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batchA, 0, 1))
+			chB := swarm.NewChunk(chA.Address(), chA.Data()).WithStamp(postagetesting.MustNewFields(batchB, 0, 1))
+			for _, ch := range []swarm.Chunk{chA, chB} {
+				if err := r.Put(ctx, ch); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if pinned {
+				pinChunks(t, st, chA)
+			}
+			if set := checkAddrIndexMatchesReserve(t, st); len(set) != 2 {
+				t.Fatalf("%d elements, want 2", len(set))
+			}
+			o := registerConcurrent(t, r)
+
+			if _, err := r.EvictBatchBin(ctx, batchA, 10, swarm.MaxBins); err != nil {
+				t.Fatal(err)
+			}
+			events := o.take(t)
+			if len(events) != 1 {
+				t.Fatalf("evict: %d events, want one commit", len(events))
+			}
+			checkCommit(t, events[0], nil, []reserve.ChunkID{chunkIDOf(t, chA)})
+			set := checkAddrIndexMatchesReserve(t, st)
+			if len(set) != 1 || set[elementID(chB.Address(), chunkIDOf(t, chB).StampHash)] != 1 {
+				t.Fatal("evicting one stamp touched the other stamp's ChunkAddrItem")
+			}
+			got, err := r.Get(ctx, chB.Address(), batchB, chunkIDOf(t, chB).StampHash)
+			if err != nil || !got.Equal(chB) {
+				t.Fatalf("chunk of the remaining stamp: %v", err)
+			}
+
+			if err := r.Reset(ctx); err != nil {
+				t.Fatal(err)
+			}
+			events = o.take(t)
+			if len(events) != 2 || events[1].kind != "reset" {
+				t.Fatalf("reset: %d events, want one commit and a reset", len(events))
+			}
+			checkCommit(t, events[0], nil, []reserve.ChunkID{chunkIDOf(t, chB)})
+			if n := countAddrIndex(t, st); n != 0 {
+				t.Fatalf("%d chunkAddr keys after reset", n)
+			}
+		})
+	}
+}
+
+// skippingObserver breaks the Commit contract: it returns without running
+// the transaction, or runs it twice.
+type skippingObserver struct {
+	runs int
+}
+
+func (o *skippingObserver) Commit(run func() (adds, removes []reserve.ChunkID, err error)) error {
+	for range o.runs {
+		if _, _, err := run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (o *skippingObserver) RadiusChanged(uint8) {}
+func (o *skippingObserver) Reset()              {}
+
+// TestAddrIndexObserverContract checks that the reserve reports an observer
+// that skips the transaction or runs it twice instead of silently dropping
+// or repeating the write.
+func TestAddrIndexObserverContract(t *testing.T) {
+	t.Parallel()
+
+	for _, runs := range []int{0, 2} {
+		t.Run(fmt.Sprintf("runs=%d", runs), func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := newReserveDiskStorage(t)
+			r := newAddrIndexReserve(t, baseAddr, st, true)
+			if err := r.SetObserver(&skippingObserver{runs: runs}); err != nil {
+				t.Fatal(err)
+			}
+			err := r.Put(context.Background(), chunk.GenerateTestRandomChunkAt(t, baseAddr, 0))
+			if !errors.Is(err, reserve.ErrObserverContract) {
+				t.Fatalf("put: %v, want ErrObserverContract", err)
+			}
+			want := 0
+			if runs > 0 {
+				want = 1 // the first run committed
+			}
+			if n := countAddrIndex(t, st); n != want {
+				t.Fatalf("%d chunkAddr keys, want %d", n, want)
 			}
 		})
 	}

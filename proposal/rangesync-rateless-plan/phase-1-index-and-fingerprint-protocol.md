@@ -842,6 +842,37 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   is caught by `TestAddrIndexRadiusRegistrationRace` only with the window widened (100 µs
   sleep): the natural window is a few instructions, so that test is a smoke test and relies on
   `-race` in CI.
+- **T1.4 review fixes (supersede the "reserve API" and "exact deltas" entries above where they
+  differ):**
+  - *Call shape.* `run(ctx, tx, f)` takes the transaction callback in the old
+    `func(transaction.Store) error` shape and the writer separately (`tx := r.newAddrTx()`,
+    captured by `f`); with the index disabled `tx` is nil and `run` is exactly `r.st.Run(ctx, f)`.
+    The previous version wrapped `f` in a second closure, one extra heap allocation per
+    transaction on the default path. `TestRunDisabledAllocs` compares `testing.AllocsPerRun` of
+    `run` against the plain `r.st.Run` call (prebuilt and per-call closures): equal, and it
+    reports 1 vs 0 with the old wrapper (manual control). `-gcflags=-m` shows no new escapes in
+    the callers; the only new heap values (`ran`, `afterCommitErr`, the `Commit` closure) are on
+    the observer path. The index-on paths allocate one writer per transaction.
+  - *Exactness without pending reads.* A transaction's `Has` reads the committed state, not its
+    own pending batch. When recording, the writer remembers per key whether the entry exists
+    after its own writes and deletes, so a delete then put of one id gives −id +id, a put then
+    delete +id −id, and repeated deletes or puts count once (`TestAddrTxSameKeyTwice`). No reserve
+    path touches one key twice today. Without an observer the writer does plain `Put`/`Delete`
+    (no existence read; deleting an absent key is a no-op in leveldb).
+  - *What serializes a key.* The existence check is exact because nothing else writes that
+    `(address, stamp hash)` key concurrently: the stamp hash binds the key to one batch, and
+    `Put` and eviction hold that batch's `r.multx` lock; `Reset` relies on its precondition that
+    it runs before any other call to the reserve; the T1.5 fill must take the batch lock too.
+  - *Observer contract check.* If `Commit` returns without calling `run`, or calls it a second
+    time, the reserve returns `ErrObserverContract` (the second call doesn't run) instead of
+    silently dropping or repeating the write (`TestAddrIndexObserverContract`).
+  - *No shared writer.* The shared package-level non-recording writer is gone;
+    `addrTxFor(true)` returns a new one per call.
+  - *New tests.* `TestAddrIndexSetObserverWaits` (deterministic: a gated transaction blocks
+    `SetObserver` until it commits; the transaction is not reported), `TestAddrIndexSharedAddress`
+    (one address under two batches: evicting, pinned or not, and resetting remove only their own
+    `ChunkAddrItem`), and `TestAddrIndexProperty` now also mixes in same-address puts under the
+    other batch, pinned evictions and `Reset`.
 
 - **T1.8 (contract): files and names.** `session.go` (`Session`, `NewInitiator`, `NewResponder`,
   `Handle`, `Config`, `Local`, `Summarizer`, `Striper`, `Decide`/`Decision`, `ErrPeerBusy`),
@@ -1176,3 +1207,5 @@ _(sessions append here)_
   `TestAddrIndexRadiusRegistrationRace`, `TestAddrIndexSetObserver`, `TestAddrIndexEvict`,
   `TestAddrIndexReset`, `TestAddrIndexProperty` (`pkg/storer/internal/reserve`). Here they ran
   with `-count=10 -cpu=1,2,4` instead.
+- **T1.4 review fixes (CI):** add `TestAddrIndexSetObserverWaits`, `TestAddrIndexSharedAddress`
+  and `TestAddrIndexObserverContract` to the `-race` list above.

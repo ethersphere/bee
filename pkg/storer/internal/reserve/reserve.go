@@ -41,6 +41,9 @@ var (
 	// ErrObserverRegistered is returned when an observer is already
 	// registered; there is one observer, registered once.
 	ErrObserverRegistered = errors.New("reserve: observer already registered")
+	// ErrObserverContract is returned for a transaction whose observer's
+	// Commit returned without running it or ran it twice.
+	ErrObserverContract = errors.New("reserve: observer broke the commit contract")
 )
 
 type Reserve struct {
@@ -168,7 +171,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	var shouldIncReserveSize bool
 
-	err = r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+	tx := r.newAddrTx()
+	err = r.run(ctx, tx, func(s transaction.Store) error {
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -438,7 +442,8 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-chunk", func() error {
-				err := r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+				tx := r.newAddrTx()
+				err := r.run(ctx, tx, func(s transaction.Store) error {
 					return removeChunkWithItem(ctx, s, tx, item)
 				})
 				if err != nil {
@@ -453,7 +458,8 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range pinnedEvictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-metadata", func() error {
-				err := r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+				tx := r.newAddrTx()
+				err := r.run(ctx, tx, func(s transaction.Store) error {
 					return removeChunkMetaData(ctx, s, tx, item)
 				})
 				if err != nil {
@@ -700,7 +706,8 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	}
 	for _, item := range bRitems {
 		eg.Go(safe.RunFunc(r.logger, "reserve-cleanup-delete-chunk", func() error {
-			return r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+			tx := r.newAddrTx()
+			return r.run(ctx, tx, func(s transaction.Store) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
 					s.IndexStore().Delete(item),
