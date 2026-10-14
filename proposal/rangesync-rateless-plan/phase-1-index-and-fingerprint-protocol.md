@@ -537,6 +537,66 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   - **Ownership.** Strict `pb.Range`/`pb.ID`/`pb.Fingerprint` → `fingerprint` decoding belongs to
     T1.8 (exported for T1.9); stream-level enforcement (reset, disconnect, `PeerScorer`) to T1.9.
 
+- **T1.0 snapshot (open question 6): the snapshot holds.** The storer's `IndexStore` is
+  `transaction.NewStorage(sharky, leveldbstore)` in both `initDiskRepository` and
+  `initInmemRepository`; there is **no caching layer** on it (`pkg/storage/cache.Wrap` is used
+  only for the node statestore, `pkg/storer/internal/cache` is the chunk cache, and
+  `cache.Cache` does not override `Iterate` anyway). `transaction.Storage.IndexStore().Iterate`
+  goes straight to `leveldbstore.Store.Iterate`, which opens one goleveldb iterator (an implicit
+  snapshot) before the first callback; a transaction commit is one atomic `leveldb.Batch` write.
+  Tests (kept as regression tests):
+  - `TestIndexStoreIterateSnapshot` (`pkg/storer/internal/transaction/snapshot_test.go`):
+    on-disk leveldb with a 16 KiB write buffer; transactions that delete, insert (in front of and
+    behind the cursor) and overwrite keys commit from inside the callback while memtables are
+    flushed (asserted). The iteration returns exactly the pre-open state (ascending,
+    `PrefixAtStart`, descending). Negative control (manual, not committed): committing the same
+    waves before opening fails all three cases.
+  - `TestReserveRebuildSnapshot` (`pkg/storer/internal/reserve/snapshot_test.go`): the §5.2
+    rebuild protocol over the real `Reserve` on that stack, with every `Run` wrapped as `Commit`
+    will wrap it (read lock across the transaction and the delta, exact delta from
+    `ChunkBinItem` writes/deletes), while `Put` (new, same-address and different-address
+    replacement, rejected stale stamp) and `EvictBatchBin` run concurrently. At every swap the
+    snapshot plus the queued deltas equals the live index, at the end the live index equals the
+    reserve, and nothing deadlocks. Negative control (manual, not committed): applying the delta
+    *after* the transaction (lock only around the apply) failed 10/10 runs with elements counted
+    twice, −1 or missing.
+- **T1.0 how step 1 is realized:** `storage.Reader.Iterate` is callback-only, so the open and
+  the iteration are one call. Take `ix.mu.Lock()`, call **one** `Iterate` over the root range,
+  and release the lock in the first callback (`sync.Once`), or after `Iterate` returns if the
+  range is empty. The whole rebuild must be that single `Iterate` call: paging with `after` (a
+  new iterator per page) takes a new snapshot per page and breaks step 4.
+- **T1.0 lock order (as found in the code).**
+  `Reserve.Put`: `r.multx[batchID]` → `r.multx[bin]` → `r.st.Run` (inside: per-address
+  `chunkLocker` locks taken by the chunkstore ops, released in `Commit`) → leveldb batch write.
+  `EvictBatchBin`: `r.multx[batchID]` only (**no bin lock**, unlike the T1.0 task text), an
+  unlocked `Iterate`, then one `Run` per item in an errgroup; the goroutine holding the batch
+  lock waits in `eg.Wait()` while the items commit. `Reset`: no `r.multx`, one `Run` per item.
+  `SetRadius`: no lock, one `Run` (not set-changing). `Reserve.Get` (hence the future
+  `ReserveGetByID`): `r.multx[batchID]` → per-address lock. `DeleteCorruptedChunkMetadata`
+  (recovery) and the migrations write the store directly before `reserve.New`, so before any
+  observer can exist. No reserve transaction nests another `Run`; `removeChunk` reuses the
+  caller's transaction. Nothing in the storer takes `ix.mu`, so with `Commit` the order is
+  `r.multx` → `ix.mu` (read) → `chunkLocker` → leveldb, and the rebuild's write-locked section
+  only opens a leveldb iterator, which never waits on `r.multx`, `chunkLocker` or `ix.mu`.
+  **No reserve code path is reachable while `ix.mu` is write-held.**
+- **T1.0 final shape of `ReserveObserver.Commit`: unchanged from §5.4**,
+  `Commit(run func() (adds, removes []ChunkID, err error)) error`. The wrapping form is needed:
+  a delta reported after the transaction (`Commit(adds, removes)`) can be both in the snapshot
+  and in the delta stream (the negative control above). Contract, to be written in the godoc
+  (T1.4) and honoured by the adapter (T1.6):
+  1. the observer calls `run` exactly once, synchronously, and returns its error; on error it
+     applies nothing;
+  2. the reserve calls `Commit` once per set-changing transaction and never from inside `run`
+     (no nesting: a recursive `RLock` deadlocks as soon as a rebuild is waiting for the write
+     lock). `EvictBatchBin` and `Reset` wrap each per-item `Run`, never the whole loop;
+  3. the reserve may hold `r.multx` when it calls `Commit`; the observer must not call into the
+     storer from `Commit`;
+  4. **stricter than §5.2:** `rangesync` never holds `ix.mu` in *either* mode across a storer
+     call. In read mode it deadlocks too: a reader holding `RLock` calls `ReserveGetByID`
+     (`Reserve.Get` waits for `r.multx[batch]`), `Put` holds that batch lock and waits for
+     `RLock` behind a waiting rebuild, and the rebuild waits for the reader. Index locks cover
+     in-memory slab work only; scans (`ReserveIterateAddr`) and fetches run without them.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -544,3 +604,23 @@ _(sessions append here)_
 - **T1.1 → T1.6:** `Summary.Digest` must be special-cased to the zero value when `Count == 0`:
   keccak256 of the all-zero LtHash lanes is **not** zero, so `Digest()` of an empty bucket run
   cannot be used as is.
+- **T1.0 → T1.4/T1.5/T1.6 tests:** `internal.NewInmemStorage` (used by the reserve unit tests)
+  has neither property: `inmemstore.Iterate` holds the store lock for the whole iteration (all
+  commits stall instead of seeing a snapshot) and its transactions write through immediately (not
+  atomic, no rollback). Tests of rebuild or snapshot behaviour must use `transaction.NewStorage`
+  over `leveldbstore` (see `newReserveDiskStorage` in
+  `pkg/storer/internal/reserve/snapshot_test.go`); the T1.5 `pkg/storer/mock` must not be used to
+  argue snapshot semantics.
+- **T1.0 → T1.5:** document on `ReserveIterateAddr` that one call is one leveldb snapshot and
+  that the `after` cursor starts a new one; implement it as a single `Iterate` call.
+- **T1.0 → T1.6:** a rebuild keeps one leveldb iterator open for its whole duration (10–20 s
+  at 4.2M elements), which pins that version's memtables and table files; compaction cannot
+  delete obsolete files until it is released. Expected to be harmless; worth checking
+  `alive_iterators` and disk usage in the T1.5/T1.6 measurements.
+- **T1.0 (tooling):** `-race` could not run on the dev host (no C compiler, so no cgo).
+  `TestIndexStoreIterateSnapshot` and `TestReserveRebuildSnapshot` should run under
+  `make test-race` in CI or on a host with gcc. Also, `make lint` with the installed
+  golangci-lint v2.11.3 (built with go1.26.1) fails to typecheck under go1.27 ("export data
+  version 4"); `GOTOOLCHAIN=go1.26.1 make lint` works (matches `go 1.26` in `go.mod`).
+  `make format` rewrites ~60 unrelated files with the installed gci; revert them and check only
+  the touched files (`gofumpt -l`, `gci diff`).
