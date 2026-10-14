@@ -18,7 +18,8 @@ import (
 // BenchmarkReservePut measures the throughput of ReservePutter().Put on a disk
 // storer with stamped chunks spread over the first bins and a reserve large
 // enough that nothing is evicted. It is the baseline the per-element cost of
-// the rangesync fingerprint update is compared with (rangesync plan T1.2).
+// the rangesync fingerprint update is compared with (rangesync plan T1.2,
+// measured with -benchtime=20000x: each run generates b.N chunks up front).
 func BenchmarkReservePut(b *testing.B) {
 	baseAddr := swarm.RandAddress(b)
 	st, err := diskStorer(b, dbTestOps(baseAddr, 1<<22, nil, nil, time.Hour))()

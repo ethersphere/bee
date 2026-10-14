@@ -49,8 +49,10 @@ type LtHash struct {
 // Expand returns the element vector of id salted with salt:
 // SHAKE128("rangesync/v1" ‖ salt ‖ id), 2048 bytes read as 1024
 // little-endian uint16 lanes. The unsalted expansion used by Add and Sub is
-// Expand(nil, id). The encoding is injective: the prefix is fixed and id has a
-// fixed size, so salt and id are always recovered from the input.
+// Expand(nil, id); an empty non-nil salt is the same unsalted form, so a
+// caller that needs a salted value must reject an empty salt itself. The
+// encoding is injective: the prefix is fixed and id has a fixed size, so salt
+// and id are always recovered from the input.
 //
 // The salted form is the per-round audit of proposal §7.9, salted with the
 // redistribution anchor; sum salted elements with AddHash.

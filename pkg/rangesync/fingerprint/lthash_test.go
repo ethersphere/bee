@@ -569,3 +569,45 @@ func BenchmarkLtHashDigest(b *testing.B) {
 		benchSink = h.Digest()
 	}
 }
+
+// TestLtHashLaneBoundaries checks the packed four-lane arithmetic on the lane
+// values where a carry or borrow crosses bit 15 or the lane boundary. Each
+// case is put in every lane of the word, and in one lane with the others
+// zero, so a carry leaking into a neighbor is visible.
+func TestLtHashLaneBoundaries(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		sub     bool
+		x, y, z uint16
+	}{
+		{"0xffff+1", false, 0xffff, 0x0001, 0x0000},
+		{"0x8000+0x8000", false, 0x8000, 0x8000, 0x0000},
+		{"0x7fff+1", false, 0x7fff, 0x0001, 0x8000},
+		{"0xffff+0xffff", false, 0xffff, 0xffff, 0xfffe},
+		{"0-1", true, 0x0000, 0x0001, 0xffff},
+		{"0x8000-1", true, 0x8000, 0x0001, 0x7fff},
+		{"0-0x8000", true, 0x0000, 0x8000, 0x8000},
+		{"0x7fff-0xffff", true, 0x7fff, 0xffff, 0x8000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			op := fingerprint.Add16
+			if tc.sub {
+				op = fingerprint.Sub16
+			}
+			rep := func(v uint16) uint64 { return uint64(v) * 0x0001_0001_0001_0001 }
+			if got, want := op(rep(tc.x), rep(tc.y)), rep(tc.z); got != want {
+				t.Fatalf("all lanes: got %#016x, want %#016x", got, want)
+			}
+			for lane := range 4 {
+				shift := 16 * lane
+				x, y := uint64(tc.x)<<shift, uint64(tc.y)<<shift
+				if got, want := op(x, y), uint64(tc.z)<<shift; got != want {
+					t.Fatalf("lane %d: got %#016x, want %#016x", lane, got, want)
+				}
+			}
+		})
+	}
+}

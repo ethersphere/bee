@@ -939,6 +939,15 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   ~7.5 MB of memory, which §5.3 already budgets; it loses ~5.5× per update, ~3× per range query and
   ~2× per digest. **Decision: LtHash16** (§5.2 unchanged; §5.3 keeps the 8 MB row). ECMH code stays
   in `fingerprint/ecmh_bench_test.go` as a throwaway benchmark (test-only, `TestECMHGroup` checks it).
+  - *Caveat (T1.2 review):* the benchmarks run with hot caches (a few nodes reused in a loop). A
+    real 8 MB LtHash slab misses cache on each 2 KB node of a range query, while ECMH's 480 KB slab
+    fits in L2, so the range-query gap is narrower in production than the 3× above. It does not
+    change the decision: the update cost (expansion) and the rebuild cost dominate, and both are
+    cache-independent.
+  - *Correction (T1.2 review):* a Fenwick update at B = 4096 touches **up to 13** nodes
+    (log2 4096 + 1), not 12: LtHash ≈ 4.7 + 13 × 0.21 ≈ 7.4 µs, ECMH ≈ 30 + 13 × 0.83 ≈ 41 µs per
+    element; the percentages of a Put are unchanged. The 20 000-chunk Put figure was measured with
+    `-benchtime=20000x` (`BenchmarkReservePut` generates `b.N` chunks before the timer starts).
 - **T1.2 `LtHash` representation (deviation from the §5.2 sketch).** `type LtHash struct{ w
   [256]uint64 }` instead of `[1024]uint16`: four lanes per word, added with SWAR (`add16`/`sub16`,
   carries masked at bit 15 of each lane) — `AddHash` ~3× faster than the per-uint16 loop (scratch
@@ -1115,3 +1124,11 @@ _(sessions append here)_
 - **T1.2 (perf note for T1.8/T1.9):** `Digest` costs ~7 µs (pure-Go legacy Keccak over 2 KB), about
   as much as a 24-node range query; a split answering 16 child fingerprints spends ~0.2 ms in
   summaries + digests. Fine for Phase 1; cache digests per range only if profiles say so.
+- **T1.2 → proposal §7.9 (L1):** §7.9 and its sequence diagram say the audit expands
+  `SHAKE128(anchor ‖ id)`; the implementation (`fingerprint.Expand(anchor, id)`) is
+  `SHAKE128("rangesync/v1" ‖ anchor ‖ id)`. Amend §7.9 and the diagram to the domain-separated form
+  (not edited by T1.2).
+- **T1.2 → T5.1 (L2):** `Expand` with an empty salt (nil or non-nil) is the unsalted expansion, so an
+  empty anchor would make the audit equal the plain fingerprint and silently defeat it. `audit.Compute`
+  must reject `len(anchor) == 0` before computing (an error, the round's audit skipped with its
+  metric). An all-zero 32-byte anchor is fine: it is still a distinct salt.
