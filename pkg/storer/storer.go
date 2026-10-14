@@ -170,9 +170,12 @@ type RadiusChecker interface {
 
 // ChunkID identifies one (chunk, stamp) pair in the reserve: one element of
 // the set kept by the reserve address index. Its identity is
-// (Address, StampHash); BatchID is carried along so the chunk can be resolved
-// without a lookup. It is defined in the reserve package so the reserve can
-// build deltas without importing the storer.
+// (Address, StampHash) only, so consumers must not key on BatchID
+// (rangesync fingerprint IDs are address ‖ stamp hash). BatchID is always
+// set and is carried along so the chunk can be resolved without a lookup.
+// The byte slices may alias memory owned by the reserve or by the caller of
+// Put and must be treated as read-only. ChunkID is defined in the reserve
+// package so the reserve can build deltas without importing the storer.
 type ChunkID = reserve.ChunkID
 
 // The reserve calls its observer through reserve.Observer; the two
@@ -183,53 +186,85 @@ var (
 )
 
 // ReserveObserver receives every committed change of the reserve's
-// (address, stamp hash) set while the reserve address index is enabled.
+// (address, stamp hash) set made by the reserve's Put, eviction and Reset
+// paths while the reserve address index is enabled.
 //
-// Changes made before the observer is registered (start-up recovery,
-// migrations, the address index fill) are not reported; the observer's
-// initial rebuild from the address index covers them.
+// Registration: one observer is registered, once; a second registration
+// and a nil observer are rejected. Registration returns only after every
+// set-changing transaction that started without the observer has
+// committed, and every transaction started after it is wrapped by Commit,
+// so a rebuild started after registration sees every later commit either
+// in its snapshot or in the delta stream. The reserve guarantees this with
+// a reserve-level registration lock: each set-changing path loads the
+// observer and runs its transaction, wrapped or not, under the read lock,
+// and registration takes the write lock. Lock order: reserve per-batch and
+// per-bin locks, registration lock (read), the observer's lock (read,
+// inside Commit), per-address chunk locks, leveldb.
+//
+// Not reported: changes made before registration, and changes not made by
+// the Put, eviction and Reset paths, such as start-up recovery, migrations
+// and the address index fill (including a background fill running
+// concurrently with Commit). The observer's first rebuild, from a snapshot
+// taken once the address index is ready, covers them.
 //
 // All methods may be called concurrently from several goroutines.
 type ReserveObserver interface {
-	// Commit wraps every reserve transaction that changes the set. run
-	// executes the transaction and returns the delta it committed.
+	// Commit wraps every reserve transaction that may change the set. run
+	// executes the transaction and returns the delta it committed; a
+	// successful transaction may return an empty delta.
 	//
 	// The delta is exact: an id is in removes only if its address index
 	// entry existed and was deleted in this transaction, and in adds only
-	// if one was written. A wrong remove would subtract an element the
-	// observer never added and leave a phantom difference forever. The
-	// delta is a group difference, so adds and removes may be applied in
-	// either order. Both are empty when the transaction failed. The slices
-	// are not reused by the reserve and may be retained.
+	// if an entry was written where none existed. A wrong remove would
+	// subtract an element the observer never added and leave a phantom
+	// difference forever. The delta is a group difference, so adds and
+	// removes may be applied in either order. Both are empty when the
+	// transaction failed. The slices are not reused by the reserve and may
+	// be retained (the ChunkID contents are read-only, see ChunkID).
 	//
 	// Holding a read lock across run and the application of its delta is
 	// what lets a rebuild that opens an index snapshot under the write lock
 	// see every commit either in the snapshot or in the delta stream, never
 	// both and never neither.
 	//
+	// Until the observer has built its first index from a snapshot it may
+	// drop deltas. It decides this from its own state ("no index built
+	// yet"), read under the same read lock it holds across run, never by
+	// asking the storer (point 3); the first rebuild's snapshot covers
+	// anything dropped.
+	//
 	// Contract:
 	//  1. Commit calls run exactly once, synchronously, and returns its
 	//     error as is; when run returns an error, Commit applies nothing.
 	//     run is not retained or called after Commit returns.
-	//  2. The reserve calls Commit once per set-changing transaction and
-	//     never from inside run (no nesting: a recursive read lock deadlocks
-	//     as soon as a rebuild is waiting for the write lock). Operations
-	//     that commit several transactions, such as batch eviction and
-	//     Reset, wrap each one separately, never the whole loop.
-	//  3. The reserve may hold its per-batch and per-bin locks when it calls
-	//     Commit, so Commit must not call into the storer.
+	//  2. The reserve's Put, eviction and Reset paths call Commit once per
+	//     transaction that may change the set and never from inside run
+	//     (no nesting: a recursive read lock deadlocks as soon as a rebuild
+	//     is waiting for the write lock). Operations that commit several
+	//     transactions, such as batch eviction and Reset, wrap each one
+	//     separately, never the whole loop.
+	//  3. The reserve may hold its per-batch and per-bin locks and the
+	//     registration read lock when it calls Commit, so Commit must not
+	//     call into the storer.
 	//  4. The observer never holds its own lock, in either mode, across a
 	//     call into the storer: a reader waiting for a reserve lock, held by
 	//     a writer that waits for the read lock behind a pending rebuild,
 	//     deadlocks. The observer's lock covers in-memory work only.
 	Commit(run func() (adds, removes []ChunkID, err error)) error
 
-	// RadiusChanged is called at the end of every reserve SetRadius with the
-	// radius now in effect (StorageRadius), also when persisting it failed
-	// and possibly with an unchanged value; the observer ignores a radius
-	// equal to its current one. It is called from the reserve workers, so it
-	// must not block and must not call into the storer: the implementation
-	// queues an asynchronous rebuild and returns.
+	// RadiusChanged is a hint that the reserve radius may have changed. It
+	// is called at the end of every reserve SetRadius, after the new radius
+	// is in effect (also when persisting it failed), with the value that
+	// call set. Concurrent SetRadius calls are not serialized, so calls may
+	// arrive out of order and the argument may already be stale: the
+	// observer must not trust it, and must not drop a call because the
+	// argument equals its current root (root 5, rebuild to 6 queued, a
+	// later 5 dropped leaves the index at 6 and the reserve at 5). It only
+	// queues an asynchronous rebuild and returns; the rebuild goroutine
+	// re-reads StorageRadius when it starts, without holding the observer's
+	// lock, and skips only if that equals the root of the last rebuild it
+	// started. It is called from the reserve workers, so it must not block
+	// and must not call into the storer.
 	RadiusChanged(radius uint8)
 
 	// Reset is called once at the end of a successful reserve Reset, after

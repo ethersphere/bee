@@ -723,6 +723,32 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `ReserveAddrIndex` and `SetReserveObserver`. The reserve-level `AddrIndex` option and the
   reserve's observer registration are internal to `pkg/storer` and arrive with the T1.4
   implementation commit.
+- **T1.4 registration (contract review, HIGH):** an unwrapped `Run` that started before
+  `SetReserveObserver` and commits after the first rebuild opened its snapshot would be in
+  neither the snapshot nor the delta stream, forever (a re-`Put` returns early at `r.Has`).
+  Registration happens after `storer.New`, with reserve workers, pushsync and the API already
+  running. Fix: a reserve-level registration `sync.RWMutex`; every set-changing path of `Put`,
+  `EvictBatchBin` (each per-item goroutine) and `Reset` loads the observer and runs its
+  transaction, wrapped or not, under its read lock; registration takes its write lock, so it
+  returns only after in-flight unwrapped transactions committed, and every later one is
+  wrapped. Lock order `r.multx` → registration lock (R) → `ix.mu` (R, inside `Commit`) →
+  `chunkLocker` → leveldb; a holder of the registration read lock never waits for `r.multx`.
+  Registration is **once-only**, nil rejected (single observer, §5.4).
+- **T1.4 `RadiusChanged` is a hint (contract review, MEDIUM 2; supersedes the "observer
+  dedupes" sentence of the semantics entry above):** concurrent `SetRadius` calls
+  (`startReserveWorkers`, `reserveWorker`, `unreserve`) are not serialized and `SetRadius` is
+  store → persist → notify, so `RadiusChanged(5)` can arrive after `RadiusChanged(6)` while
+  `Radius()` is 6; and dropping a call whose argument equals the current root is wrong under
+  coalescing (root 5, rebuild to 6 queued, a later 5 dropped → index at 6, reserve at 5).
+  `SetRadius` locking is **not** changed. The observer must not trust the argument: it always
+  queues; the rebuild goroutine re-reads `StorageRadius()` when it starts (lock-free, no `ix.mu`
+  held) and skips only if it equals the root of the last rebuild it started. Correct because
+  every `SetRadius` notifies after its in-memory store, so a wake follows the final value.
+- **T1.4 dropping deltas before the first index (contract review, MEDIUM 3):** T1.6's "drops
+  deltas while `ReserveAddrIndexReady()` is false" would be a storer call inside `Commit`
+  (point 3). The observer keys the drop on its own state ("no index built yet"), read under the
+  `ix.mu` read lock it holds across `run`; the first rebuild's snapshot, taken under the write
+  lock once the index is ready, covers anything dropped. Stated in the `Commit` godoc.
 
 ## Follow-ups
 _(sessions append here)_
@@ -815,3 +841,18 @@ _(sessions append here)_
 - **T1.3 → T1.6 (review round 1, bounds):** always check `BucketSpan`'s `ok`. Ignoring it
   yields `(0, 0)`, so `Range(0, 0)` returns a silently empty `Summary`. Assert
   `Len() == 1<<leafBits` for every slab when the Index is constructed or rebuilt.
+- **T1.4 → T1.6 (`RadiusChanged` dedupe):** never drop a `RadiusChanged` call by comparing its
+  argument with the current root; always queue (coalesced). The rebuild goroutine re-reads
+  `StorageRadius()` when it starts, without holding `ix.mu`, and skips only if that equals the
+  root of the last rebuild it started. Test: radius 5 → 6 → 5 with the 6-rebuild in flight ends
+  with the index at 5; out-of-order `RadiusChanged(5)`/`(6)` with `Radius() == 6` ends at 6.
+- **T1.4 → T1.6 (dropping deltas):** replace "drops deltas while `ReserveAddrIndexReady()` is
+  false" with "drops deltas while no index has been built yet", decided from the observer's own
+  state under the `ix.mu` read lock held across `run`; `Commit` must not call the storer
+  (contract point 3). Waiting for `ReserveAddrIndexReady()` stays in the rebuild goroutine.
+- **T1.4 → T1.5 (option plumbing):** pass `ReserveAddrIndex` into recovery (`sharkyRecovery` →
+  `reserve.DeleteCorruptedChunkMetadata`, `pkg/storer/recover.go:106`, which must delete the
+  `ChunkAddrItem` when the marker is present) and into `reserve.New`; the migrations
+  (`removeRogueChunks.go:78`, `reserveRepair.go:183,191`) pass the option explicitly to the
+  package-level removal functions. Registration (`SetReserveObserver`) is once-only and rejects
+  nil; it needs an error return or a documented panic, since §5.4 gives it none.
