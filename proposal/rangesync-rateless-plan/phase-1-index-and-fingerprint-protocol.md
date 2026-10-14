@@ -808,6 +808,62 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   reported regardless of timing (a background fill runs concurrently with `Commit`); only the
   `Put`, eviction and `Reset` paths are.
 
+- **T1.8 (contract): files and names.** `session.go` (`Session`, `NewInitiator`, `NewResponder`,
+  `Handle`, `Config`, `Local`, `Summarizer`, `Striper`, `Decide`/`Decision`, `ErrPeerBusy`),
+  `scope.go` (`SessionRoot`, `Scope{Root, LeafDepth}`, `NewScope`, `Scope.CheckRange`,
+  `Scope.CheckMessage`, `ErrDisjointRoots`, `ErrInvalidScope`) and `wire.go` (strict decoders
+  `ParseRange`, `ParseID`, `ParseFingerprint`, `ParseItems`, `ParseStatus`; encoders `EncodeRange`,
+  `EncodeID`, `EncodeFingerprint`, `EncodeItems`, `EncodeStatus`; decoded `Status` and `Items`;
+  `ErrInvalidMessage`). Every peer violation (strict decoding, scope, unsolicited part, paging,
+  `MaxParts`) wraps the one sentinel `ErrInvalidMessage`, which T1.9 maps to reset + disconnect +
+  `PeerScorer.Fail`; `NewScope` errors and `ErrPeerBusy` are not violations. `Decide` is exported as
+  the pure function of §6.3 so its branches are table-tested on their own.
+- **T1.8 (contract): local interfaces, no `ctx`.** `Summarizer{Summary(r) (Summary, error)}` is what
+  `*fingerprint.Index` (T1.6) must satisfy. `Local = Summarizer + IterateIDs(r, after *ID, fn) +
+  HasID(id)` is what a `Session` reads; T1.9 builds it from the Index, `ReserveIterateAddr` and
+  `ReserveHasID`, answering summaries below the index leaf depth with a scan. No method takes a
+  `context.Context`, matching the ctx-less storer calls (§5.4) and the in-memory Index.
+- **T1.8 (contract): `Status` lives here.** `NewScope(local, remote Status)` consumes it and the
+  G2 `Status` rules (empty digest at `Count == 0`, `Root.Bits + LeafBits ≤ MaxBits` in `int`) are
+  part of strict decoding, so `Status`, `ParseStatus` and `EncodeStatus` are T1.8's; T1.9 uses
+  them for the status stream. Phase 1 does not decode `AuditRound`/`AuditDigest` (Phase 5 adds).
+- **T1.8 (contract): scope bounds.** `NewScope` rejects a session root deeper than the session leaf
+  depth (T1.1 follow-up) **and** `LeafDepth + LeafDepthSlack > fingerprint.MaxBits`: the G2 bound
+  alone admits a leaf depth of 255, and a split just above it would ask `Child` for depth > 255
+  (panic). Items branch: `R.Bits >= LeafDepth`.
+- **T1.8 (contract): decision order.** Equal → `cR == 0` (send items) → `cL == 0` (request items)
+  → stripe (initiator only, `R.Bits < LeafDepth`, `max(|cL−cR|, 1) > LargeDiff`; declined → split)
+  → *T2.4 seam: fits in symbols* → `R.Bits >= LeafDepth` (exchange items with `Reply`) → split into
+  `R.Children(FanoutBits)`. The responder never stripes.
+- **T1.8 (contract): deviation from §6.4 "in the previous message".** That rule cannot hold with
+  `MaxParts = 1024`: a message with more than 64 fingerprints that all need a split must be
+  answered with more than 1024 parts. It happens honestly in Phase 1 (no symbols): ~100 spread
+  differences make ~100 of the 256 level-2 ranges differ. Adopted instead: work that does not fit
+  (`MaxParts`, `MaxMessageBytes`) is deferred to later messages; a split always arrives whole (all
+  `1<<FanoutBits` children in one message, exactly `R.Children(FanoutBits)`, not an arbitrary
+  partition) and must answer a range this side sent a fingerprint for that the peer has not
+  answered yet; a range is answered at most once (a split or an `Items` stream). The
+  anti-amplification property of §6.4 is kept: the peer can only ask about children of ranges
+  this side raised, once each. An equal range is never answered, which cannot be told apart from
+  a deferred one, so it stays "unanswered" until the session ends (memory bounded by the
+  fingerprints this side sent, at most the range tree of the scope). The opening message (the
+  responder's first) is one or more `Fingerprint` parts of pairwise disjoint ranges inside the
+  scope and nothing else, which leaves room for T3.2 stripes and T3.4 halves.
+- **T1.8 (contract): `Items` paging.** A stream is the pages of one range from one side, in
+  strictly ascending ID order; `After` is empty on the first page and the last listed ID on every
+  later page; a page with `More` lists at least one ID; at most one peer stream per range. A page
+  covers `(After, last ID]` while `More`, `(After, end of R]` on the last page. `Reply` is answered
+  page by page with the local IDs in the covered interval that the page does not list, so the
+  peer's list is never accumulated and the cursor continuity bounds the listing work by `|R|` per
+  stream. An `Items` stream with an empty `After` must answer an unanswered fingerprint of this
+  side, or (without `Reply`) a range this side sent `Reply` pages for.
+- **T1.8 (contract): termination.** A side sends an empty `Message` only with nothing pending (no
+  deferred work, no own stream with `More`). The receiver of an empty `Message` with nothing
+  pending ends the session **without replying** (`Handle` returns a nil `out`), so equal sets cost
+  one round trip; the sender of the empty `Message` then reads the peer's next message or the end
+  of the stream, both normal. The peer sending an empty `Message` while one of its streams has
+  `More` set is a violation.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -926,3 +982,14 @@ _(sessions append here)_
   declare their local interfaces over it. T1.5's "calls return an error when the address index
   is disabled" conflicts with §5.4's signatures: `SetReserveObserver(o)` and
   `ReserveAddrIndexReady() bool` have no error return.
+- **T1.8 → T1.9/T1.13:** an `Items` stream without `Reply` can list any number of (fake,
+  ascending) IDs, and each becomes a want; the session does not cap wants. Bound them in T1.9 (a
+  per-session want cap, or against the peer's count for the range when it sent one) or rely on the
+  want-set bound, fetch validation and the `PeerScorer`; add an adversarial test in T1.13.
+- **T1.8 → T2.4:** the "fits in symbols" decision goes between `DecisionStripe` and
+  `DecisionExchangeItems`; `Config` is the place for the extra inputs (both `Status`es for
+  `cap(R)`, the hint LRU, the symbol source); `Scope.CheckMessage` stops rejecting `Symbols`/`More`.
+  The deferral rule above also applies to symbol batches.
+- **T1.8 → T3.1:** the hook is `Striper.Stripe(r, local, remote uint64) bool`, offered by
+  initiators only for ranges above the session leaf depth; returning `false` makes the session
+  split.
