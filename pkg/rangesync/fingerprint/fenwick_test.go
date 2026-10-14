@@ -241,6 +241,9 @@ func TestNewFenwickFromBuckets(t *testing.T) {
 
 // Not parallel: testing.AllocsPerRun panics in parallel tests.
 func TestNewFenwickFromBucketsInPlace(t *testing.T) {
+	// The slab is allocated once outside the measured function, so only the
+	// conversion is counted. Converting it again on every run leaves
+	// meaningless bucket values, which is fine: only allocations are checked.
 	buckets := make([]counter, 64)
 	allocs := testing.AllocsPerRun(10, func() {
 		f := fingerprint.NewFenwickFromBuckets[counter](buckets)

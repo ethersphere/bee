@@ -95,11 +95,28 @@ func FuzzFenwick(f *testing.F) {
 			}
 		}
 
-		for j := 0; j <= n; j++ {
-			var got lanes
-			tree.Prefix(j, &got)
-			if want := bruteRange[lanes](buckets, 0, j); got != want {
-				t.Fatalf("final Prefix(%d): got %v, want %v", j, got, want)
+		// Every range [i, j) of the final tree, against brute-force prefix
+		// sums (n is at most 256).
+		prefix := make([]lanes, n+1)
+		for k := range buckets {
+			prefix[k+1] = prefix[k]
+			prefix[k+1].Add(&buckets[k])
+		}
+		for i := 0; i <= n; i++ {
+			for j := i; j <= n; j++ {
+				var got lanes
+				if i == 0 {
+					tree.Prefix(j, &got)
+					if got != prefix[j] {
+						t.Fatalf("final Prefix(%d): got %v, want %v", j, got, prefix[j])
+					}
+				}
+				want := prefix[j]
+				want.Sub(&prefix[i])
+				tree.Range(i, j, &got)
+				if got != want {
+					t.Fatalf("final Range(%d, %d): got %v, want %v", i, j, got, want)
+				}
 			}
 		}
 	})

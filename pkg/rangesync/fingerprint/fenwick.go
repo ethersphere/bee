@@ -34,7 +34,12 @@ type Group[T any] interface {
 //
 // Fenwick is not safe for concurrent use. Prefix and Range only read the
 // tree, so they may run concurrently with each other, but not with Add, Sub,
-// Update or Reset. The zero value is an empty tree with no buckets.
+// Update or Reset: every mutation needs exclusive access, and it writes the
+// upper nodes that every query reads. The zero value is an empty tree with no
+// buckets.
+//
+// The delta and out arguments must not point into the tree's own storage
+// (the slab passed to NewFenwickFromBuckets).
 type Fenwick[T any, P Group[T]] struct {
 	// nodes[k-1] is the sum of the buckets [k-lowbit(k), k), where lowbit(k)
 	// is the lowest set bit of k (the 1-indexed Fenwick layout).
@@ -92,9 +97,10 @@ func (f *Fenwick[T, P]) Sub(i int, delta *T) {
 // each of the O(log n) stored nodes that cover the bucket. fn must apply the
 // same group delta to every node it is given (for example add one element),
 // otherwise the tree becomes inconsistent, and it must not retain the
-// pointer. Update is for elements where a delta is sparse and cheaper to
-// apply directly than to materialize, such as one ID touching a few of a
-// bucket's coded symbols. It panics unless 0 <= i < Len().
+// pointer. If fn panics, the nodes visited before it are already updated and
+// the tree is inconsistent. Update is for elements where a delta is sparse and
+// cheaper to apply directly than to materialize, such as one ID touching a few
+// of a bucket's coded symbols. It panics unless 0 <= i < Len().
 func (f *Fenwick[T, P]) Update(i int, fn func(node *T)) {
 	f.checkBucket(i)
 	for k := i + 1; k <= len(f.nodes); k += k & -k {
@@ -116,7 +122,8 @@ func (f *Fenwick[T, P]) Prefix(j int, out *T) {
 
 // Range sets out to the sum of the buckets [i, j), prefix(j) − prefix(i). The
 // nodes the two prefixes share are skipped, so a range reads at most
-// 2·log2(n) nodes. It panics unless 0 <= i <= j <= Len().
+// popcount(i)+popcount(j) ≤ 2·bits.Len(n)−1 nodes. It panics unless
+// 0 <= i <= j <= Len().
 func (f *Fenwick[T, P]) Range(i, j int, out *T) {
 	if i < 0 || i > j || j > len(f.nodes) {
 		panic(fmt.Sprintf("fingerprint: fenwick range [%d, %d) out of range [0, %d]", i, j, len(f.nodes)))

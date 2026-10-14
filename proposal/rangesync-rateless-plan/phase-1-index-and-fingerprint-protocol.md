@@ -692,6 +692,16 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     (2047, 4095), 23 nodes, ≈ 6.0–6.3 µs; random ranges ≈ 3.2 µs; `Prefix` worst ≈ 3.2 µs; `Add`
     worst (13 nodes) ≈ 3.5 µs; all 0 allocs. `NewFenwickFromBuckets` on 8 MB ≈ 2 ms (with the
     copy). Meets the §4.3.5 "few µs" target.
+- **T1.3 (review round 1, supersedes "No internal locking … can run under the Index's
+  `RLock`" above).** A `Fenwick` mutation (`Add`, `Sub`, `Update`, `Reset`) needs exclusive
+  access: it writes the upper nodes that every query reads. `ix.mu.RLock` does not give that,
+  because writers hold it too (§5.2 step 4 and the T1.0 `Commit` contract: concurrent `Commit`s
+  from `Put`s on different batches and from `EvictBatchBin`'s errgroup workers all apply deltas
+  under the read lock). T1.6 therefore needs an inner slab mutex, lock order `ix.mu` (R) →
+  `slabMu`, held for `Apply` and for the `Summary`/`Range` reads (or one mutex per slab with a
+  fixed order). The `out` and `delta` arguments must not point into the tree's own storage
+  (now in the godoc). Correction to the entry above: drop "instead of 24"; a range reads
+  `popcount(i)+popcount(j) ≤ 2·bits.Len(n)−1` nodes, 23 at most at B = 4096.
 
 ## Follow-ups
 _(sessions append here)_
@@ -775,3 +785,12 @@ _(sessions append here)_
 - **T1.3 (cache layout, measure in T1.6/T2.6):** the nodes of one query are 2 KB × power-of-two
   apart, so they map to the same cache sets. Not visible at the measured numbers; check again with
   the real `LtHash` and the 2.8 KB symbol arrays if `Summary` is slower than expected.
+- **T1.3 → T1.6 (review round 1, concurrency):** add a stress test with concurrent `Commit`s
+  (several writers applying deltas while `Summary` readers run, and a rebuild in between) and
+  flag it for `-race` in CI (no C compiler on the dev host). The same exclusivity applies to the
+  `Rebuild` follow-up above: deltas applied to the plain buckets during a rebuild race with the
+  rebuild's own iterator writes to those buckets, so they need the same inner mutex (or a queue
+  drained by the rebuild goroutine).
+- **T1.3 → T1.6 (review round 1, bounds):** always check `BucketSpan`'s `ok`. Ignoring it
+  yields `(0, 0)`, so `Range(0, 0)` returns a silently empty `Summary`. Assert
+  `Len() == 1<<leafBits` for every slab when the Index is constructed or rebuilt.
