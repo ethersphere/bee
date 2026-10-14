@@ -1,0 +1,85 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package rangesync;
+
+option go_package = "pb";
+
+message Range {
+  bytes  Prefix = 1; // ceil(Bits/8) bytes
+  uint32 Bits = 2;
+}
+
+message Status {
+  Range  Root = 1;      // sender's neighborhood: (overlay prefix, StorageRadius)
+  uint64 Count = 2;
+  bytes  Digest = 3;    // 32 B
+  uint32 LeafBits = 4;  // sender's bucket depth below Root
+  uint64 AuditRound = 5;
+  bytes  AuditDigest = 6; // §7.9, empty when not yet computed
+  uint32 Mapping = 7;     // Mapper ID (§4.3.4); sessions require equal values
+}
+
+message Fingerprint {
+  Range  Range = 1;
+  uint64 Count = 2;
+  bytes  Digest = 3;    // omitted when Count == 0
+}
+
+// Symbols carries coded symbols [Start, Start+n) of the sender's stream for Range.
+message Symbols {
+  Range  Range = 1;
+  uint64 Count = 2;      // sender's element count in Range
+  uint64 Start = 3;
+  bytes  Data = 4;       // n x (Sum 64 B ‖ Check 16 B ‖ varint zigzag(count − round(Count·ρ(i))))
+  bool   Exhausted = 5;  // the sender cannot produce symbols past this batch
+}
+
+// More asks the peer to continue its stream for Range up to (excluding) UpTo.
+message More {
+  Range  Range = 1;
+  uint64 UpTo = 2;
+}
+
+message ID {
+  bytes Address = 1;
+  bytes StampHash = 2;
+}
+
+message Items {
+  Range       Range = 1;
+  repeated ID IDs = 2;
+  bytes       After = 3;   // paging cursor (last ID of the previous page)
+  bool        More = 4;    // more pages follow on this stream
+  bool        Reply = 5;   // Meyer's flag: receiver must answer with its own items in Range
+}
+
+message Part {
+  oneof Kind {
+    Fingerprint FP = 1;
+    Symbols     Symbols = 2;
+    More        More = 3;
+    Items       Items = 4;
+  }
+}
+
+message Message {
+  repeated Part Parts = 1;  // <= MaxParts (1024), <= MaxMessageBytes (1 MiB)
+  bool          Busy = 2;   // responder is rebuilding, filling its address index, or over its session cap
+  uint64        AuditRound = 3; // §7.9 salted session: set in the first message only; 0 = normal session.
+                                // Fingerprints then use the anchor of that round as salt.
+}
+
+// fetch stream
+message Want {
+  repeated ID IDs = 1;      // <= 250
+}
+
+message Delivery {
+  bytes Address = 1;
+  bytes Data = 2;
+  bytes Stamp = 3;
+}

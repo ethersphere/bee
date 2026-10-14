@@ -483,6 +483,31 @@ Unit tests for the combined syncer.
 - **Start-up guard timeout (review):** 2 × `StatusMaxInterval`.
 
 _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill measurement)_
+- **T1.1 proto (contract):** `pb/rangesync.proto` is §6.2 verbatim plus the copyright header.
+  Points §6.2 leaves open, for G2: (a) `Range.Prefix` strictness — exactly `ceil(Bits/8)` bytes
+  and zero bits past `Bits`, or lenient; (b) `Items.After` is `bytes`, assumed to be the 64-byte
+  `addr ‖ stampHash` of the last ID of the previous page (`fingerprint.ID`); (c) `Fingerprint.Digest`
+  "omitted when Count == 0" — receivers should treat a missing digest as zero; (d) `Range.Bits` is
+  `uint32` on the wire and `uint8` in Go, so values above 255 must be rejected at decode time.
+  Validation of all of these is T1.9's.
+- **T1.1 `fingerprint.Range` (contract):** `Prefix swarm.Address` as in §5.2. It is not comparable,
+  so `RangeKey` + `Range.Key()` give a map key (for "ranges sent in the previous message" in T1.8
+  and "ranges being streamed" in T2.4). `NewRange` returns the canonical form (exactly
+  `ceil(Bits/8)` bytes, bits past `Bits` zeroed); the containment helpers ignore bits past `Bits`.
+- **T1.1 `fingerprint.Summary` (contract):** `Digest` is the zero value when `Count == 0`, matching
+  the wire (omitted), so equal empty ranges compare equal without a special case. T1.6 must keep it.
+- **T1.1 constants (contract):** counts are untyped constants, `DefaultMapperID` is `uint32` (the
+  `Mapper.ID()` type), intervals are `time.Duration`. The "adaptive 5–30 s" `RoundInterval` is
+  `MinRoundInterval`/`MaxRoundInterval`; the claim deadline is `ClaimDeadline`; the global fetch
+  limit is `DefaultFetchRate`; the start-up guard is `StartupGuardTimeout`. The fill-blocking
+  threshold (60 s) is a storer constant and is **not** in `pkg/rangesync` (the storer cannot import
+  it); T1.5 defines it in `pkg/storer`.
+- **T1.1 `rangesync.go` (contract):** protocol and stream names are exported (`ProtocolName`,
+  `ProtocolVersion`, `StatusStreamName`, `ReconcileStreamName`, `FetchStreamName`) so other
+  packages' tests can open streams. `New(streamer, logger)` is minimal; T1.9/T1.10 add their
+  dependencies. Stub handlers reset the stream and return an unexported "not implemented" error.
 
 ## Follow-ups
 _(sessions append here)_
+- **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
+  `constants.go` yet; T1.10 adds them.
