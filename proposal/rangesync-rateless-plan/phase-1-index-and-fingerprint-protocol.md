@@ -515,6 +515,16 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `ProtocolVersion`, `StatusStreamName`, `ReconcileStreamName`, `FetchStreamName`) so other
   packages' tests can open streams. `New(streamer, logger)` is minimal; T1.9/T1.10 add their
   dependencies. Stub handlers reset the stream and return an unexported "not implemented" error.
+- **T1.1 (implementation):** `Range` helpers treat missing prefix/address bytes as zero and ignore
+  bits past `Bits`; `Contains` alone rejects an address shorter than `ceil(Bits/8)` bytes. Programmer
+  errors panic: `Child` when `bits > 64` or `r.Bits + bits > 255` (the contract said
+  `8·swarm.HashSize`, but `Bits` is a `uint8`), `ChildIndex` when `bits > 64`, and `Children` when
+  `bits > 24` (bounds the allocation; splits use 4 and buckets 12). `ID.Address()`/`StampHash()`
+  return copies. Tests: `fingerprint/types_test.go` (brute-force reference via binary strings),
+  `constants_test.go`, `pb/rangesync_test.go` (round trip of every message and oneof kind + pinned
+  field numbers of the reserved fields), `rangesync_test.go` (spec, stub handlers via
+  `streamtest`). Fuzz: `FuzzParseID`, `FuzzRange`, `pb.FuzzUnmarshal` (stable re-encoding of
+  every top-level stream message).
 - **T1.1 wantset (contract):** `pkg/rangesync/wantset` receives `ClaimDeadline` and `RejectTTL` as
   parameters and never imports `pkg/rangesync` (that would be a cycle once `fetch.go` imports
   `wantset`).
