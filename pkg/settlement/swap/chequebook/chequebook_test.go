@@ -5,11 +5,13 @@
 package chequebook_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -203,12 +205,8 @@ func TestChequebookIssue(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
 		),
 		address,
@@ -352,7 +350,12 @@ func TestChequebookIssueErrorSend(t *testing.T) {
 	chequeSigner := &chequeSignerMock{}
 
 	chequebookService, err := chequebook.New(
-		transactionmock.New(),
+		transactionmock.New(
+			transactionmock.WithABICallSequence(
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
+			),
+		),
 		address,
 		ownerAdress,
 		store,
@@ -393,8 +396,8 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
 			),
 		),
 		address,
@@ -434,8 +437,8 @@ func TestChequebookWithdraw(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
 			),
 			transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
 		),
@@ -471,8 +474,8 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "balance"),
 			),
 		),
 		address,
@@ -488,6 +491,107 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 	_, err = chequebookService.Withdraw(context.Background(), withdrawAmount)
 	if !errors.Is(err, chequebook.ErrInsufficientFunds) {
 		t.Fatalf("got wrong error. wanted %v, got %v", chequebook.ErrInsufficientFunds, err)
+	}
+}
+
+func TestChequebookCoveringBalanceCache(t *testing.T) {
+	t.Parallel()
+
+	address := common.HexToAddress("0xabcd")
+	rpcErr := errors.New("rpc failed")
+
+	totalPaidOutCallData, err := chequebookABI.Pack("totalPaidOut")
+	if err != nil {
+		t.Fatal(err)
+	}
+	balanceCallData, err := chequebookABI.Pack("balance")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var calls int
+	chequebookService, err := chequebook.New(
+		transactionmock.New(
+			transactionmock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+				calls++
+				switch calls {
+				case 1:
+					if !bytes.Equal(request.Data, totalPaidOutCallData) {
+						t.Fatalf("unexpected call data on call %d", calls)
+					}
+					return big.NewInt(0).FillBytes(make([]byte, 32)), nil
+				case 2:
+					if !bytes.Equal(request.Data, balanceCallData) {
+						t.Fatalf("unexpected call data on call %d", calls)
+					}
+					return nil, rpcErr
+				case 3, 5:
+					if !bytes.Equal(request.Data, totalPaidOutCallData) {
+						t.Fatalf("unexpected call data on call %d", calls)
+					}
+					return big.NewInt(0).FillBytes(make([]byte, 32)), nil
+				case 4, 6:
+					if !bytes.Equal(request.Data, balanceCallData) {
+						t.Fatalf("unexpected call data on call %d", calls)
+					}
+					return big.NewInt(100).FillBytes(make([]byte, 32)), nil
+				default:
+					t.Fatalf("unexpected rpc call %d", calls)
+					return nil, errors.New("unexpected call")
+				}
+			}),
+		),
+		address,
+		common.HexToAddress("0xfff"),
+		storemock.NewStateStore(),
+		&chequeSignerMock{},
+		erc20mock.New(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = chequebookService.AvailableBalance(context.Background())
+	if !errors.Is(err, rpcErr) {
+		t.Fatalf("wrong error. wanted %v, got %v", rpcErr, err)
+	}
+	if calls != 2 {
+		t.Fatalf("unexpected rpc call count after failed load: got %d, want 2", calls)
+	}
+
+	available, err := chequebookService.AvailableBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available.Cmp(big.NewInt(100)) != 0 {
+		t.Fatalf("unexpected available balance: got %d, want 100", available)
+	}
+	if calls != 4 {
+		t.Fatalf("unexpected rpc call count after successful load: got %d, want 4", calls)
+	}
+
+	chequebook.SetCoveringBalanceCachedAt(chequebookService, time.Now().UTC().Add(-3*time.Minute))
+	available, err = chequebookService.AvailableBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available.Cmp(big.NewInt(100)) != 0 {
+		t.Fatalf("unexpected available balance: got %d, want 100", available)
+	}
+	if calls != 4 {
+		t.Fatalf("unexpected rpc call count while cache is valid: got %d, want 4", calls)
+	}
+
+	chequebook.SetCoveringBalanceCachedAt(chequebookService, time.Now().UTC().Add(-6*time.Minute))
+	available, err = chequebookService.AvailableBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available.Cmp(big.NewInt(100)) != 0 {
+		t.Fatalf("unexpected available balance: got %d, want 100", available)
+	}
+	if calls != 6 {
+		t.Fatalf("unexpected rpc call count after cache expiry: got %d, want 6", calls)
 	}
 }
 
