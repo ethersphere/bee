@@ -1287,7 +1287,7 @@ func NewBee(
 
 			reserveThreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
+				return pullerService.IsReserveSynced(localStore.StorageRadius()) && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
 			}
 
 			syncCheckTicker := time.NewTicker(2 * time.Second)
@@ -1299,7 +1299,7 @@ func NewBee(
 						return
 					case <-syncCheckTicker.C:
 						synced := isFullySynced()
-						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRateWithinRadius())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
 							logger.Info("full sync done", "duration", fullSyncTime)
@@ -1324,10 +1324,10 @@ func NewBee(
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
-			isFullySynced := func() bool {
+			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSize() >= reserveThreshold && pullerService.IsReserveSynced(depth) && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
@@ -1338,7 +1338,7 @@ func NewBee(
 				postageStampContractService,
 				stakingContract,
 				localStore,
-				isFullySynced,
+				isReserveSynced,
 				o.BlockTime,
 				storageincentives.DefaultBlocksPerRound,
 				storageincentives.DefaultBlocksPerPhase,
@@ -1388,6 +1388,9 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+	}
+	if pullerService != nil {
+		extraOpts.SyncRateOutside = pullerService.SyncRateOutsideRadius
 	}
 
 	if o.APIAddr != "" {
