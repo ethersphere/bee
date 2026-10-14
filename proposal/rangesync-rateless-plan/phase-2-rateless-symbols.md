@@ -261,6 +261,9 @@ deployment, and `IntegerMapper` should become the default before rollout.
   XORs.
 
 _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arch vector result)_
+- **Gate G3 (2026-10-14): Rateless IBLT accepted.** T2.1–T2.4 proceed as written; the §6.2
+  `Symbols`/`More` encoding is unchanged. The stamp-hash grinding risk from the T2.0 follow-ups
+  is tracked there (§9 row + adversarial test in T2.5).
 
 ## Follow-ups
 _(sessions append here)_
