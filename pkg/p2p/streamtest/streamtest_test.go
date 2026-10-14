@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -401,6 +402,72 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 			"",
 		},
 	}, nil)
+}
+
+func TestRecorder_readDeadline(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		send := make(chan struct{})
+		recorder := streamtest.New(
+			streamtest.WithProtocols(
+				newTestProtocol(func(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
+					<-send
+					_, err := stream.Write([]byte("x"))
+					return err
+				}),
+			),
+		)
+
+		stream, err := recorder.NewStream(context.Background(), swarm.ZeroAddress, nil, testProtocolName, testProtocolVersion, testStreamName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stream.Close()
+
+		ds, ok := stream.(interface{ SetReadDeadline(time.Time) error })
+		if !ok {
+			t.Fatal("stream does not support read deadlines")
+		}
+
+		// a future deadline stops a waiting read when the time passes
+		if err := ds.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := stream.Read(make([]byte, 1)); !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("got error %v, want %v", err, os.ErrDeadlineExceeded)
+		}
+
+		// a deadline set to now stops a read that already waits
+		if err := ds.SetReadDeadline(time.Time{}); err != nil {
+			t.Fatal(err)
+		}
+		errC := make(chan error, 1)
+		go func() {
+			_, err := stream.Read(make([]byte, 1))
+			errC <- err
+		}()
+		synctest.Wait()
+		if err := ds.SetReadDeadline(time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-errC; !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("got error %v, want %v", err, os.ErrDeadlineExceeded)
+		}
+
+		// after the deadline is removed, the stream can be read
+		if err := ds.SetReadDeadline(time.Time{}); err != nil {
+			t.Fatal(err)
+		}
+		close(send)
+		b := make([]byte, 1)
+		if _, err := stream.Read(b); err != nil {
+			t.Fatal(err)
+		}
+		if string(b) != "x" {
+			t.Fatalf("got %q, want %q", b, "x")
+		}
+	})
 }
 
 func TestRecorder_withMiddlewares(t *testing.T) {
