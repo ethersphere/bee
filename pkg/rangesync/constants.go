@@ -4,14 +4,14 @@
 
 package rangesync
 
-import "time"
+import (
+	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+)
 
 // Session constants (proposal §6.3).
 const (
-	// FanoutBits is the number of address bits a range descends when it is
-	// split: a range is split into 1<<FanoutBits children.
-	FanoutBits = 4
-
 	// MinBatch is the smallest number of coded symbols in a first batch.
 	MinBatch = 4
 	// BatchFactor scales the estimated difference into the size of the first
@@ -30,6 +30,11 @@ const (
 
 // Message and session limits (proposal §6.2, §6.4).
 const (
+	// LeafDepthSlack is how many bits below the session leaf depth an incoming
+	// range may lie, to allow a peer with deeper leaves (the "+4 bits" of
+	// §6.4). It is one split level.
+	LeafDepthSlack = fingerprint.FanoutBits
+
 	// MaxParts is the largest number of parts in one Message.
 	MaxParts = 1024
 	// MaxMessageBytes is the largest encoded size of one Message.

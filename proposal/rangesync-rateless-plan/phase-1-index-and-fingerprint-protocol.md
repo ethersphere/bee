@@ -489,14 +489,23 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `addr ‖ stampHash` of the last ID of the previous page (`fingerprint.ID`); (c) `Fingerprint.Digest`
   "omitted when Count == 0" — receivers should treat a missing digest as zero; (d) `Range.Bits` is
   `uint32` on the wire and `uint8` in Go, so values above 255 must be rejected at decode time.
-  Validation of all of these is T1.9's.
+  Proposed answers are under "G2 open items" below.
 - **T1.1 `fingerprint.Range` (contract):** `Prefix swarm.Address` as in §5.2. It is not comparable,
   so `RangeKey` + `Range.Key()` give a map key (for "ranges sent in the previous message" in T1.8
   and "ranges being streamed" in T2.4). `NewRange` returns the canonical form (exactly
   `ceil(Bits/8)` bytes, bits past `Bits` zeroed); the containment helpers ignore bits past `Bits`.
+  Shared bit-level helpers live on `Range` so T1.6/T1.8/T2.2 don't each hand-roll them:
+  `Child(bits, i)`, `Children(bits)` and `ChildIndex(addr, bits)` (bucket index with
+  `bits = LeafBits` below the root, child/level-1 index with `bits = FanoutBits`).
+- **T1.1 `fingerprint.ID` (contract):** `ParseID(addr, stampHash []byte) (ID, error)` is for
+  untrusted input and requires exactly 32 + 32 bytes (`ErrInvalidID`); `NewID` is for trusted
+  storer values and pads/truncates without validating.
 - **T1.1 `fingerprint.Summary` (contract):** `Digest` is the zero value when `Count == 0`, matching
   the wire (omitted), so equal empty ranges compare equal without a special case. T1.6 must keep it.
-- **T1.1 constants (contract):** counts are untyped constants, `DefaultMapperID` is `uint32` (the
+- **T1.1 constants (contract):** `FanoutBits` lives in `fingerprint/constants.go` (the Index and the
+  session both split by it; `LeafBits` is a multiple of it). The §6.4 "+4 bits" slack below leaf
+  depth is named `rangesync.LeafDepthSlack = fingerprint.FanoutBits` (one split level). Counts are
+  untyped constants, `DefaultMapperID` is `uint32` (the
   `Mapper.ID()` type), intervals are `time.Duration`. The "adaptive 5–30 s" `RoundInterval` is
   `MinRoundInterval`/`MaxRoundInterval`; the claim deadline is `ClaimDeadline`; the global fetch
   limit is `DefaultFetchRate`; the start-up guard is `StartupGuardTimeout`. The fill-blocking
@@ -506,8 +515,32 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `ProtocolVersion`, `StatusStreamName`, `ReconcileStreamName`, `FetchStreamName`) so other
   packages' tests can open streams. `New(streamer, logger)` is minimal; T1.9/T1.10 add their
   dependencies. Stub handlers reset the stream and return an unexported "not implemented" error.
+- **T1.1 wantset (contract):** `pkg/rangesync/wantset` receives `ClaimDeadline` and `RejectTTL` as
+  parameters and never imports `pkg/rangesync` (that would be a cycle once `fetch.go` imports
+  `wantset`).
+- **T1.1 — G2 OPEN ITEMS (proposed, pending gate G2; not decided):**
+  - **Message size (M2).** `MaxMessageBytes = 1 MiB` (§6.2) exceeds `pkg/p2p/protobuf`'s
+    `delimitedReaderMaxSize = 128 KiB`, and a root `Symbols` batch can reach ~336 KB (4096 × 82 B).
+    Proposed: the `reconcile` stream builds its reader as
+    `protobuf.Reader{Reader: ggio.NewDelimitedReader(stream, MaxMessageBytes)}` (no `pkg/p2p`
+    change); `status` and `fetch` keep the 128 KiB default. gogo pre-allocates the declared length,
+    so per-stream memory is ≤ 1 MiB, bounded node-wide by `MaxConcurrentSessions = 16`.
+    Alternative: lower `MaxMessageBytes` to 128 KiB and cap symbol batches to fit.
+  - **Strict decoding.** `Range.Prefix` exactly `ceil(Bits/8)` bytes with zero bits past `Bits`;
+    `Range.Bits > 255` rejected; `Items.After` either empty or 64 bytes, and `Range.ContainsID(After)`
+    for the part's range; `Fingerprint`: `Count == 0` ⇒ empty `Digest`, `Count > 0` ⇒ exactly 32
+    bytes; `ID.Address`/`ID.StampHash` exactly 32 bytes each (`fingerprint.ParseID`).
+  - **`Status.Digest` when `Count == 0`.** Proposed: empty, like `Fingerprint.Digest` (one rule for
+    both messages; decodes to the zero `Summary.Digest`).
+  - **`Status.LeafBits` bound.** Proposed: reject unless `Root.Bits + LeafBits ≤ 8·swarm.HashSize`,
+    computed in `int` so a large `uint32` cannot wrap.
+  - **Ownership.** Strict `pb.Range`/`pb.ID`/`pb.Fingerprint` → `fingerprint` decoding belongs to
+    T1.8 (exported for T1.9); stream-level enforcement (reset, disconnect, `PeerScorer`) to T1.9.
 
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
   `constants.go` yet; T1.10 adds them.
+- **T1.1 → T1.6:** `Summary.Digest` must be special-cased to the zero value when `Count == 0`:
+  keccak256 of the all-zero LtHash lanes is **not** zero, so `Digest()` of an empty bucket run
+  cannot be used as is.

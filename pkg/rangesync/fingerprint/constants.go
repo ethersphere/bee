@@ -4,16 +4,21 @@
 
 package fingerprint
 
-// Index constants (proposal §4.1, §4.3.5, §6.3).
+// Index constants (proposal §4.1, §4.3.2, §4.3.5, §6.3).
 const (
 	// LeafBits is the depth of the buckets below the root range: the root is
 	// split into 1<<LeafBits buckets, the smallest ranges with cached summaries.
 	LeafBits = 12
 
+	// FanoutBits is the number of address bits a range descends when it is
+	// split: a range is split into 1<<FanoutBits children. LeafBits is a
+	// multiple of FanoutBits, so repeated splits of the root end at leaf depth.
+	FanoutBits = 4
+
 	// RootSymbols is the number of coded symbols cached for the root range.
 	RootSymbols = 4096
-	// Level1Symbols is the number of coded symbols cached for each of the
-	// level-1 ranges (one level below the root).
+	// Level1Symbols is the number of coded symbols cached for each level-1
+	// range: the 1<<FanoutBits ranges FanoutBits bits below the root.
 	Level1Symbols = 512
 	// BucketSymbols is the number of coded symbols cached for each bucket.
 	BucketSymbols = 32

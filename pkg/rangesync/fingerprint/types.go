@@ -5,6 +5,8 @@
 package fingerprint
 
 import (
+	"errors"
+
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -16,11 +18,23 @@ const IDSize = 2 * swarm.HashSize
 // lexicographically, which orders them by address first.
 type ID [IDSize]byte
 
+// ErrInvalidID is returned by ParseID when the address or the stamp hash does
+// not have exactly swarm.HashSize bytes.
+var ErrInvalidID = errors.New("fingerprint: invalid id")
+
 // NewID returns the ID of the chunk address addr and the stamp hash stampHash.
-// Both are expected to be swarm.HashSize bytes long; shorter values are zero
-// padded on the right and longer values are truncated.
+// It is meant for trusted values (from the storer): it does not validate its
+// input, and a value that is not swarm.HashSize bytes long is zero padded on
+// the right or truncated. Untrusted input goes through ParseID.
 func NewID(addr swarm.Address, stampHash []byte) ID {
 	return ID{}
+}
+
+// ParseID returns the ID of the chunk address addr and the stamp hash
+// stampHash, as received from a peer. Both must be exactly swarm.HashSize
+// bytes long; otherwise it returns an error wrapping ErrInvalidID.
+func ParseID(addr, stampHash []byte) (ID, error) {
+	return ID{}, nil
 }
 
 // Address returns the chunk address part of the ID.
@@ -91,8 +105,35 @@ func (r Range) ContainsRange(other Range) bool {
 	return false
 }
 
-// String returns a readable form of r: the prefix bits followed by "/" and
-// the number of bits, for example "0110/4".
+// Child returns the i-th sub-range of r that is bits bits deeper: r's prefix
+// followed by the low bits bits of i, most significant bit first. With
+// bits == FanoutBits it is the i-th child of a split; with bits == LeafBits
+// below the root it is bucket i. bits must be at most 64 and r.Bits+bits at
+// most 8*swarm.HashSize; the result is canonical.
+func (r Range) Child(bits uint8, i uint64) Range {
+	return Range{}
+}
+
+// Children returns the 1<<bits sub-ranges of r that are bits bits deeper, in
+// address order: Children(bits)[i] equals Child(bits, i). They partition r.
+// bits must be small enough for the result to fit in memory.
+func (r Range) Children(bits uint8) []Range {
+	return nil
+}
+
+// ChildIndex returns the bits-bit value of addr right after the first r.Bits
+// bits, most significant bit first: the index i of the sub-range
+// r.Child(bits, i) that contains addr. With bits == LeafBits below the root it
+// is the bucket index; with bits == FanoutBits it is the child index of a
+// split (the level-1 index below the root). It does not check that r contains
+// addr; missing address bytes are taken as zero. bits must be at most 64.
+func (r Range) ChildIndex(addr swarm.Address, bits uint8) uint64 {
+	return 0
+}
+
+// String returns a readable form of r: the first r.Bits bits of the prefix as
+// binary digits, followed by "/" and the number of bits, for example "0110/4".
+// The range with Bits == 0, which contains every address, is "/0".
 func (r Range) String() string {
 	return ""
 }

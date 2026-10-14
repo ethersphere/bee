@@ -183,7 +183,7 @@ the implementer (otherwise every task conflicts on this list).
 | Constant | Value | Owner task |
 |---|---|---|
 | `LeafBits` (fingerprint) | 12 | T1.1 defines, T1.6 uses |
-| `FanoutBits` | 4 | T1.8 |
+| `FanoutBits` (fingerprint) | 4 | T1.1 defines, T1.8 uses |
 | `RootSymbols` / `Level1Symbols` / `BucketSymbols` (fingerprint) | 4096 / 512 / 32 | T1.1 defines, T2.2 uses |
 | `ScanLimit` (fingerprint) | 4096 | T1.1 defines, T2.2 uses |
 | `MinBatch`, batch factor, growth factor | 4, 1.6, 4 | T2.4 |

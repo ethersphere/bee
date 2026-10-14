@@ -8,7 +8,7 @@ protocol and the value types shared with it.
 
 An element of the reserve is identified by an ID, the chunk address followed by
 the stamp hash. Elements are grouped into Ranges, which are address prefixes,
-and a Range is summarised by a Summary: the number of elements in it and a
+and a Range is summarized by a Summary: the number of elements in it and a
 digest of their LtHash.
 
 The package is the leaf of the rangesync tree: it depends on neither
