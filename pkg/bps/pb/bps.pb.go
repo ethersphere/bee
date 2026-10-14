@@ -86,8 +86,7 @@ const (
 	Kind_KIND_UNSPECIFIED Kind = 0
 	Kind_DATA             Kind = 1
 	Kind_AUTH             Kind = 2
-	// a pending stream, or a spectator stream a roster names; a heartbeat
-	// on a publisher stream; never delivered
+	// a pending stream; a heartbeat on a publisher stream; never delivered
 	Kind_EOS    Kind = 3
 	Kind_ROSTER Kind = 4
 )

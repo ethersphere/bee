@@ -49,8 +49,7 @@ enum Kind {
   KIND_UNSPECIFIED = 0; // invalid on the wire
   DATA = 1;             // an update of the stream's session feed
   AUTH = 2;             // the empty chunk at index 0 of the session's AUTH feed: authenticates
-                        // a pending stream, or a spectator stream a roster names; a heartbeat
-                        // on a publisher stream; never delivered
+                        // a pending stream; a heartbeat on a publisher stream; never delivered
   EOS = 3;              // the empty chunk at index 0 of the admin's EOS feed: the channel is ended
   ROSTER = 4;           // from the admin: the publisher set as of this index; payload = Roster
 }
