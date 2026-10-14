@@ -665,6 +665,33 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   element and the claim (ID, peer counter pointer, expiry) are the rest. An index-linked slab
   would save < 20 %, so the simple form stays; the total budget (≈ 21 MB) is not affected
   materially.
+- **T1.3 Fenwick API (implementation).** `fingerprint/fenwick.go` exports
+  `Group[T any] interface{ *T; Add(other *T); Sub(other *T); Zero() }` and
+  `Fenwick[T any, P Group[T]]`, used as `Fenwick[T, *T]`; `NewFenwick[T](n)` infers `P`. The
+  group methods take pointers and work in place, so a 2 KB element is never copied. Exported,
+  unlike the lowercase `fenwick[...]` of §5.2: until T1.6/T2.2 use it, an unexported type would
+  have no production caller (the `unused` linter), and the tests stay in `package fingerprint_test`.
+  §5.2's `fenwick[uint32]` therefore needs a defined count type with these methods (T1.6), just as
+  `LtHash` (whose `Add` adds an ID) and the symbol arrays need adapters.
+  - Buckets are `int`, 0-based; runs are half-open: `Prefix(j, out)` = `[0, j)` and
+    `Range(i, j, out)` = `[i, j)`, so a `root.BucketSpan(r, leafBits)` result `(lo, n)` is
+    `Range(int(lo), int(lo+n), out)`. Queries overwrite `out` (`Zero` first) and never allocate.
+    `Range` walks the two node chains until they meet, so shared nodes are skipped (≤ 23 nodes at
+    B = 4096 instead of 24).
+  - Beyond the task text, for T1.6/T2.2: `Sub(i, delta)` (removals); `Update(i, fn)` calls `fn`
+    on each of the ≤ log2(B)+1 nodes covering bucket `i`, for sparse deltas (one ID touches ~6 of
+    a bucket's 32 symbols; materializing a 2.8 KB delta array per node would be wasteful);
+    `NewFenwickFromBuckets(buckets)` converts plain bucket sums into a tree in place in O(B)
+    (B·log B calls to `Add` would cost a rebuild ~12 extra LtHash additions per element);
+    `Reset()` and `Len()`. The zero value is an empty tree.
+  - Bucket indices out of range panic, like slice indexing: they are programmer errors, because
+    peer-derived ranges go through `BucketSpan` (`ok == false`) first.
+  - No internal locking. `Prefix`/`Range` only read, so they can run under the Index's `RLock`.
+  - Benchmark (`BenchmarkFenwick`, 2 KB element = 1024 16-bit lanes packed four per `uint64`
+    with SWAR add/sub, B = 4096, Intel Core Ultra 7 165U, noisy laptop): `Range` worst case
+    (2047, 4095), 23 nodes, ≈ 6.0–6.3 µs; random ranges ≈ 3.2 µs; `Prefix` worst ≈ 3.2 µs; `Add`
+    worst (13 nodes) ≈ 3.5 µs; all 0 allocs. `NewFenwickFromBuckets` on 8 MB ≈ 2 ms (with the
+    copy). Meets the §4.3.5 "few µs" target.
 
 ## Follow-ups
 _(sessions append here)_
@@ -733,3 +760,18 @@ _(sessions append here)_
   `TestConcurrentPeerCap`, `TestConcurrentChurn` and `TestConcurrentExpiry` in
   `pkg/rangesync/wantset` should run under `make test-race` in CI; here they ran with
   `-count=50 -cpu=1,2,4`.
+- **T1.3 → T1.2/T1.6 (`LtHash` element cost):** the Fenwick target of a few µs per range needs a
+  fast `AddHash`/`SubHash`. With a naive per-`uint16` lane loop as the 2 KB element, the same
+  worst-case `Range` measured ~22–95 µs on this host (vs ~6 µs with four lanes per `uint64`,
+  SWAR); the tree itself is ~2% of the profile. Generic method calls go through the instantiation
+  dictionary and are not inlined, which cost ~1.4× against a hand-written loop with the naive
+  element. Worth a `BenchmarkLtHashAddHash` in T1.2 and an `LtHash` adapter benchmark in T1.6.
+- **T1.3 → T1.6 (`Rebuild`):** build the new slabs as plain bucket sums and convert them with
+  `NewFenwickFromBuckets` (O(B)), not with one `Add` per element. Deltas that arrive during the
+  rebuild (§5.2 step 3) can go to the plain buckets before the conversion.
+- **T1.3 → T2.2 (bucket symbols):** apply an element's symbols with `Fenwick.Update(bucket, fn)`
+  and an `Encode` restricted to the bucket's 32 symbols inside `fn`, rather than building a full
+  `[BucketSymbols]CodedSymbol` delta and calling `Add`.
+- **T1.3 (cache layout, measure in T1.6/T2.6):** the nodes of one query are 2 KB × power-of-two
+  apart, so they map to the same cache sets. Not visible at the measured numbers; check again with
+  the real `LtHash` and the 2.8 KB symbol arrays if `Summary` is slower than expected.
