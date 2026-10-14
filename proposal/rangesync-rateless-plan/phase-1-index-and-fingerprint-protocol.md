@@ -702,6 +702,27 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   fixed order). The `out` and `delta` arguments must not point into the tree's own storage
   (now in the godoc). Correction to the entry above: drop "instead of 24"; a range reads
   `popcount(i)+popcount(j) ≤ 2·bits.Len(n)−1` nodes, 23 at most at B = 4096.
+- **T1.4 types (contract):** `internal/reserve` cannot import `pkg/storer`, so the element type
+  is defined once as `reserve.ChunkID` (`Address`, `StampHash`, `BatchID`, per §5.4) and
+  `storer.ChunkID = reserve.ChunkID` is an alias (precedent: `storer.SessionInfo =
+  upload.TagItem`). `storer.ReserveObserver` is a real interface in `storer.go` and carries the
+  full godoc with the T1.0 four-point contract; the reserve calls `reserve.Observer`, which has
+  the identical method set. `storer.go` checks at compile time that the two are assignable both
+  ways, so they cannot drift. Consumers use only `storer.ChunkID`/`storer.ReserveObserver`.
+- **T1.4 observer semantics (contract), beyond §5.4:** `Commit` returns `run`'s error as is (the
+  reserve's callers test `errors.Is(err, storage.ErrOverwriteNewerChunk)`); the delta slices are
+  fresh per transaction and may be retained; `adds`/`removes` are a group difference, so the
+  order of application doesn't matter. `RadiusChanged` is called at the end of **every**
+  `Reserve.SetRadius` with the radius in effect (the in-memory value is stored first, so also
+  when persisting it fails), possibly unchanged — the observer dedupes, as T1.6 already assumes
+  for the start-up `SetRadius`. `Reset()` is called once, only at the end of a successful
+  `Reserve.Reset`, after its per-item commits; on a failed `Reset` the per-item deltas already
+  delivered keep the observer exact. Set changes made before the observer is registered
+  (recovery's `DeleteCorruptedChunkMetadata`, migrations, the T1.5 fill) are never reported.
+- **T1.4 option placement (contract):** T1.4 adds no `storer.Options` field; T1.5 adds
+  `ReserveAddrIndex` and `SetReserveObserver`. The reserve-level `AddrIndex` option and the
+  reserve's observer registration are internal to `pkg/storer` and arrive with the T1.4
+  implementation commit.
 
 ## Follow-ups
 _(sessions append here)_

@@ -168,6 +168,76 @@ type RadiusChecker interface {
 	CapacityDoubling() uint8
 }
 
+// ChunkID identifies one (chunk, stamp) pair in the reserve: one element of
+// the set kept by the reserve address index. Its identity is
+// (Address, StampHash); BatchID is carried along so the chunk can be resolved
+// without a lookup. It is defined in the reserve package so the reserve can
+// build deltas without importing the storer.
+type ChunkID = reserve.ChunkID
+
+// The reserve calls its observer through reserve.Observer; the two
+// interfaces must stay interchangeable.
+var (
+	_ reserve.Observer = ReserveObserver(nil)
+	_ ReserveObserver  = reserve.Observer(nil)
+)
+
+// ReserveObserver receives every committed change of the reserve's
+// (address, stamp hash) set while the reserve address index is enabled.
+//
+// Changes made before the observer is registered (start-up recovery,
+// migrations, the address index fill) are not reported; the observer's
+// initial rebuild from the address index covers them.
+//
+// All methods may be called concurrently from several goroutines.
+type ReserveObserver interface {
+	// Commit wraps every reserve transaction that changes the set. run
+	// executes the transaction and returns the delta it committed.
+	//
+	// The delta is exact: an id is in removes only if its address index
+	// entry existed and was deleted in this transaction, and in adds only
+	// if one was written. A wrong remove would subtract an element the
+	// observer never added and leave a phantom difference forever. The
+	// delta is a group difference, so adds and removes may be applied in
+	// either order. Both are empty when the transaction failed. The slices
+	// are not reused by the reserve and may be retained.
+	//
+	// Holding a read lock across run and the application of its delta is
+	// what lets a rebuild that opens an index snapshot under the write lock
+	// see every commit either in the snapshot or in the delta stream, never
+	// both and never neither.
+	//
+	// Contract:
+	//  1. Commit calls run exactly once, synchronously, and returns its
+	//     error as is; when run returns an error, Commit applies nothing.
+	//     run is not retained or called after Commit returns.
+	//  2. The reserve calls Commit once per set-changing transaction and
+	//     never from inside run (no nesting: a recursive read lock deadlocks
+	//     as soon as a rebuild is waiting for the write lock). Operations
+	//     that commit several transactions, such as batch eviction and
+	//     Reset, wrap each one separately, never the whole loop.
+	//  3. The reserve may hold its per-batch and per-bin locks when it calls
+	//     Commit, so Commit must not call into the storer.
+	//  4. The observer never holds its own lock, in either mode, across a
+	//     call into the storer: a reader waiting for a reserve lock, held by
+	//     a writer that waits for the read lock behind a pending rebuild,
+	//     deadlocks. The observer's lock covers in-memory work only.
+	Commit(run func() (adds, removes []ChunkID, err error)) error
+
+	// RadiusChanged is called at the end of every reserve SetRadius with the
+	// radius now in effect (StorageRadius), also when persisting it failed
+	// and possibly with an unchanged value; the observer ignores a radius
+	// equal to its current one. It is called from the reserve workers, so it
+	// must not block and must not call into the storer: the implementation
+	// queues an asynchronous rebuild and returns.
+	RadiusChanged(radius uint8)
+
+	// Reset is called once at the end of a successful reserve Reset, after
+	// every per-item transaction went through Commit. It must not call into
+	// the storer.
+	Reset()
+}
+
 // LocalStore is a read-only ChunkStore. It can be used to check if chunk is known
 // locally, but it cannot tell what is the context of the chunk (whether it is
 // pinned, uploaded, etc.).
