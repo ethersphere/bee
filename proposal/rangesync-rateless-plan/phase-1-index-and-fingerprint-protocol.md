@@ -222,17 +222,28 @@ and is tested with a fake; T1.9 wires it to the real storer.
   Bucket = address bits `r … r+leafBits−1` (`LeafBits = 12`). Elements outside the root are
   ignored by `Apply` and counted in a metric.
 - `pkg/rangesync/indexer.go` (or similar): implements `storer.ReserveObserver`:
-  - `Commit` takes `mu.RLock()` around `run` and applies the returned delta — but **drops deltas
-    while `ReserveAddrIndexReady()` is false** (the first rebuild covers them);
-  - `RadiusChanged` **only queues an asynchronous rebuild and returns** (no-op if the radius
-    equals the current root's). It's called from the reserve worker and from `unreserve`; a
-    synchronous rebuild would stall eviction or deadlock against writers waiting for `ix.mu`. A
-    single rebuild goroutine coalesces queued requests;
+  - `Commit` takes `mu.RLock()` around `run` and applies the returned delta under an inner
+    slab mutex (lock order `ix.mu`(R) → `slabMu`; Fenwick mutations need exclusive access, and
+    `Summary` reads take `slabMu` too). It **drops deltas until the first rebuild opens its
+    snapshot**, keyed on the observer's own state, never on a storer call: the switch from
+    dropping to queuing happens in the same `ix.mu` write-locked section that opens the first
+    snapshot iterator (amended after T1.4's contract review; see its Decisions entries);
+  - `RadiusChanged` **only queues an asynchronous rebuild and returns**. It is a *hint*: calls
+    can arrive out of order with a stale argument, so it never drops a call because the argument
+    equals the root. The single rebuild goroutine takes the wake-up token, *then* reads
+    `StorageRadius()`, and skips only if that equals the root of the last *completed* rebuild (none
+    initially; a failed rebuild clears it). It's called from the reserve worker and from
+    `unreserve`; a synchronous rebuild would stall eviction or deadlock against writers waiting
+    for `ix.mu` (amended after T1.4's contract review);
   - `Reset` clears.
   - **Start-up order:** `SetReserveObserver` first, then wait for `ReserveAddrIndexReady()`, then
     the initial rebuild from the persisted radius (`StorageRadius()`), so no commit is missed. The
     start-up `SetRadius` in `startReserveWorkers` then only triggers a second rebuild if the radius
     actually changed.
+  - Also from earlier tasks' follow-ups: map ranges to bucket spans with `root.BucketSpan` and
+    treat `ok == false` as an invalid range; assert `Len() == 1<<leafBits` for every slab;
+    `Summary.Digest` is the zero value when `Count == 0`; build rebuild slabs as plain bucket sums
+    and convert with `NewFenwickFromBuckets`.
 - **Rebuild protocol (§5.2):** steps 1–5 exactly, as confirmed (or amended) by T1.0, and the
   lock-ordering rule: never hold `ix.mu` in write mode while calling into the reserve or
   iterating. While rebuilding, `Summary` for uncovered ranges returns `ErrBusy`.
@@ -246,8 +257,11 @@ range at every level; concurrent writers during `Rebuild` (`-race`); memory at B
 matches §5.3 (counts 16 KB, LtHash 8 MB); a local fake reserve (implementing the adapter's local
 interfaces, not `pkg/storer/mock`, which arrives in T1.5): put/evict/replace, summaries match brute
 force; radius change → root moves, and `RadiusChanged` returns
-immediately while the rebuild runs; deltas before the address index is ready are dropped and the
-first rebuild still equals brute force; a chunk evicted before the fill reached it produces no
+immediately while the rebuild runs; deltas before the first snapshot opens are dropped and the
+first rebuild still equals brute force; a Put and an evict committing after the first rebuild's
+iterator opened appear in the final index; out-of-order `RadiusChanged` (5→6→5) converges to the
+reserve's radius; a failed rebuild followed by the same radius rebuilds again; concurrent
+`Commit`s and `Summary` readers during a rebuild (flag for `-race` in CI); a chunk evicted before the fill reached it produces no
 phantom difference.
 
 **Size:** M–L.
