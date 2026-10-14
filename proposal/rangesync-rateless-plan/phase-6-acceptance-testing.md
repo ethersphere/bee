@@ -131,6 +131,57 @@ peak Index memory — and compare with the baseline.
 
 ## Decisions log
 _(sessions append here)_
+- **(T6.0) Criteria draft written** in [acceptance-criteria.md](acceptance-criteria.md): 44 rows
+  (AC-C/V/B/D/K/R/N/S), each with a metric, a threshold and the test or run that measures it. The
+  decisions below were needed to make the draft table measurable:
+  - **Independent of G3.** No row depends on Rateless IBLT vs CertainSync beyond the proposal's
+    own numbers. If G3 picks CertainSync, AC-K1/AC-K2 must be re-based (T2.0 already says the
+    [1.3, 1.8] band would not hold).
+  - **Metadata.** Metadata = `status` + `reconcile` + `fetch` `Want` bytes; chunk bytes =
+    `Delivery`. `pullsync`/`puller` have no byte counters and can't be changed, so the
+    `pullsync` baseline is `bee_pullsync_chunks_offered` × ~102 B (one `pb.Chunk` in an `Offer`),
+    which matches §7.8's "100 B per offer".
+  - **AC-B1 load condition.** The ≤ 50 % bandwidth row applies at a reference load (median
+    `pairwise_diff` ≥ 20 per steady-state session), the regime §7.8 assumes. The low-load regime is
+    reported but doesn't gate: there the per-round `MinBatch` overhead dominates, as §7.8 itself
+    notes. The draft's "~30 %" matches §7.8 at N = 9 (28–35 %); at N = 17 §7.8 gives 17–22 %.
+    Counting `Want` IDs adds ~5 points.
+  - **ID size.** Bootstrap metadata uses 70 B per ID (§6.2) instead of §7.4's 64 B: ≤ 1.15 × count
+    × 70 B (≈ 340 MB at 2²²), plus ≤ 1 MB of verification.
+  - **Decoding.** The draft's "1.35–1.72 + overshoot" was split in two: AC-K1 is the decoder unit
+    test, [1.3, 1.8] per §13; AC-K2 is the runtime metric with overshoot, median ≤ 2.0 / p95 ≤ 4.0
+    (draft) for ranges with ≥ 20 differences, so the `MinBatch` floor stays out.
+  - **Rebuild memory: a proposal inconsistency.** §5.2's rebuild builds a new slab while the old
+    one stays live (steps 2–5), so Index memory transiently reaches ~2 × 20.6 MB ≈ 42 MB. §5.3's
+    "≈ 24 MB peak" counts only session buffers and the want set. AC-R1 keeps 21/24 MB for steady
+    state; AC-R2 bounds the rebuild transient separately. The proposal's §5.3 should get a row for
+    it (see Follow-ups).
+  - **Duplicates.** "Zero duplicate `rangesync` deliveries" is exact in in-process tests (Put count
+    per ID). On testnet `cross_protocol_duplicates_total` also counts pushsync racing a fetch, so
+    the testnet row (AC-D2) is an upper bound of ≤ 1 % (draft).
+  - **Draft numbers with no basis in the proposal**, to be confirmed by the team: AC-D2 1 %,
+    AC-K2, AC-R4 5 % `Put` overhead (the draft's number; §14 Q1 only asks for a benchmark),
+    AC-R7 CPU ≤ 1.0 ×, AC-R8 +64 MB RSS, AC-N5 ±10 % sample duration.
+  - **Metric naming.** §10 short names are assumed to be exported as `bee_rangesync_<name>`. T1.13
+    decides; this is recorded as a Phase 1 follow-up.
+  - **Metric owners.** Every §10 metric has an owning task in Phases 1–4 except `audit_mismatch`,
+    which is Phase 5 (T5.2) by design and only gates if Phase 5 is in scope (AC-S6). Gaps are
+    recorded as follow-ups: Phase 1 (metric definitions; `chunks_fetched_total`), Phase 2
+    (`symbols_per_difference` definition, `parts_*{type}` for symbols/more, `index_memory_bytes`
+    including symbol caches), Phase 3 (stripe and verification metrics), Phase 4
+    (`round_interval_seconds`; `want_claims{result}` values incl. `expired` and `late`).
 
 ## Follow-ups
 _(sessions append here)_
+- **(T6.0) Proposal §5.3:** add the rebuild transient (old + new slab, ≈ 2 × 20.6 MB for up to
+  `index_rebuild_seconds`) to the memory budget, or change §5.2 to rebuild in place. AC-R2 assumes
+  the former.
+- **(T6.0) T6.3:** no Prometheus metric exposes `isFullySynced` or rounds skipped as "not fully
+  synced". `pkg/storageincentives/agent.go` only logs "skipping round because node is not fully
+  synced" at Info. For AC-N5, T6.3 polls `/redistributionstate` (`isFullySynced`, `isFrozen`,
+  `lastFrozenRound`, `lastPlayedRound`) and counts the log lines. A real metric would belong in
+  `pkg/storageincentives` or `pkg/node`, outside Phases 1–4; raise it only if polling proves too
+  coarse.
+- **(T6.0) T6.3:** define a propagation probe for AC-V1 on testnet (upload to one node of a
+  `rangesync` cohort, then check its neighbors' reserves), or keep AC-V1 gating only in
+  T6.1/T4.6.
