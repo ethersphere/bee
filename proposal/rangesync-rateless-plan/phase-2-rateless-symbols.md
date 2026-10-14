@@ -276,3 +276,9 @@ _(sessions append here)_
 - **(T2.0)** `Decoder.Done()` relies on ρ(0) = 1. If a `Mapper` without an all-elements symbol 0
   is ever added, the stop rule has to move into the `Mapper` interface. This is not needed for
   T2.1 / T2.7, which use the same ρ.
+- **(T6.0) Metric definitions for the decoding criteria (T2.6, with T2.2/T2.4).**
+  `symbols_per_difference` = symbols received for a range, overshoot included, ÷ differences
+  recovered in that range, observed once per decoded range with ≥ 1 difference. AC-K2 thresholds
+  assume this definition. `parts_sent{type}` / `parts_received{type}` (T1.13) need `symbols` and
+  `more` values once T2.4 accepts those parts. `index_memory_bytes` must include the three symbol
+  caches added by T2.2 (AC-R1).
