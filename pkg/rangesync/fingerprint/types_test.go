@@ -541,3 +541,144 @@ func TestRangeChildIndex(t *testing.T) {
 		}
 	})
 }
+
+// mustPanic fails the test unless f panics.
+func mustPanic(t *testing.T, name string, f func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Errorf("%s: no panic", name)
+		}
+	}()
+	f()
+}
+
+func TestRangeLimits(t *testing.T) {
+	t.Parallel()
+
+	if fingerprint.MaxBits != 255 {
+		t.Fatalf("MaxBits: got %d, want 255", fingerprint.MaxBits)
+	}
+	full := swarm.NewAddress(bytes.Repeat([]byte{0xff}, swarm.HashSize))
+
+	t.Run("child at the largest depth", func(t *testing.T) {
+		t.Parallel()
+
+		r := fingerprint.NewRange(full, fingerprint.MaxBits-64)
+		c := r.Child(64, 1<<64-1)
+		if c.Bits != fingerprint.MaxBits {
+			t.Fatalf("bits: got %d", c.Bits)
+		}
+		if !c.Equal(fingerprint.NewRange(full, fingerprint.MaxBits)) || len(c.Prefix.Bytes()) != swarm.HashSize {
+			t.Fatalf("got %x", c.Prefix.Bytes())
+		}
+		if got := binary(c.Prefix.Bytes()); got != strings.Repeat("1", 255)+"0" {
+			t.Fatalf("got %s", got)
+		}
+		if !c.Contains(full) {
+			t.Fatal("deepest child does not contain the address")
+		}
+		if got := r.ChildIndex(full, 64); got != 1<<64-1 {
+			t.Fatalf("ChildIndex: got %x", got)
+		}
+		children := fingerprint.NewRange(full, fingerprint.MaxBits-1).Children(1)
+		if len(children) != 2 || children[1].Bits != fingerprint.MaxBits {
+			t.Fatalf("Children at the largest depth: %v", children)
+		}
+	})
+
+	t.Run("documented panics", func(t *testing.T) {
+		t.Parallel()
+
+		r := fingerprint.NewRange(full, 8)
+		mustPanic(t, "Child over 64 bits", func() { r.Child(65, 0) })
+		mustPanic(t, "Child past the largest depth", func() { fingerprint.NewRange(full, 192).Child(64, 0) })
+		mustPanic(t, "Child past the largest depth by one bit", func() { fingerprint.NewRange(full, fingerprint.MaxBits).Child(1, 0) })
+		mustPanic(t, "Children over the limit", func() { r.Children(17) })
+		mustPanic(t, "Children past the largest depth", func() { fingerprint.NewRange(full, fingerprint.MaxBits).Children(1) })
+		mustPanic(t, "ChildIndex over 64 bits", func() { r.ChildIndex(full, 65) })
+	})
+}
+
+func TestRangeChildIndexIgnoresPrefixGarbage(t *testing.T) {
+	t.Parallel()
+
+	// ChildIndex reads the address it is given; a non-canonical range prefix
+	// passed as the address carries garbage bits into the index, which is why
+	// BucketSpan canonicalizes first.
+	root := fingerprint.NewRange(swarm.NewAddress(bytes.Repeat([]byte{0xff}, swarm.HashSize)), 4)
+	r := fingerprint.Range{Prefix: swarm.NewAddress([]byte{0xff, 0xff}), Bits: 8}
+	canonical := fingerprint.NewRange(r.Prefix, r.Bits)
+	if got := root.ChildIndex(canonical.Prefix, fingerprint.LeafBits); got != 0xf00 {
+		t.Fatalf("canonical: got %x, want f00", got)
+	}
+	lo, n, ok := root.BucketSpan(r, fingerprint.LeafBits)
+	if !ok || lo != 0xf00 || n != 256 {
+		t.Fatalf("BucketSpan: got lo %x n %d ok %v, want f00 256 true", lo, n, ok)
+	}
+}
+
+func TestRangeBucketSpan(t *testing.T) {
+	t.Parallel()
+
+	addr := addrFromBits(t, "10110"+"0011"+"0101"+"1100", 0xff)
+	root := fingerprint.NewRange(addr, 5)
+	other := fingerprint.NewRange(addrFromBits(t, "10111", 0x00), 5)
+
+	for _, tc := range []struct {
+		name     string
+		root     fingerprint.Range
+		r        fingerprint.Range
+		leafBits uint8
+		lo, n    uint64
+		ok       bool
+	}{
+		{"root itself", root, root, fingerprint.LeafBits, 0, 1 << fingerprint.LeafBits, true},
+		{"level-1 range", root, fingerprint.NewRange(addr, 5+4), fingerprint.LeafBits, 0b0011 << 8, 256, true},
+		{"level-2 range", root, fingerprint.NewRange(addr, 5+8), fingerprint.LeafBits, 0b0011_0101 << 4, 16, true},
+		{"bucket", root, fingerprint.NewRange(addr, 5+12), fingerprint.LeafBits, 0b0011_0101_1100, 1, true},
+		{"unaligned depth", root, fingerprint.NewRange(addr, 5+3), fingerprint.LeafBits, 0b001 << 9, 512, true},
+		{"non-canonical range", root, fingerprint.Range{Prefix: addr, Bits: 5 + 4}, fingerprint.LeafBits, 0b0011 << 8, 256, true},
+		{"non-canonical root", fingerprint.Range{Prefix: addr, Bits: 5}, fingerprint.NewRange(addr, 5+4), fingerprint.LeafBits, 0b0011 << 8, 256, true},
+		{"zero leaf bits", root, root, 0, 0, 1, true},
+		{"empty root", fingerprint.Range{}, fingerprint.NewRange(addr, 4), 8, 0b1011 << 4, 16, true},
+		{"below leaf depth", root, fingerprint.NewRange(addr, 5+13), fingerprint.LeafBits, 0, 0, false},
+		{"outside the root", root, fingerprint.NewRange(other.Prefix, 9), fingerprint.LeafBits, 0, 0, false},
+		{"shallower than the root", root, fingerprint.NewRange(addr, 4), fingerprint.LeafBits, 0, 0, false},
+		{"leaf bits over 63", fingerprint.Range{}, fingerprint.Range{}, 64, 0, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			lo, n, ok := tc.root.BucketSpan(tc.r, tc.leafBits)
+			if ok != tc.ok || lo != tc.lo || n != tc.n {
+				t.Fatalf("got lo %b n %d ok %v, want lo %b n %d ok %v", lo, n, ok, tc.lo, tc.n, tc.ok)
+			}
+		})
+	}
+
+	t.Run("matches ChildIndex of every bucket", func(t *testing.T) {
+		t.Parallel()
+
+		r := rand.New(rand.NewSource(4))
+		for n := 0; n < 500; n++ {
+			a := randomAddress(r)
+			rootBits := uint8(r.Intn(40))
+			leafBits := uint8(r.Intn(fingerprint.LeafBits + 1))
+			depth := uint8(r.Intn(int(leafBits) + 1))
+			root := fingerprint.NewRange(a, rootBits)
+			sub := fingerprint.NewRange(a, rootBits+depth)
+			lo, cnt, ok := root.BucketSpan(sub, leafBits)
+			if !ok {
+				t.Fatalf("root %s sub %s: not ok", root, sub)
+			}
+			// the buckets [lo, lo+cnt) are exactly those inside sub
+			for i := uint64(0); i < 1<<leafBits; i++ {
+				inside := sub.ContainsRange(root.Child(leafBits, i))
+				if inside != (i >= lo && i < lo+cnt) {
+					t.Fatalf("root %s sub %s leaf %d: bucket %d inside %v, span [%d, %d)", root, sub, leafBits, i, inside, lo, lo+cnt)
+				}
+			}
+		}
+	})
+}

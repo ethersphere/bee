@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -20,6 +22,17 @@ var streamNames = []string{
 	rangesync.StatusStreamName,
 	rangesync.ReconcileStreamName,
 	rangesync.FetchStreamName,
+}
+
+// resetRecordingStream counts the Reset calls a handler makes on its stream.
+type resetRecordingStream struct {
+	p2p.Stream
+	resets *atomic.Int32
+}
+
+func (s *resetRecordingStream) Reset() error {
+	s.resets.Add(1)
+	return s.Stream.Reset()
 }
 
 func TestProtocol(t *testing.T) {
@@ -67,7 +80,16 @@ func TestHandlersNotImplemented(t *testing.T) {
 			t.Parallel()
 
 			server := rangesync.New(streamtest.New(), log.Noop)
-			recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+			var resets atomic.Int32
+			recordReset := func(h p2p.HandlerFunc) p2p.HandlerFunc {
+				return func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+					return h(ctx, p, &resetRecordingStream{Stream: s, resets: &resets})
+				}
+			}
+			recorder := streamtest.New(
+				streamtest.WithProtocols(server.Protocol()),
+				streamtest.WithMiddlewares(recordReset),
+			)
 			peer := swarm.RandAddress(t)
 
 			stream, err := recorder.NewStream(context.Background(), peer, nil, rangesync.ProtocolName, rangesync.ProtocolVersion, name)
@@ -86,7 +108,11 @@ func TestHandlersNotImplemented(t *testing.T) {
 				t.Fatalf("handler error: got %v, want %v", err, rangesync.ErrNotImplemented)
 			}
 
-			// the handler reset the stream: the requester reads EOF
+			if got := resets.Load(); got != 1 {
+				t.Fatalf("handler reset the stream %d times, want 1", got)
+			}
+			// the stream is gone for the requester (streamtest maps Reset to a
+			// full close, so this alone cannot tell Reset from Close)
 			if _, err := stream.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
 				t.Fatalf("read: got %v, want %v", err, io.EOF)
 			}

@@ -519,12 +519,19 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   bits past `Bits`; `Contains` alone rejects an address shorter than `ceil(Bits/8)` bytes. Programmer
   errors panic: `Child` when `bits > 64` or `r.Bits + bits > 255` (the contract said
   `8·swarm.HashSize`, but `Bits` is a `uint8`), `ChildIndex` when `bits > 64`, and `Children` when
-  `bits > 24` (bounds the allocation; splits use 4 and buckets 12). `ID.Address()`/`StampHash()`
+  `bits > 16` or past `MaxBits`, checked before allocating (splits use 4 and buckets 12). `ID.Address()`/`StampHash()`
   return copies. Tests: `fingerprint/types_test.go` (brute-force reference via binary strings),
   `constants_test.go`, `pb/rangesync_test.go` (round trip of every message and oneof kind + pinned
   field numbers of the reserved fields), `rangesync_test.go` (spec, stub handlers via
   `streamtest`). Fuzz: `FuzzParseID`, `FuzzRange`, `pb.FuzzUnmarshal` (stable re-encoding of
   every top-level stream message).
+- **T1.1 (review round 1):** `fingerprint.MaxBits = 255` is exported (the largest `Range.Bits`;
+  peer input implying a deeper range is rejected against it). `Range.BucketSpan(r, leafBits)
+  (lo, n uint64, ok bool)` maps a range to its run of buckets below a root, canonicalizing `r`
+  first; it reports violations (root doesn't contain `r`, `r` deeper than `leafBits` below the
+  root, `leafBits > 63`) with `ok == false`, not a panic, since `r` may be peer-derived.
+  `ChildIndex` reads every bit of the address it is given, so a range prefix passed to it must be
+  canonical — use `BucketSpan` for ranges.
 - **T1.1 wantset (contract):** `pkg/rangesync/wantset` receives `ClaimDeadline` and `RejectTTL` as
   parameters and never imports `pkg/rangesync` (that would be a cycle once `fetch.go` imports
   `wantset`).
@@ -542,8 +549,8 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     bytes; `ID.Address`/`ID.StampHash` exactly 32 bytes each (`fingerprint.ParseID`).
   - **`Status.Digest` when `Count == 0`.** Proposed: empty, like `Fingerprint.Digest` (one rule for
     both messages; decodes to the zero `Summary.Digest`).
-  - **`Status.LeafBits` bound.** Proposed: reject unless `Root.Bits + LeafBits ≤ 8·swarm.HashSize`,
-    computed in `int` so a large `uint32` cannot wrap.
+  - **`Status.LeafBits` bound.** Proposed: reject unless `Root.Bits + LeafBits ≤ fingerprint.MaxBits`
+    (255, the largest `Range.Bits`), computed in `int` so a large `uint32` cannot wrap.
   - **Ownership.** Strict `pb.Range`/`pb.ID`/`pb.Fingerprint` → `fingerprint` decoding belongs to
     T1.8 (exported for T1.9); stream-level enforcement (reset, disconnect, `PeerScorer`) to T1.9.
 
@@ -614,6 +621,14 @@ _(sessions append here)_
 - **T1.1 → T1.6:** `Summary.Digest` must be special-cased to the zero value when `Count == 0`:
   keccak256 of the all-zero LtHash lanes is **not** zero, so `Digest()` of an empty bucket run
   cannot be used as is.
+- **T1.1 → T1.6/T2.2:** map a range to Fenwick bucket indices with `root.BucketSpan(r, leafBits)`,
+  not with `ChildIndex(r.Prefix, …)`: a non-canonical prefix carries bits past `r.Bits` into the
+  index (root `ff…/4`, `r = {ff ff, 8}` gives 4095 instead of 3840 → out-of-range Fenwick index).
+  Treat `ok == false` as an invalid range, not a panic.
+- **T1.1 → T1.8:** peer `pb.Range`s must be strictly decoded and canonicalized before use (the
+  strict `ParseRange` stays with T1.8, rules pending G2). Use `R.Bits >= leafDepth` (not `==`) for
+  the items branch, and reject a session whose root is deeper than its leaf depth; otherwise
+  `Child`/`Children` at depth > `fingerprint.MaxBits` (a panic) becomes reachable from peer input.
 - **T1.0 → T1.4/T1.5/T1.6 tests:** `internal.NewInmemStorage` (used by the reserve unit tests)
   has neither property: `inmemstore.Iterate` holds the store lock for the whole iteration (all
   commits stall instead of seeing a snapshot) and its transactions write through immediately (not

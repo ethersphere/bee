@@ -84,13 +84,19 @@ type RangeKey struct {
 	Bits   uint8
 }
 
+// MaxBits is the largest Bits a Range can hold (Bits is a uint8). Peer input
+// that implies a deeper range, such as Status.Root.Bits + Status.LeafBits, is
+// rejected against it.
+const MaxBits = 255
+
 const (
-	// maxDepth is the largest Bits a Range can hold.
-	maxDepth = 255
 	// maxIndexBits is the largest number of bits a uint64 child index holds.
 	maxIndexBits = 64
+	// maxSpanBits is the largest leafBits of BucketSpan, so that the bucket
+	// count 1<<leafBits fits in a uint64.
+	maxSpanBits = 63
 	// maxChildrenBits bounds the number of ranges Children allocates.
-	maxChildrenBits = 24
+	maxChildrenBits = 16
 )
 
 // NewRange returns the canonical range of the first bits bits of addr. If addr
@@ -145,15 +151,14 @@ func (r Range) ContainsRange(other Range) bool {
 // followed by the low bits bits of i, most significant bit first. With
 // bits == FanoutBits it is the i-th child of a split; with bits == LeafBits
 // below the root it is bucket i. bits must be at most 64 and r.Bits+bits at
-// most 255 (the largest Bits); Child panics otherwise. The result is
-// canonical.
+// most MaxBits; Child panics otherwise. The result is canonical.
 func (r Range) Child(bits uint8, i uint64) Range {
 	if bits > maxIndexBits {
 		panic(fmt.Sprintf("fingerprint: child bits %d over %d", bits, maxIndexBits))
 	}
 	depth := int(r.Bits) + int(bits)
-	if depth > maxDepth {
-		panic(fmt.Sprintf("fingerprint: child depth %d over %d", depth, maxDepth))
+	if depth > MaxBits {
+		panic(fmt.Sprintf("fingerprint: child depth %d over %d", depth, MaxBits))
 	}
 	p := make([]byte, prefixLen(depth))
 	n := prefixLen(int(r.Bits))
@@ -170,11 +175,14 @@ func (r Range) Child(bits uint8, i uint64) Range {
 
 // Children returns the 1<<bits sub-ranges of r that are bits bits deeper, in
 // address order: Children(bits)[i] equals Child(bits, i). They partition r.
-// bits must be at most 24 and r.Bits+bits at most 255; Children panics
-// otherwise.
+// bits must be at most 16 and r.Bits+bits at most MaxBits; Children panics
+// otherwise, before allocating.
 func (r Range) Children(bits uint8) []Range {
 	if bits > maxChildrenBits {
 		panic(fmt.Sprintf("fingerprint: children bits %d over %d", bits, maxChildrenBits))
+	}
+	if depth := int(r.Bits) + int(bits); depth > MaxBits {
+		panic(fmt.Sprintf("fingerprint: children depth %d over %d", depth, MaxBits))
 	}
 	children := make([]Range, 1<<bits)
 	for i := range children {
@@ -190,6 +198,11 @@ func (r Range) Children(bits uint8) []Range {
 // split (the level-1 index below the root). It does not check that r contains
 // addr; missing address bytes are taken as zero. bits must be at most 64;
 // ChildIndex panics otherwise.
+//
+// ChildIndex reads every bit of addr it is asked for. To locate a sub-range
+// rather than an address, pass its canonical prefix (NewRange), or use
+// BucketSpan: the prefix of a non-canonical range may carry bits past its
+// Bits that would end up in the index.
 func (r Range) ChildIndex(addr swarm.Address, bits uint8) uint64 {
 	if bits > maxIndexBits {
 		panic(fmt.Sprintf("fingerprint: child index bits %d over %d", bits, maxIndexBits))
@@ -200,6 +213,27 @@ func (r Range) ChildIndex(addr swarm.Address, bits uint8) uint64 {
 		v = v<<1 | uint64(bitAt(a, int(r.Bits)+k))
 	}
 	return v
+}
+
+// BucketSpan returns the buckets of root that r covers. The buckets are the
+// 1<<leafBits sub-ranges leafBits bits below root, numbered as by Child and
+// ChildIndex; r covers the n = 1<<(root.Bits+leafBits-r.Bits) consecutive
+// buckets starting at lo. Bits past r.Bits in r's prefix are ignored.
+//
+// r may come from a peer, so violations are reported with ok false rather
+// than a panic: root must contain r (root.ContainsRange(r)), r must be at
+// most leafBits bits below root, and leafBits must be at most 63.
+func (root Range) BucketSpan(r Range, leafBits uint8) (lo, n uint64, ok bool) {
+	if leafBits > maxSpanBits || !root.ContainsRange(r) {
+		return 0, 0, false
+	}
+	depth := r.Bits - root.Bits // root.ContainsRange(r) implies r.Bits >= root.Bits
+	if depth > leafBits {
+		return 0, 0, false
+	}
+	index := root.ChildIndex(NewRange(r.Prefix, r.Bits).Prefix, depth)
+	shift := leafBits - depth
+	return index << shift, 1 << shift, true
 }
 
 // String returns a readable form of r: the first r.Bits bits of the prefix as
