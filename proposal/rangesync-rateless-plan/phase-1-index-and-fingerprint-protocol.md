@@ -919,6 +919,49 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `int(Root.Bits) + int(LeafBits)` wraps on 32-bit builds (goreleaser ships 386 and arm).
   `ParseStatus` compares in `uint64` (equivalently, rejects `LeafBits > MaxBits` first). In
   `NewScope` both terms are already `uint8`, so the `int` sum is safe there.
+- **T1.2 open question 1 (LtHash vs ECMH): LtHash16.** Benchmarks on the 4-core dev laptop
+  (Core Ultra 7 165U, shared with other agents, load 1.6–3.5: expect ±30% noise), `go test
+  -bench -count 5`, all 0 allocs/op:
+
+  | | LtHash16 | ECMH (secp256k1, `btcec/v2`) |
+  |---|---|---|
+  | element update (expand + add into one bucket) | 4.5–5.0 µs (`Add`) | 27–33 µs (try-and-increment hash-to-curve + Jacobian add) |
+  | group op (Fenwick node) | 200–230 ns (`AddHash`/`SubHash`) | 0.79–0.86 µs (`AddNonConst`) |
+  | worst-case range query, 24 nodes (§4.3.5) | 5.7–6.4 µs | 15–19 µs |
+  | digest | 6.9–7.3 µs (keccak256 of 2 KB) | 14–20 µs (`ToAffine` inversion + keccak of 33 B) |
+  | memory per bucket / at B = 4096 | 2048 B / 8 MB | 120 B Jacobian / 480 KB (33 B / 132 KB compressed, but a Fenwick slab must stay Jacobian to avoid an inversion per op) |
+
+  Baseline: `BenchmarkReservePut` (new, `pkg/storer/reserve_bench_test.go`; disk storer, 20 000
+  stamped chunks over bins 0–7, no eviction) **150–255 µs/op** (16 KB, 315 allocs/op). Per element
+  committed, the index does one expansion plus ≤ 12 Fenwick node updates (log2 4096): LtHash ≈
+  4.7 + 12 × 0.21 ≈ **7 µs (≈ 3–5 % of a Put)**, ECMH ≈ 30 + 12 × 0.83 ≈ **40 µs (≈ 16–26 %)**. A
+  4.2M-element rebuild is ≈ 20 s of expansions for LtHash vs ≈ 2 min for ECMH. ECMH's only win is
+  ~7.5 MB of memory, which §5.3 already budgets; it loses ~5.5× per update, ~3× per range query and
+  ~2× per digest. **Decision: LtHash16** (§5.2 unchanged; §5.3 keeps the 8 MB row). ECMH code stays
+  in `fingerprint/ecmh_bench_test.go` as a throwaway benchmark (test-only, `TestECMHGroup` checks it).
+- **T1.2 `LtHash` representation (deviation from the §5.2 sketch).** `type LtHash struct{ w
+  [256]uint64 }` instead of `[1024]uint16`: four lanes per word, added with SWAR (`add16`/`sub16`,
+  carries masked at bit 15 of each lane) — `AddHash` ~3× faster than the per-uint16 loop (scratch
+  benchmark, same run: 0.47–0.66 µs vs 1.6–1.8 µs; ~210 ns in a quieter run), which is what makes the T1.3 "few µs" range target (≈ 6 µs above)
+  reachable. No `unsafe` (bee uses none). The byte format is unchanged: lane `i` is bits
+  `16·(i mod 4)` of word `i/4`, and words are read/written little-endian, so the 2048-byte
+  expansion and digest input are exactly the lanes as little-endian `uint16`, lane 0 first.
+  The method set is §5.2's (`Add(id)`, `Sub(id)`, `AddHash`, `SubHash`, `Digest`) on pointer
+  receivers, in place, aliasing allowed (`h.SubHash(h)`), 0 allocations (SHAKE/keccak state and
+  buffers come from `sync.Pool`s). Added: `Lane(i) uint16` (panics out of range), constants
+  `LtHashLanes = 1024`, `LtHashSize = 2048`. The zero value is the empty set and values compare
+  with `==`.
+- **T1.2 expansion and salt (contract for T1.6 and Phase 5).** `Expand(salt []byte, id ID) LtHash`
+  = SHAKE128(`"rangesync/v1"` ‖ salt ‖ id) → 2048 B → 1024 little-endian lanes; `Add`/`Sub` use
+  `Expand(nil, id)` (an empty salt equals nil). The input is injective (fixed prefix, fixed-size id
+  last). §7.9's `SHAKE128(anchor ‖ id)` is read as this domain-separated form: the audit (T5.1) sums
+  `e := Expand(anchor, id); acc.AddHash(&e)`. Phase 5 must use the same function on both sides.
+- **T1.2 digest.** `Digest()` = keccak256 (legacy Keccak, as `swarm` hashes) of the 2048 lane bytes.
+  The digest of the zero value is `aeffb38c…4a22da`, **not** zero (the T1.1 follow-up stands: T1.6
+  sets `Summary.Digest` to zero when `Count == 0`). Test vectors (`fingerprint/testdata/
+  lthash_vectors.json`: empty, 1/2/3 elements, negated, add-then-sub, salted) were produced by an
+  independent Python implementation (`hashlib.shake_128`, pure-Python Keccak-256, plain uint16
+  lanes); changing them is a wire change.
 
 ## Follow-ups
 _(sessions append here)_
@@ -1059,3 +1102,16 @@ _(sessions append here)_
   received): a malicious peer can keep a session open indefinitely with `Items` streams of fake,
   ascending IDs, since each page is valid on its own. Score the peer when the cap is hit with
   streams still open.
+- **T1.2 → T1.6:** the `Group` adapter is a defined type over `LtHash` (e.g. `type ltHashNode
+  LtHash` with `Add(o) → (*LtHash)(h).AddHash((*LtHash)(o))`, `Sub` → `SubHash`, `Zero` →
+  `*h = ltHashNode{}`), converted with pointer conversions. Build the rebuild slab with plain
+  per-bucket `Add(id)` and then `NewFenwickFromBuckets` (O(B) group ops), not B·log B Fenwick adds.
+  Expansion (~4.7 µs) dominates `Apply`; if a commit touches many ids, expand outside `ix.mu`
+  (`Expand(nil, id)`) and only `AddHash` under the lock.
+- **T1.2 (pre-existing, out of scope):** `BenchmarkReservePutter` (`pkg/storer/reserve_test.go`)
+  fails immediately ("chunk type unspecified: storage: invalid chunk"): it feeds
+  `storagetest.BenchmarkChunkStoreWriteSequential` chunks that `ReservePutter` rejects. T1.2 added
+  `BenchmarkReservePut` next to it instead of changing it.
+- **T1.2 (perf note for T1.8/T1.9):** `Digest` costs ~7 µs (pure-Go legacy Keccak over 2 KB), about
+  as much as a 24-node range query; a split answering 16 child fingerprints spends ~0.2 ms in
+  summaries + digests. Fine for Phase 1; cache digests per range only if profiles say so.
