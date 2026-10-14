@@ -535,7 +535,7 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
 - **T1.1 wantset (contract):** `pkg/rangesync/wantset` receives `ClaimDeadline` and `RejectTTL` as
   parameters and never imports `pkg/rangesync` (that would be a cycle once `fetch.go` imports
   `wantset`).
-- **T1.1 — G2 OPEN ITEMS (proposed, pending gate G2; not decided):**
+- **T1.1 — G2 items (decided at gate G2, 2026-10-14: all accepted as proposed below; `MaxMessageBytes` stays 1 MiB on the `reconcile` stream only):**
   - **Message size (M2).** `MaxMessageBytes = 1 MiB` (§6.2) exceeds `pkg/p2p/protobuf`'s
     `delimitedReaderMaxSize = 128 KiB`, and a root `Symbols` batch can reach ~336 KB (4096 × 82 B).
     Proposed: the `reconcile` stream builds its reader as
@@ -613,6 +613,13 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
      (`Reserve.Get` waits for `r.multx[batch]`), `Put` holds that batch lock and waits for
      `RLock` behind a waiting rebuild, and the rebuild waits for the reader. Index locks cover
      in-memory slab work only; scans (`ReserveIterateAddr`) and fetches run without them.
+- **Gates G1 and G2 (2026-10-14).** G1: accepted. The snapshot holds; `ReserveObserver.Commit`
+  keeps the §5.4 shape with the T1.0 four-point contract, including the stricter rule that
+  `ix.mu` is never held in either mode across a storer call. T1.4 and T1.6 proceed unchanged.
+  G2: the wire schema is frozen as committed in T1.1, with the decided items above (strict
+  decoding, empty digest at `Count == 0` in both `Fingerprint` and `Status`,
+  `Root.Bits + LeafBits ≤ fingerprint.MaxBits`, 1 MiB reader on `reconcile` only, strict
+  decoders owned by T1.8 and enforced by T1.9).
 
 ## Follow-ups
 _(sessions append here)_

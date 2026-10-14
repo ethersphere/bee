@@ -36,6 +36,7 @@ There are **no PRs**. Work lands on a stack of local phase branches (§3).
 | P5 | Set a git identity in the bee repo (repo config, shared by worktrees): `acud <12988138+acud@users.noreply.github.com>`. | Done |
 | P6 | Tools: `protoc` 3.21.12 (apt), `~/go/bin` on PATH, `protoc-gen-gogofaster` **v1.3.2** (not the Makefile's stale v1.3.1; the committed `*.pb.go` files and `go.mod` use v1.3.2), `gofumpt`, `gci` (`go install`, not `make install-formatters`, which runs `go get` and edits `go.mod`). Regenerating with this toolchain changes only the gzipped descriptor bytes of existing files, so T1.1 generates only `pkg/rangesync/pb`. | Done |
 | P7 | Commit the plan fixes on `docs/rangesync-rateless-proposal`, then create the phase branches (§3). | Done |
+| P10 | Host quirks found in step 0 (pass them to every implementer and verifier): `make format` rewrites ~60 unrelated files (gofumpt/gci drift; `$(go list -m)` expands empty), so check only the task's files and revert the rest; there is no `make vet` target, so run `go vet` on the touched packages; `make lint` needs `GOTOOLCHAIN=go1.26.1` (golangci-lint built with go1.26.1 vs host go1.27); no C compiler, so `-race` can't run here: substitute `-count=N -cpu=1,2,4` and flag race-relevant tests for CI. | Noted |
 | P8 | Decide whether Phase 5 runs before Phase 6 (D11). The schedule fits it in without lengthening the critical path. | **Open** |
 | P9 | `proposal/pullsync-rangesync-proposal.md` (the earlier, non-rateless proposal) is untracked. Commit it as history or leave it out. | **Open** |
 
@@ -237,9 +238,9 @@ an L task off Lane A (e.g. the analytical half of T4.6).
 
 | Gate | After | Decision | If negative |
 |---|---|---|---|
-| G1 | T1.0 | Does the IndexStore iterator give snapshot isolation? What is the final `ReserveObserver.Commit` shape? | Amend T1.4 and T1.6 in the phase file **before** step 1 starts on Lane A. Lane B continues with T1.2/T1.3, which are unaffected. |
-| G2 | T1.1 | Review the wire schema once: `Symbols`, `More`, `Status.Mapping`, `Message.AuditRound`. | Fix it in T1.1. Phases 2 and 5 assume it is frozen. |
-| G3 | T2.0 | Rateless IBLT or CertainSync? | If CertainSync, rewrite T2.1–T2.4 before T2.1 starts. Lane B takes T1.7/T1.8 from Lane C meanwhile. |
+| G1 | T1.0 | **Decided 2026-10-14: snapshot holds, `Commit` unchanged.** Does the IndexStore iterator give snapshot isolation? What is the final `ReserveObserver.Commit` shape? | Amend T1.4 and T1.6 in the phase file **before** step 1 starts on Lane A. Lane B continues with T1.2/T1.3, which are unaffected. |
+| G2 | T1.1 | **Decided 2026-10-14: frozen with the proposed defaults (phase-1 log).** Review the wire schema once: `Symbols`, `More`, `Status.Mapping`, `Message.AuditRound`. | Fix it in T1.1. Phases 2 and 5 assume it is frozen. |
+| G3 | T2.0 | **Decided 2026-10-14: Rateless IBLT.** Rateless IBLT or CertainSync? | If CertainSync, rewrite T2.1–T2.4 before T2.1 starts. Lane B takes T1.7/T1.8 from Lane C meanwhile. |
 | G4 | T1.5 | Blocking or background fill (measured: < 60 s for 4.2M items?). | A background fill adds `Busy` handling to T1.9 and changes T6.2's first case. Note that this 4-core host may not represent a production node. |
 | G5 | T1.13 | Phase 1 done: a node with `--puller-enable=false --rangesync-enable=true` syncs; coexistence green; defaults byte-identical. | Rebase the stack onto `origin/master` (§3). Confirm the Phase 5 decision (P8). |
 | G6 | T4.6 | Cache sizes (Q2), request-driven vs streamed batches (Q3), `CatchUpMinDiff` (Q9), `RoundInterval` bounds, from `pairwise_diff`. | Update constants before T6.1 so acceptance runs use the final values. |
