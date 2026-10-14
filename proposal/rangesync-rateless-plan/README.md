@@ -125,7 +125,7 @@ Tick a box when the task lands on its phase branch. The orchestrator ticks it wh
 the implementer (otherwise every task conflicts on this list).
 
 **Phase 1**
-- [ ] T1.0 Spike: snapshot isolation and lock ordering (blocks T1.4, T1.6)
+- [x] T1.0 Spike: snapshot isolation and lock ordering (blocks T1.4, T1.6)
 - [ ] T1.1 Package skeleton, protobuf, constants
 - [ ] T1.2 LtHash16 primitive (+ ECMH benchmark)
 - [ ] T1.3 Fenwick tree
