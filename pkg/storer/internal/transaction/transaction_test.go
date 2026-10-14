@@ -6,6 +6,7 @@ package transaction_test
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	test "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
@@ -185,5 +187,80 @@ func Test_TransactionStorage(t *testing.T) {
 		if !has {
 			t.Fatal("should NOT have chunk")
 		}
+	})
+}
+
+// TestErrAfterCommit checks that only an error reported after the index
+// batch was written carries ErrAfterCommit: the writes of such a transaction
+// are persisted.
+func TestErrAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sharkyStore, err := sharky.New(&dirFS{basedir: t.TempDir()}, 1, swarm.SocMaxChunkSize)
+	assert.NoError(t, err)
+	store, _, err := leveldbstore.New("", nil)
+	assert.NoError(t, err)
+	st := transaction.NewStorage(sharkyStore, store)
+	t.Cleanup(func() {
+		assert.NoError(t, st.Close())
+	})
+
+	t.Run("release after commit", func(t *testing.T) {
+		t.Parallel()
+
+		// A retrieval index entry pointing at a shard that doesn't exist:
+		// deleting the chunk releases that location after the batch commit,
+		// and the release fails.
+		addr := swarm.RandAddress(t)
+		err := store.Put(&chunkstore.RetrievalIndexItem{
+			Address:  addr,
+			Location: sharky.Location{Shard: 200, Slot: 1, Length: 10},
+			RefCnt:   1,
+		})
+		assert.NoError(t, err)
+
+		err = st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Delete(ctx, addr)
+		})
+		if !errors.Is(err, transaction.ErrAfterCommit) {
+			t.Fatalf("got %v, want an error carrying ErrAfterCommit", err)
+		}
+		if !errors.Is(err, sharky.ErrShardNotFound) {
+			t.Fatalf("got %v, want the release error to be kept", err)
+		}
+		has, err := st.IndexStore().Has(&chunkstore.RetrievalIndexItem{Address: addr})
+		assert.NoError(t, err)
+		if has {
+			t.Fatal("the transaction's delete was not committed")
+		}
+	})
+
+	t.Run("callback error", func(t *testing.T) {
+		t.Parallel()
+
+		errTest := errors.New("test error")
+		item := &cache.CacheEntryItem{Address: swarm.RandAddress(t), AccessTimestamp: 1}
+		err := st.Run(ctx, func(s transaction.Store) error {
+			assert.NoError(t, s.IndexStore().Put(item))
+			return errTest
+		})
+		if !errors.Is(err, errTest) || errors.Is(err, transaction.ErrAfterCommit) {
+			t.Fatalf("got %v, want the callback error without ErrAfterCommit", err)
+		}
+		has, err := st.IndexStore().Has(item)
+		assert.NoError(t, err)
+		if has {
+			t.Fatal("the failed transaction was committed")
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, test.GenerateTestRandomChunk())
+		})
+		assert.NoError(t, err)
 	})
 }

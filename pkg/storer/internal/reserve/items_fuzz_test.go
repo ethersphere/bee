@@ -185,3 +185,77 @@ func FuzzRadiusItemUnmarshal(f *testing.F) {
 		}
 	})
 }
+
+// FuzzChunkAddrItemUnmarshal fuzzes the persisted ChunkAddrItem codec. The
+// value (batch ID ‖ chunk type) is read back from the local LevelDB store, so
+// Unmarshal must return an error, never panic, on a truncated or corrupt
+// entry. It must leave the key fields (address, stamp hash) untouched, and on
+// success the codec round-trips.
+func FuzzChunkAddrItemUnmarshal(f *testing.F) {
+	addr := swarm.NewAddress(bytes.Repeat([]byte{0x03}, swarm.HashSize))
+	stampHash := bytes.Repeat([]byte{0x34}, swarm.HashSize)
+	valid, err := (&ChunkAddrItem{
+		Address:   addr,
+		StampHash: stampHash,
+		BatchID:   bytes.Repeat([]byte{0x56}, swarm.HashSize),
+		ChunkType: swarm.ChunkTypeSingleOwner,
+	}).Marshal()
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add([]byte(nil))
+	f.Add(make([]byte, chunkAddrItemSize-1))
+	f.Add(make([]byte, chunkAddrItemSize))
+	f.Add(make([]byte, chunkAddrItemSize+1))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		item := &ChunkAddrItem{Address: addr, StampHash: stampHash}
+		if err := item.Unmarshal(data); err != nil { // must not panic on any input
+			return
+		}
+		if len(data) != chunkAddrItemSize {
+			t.Fatalf("decoded buffer of len %d, want %d", len(data), chunkAddrItemSize)
+		}
+		if !item.Address.Equal(addr) || !bytes.Equal(item.StampHash, stampHash) {
+			t.Fatal("unmarshal changed the key fields")
+		}
+		out, err := item.Marshal()
+		if err != nil {
+			t.Fatalf("marshal after successful decode: %v", err)
+		}
+		if !bytes.Equal(out, data) {
+			t.Fatalf("codec not round-trip stable: decoded %x, re-marshaled %x", data, out)
+		}
+	})
+}
+
+// FuzzChunkAddrValidItemUnmarshal fuzzes the address index validity marker
+// codec: any byte slice decodes or errors without panicking, and on success
+// the codec round-trips.
+func FuzzChunkAddrValidItemUnmarshal(f *testing.F) {
+	valid, err := (&ChunkAddrValidItem{Version: ChunkAddrIndexVersion}).Marshal()
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add([]byte(nil))
+	f.Add(make([]byte, 2))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		item := &ChunkAddrValidItem{}
+		if err := item.Unmarshal(data); err != nil { // must not panic on any input
+			return
+		}
+		if len(data) != 1 {
+			t.Fatalf("decoded buffer of len %d, want 1", len(data))
+		}
+		out, err := item.Marshal()
+		if err != nil {
+			t.Fatalf("marshal after successful decode: %v", err)
+		}
+		if !bytes.Equal(out, data) {
+			t.Fatalf("codec not round-trip stable: decoded %x, re-marshaled %x", data, out)
+		}
+	})
+}

@@ -180,7 +180,7 @@ func ReserveRepairer(
 						if err != nil {
 							if errors.Is(err, storage.ErrNotFound) {
 								missingChunks.Add(1)
-								return reserve.RemoveChunkWithItem(context.Background(), s, item)
+								return reserve.RemoveChunkWithItem(context.Background(), s, item, false)
 							}
 							return err
 						}
@@ -188,7 +188,7 @@ func ReserveRepairer(
 						chunkType := chunkTypeFunc(chunk)
 						if chunkType == swarm.ChunkTypeUnspecified {
 							invalidSharkyChunks.Add(1)
-							return reserve.RemoveChunkWithItem(context.Background(), s, item)
+							return reserve.RemoveChunkWithItem(context.Background(), s, item, false)
 						}
 
 						item.BinID = newID(int(item.Bin))

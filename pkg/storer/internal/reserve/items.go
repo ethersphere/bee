@@ -201,6 +201,101 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
+// ChunkAddrItem orders the reserve's (chunk, stamp) pairs by chunk address for
+// range reconciliation. It is written only when the reserve address index is
+// enabled, in the same transaction as the ChunkBinItem of the same pair.
+// Address and StampHash form the key; the value holds BatchID and ChunkType,
+// so Unmarshal leaves the key fields untouched and an iteration recovers them
+// from the result ID.
+type ChunkAddrItem struct {
+	Address   swarm.Address
+	StampHash []byte
+	BatchID   []byte
+	ChunkType swarm.ChunkType
+}
+
+func (c *ChunkAddrItem) Namespace() string {
+	return "chunkAddr"
+}
+
+// address/stampHash
+func (c *ChunkAddrItem) ID() string {
+	return c.Address.ByteString() + string(c.StampHash)
+}
+
+func (c *ChunkAddrItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
+}
+
+func (c *ChunkAddrItem) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &ChunkAddrItem{
+		Address:   c.Address.Clone(),
+		StampHash: copyBytes(c.StampHash),
+		BatchID:   copyBytes(c.BatchID),
+		ChunkType: c.ChunkType,
+	}
+}
+
+const chunkAddrItemSize = swarm.HashSize + 1
+
+// Marshal encodes BatchID (32 bytes) ‖ ChunkType (1 byte).
+func (c *ChunkAddrItem) Marshal() ([]byte, error) {
+	if c.Address.IsZero() {
+		return nil, errMarshalInvalidAddress
+	}
+	buf := make([]byte, chunkAddrItemSize)
+	copy(buf[:swarm.HashSize], c.BatchID)
+	buf[swarm.HashSize] = uint8(c.ChunkType)
+	return buf, nil
+}
+
+// Unmarshal decodes the value into BatchID and ChunkType.
+func (c *ChunkAddrItem) Unmarshal(buf []byte) error {
+	if len(buf) != chunkAddrItemSize {
+		return errUnmarshalInvalidSize
+	}
+	c.BatchID = copyBytes(buf[:swarm.HashSize])
+	c.ChunkType = swarm.ChunkType(buf[swarm.HashSize])
+	return nil
+}
+
+// ChunkAddrIndexVersion is the version of the address index layout recorded in
+// its validity marker.
+const ChunkAddrIndexVersion uint8 = 1
+
+// ChunkAddrValidItem marks the ChunkAddrItem namespace as complete. It is
+// written last by the address index fill and removed when the index is
+// disabled.
+type ChunkAddrValidItem struct {
+	Version uint8
+}
+
+func (c *ChunkAddrValidItem) Namespace() string { return "chunkAddrValid" }
+func (c *ChunkAddrValidItem) ID() string        { return "" }
+func (c *ChunkAddrValidItem) String() string    { return c.Namespace() }
+
+func (c *ChunkAddrValidItem) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &ChunkAddrValidItem{Version: c.Version}
+}
+
+func (c *ChunkAddrValidItem) Marshal() ([]byte, error) {
+	return []byte{c.Version}, nil
+}
+
+func (c *ChunkAddrValidItem) Unmarshal(buf []byte) error {
+	if len(buf) != 1 {
+		return errUnmarshalInvalidSize
+	}
+	c.Version = buf[0]
+	return nil
+}
+
 // BinItem stores the latest binIDs for each bin between 0 and swarm.MaxBins
 type BinItem struct {
 	Bin   uint8

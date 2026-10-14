@@ -192,9 +192,30 @@ func (t *transaction) Commit() (err error) {
 			err = errors.Join(err, fmt.Errorf("failed releasing location after commit %s: %w", l, rerr))
 		}
 	}
+	if err != nil {
+		return &afterCommitError{err: err}
+	}
 
-	return err
+	return nil
 }
+
+// ErrAfterCommit is carried (test it with errors.Is) by an error that Commit,
+// and so Run, report after the transaction's index batch was written: the
+// writes of that transaction are persisted. Every other error from Commit or
+// Run means nothing was written.
+var ErrAfterCommit = errors.New("transaction: error after commit")
+
+// afterCommitError marks err as reported after the batch commit, keeping its
+// message.
+type afterCommitError struct {
+	err error
+}
+
+func (e *afterCommitError) Error() string { return e.err.Error() }
+
+func (e *afterCommitError) Unwrap() error { return e.err }
+
+func (e *afterCommitError) Is(target error) bool { return target == ErrAfterCommit }
 
 // IndexStore gives access to the index store of the transaction.
 // Note that no writes are persisted to the disk until the commit is called.

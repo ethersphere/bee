@@ -5,6 +5,8 @@
 package reserve_test
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestReserveItems(t *testing.T) {
@@ -63,6 +67,58 @@ func TestReserveItems(t *testing.T) {
 					Radius: 9,
 				},
 				Factory: func() storage.Item { return new(reserve.RadiusItem) },
+			},
+		},
+		{
+			// Address and StampHash form the key, not the value, so the
+			// value round trip restores BatchID and ChunkType only.
+			name: "ChunkAddrItem",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item: &reserve.ChunkAddrItem{
+					Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+					StampHash: storagetest.MaxAddressBytes[:],
+					BatchID:   storagetest.MaxAddressBytes[:],
+					ChunkType: swarm.ChunkTypeSingleOwner,
+				},
+				Factory: func() storage.Item { return new(reserve.ChunkAddrItem) },
+				CmpOpts: []cmp.Option{cmpopts.IgnoreFields(reserve.ChunkAddrItem{}, "Address", "StampHash")},
+			},
+		},
+		{
+			name: "ChunkAddrValidItem",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item:    &reserve.ChunkAddrValidItem{Version: reserve.ChunkAddrIndexVersion},
+				Factory: func() storage.Item { return new(reserve.ChunkAddrValidItem) },
+			},
+		},
+		{
+			name: "ChunkAddrItem zero address",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item:       &reserve.ChunkAddrItem{BatchID: storagetest.MaxAddressBytes[:]},
+				Factory:    func() storage.Item { return new(reserve.ChunkAddrItem) },
+				MarshalErr: reserve.ErrMarshalInvalidAddress,
+			},
+		},
+		{
+			name: "ChunkAddrItem invalid size",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item: &storagetest.ItemStub{
+					MarshalBuf:   []byte{0xFF},
+					UnmarshalBuf: []byte{0xFF},
+				},
+				Factory:      func() storage.Item { return new(reserve.ChunkAddrItem) },
+				UnmarshalErr: reserve.ErrUnmarshalInvalidSize,
+			},
+		},
+		{
+			name: "ChunkAddrValidItem invalid size",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item: &storagetest.ItemStub{
+					MarshalBuf:   []byte{0xFF, 0xFF},
+					UnmarshalBuf: []byte{0xFF, 0xFF},
+				},
+				Factory:      func() storage.Item { return new(reserve.ChunkAddrValidItem) },
+				UnmarshalErr: reserve.ErrUnmarshalInvalidSize,
 			},
 		},
 		{
@@ -145,4 +201,91 @@ func TestReserveItems(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestChunkAddrItem(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.RandAddress(t)
+	stampHash := swarm.RandAddress(t).Bytes()
+	batchID := swarm.RandAddress(t).Bytes()
+	item := &reserve.ChunkAddrItem{
+		Address:   addr,
+		StampHash: stampHash,
+		BatchID:   batchID,
+		ChunkType: swarm.ChunkTypeContentAddressed,
+	}
+
+	t.Run("key", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := item.Namespace(), "chunkAddr"; got != want {
+			t.Fatalf("namespace %q, want %q", got, want)
+		}
+		if got, want := item.ID(), string(addr.Bytes())+string(stampHash); got != want {
+			t.Fatalf("id %x, want address ‖ stamp hash %x", got, want)
+		}
+		if got, want := item.String(), "chunkAddr/"+item.ID(); got != want {
+			t.Fatalf("string %q, want %q", got, want)
+		}
+		// The key orders by address first, so a range of addresses is a
+		// contiguous run of keys.
+		other := &reserve.ChunkAddrItem{Address: addr, StampHash: bytes.Repeat([]byte{0xFF}, swarm.HashSize)}
+		if !bytes.HasPrefix([]byte(other.ID()), addr.Bytes()) {
+			t.Fatal("id does not start with the address")
+		}
+	})
+
+	t.Run("unmarshal keeps the key fields", func(t *testing.T) {
+		t.Parallel()
+
+		buf, err := item.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(buf) != swarm.HashSize+1 {
+			t.Fatalf("value size %d, want %d", len(buf), swarm.HashSize+1)
+		}
+		got := &reserve.ChunkAddrItem{Address: addr, StampHash: stampHash}
+		if err := got.Unmarshal(buf); err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(item, got); diff != "" {
+			t.Fatalf("round trip mismatch (-want +have):\n%s", diff)
+		}
+		buf[0] ^= 0xFF
+		if bytes.Equal(got.BatchID[:1], buf[:1]) {
+			t.Fatal("unmarshaled batch id aliases the value buffer")
+		}
+	})
+
+	t.Run("clone is deep", func(t *testing.T) {
+		t.Parallel()
+
+		c := item.Clone().(*reserve.ChunkAddrItem)
+		if diff := cmp.Diff(item, c); diff != "" {
+			t.Fatalf("clone mismatch (-want +have):\n%s", diff)
+		}
+		c.StampHash[0] ^= 0xFF
+		c.BatchID[0] ^= 0xFF
+		if c.StampHash[0] == item.StampHash[0] || c.BatchID[0] == item.BatchID[0] {
+			t.Fatal("clone shares byte slices with the original")
+		}
+		var nilItem *reserve.ChunkAddrItem
+		if nilItem.Clone() != nil {
+			t.Fatal("clone of nil item is not nil")
+		}
+	})
+
+	t.Run("valid marker", func(t *testing.T) {
+		t.Parallel()
+
+		m := &reserve.ChunkAddrValidItem{}
+		if m.Namespace() != "chunkAddrValid" || m.ID() != "" || m.String() != "chunkAddrValid" {
+			t.Fatalf("marker key %q/%q/%q", m.Namespace(), m.ID(), m.String())
+		}
+		if err := m.Unmarshal(nil); !errors.Is(err, reserve.ErrUnmarshalInvalidSize) {
+			t.Fatalf("unmarshal of empty value: %v", err)
+		}
+	})
 }

@@ -81,7 +81,7 @@ func removeRogueChunks(st transaction.Storage, logger log.Logger) func() error {
 						Address:   item.Address,
 						BinID:     item.BinID,
 						StampHash: item.StampHash,
-					})
+					}, false)
 					if err != nil {
 						return fmt.Errorf("remove chunk %s: %w", item.Address, err)
 					}

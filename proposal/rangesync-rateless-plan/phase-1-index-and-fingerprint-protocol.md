@@ -807,6 +807,41 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   before the observer is registered (… the T1.5 fill)" is superseded: the fill is never
   reported regardless of timing (a background fill runs concurrently with `Commit`); only the
   `Put`, eviction and `Reset` paths are.
+- **T1.4 (implementation) reserve API:** `reserve.New(..., opts ...Option)` with
+  `WithAddrIndex(bool)` (default off; existing callers unchanged). `(*Reserve).SetObserver(o)
+  error` checks, in order: index disabled → `ErrAddrIndexDisabled`, nil → `ErrNilObserver`, an
+  atomic once-flag → `ErrObserverRegistered` (a rejected nil registration does not use up the
+  slot), then takes the registration write lock. Every set-changing transaction goes through
+  one helper, `(*Reserve).run`, which with the index disabled is the old `r.st.Run` call (no
+  lock, no wrapping), with the index on and no observer runs under the registration read lock
+  without wrapping or allocating, and otherwise wraps the transaction in `Commit`. The exported
+  package-level `RemoveChunkWithItem`, `RemoveChunkMetaData` and
+  `DeleteCorruptedChunkMetadata` take an explicit `addrIndex bool`; `recover.go` and the
+  migrations (`removeRogueChunks.go`, `reserveRepair.go`) pass `false` until T1.5 plumbs
+  `storer.Options.ReserveAddrIndex` (follow-up below).
+- **T1.4 (implementation) exact deltas:** a `ChunkAddrItem` delete always checks existence first
+  (inside the same transaction, under the locks that serialize that key) and emits `−id` only
+  for a deleted entry; a put reads existence only when recording a delta (so the index-on,
+  no-observer path costs no extra read) and emits `+id` only for an entry that did not exist.
+  `Reset` deletes the `ChunkAddrItem` in each per-item transaction and leaves the validity marker
+  (an emptied index is still complete); it does not sweep `chunkAddr` keys that have no
+  `BatchRadiusItem`, since none can exist by construction.
+- **T1.4 (implementation) `chunkAddrValid` marker:** `ChunkAddrValidItem{Version uint8}`, value
+  is one version byte (`ChunkAddrIndexVersion = 1`). The storage item test suite rejects an
+  empty value, and the version lets a later layout change force a refill.
+- **T1.4 (implementation) post-commit errors:** `transaction.ErrAfterCommit` is carried (via
+  `errors.Is`) only by the post-commit sharky release errors of `Commit`; an unexported wrapper
+  keeps the error message unchanged, so callers that don't look for it see the same error as
+  before. The reserve's `run` keeps such an error out of `run`'s return (full delta delivered)
+  and returns it after `Commit`.
+- **T1.4 (implementation) test sensitivity (manual negative controls, not committed):**
+  releasing the registration read lock before an unwrapped transaction made
+  `TestAddrIndexRegistrationRace` fail in 9/9 rounds; recording `−id` without the existence
+  check failed `TestAddrIndexAbsentItem`; treating `ErrAfterCommit` as a failure failed
+  `TestAddrIndexPostCommitError`. Loading the observer before storing the radius in `SetRadius`
+  is caught by `TestAddrIndexRadiusRegistrationRace` only with the window widened (100 µs
+  sleep): the natural window is a few instructions, so that test is a smoke test and relies on
+  `-race` in CI.
 
 - **T1.8 (contract): files and names.** `session.go` (`Session`, `NewInitiator`, `NewResponder`,
   `Handle`, `Config`, `Local`, `Summarizer`, `Striper`, `Decide`/`Decision`, `ErrPeerBusy`),
@@ -1132,3 +1167,12 @@ _(sessions append here)_
   empty anchor would make the audit equal the plain fingerprint and silently defeat it. `audit.Compute`
   must reject `len(anchor) == 0` before computing (an error, the round's audit skipped with its
   metric). An all-zero 32-byte anchor is fine: it is still a distinct salt.
+- **T1.4 → T1.5:** construct the reserve with `reserve.WithAddrIndex(opts.ReserveAddrIndex)`
+  and pass the same value to `DeleteCorruptedChunkMetadata` (recovery) and
+  `RemoveChunkWithItem` (migrations); `SetReserveObserver` can wrap `(*Reserve).SetObserver`
+  and its three errors. Treat a `ChunkAddrValidItem` whose `Version` differs from
+  `ChunkAddrIndexVersion` as no marker (refill).
+- **T1.4 (CI, no cgo on the dev host):** run with `-race`: `TestAddrIndexRegistrationRace`,
+  `TestAddrIndexRadiusRegistrationRace`, `TestAddrIndexSetObserver`, `TestAddrIndexEvict`,
+  `TestAddrIndexReset`, `TestAddrIndexProperty` (`pkg/storer/internal/reserve`). Here they ran
+  with `-count=10 -cpu=1,2,4` instead.

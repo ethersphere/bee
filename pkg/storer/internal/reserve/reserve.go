@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,17 @@ import (
 
 const reserveScope = "reserve"
 
+var (
+	// ErrAddrIndexDisabled is returned when registering an observer on a
+	// reserve whose address index is disabled.
+	ErrAddrIndexDisabled = errors.New("reserve: address index disabled")
+	// ErrNilObserver is returned when registering a nil observer.
+	ErrNilObserver = errors.New("reserve: nil observer")
+	// ErrObserverRegistered is returned when an observer is already
+	// registered; there is one observer, registered once.
+	ErrObserverRegistered = errors.New("reserve: observer already registered")
+)
+
 type Reserve struct {
 	baseAddr     swarm.Address
 	radiusSetter topology.SetStorageRadiuser
@@ -42,6 +54,27 @@ type Reserve struct {
 
 	multx *multex.Multex
 	st    transaction.Storage
+
+	// addrIndex enables the ChunkAddrItem index. When it is false nothing
+	// below is used: no ChunkAddrItem is written and no observer can be
+	// registered.
+	addrIndex bool
+	// obsMu is the registration lock. Every set-changing transaction runs
+	// under its read lock, taken in the goroutine that runs the
+	// transaction; SetObserver takes the write lock, so it returns only
+	// after the transactions that started without the observer committed.
+	obsMu       sync.RWMutex
+	observer    Observer // guarded by obsMu
+	obsRegister atomic.Bool
+}
+
+// Option configures a Reserve.
+type Option func(*Reserve)
+
+// WithAddrIndex enables or disables the address index (ChunkAddrItem) and
+// with it the observer hook. It is disabled by default.
+func WithAddrIndex(enabled bool) Option {
+	return func(r *Reserve) { r.addrIndex = enabled }
 }
 
 func New(
@@ -50,6 +83,7 @@ func New(
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,
+	opts ...Option,
 ) (*Reserve, error) {
 	rs := &Reserve{
 		baseAddr:     baseAddr,
@@ -58,6 +92,9 @@ func New(
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
 		multx:        multex.New(),
+	}
+	for _, o := range opts {
+		o(rs)
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
@@ -131,7 +168,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	var shouldIncReserveSize bool
 
-	err = r.st.Run(ctx, func(s transaction.Store) error {
+	err = r.run(ctx, func(s transaction.Store, tx *addrTx) error {
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -179,6 +216,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
 					stampindex.Delete(s.IndexStore(), reserveScope, oldStamp),
 					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, oldStamp),
+					tx.delete(s.IndexStore(), oldBatchRadiusItem.Address, oldBatchRadiusItem.StampHash, oldBatchRadiusItem.BatchID),
 				)
 				if err != nil {
 					return err
@@ -207,6 +245,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						ChunkType: chunkType,
 						StampHash: stampHash,
 					}),
+					tx.put(s.IndexStore(), chunk.Address(), stampHash, chunk.Stamp().BatchID(), chunkType),
 				)
 				if err != nil {
 					return err
@@ -227,7 +266,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
+			err = r.removeChunk(ctx, s, tx, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 			}
@@ -261,6 +300,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				ChunkType: chunkType,
 				StampHash: stampHash,
 			}),
+			tx.put(s.IndexStore(), chunk.Address(), stampHash, chunk.Stamp().BatchID(), chunkType),
 		)
 		if err != nil {
 			return err
@@ -398,8 +438,8 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-chunk", func() error {
-				err := r.st.Run(ctx, func(s transaction.Store) error {
-					return RemoveChunkWithItem(ctx, s, item)
+				err := r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+					return removeChunkWithItem(ctx, s, tx, item)
 				})
 				if err != nil {
 					return err
@@ -413,8 +453,8 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range pinnedEvictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-metadata", func() error {
-				err := r.st.Run(ctx, func(s transaction.Store) error {
-					return RemoveChunkMetaData(ctx, s, item)
+				err := r.run(ctx, func(s transaction.Store, tx *addrTx) error {
+					return removeChunkMetaData(ctx, s, tx, item)
 				})
 				if err != nil {
 					return err
@@ -435,6 +475,7 @@ func (r *Reserve) EvictBatchBin(
 func (r *Reserve) removeChunk(
 	ctx context.Context,
 	trx transaction.Store,
+	tx *addrTx,
 	chunkAddress swarm.Address,
 	batchID []byte,
 	stampHash []byte,
@@ -449,12 +490,24 @@ func (r *Reserve) removeChunk(
 	if err != nil {
 		return err
 	}
-	return RemoveChunkWithItem(ctx, trx, item)
+	return removeChunkWithItem(ctx, trx, tx, item)
 }
 
+// RemoveChunkWithItem removes the chunk and all its reserve entries. With
+// addrIndex set it also deletes the chunk's ChunkAddrItem, if present.
 func RemoveChunkWithItem(
 	ctx context.Context,
 	trx transaction.Store,
+	item *BatchRadiusItem,
+	addrIndex bool,
+) error {
+	return removeChunkWithItem(ctx, trx, addrTxFor(addrIndex), item)
+}
+
+func removeChunkWithItem(
+	ctx context.Context,
+	trx transaction.Store,
+	tx *addrTx,
 	item *BatchRadiusItem,
 ) error {
 	var errs error
@@ -470,15 +523,27 @@ func RemoveChunkWithItem(
 	return errors.Join(errs,
 		trx.IndexStore().Delete(item),
 		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		tx.delete(trx.IndexStore(), item.Address, item.StampHash, item.BatchID),
 		trx.ChunkStore().Delete(ctx, item.Address),
 	)
 }
 
 // RemoveChunkMetaData removes chunk reserve metadata from reserve indexes but keeps the cunks in the chunkstore.
-// used at pinned data eviction
+// used at pinned data eviction. With addrIndex set it also deletes the
+// chunk's ChunkAddrItem, if present.
 func RemoveChunkMetaData(
 	ctx context.Context,
 	trx transaction.Store,
+	item *BatchRadiusItem,
+	addrIndex bool,
+) error {
+	return removeChunkMetaData(ctx, trx, addrTxFor(addrIndex), item)
+}
+
+func removeChunkMetaData(
+	_ context.Context,
+	trx transaction.Store,
+	tx *addrTx,
 	item *BatchRadiusItem,
 ) error {
 	var errs error
@@ -494,6 +559,7 @@ func RemoveChunkMetaData(
 	return errors.Join(errs,
 		trx.IndexStore().Delete(item),
 		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		tx.delete(trx.IndexStore(), item.Address, item.StampHash, item.BatchID),
 	)
 }
 
@@ -502,7 +568,9 @@ func RemoveChunkMetaData(
 // to be called from the recovery path, where only a storage.IndexStore (not a
 // full transaction.Store) is available. If the chunk has no reserve metadata
 // (e.g. it belongs to the upload store or cache), the function is a no-op.
-func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Address, addr swarm.Address) error {
+// With addrIndex set it also deletes the chunk's ChunkAddrItem, if present.
+// Nothing is reported to an observer: recovery runs before one can exist.
+func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Address, addr swarm.Address, addrIndex bool) error {
 	stamp, err := chunkstamp.Load(store, reserveScope, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -535,6 +603,7 @@ func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Addre
 		chunkstamp.DeleteWithStamp(store, reserveScope, addr, stamp),
 		store.Delete(batchRadiusItem),
 		store.Delete(&ChunkBinItem{Bin: bin, BinID: batchRadiusItem.BinID}),
+		addrTxFor(addrIndex).delete(store, addr, stampHash, batchRadiusItem.BatchID),
 	)
 }
 
@@ -631,11 +700,12 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	}
 	for _, item := range bRitems {
 		eg.Go(safe.RunFunc(r.logger, "reserve-cleanup-delete-chunk", func() error {
-			return r.st.Run(ctx, func(s transaction.Store) error {
+			return r.run(ctx, func(s transaction.Store, tx *addrTx) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
 					s.IndexStore().Delete(item),
 					s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+					tx.delete(s.IndexStore(), item.Address, item.StampHash, item.BatchID),
 				)
 			})
 		}))
@@ -691,6 +761,10 @@ func (r *Reserve) Reset(ctx context.Context) error {
 
 	r.size.Store(0)
 
+	if o := r.loadObserver(); o != nil {
+		o.Reset()
+	}
+
 	return nil
 }
 
@@ -717,12 +791,22 @@ func (r *Reserve) EvictionTarget() int {
 	return int(r.size.Load()) - r.capacity
 }
 
+// SetRadius sets and persists the storage radius. The new radius is in effect
+// before it is persisted, so the observer, if any, is notified at the end
+// whether or not persisting succeeded.
 func (r *Reserve) SetRadius(rad uint8) error {
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
-	return r.st.Run(context.Background(), func(s transaction.Store) error {
+	err := r.st.Run(context.Background(), func(s transaction.Store) error {
 		return s.IndexStore().Put(&radiusItem{Radius: rad})
 	})
+	// Load the observer after storing the radius: a SetRadius racing with
+	// SetObserver either sees the observer or stored the radius before
+	// registration returned.
+	if o := r.loadObserver(); o != nil {
+		o.RadiusChanged(rad)
+	}
+	return err
 }
 
 func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
