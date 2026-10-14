@@ -1038,6 +1038,67 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   independent Python implementation (`hashlib.shake_128`, pure-Python Keccak-256, plain uint16
   lanes); changing them is a wire change.
 
+- **T1.6 (contract): files and API.** `fingerprint/index.go` + `fingerprint/metrics.go` and
+  `rangesync/indexer.go`. `fingerprint`: `NewIndex(IndexOptions{LeafBits, RootChangeDebounce})`
+  (`LeafBits` 0 = `fingerprint.LeafBits`, other values ≤ 16 for tests; panics above),
+  `Index.{LeafBits, Commit, Apply, Summary, RootSummary, Rebuild, Reset, SubscribeRootChange,
+  Close, Metrics}`, sentinels `ErrBusy`, `ErrBelowLeaf`, `ErrOutsideRoot`. `Rebuild(root,
+  iterate func(fn func(ID) error) error) error` and `Summary(r) (Summary, error)` are §5.2's
+  signatures, so `*Index` satisfies T1.8's `Summarizer`. Beyond the task text, each needed by a
+  consumer: `Commit(run func() (adds, removes []ID, err error)) error` (the adapter in
+  `pkg/rangesync` must hold `ix.mu` across `run`; exposing the lock instead would leak it),
+  `RootSummary()` (root and its summary under one lock for `Status`; `Summary(root)` after a
+  separate root read races a swap), `LeafBits()` (`Status.LeafBits`), `ErrOutsideRoot` (a range of
+  a session scoped on a root the index has moved away from, e.g. after a radius increase; distinct
+  from `ErrBelowLeaf`, which means "scan"), `Close()` (stops the debounce timer), `Metrics()`.
+  `SubscribeRootChange() (c <-chan struct{}, unsubscribe func())` follows kademlia's
+  `SubscribeTopologyChange`: buffer of one, coalescing, trailing debounce, `unsubscribe` closes.
+- **T1.6 (contract): group adapters are unexported.** `countNode uint32` (mod 2^32) and
+  `ltHashNode LtHash` (`Add`/`Sub` → `AddHash`/`SubHash`, `Zero`), per the T1.2 follow-up. The
+  Index is their only user and T2.2 adds the symbol adapter in the same package; `Fenwick` was
+  exported only because it had no production caller yet. The contract commit leaves them (and the
+  unexported Index state) out, since `unused` rejects them without callers; their form and the
+  memory (16 KB + 8 MB at B = 4096) are in the `Index` godoc.
+- **T1.6 (contract): locking.** `mu` (RW) → `slabMu` (RW: `Commit`/`Apply` write, `Summary`
+  read) or `nextMu` (the slab being built), never `slabMu` and `nextMu` together; the subscription
+  mutex last. Deltas arriving during a rebuild go straight into the new slab's plain bucket sums
+  under `nextMu` (bounded memory) rather than into a queue drained at the swap; the rebuild's own
+  additions take `nextMu` without `mu`. The T1.2 follow-up "expand outside `ix.mu`" cannot hold for
+  `Commit`: the delta is known only after `run`, and must be applied before the read lock is
+  released (step 4). The expansion runs under `mu` (R) but outside `slabMu`/`nextMu`, so only the
+  2 KB additions are serialized.
+- **T1.6 (contract): `Summary` while rebuilding.** The live slab keeps answering for its own root.
+  Order: `r` inside the live root → `ErrBelowLeaf` if deeper than leaf depth, else the answer;
+  otherwise `ErrBusy` if a running rebuild's root contains `r` or there is no live slab; otherwise
+  `ErrOutsideRoot`. `Rebuild` returns `ErrBusy` when another runs, an error for
+  `root.Bits + LeafBits > MaxBits`, and on an `iterate` error discards the new slab and keeps the
+  live one (with none, the index returns to dropping deltas).
+- **T1.6 (contract): `Reset` discards and rebuilds instead of zeroing.** `Reserve.Reset` holds no
+  `r.multx` across its per-item transactions, so a `Put` can commit between the last per-item
+  commit and `observer.Reset()`; zeroing the slab would lose it forever. `Index.Reset` drops the
+  live slab (`Summary` → `ErrBusy`; deltas dropped unless a rebuild runs, whose snapshot plus
+  delta stream stays exact) and the Indexer forces a rebuild (clears the last completed root and
+  queues a wake-up). In production `observer.Reset` is practically unreachable: `node.go` calls
+  `ResetReserve` right after `storer.New`, before `rangesync` exists.
+- **T1.6 (contract): Indexer and its local interface.** `IndexerStore{ReserveIterateAddr,
+  ReserveAddrIndexReady, StorageRadius}` with §5.4's signatures and `storer.ChunkID`;
+  `NewIndexer(index, store, overlay, logger, IndexerOptions{ReadyPollInterval,
+  RebuildRetryInterval})`, `Start()`, `Close()`, and the three `storer.ReserveObserver` methods
+  (compile-time check). `SetReserveObserver` is **not** in the interface: its failure mode is still
+  open (T1.4 → T1.5 round 2 follow-up), so the caller (T1.9) registers the Indexer and then calls
+  `Start`, which queues the initial rebuild; the goroutine waits for `ReserveAddrIndexReady()` by
+  polling (§5.4 has no notification), then reads `StorageRadius()` and rebuilds at
+  `NewRange(overlay, radius)` with one `ReserveIterateAddr(root.Prefix, root.Bits, nil, …)` call.
+  Beyond the task text: a failed rebuild is retried after `RebuildRetryInterval` (default 10 s);
+  otherwise a failure with no later `RadiusChanged` leaves `rangesync` Busy forever. `Close`
+  cancels a running rebuild through the iterate callback's error.
+- **T1.6 (contract): test store.** The T1.0 follow-up asks for `transaction.NewStorage` over
+  `leveldbstore` in snapshot tests, but `pkg/storer/internal/transaction` cannot be imported from
+  `pkg/rangesync`. The local fake reserve keeps its address index in `pkg/storage/leveldbstore`
+  directly (one leveldb batch per set-changing commit, wrapped in `Commit`;
+  `ReserveIterateAddr` = one `Iterate` call), which has the same snapshot property the T1.0 spike
+  established for the real stack; not `inmemstore`.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -1209,3 +1270,16 @@ _(sessions append here)_
   with `-count=10 -cpu=1,2,4` instead.
 - **T1.4 review fixes (CI):** add `TestAddrIndexSetObserverWaits`, `TestAddrIndexSharedAddress`
   and `TestAddrIndexObserverContract` to the `-race` list above.
+- **T1.6 → T1.5:** `*storer.DB` must satisfy `rangesync.IndexerStore` (§5.4's
+  `ReserveIterateAddr` signature with `storer.ChunkID`). `ReserveIterateAddr` must open its
+  snapshot without taking any reserve lock (`r.multx`, the observer registration lock): the
+  rebuild holds `ix.mu` in write mode until the first callback, and a `Commit` holding `r.multx`
+  waits for `ix.mu` in read mode, so a reserve lock there deadlocks.
+- **T1.6 → T1.9:** wiring order `SetReserveObserver(indexer)` → `indexer.Start()`; shutdown
+  `indexer.Close()` before `index.Close()`. `Local.Summary` maps `fingerprint.ErrBelowLeaf` to a
+  `ReserveIterateAddr` scan, `ErrBusy` to `Busy`, and treats `ErrOutsideRoot` as the root having
+  moved (end the session, not a peer violation). `Status` comes from `Index.RootSummary()` and
+  `Index.LeafBits()`. Choose the production `RootChangeDebounce` (proposed:
+  `StatusMinInterval`).
+- **T1.6 → T1.13:** register `Index.Metrics()` (`index_rebuild_seconds`, `index_apply_seconds`,
+  `index_memory_bytes`, `index_outside_root_total`).
