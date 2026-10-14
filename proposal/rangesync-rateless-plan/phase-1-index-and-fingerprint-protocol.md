@@ -649,3 +649,14 @@ _(sessions append here)_
   version 4"); `GOTOOLCHAIN=go1.26.1 make lint` works (matches `go 1.26` in `go.mod`).
   `make format` rewrites ~60 unrelated files with the installed gci; revert them and check only
   the touched files (`gofumpt -l`, `gci diff`).
+- **(T6.0) Pin the metric definitions that the acceptance criteria depend on (T1.13).** Export
+  the §10 metrics with namespace `bee` and subsystem `rangesync` (e.g.
+  `bee_rangesync_bytes_metadata`), following `pkg/puller` / `pkg/pullsync`. `bytes_metadata{dir}`
+  counts every `rangesync` byte except chunk payloads: `status`, `reconcile`, and `fetch` `Want`
+  messages. `bytes_chunks{dir}` counts `Delivery` messages. `session_rounds` counts round trips
+  inside one session (not neighborhood rounds). `index_memory_bytes` counts both slabs while a
+  rebuild runs. Needed by AC-B1–B4, AC-V2, AC-R1/AC-R2 in `acceptance-criteria.md`.
+- **(T6.0) Add a counter of chunks fetched by `rangesync` (T1.10 emits, T1.13 registers),
+  proposed name `chunks_fetched_total`** (optionally `{result}`: stored, duplicate, rejected). §10
+  has no chunk count. Without it, `cross_protocol_duplicates_total` and `bytes_chunks` can't be
+  turned into ratios (AC-B3, AC-D2, AC-D3).
