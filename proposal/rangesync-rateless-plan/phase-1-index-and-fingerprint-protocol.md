@@ -620,6 +620,32 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   decoding, empty digest at `Count == 0` in both `Fingerprint` and `Status`,
   `Root.Bits + LeafBits ≤ fingerprint.MaxBits`, 1 MiB reader on `reconcile` only, strict
   decoders owned by T1.8 and enforced by T1.9).
+- **T1.7 API (implementation):** exactly the task text: `New(deadline)`, `Claim(id, peer) bool`,
+  `Done(id)`, `Release(id)`, `Len()`, `Close() error`, plus the exported cap
+  `wantset.MaxClaims = 10000` (§5.3). The deadline is a parameter (callers pass
+  `rangesync.ClaimDeadline`); `wantset` imports only `fingerprint` and `swarm`. A non-positive
+  deadline panics in `New` (programmer error at start-up, like the T1.1 helpers). The clock and
+  the cap are injected only through `export_test.go` (`NewWithClock(deadline, maxClaims, now)`).
+  §8.2 writes `claim(id, peer, deadline)` with a per-call deadline; the task fixes it per set,
+  and the implementation relies on that (see below).
+- **T1.7 semantics:** `Claim` denies an ID with an active claim through **any** peer, the holder
+  included (a second `Want` to the same peer from a parallel stripe or session would be a
+  duplicate delivery). It denies when the set holds `MaxClaims` IDs (the caller skips the ID; the
+  next round finds it again) and after `Close`. A claim expires at exactly `claimed + deadline`
+  (`now >= expires`); a reclaim gets a full deadline of its own. `Done` and `Release` behave
+  identically in T1.7 (both end the claim, no-op on an unknown ID); they are separate entry points
+  for T4.4 (`want_claims{result}`, rejected cache). `Close` drops every claim, is idempotent and
+  returns nil (fits the node's closers). The holder peer is stored but not read yet.
+- **T1.7 no goroutines:** expiry is lazy: `Claim` and `Len` drop expired claims first. With one
+  deadline per set and the time read under the lock, expiry order is insertion order, so the
+  claims sit in a `container/list` in expiry order and pruning is O(1) amortized. Memory is
+  strictly bounded by `MaxClaims` (expired-but-unpruned claims count against the cap until the
+  next `Claim`, which prunes before checking it). Nothing to stop, so nothing leaks (`goleak` in
+  `TestMain`).
+- **T1.7 memory (measured):** 284 B per claim, ≈ 2.8 MB at the 10k cap, against §5.3's
+  "≈ 1.2 MB". The `map[fingerprint.ID]*list.Element` alone is ≈ 1.2 MB (64-byte keys); the list
+  element and the claim (ID, peer, expiry) are the rest. An index-linked slab would save < 20 %,
+  so the simple form stays; the total budget (≈ 21 MB) is not affected materially.
 
 ## Follow-ups
 _(sessions append here)_
@@ -667,3 +693,17 @@ _(sessions append here)_
   proposed name `chunks_fetched_total`** (optionally `{result}`: stored, duplicate, rejected). §10
   has no chunk count. Without it, `cross_protocol_duplicates_total` and `bytes_chunks` can't be
   turned into ratios (AC-B3, AC-D2, AC-D3).
+- **T1.7 → T1.10:** `Done`/`Release` take no peer, so they end the claim on the ID whoever holds
+  it. If a fetch outlives its claim and the ID is meanwhile reclaimed through another peer, a late
+  `Release`/`Done` from the first fetch ends the second claim and a third fetch may start (one
+  duplicate delivery, not a correctness problem). Bound each `Fetch` (from `Want` to the last
+  `Delivery`) by the claim deadline so a fetch never ends a claim after it expired. If T4.4 needs
+  holder-checked ends, it adds a peer-scoped variant (API change, its call).
+- **T1.7 → T4.4:** expiry is passive (no notification, no goroutine). Claim-and-stall must be
+  detected by the fetch that times out (it knows the peer) and reported to `PeerScorer`; or T4.4
+  adds an expiry hook. The rejected cache goes into `Set` as a second bounded structure; `New`
+  then needs `RejectTTL` too (e.g. `New(claimDeadline, rejectTTL)`; the only call site will be
+  the one T1.10 adds).
+- **T1.7 (tooling):** `-race` could not run on the dev host. `TestConcurrentClaims`,
+  `TestConcurrentChurn` and `TestConcurrentExpiry` in `pkg/rangesync/wantset` should run under
+  `make test-race` in CI; here they ran with `-count=50 -cpu=1,2,4`.
