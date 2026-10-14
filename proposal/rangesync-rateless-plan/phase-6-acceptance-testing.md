@@ -101,6 +101,8 @@ peak Index memory — and compare with the baseline.
   `rangesync`-only cohort must therefore cover **whole neighborhoods** (every full node in the
   neighborhood runs `rangesync`, alone or in dual mode). Otherwise the node may never become
   fully synced and will skip redistribution rounds, which would read as a `rangesync` failure.
+- **One architecture per run (D22):** until T2.8 has checked the `FloatMapper` vectors on
+  arm64, run every `rangesync` cohort on amd64 hosts only.
 - **Dual-mode bandwidth:** a dual node can pull up to ~2000 chunks/s (1000 per protocol). On
   bandwidth-constrained testnet hosts, lower `rangesync`'s fetch limit for dual cohorts and note it
   in the results.

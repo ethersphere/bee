@@ -4,14 +4,15 @@ Source proposal: [`../pullsync-rangesync-rateless-proposal.md`](../pullsync-rang
 Section references like **§5.2** point into that file.
 
 This folder splits the proposal into phases and tasks. Each task is sized so one
-Claude Code session can pick it up cold, implement it with tests, and open a PR.
+Claude Code session can pick it up cold, implement it with tests, and land it on its phase
+branch. There are no PRs; see [EXECUTION.md](EXECUTION.md) for branches, order and gates.
 
 ## Ground rules: a new protocol, built in parallel
 
 - `rangesync` is a **new, independent protocol in its own package tree** (`pkg/rangesync/...`).
 - **`pkg/pullsync` and `pkg/puller` are not modified.** Not even to share helpers. If
   `rangesync` needs something that lives there (stream limiter, delivery validation),
-  copy it into `pkg/rangesync` and say so in the PR.
+  copy it into `pkg/rangesync` and say so in the commit message.
 - Outside `pkg/rangesync`, only **additive** changes are allowed, and only where a task names
   them: `pkg/storer` (opt-in address index + observer hook), `pkg/node` + `cmd/bee`
   (wiring, flags, combined syncer), and optionally `pkg/storageincentives` (Phase 5 hook).
@@ -23,17 +24,22 @@ Claude Code session can pick it up cold, implement it with tests, and open a PR.
 
 ## How to use this folder in a Claude session
 
-Start a new session in the bee repo root and paste:
+The orchestrator (see [EXECUTION.md](EXECUTION.md) §4) gives each implementer subagent this
+prompt, plus the gate decisions so far and the contracts the task consumes. It also works
+pasted into a standalone session started in the bee repo root:
 
 ```
 Implement task <ID> from proposal/rangesync-rateless-plan/<phase file>.
 Read the task, the proposal sections it cites, the "Ground rules" in
 proposal/rangesync-rateless-plan/README.md, and AGENTS.md first.
-Work on a new branch named rangesync/<ID>-<slug>. Use TDD. Run the
-pre-commit checklist from AGENTS.md for the packages you touched.
-Do not modify pkg/pullsync or pkg/puller.
-When done, tick the task in proposal/rangesync-rateless-plan/README.md
-and write any decision you had to make under "Decisions log" in the phase file.
+Work in the worktree ../bee-wt/<ID> on branch rangesync/<ID>-<slug>, cut
+from rangesync/phase-<N>. Use TDD. Run the pre-commit checklist from
+AGENTS.md for the packages you touched. Do not modify pkg/pullsync or
+pkg/puller. Do not tick README.md (the orchestrator does when it lands the task).
+Write any decision you had to make under "Decisions log" in the phase file
+and anything out of scope under "Follow-ups". If a cited API, line or
+behaviour differs from the task text, stop and report instead of
+redesigning.
 ```
 
 Rules every session follows:
@@ -46,7 +52,7 @@ Rules every session follows:
 - Only touch what the task names. Anything else goes under "Follow-ups" in the phase file.
 - Constants live in `pkg/rangesync/constants.go` (protocol) and
   `pkg/rangesync/fingerprint/constants.go` (index); see the table below.
-- Any PR that touches `pkg/storer` or `pkg/node` must show that `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...`
+- Any task that touches `pkg/storer` or `pkg/node` must show that `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...`
   still passes, and that the defaults change nothing (see T1.13).
 
 ## Package layout (§11)
@@ -94,9 +100,8 @@ flowchart LR
 
 ## Parallelism map (what can run in separate sessions at the same time)
 
-| Wave | Parallel tasks |
-|---|---|
 Each task's own **Depends on** line is authoritative; this table is derived from them.
+[EXECUTION.md](EXECUTION.md) turns it into a three-lane schedule.
 
 | Wave | Parallel tasks (dependencies) |
 |---|---|
@@ -116,7 +121,8 @@ Each task's own **Depends on** line is authoritative; this table is derived from
 
 ## Progress
 
-Tick a box when the PR is merged (or opened — say which in the PR).
+Tick a box when the task lands on its phase branch. The orchestrator ticks it when landing, not
+the implementer (otherwise every task conflicts on this list).
 
 **Phase 1**
 - [ ] T1.0 Spike: snapshot isolation and lock ordering (blocks T1.4, T1.6)
@@ -143,6 +149,7 @@ Tick a box when the PR is merged (or opened — say which in the PR).
 - [ ] T2.5 Symbol-stream limits (budget, scans per message, `More` validation)
 - [ ] T2.6 Benchmarks (`BucketSymbols` 16 vs 32), worked-example tests, symbol metrics
 - [ ] T2.7 (optional, before mainnet) Integer `Mapper`
+- [ ] T2.8 (deferred, before mainnet) Cross-architecture determinism vectors
 
 **Phase 3**
 - [ ] T3.1 Bootstrap detection and stripe planner
@@ -278,3 +285,4 @@ already reflect the resolution.
 | D19 | Reserved wire fields | `Status.Mapping` and `Message.AuditRound` in the Phase-1 proto; `AuditRound` = the round the anchor belongs to (*t + 1*) | §6.2, §7.9; T1.1, T5.1, T5.3 |
 | D20 | Generic Fenwick | T1.3 is type-agnostic; the LtHash and symbol adapters live in T1.6 and T2.2 | T1.3, T1.6, T2.2 |
 | D21 | Mapper selection | `rangesync.Options.Mapper` (default `FloatMapper`); no node flag until a rollout is planned | T2.7 |
+| D22 | Cross-arch vectors | Deferred: T2.1 commits amd64 vectors only; the arm64 run is T2.8, before mainnet. Until then testnet cohorts run on one architecture | T2.1, T2.8, T6.3 |

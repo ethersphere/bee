@@ -238,8 +238,9 @@ and is tested with a fake; T1.9 wires it to the real storer.
 
 **Tests:** fuzz: random add/remove sequences, `Rebuild()` equals the live index for every
 range at every level; concurrent writers during `Rebuild` (`-race`); memory at B = 4096
-matches §5.3 (counts 16 KB, LtHash 8 MB); storer-level test via the mock: put/evict/replace,
-summaries match brute force; radius change → root moves, and `RadiusChanged` returns
+matches §5.3 (counts 16 KB, LtHash 8 MB); a local fake reserve (implementing the adapter's local
+interfaces, not `pkg/storer/mock`, which arrives in T1.5): put/evict/replace, summaries match brute
+force; radius change → root moves, and `RadiusChanged` returns
 immediately while the rebuild runs; deltas before the address index is ready are dropped and the
 first rebuild still equals brute force; a chunk evicted before the fill reached it produces no
 phantom difference.
@@ -326,7 +327,9 @@ against each other until both send empty messages → both hold the union (diffs
   `pkg/rangesync/streamlimit.go` (do not import or move it).
 
 **Tests:** `pkg/p2p/streamtest` two-node tests: equal sets → one round trip; small diff → wants
-on both sides; Busy at cap; malformed messages reset the stream.
+on both sides; Busy at cap; malformed messages reset the stream. Index wiring through the real
+`pkg/storer/mock` (moved here from T1.6, which uses a local fake): put/evict/replace via the mock,
+then `Summary` matches brute force for every range.
 
 **Size:** M.
 

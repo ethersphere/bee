@@ -59,9 +59,9 @@ recorded.** If CertainSync wins, stop and update T2.1–T2.4 here before anyone 
 **Tests (§13):**
 - Linearity: `encode(A) − encode(B) == encode(A △ B)` for random sets.
 - Determinism vectors for `FloatMapper`: id → first 64 indices, `Expected(count, i)` for a grid
-  of counts, and checksums, committed in `testdata/`. Run them on amd64 and arm64
-  (`GOARCH=arm64` on an arm64 machine or CI runner, or under qemu) and record the result. We do
-  **not** promise compatibility with the reference `riblt` library.
+  of counts, and checksums, committed in `testdata/` and checked on amd64. Running them on other
+  architectures is deferred to T2.8 (D22). We do **not** promise compatibility with the reference
+  `riblt` library.
 - A test-only second `Mapper` (e.g. a trivial deterministic one) proves the package works with
   any `Mapper`: linearity, decoding and codec round-trips pass with both.
 - Decode cost: mean symbols/difference within [1.3, 1.8] for differences 1 … 10⁴; `Done()`
@@ -202,12 +202,29 @@ symbols-per-difference distribution matches `FloatMapper` within noise; vectors 
 
 ---
 
+## T2.8 (deferred, before mainnet) Cross-architecture determinism vectors
+
+**Depends on:** T2.1 (and T2.7 if it was done).
+
+**Why deferred (D22):** no arm64 environment is set up yet. Until this task runs, testnet cohorts
+use one architecture (amd64), so a `FloatMapper` difference between architectures can't show up as
+failed decodes during acceptance testing.
+
+**Scope:** run T2.1's `testdata/` vectors (and T2.7's, if present) on arm64 (an arm64 machine or
+CI runner, or `GOARCH=arm64` under qemu-user). Record the result in the Decisions log. If
+`FloatMapper` vectors differ, T2.7 becomes mandatory before any mixed-architecture or mainnet
+deployment, and `IntegerMapper` should become the default before rollout.
+
+**Size:** S (plus environment setup).
+
+---
+
 ## Decisions log
 - **Mapper (pre-implementation):** start with `FloatMapper` (ID 1) behind an injectable `Mapper`
   interface; peers exchange the mapper ID in `Status` and only sync with equal IDs; an integer
   mapper (T2.7) can replace it later.
 
-_(sessions append here — T2.0 recommendation; T2.1 cross-arch vector result; T2.6 cache sizes)_
+_(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arch vector result)_
 
 ## Follow-ups
 _(sessions append here)_
