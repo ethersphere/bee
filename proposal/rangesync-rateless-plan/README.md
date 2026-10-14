@@ -195,6 +195,7 @@ the implementer (otherwise every task conflicts on this list).
 | `StatusMinInterval` / `StatusMaxInterval` | 5 s / 60 s | T4.1 |
 | `RoundInterval` | adaptive 5–30 s | T4.3 |
 | Claim deadline / `RejectTTL` | 30 s / 10 min | T1.7 / T4.4 |
+| Want-set caps `wantset.MaxClaims` / `wantset.MaxClaimsPerPeer` (node / per peer) | 10000 / 1000 | T1.7 |
 | Fetch limit (global) | 1000 chunks/s | T1.10 |
 | `CatchUpMinDiff` | 256 | T1.11, T3.5 |
 | `SyncRate` window | 10 min (same as `puller.DefaultHistRateWindow`) | T1.11 |

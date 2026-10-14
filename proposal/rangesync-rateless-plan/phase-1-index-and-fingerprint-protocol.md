@@ -620,32 +620,51 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   decoding, empty digest at `Count == 0` in both `Fingerprint` and `Status`,
   `Root.Bits + LeafBits ≤ fingerprint.MaxBits`, 1 MiB reader on `reconcile` only, strict
   decoders owned by T1.8 and enforced by T1.9).
-- **T1.7 API (implementation):** exactly the task text: `New(deadline)`, `Claim(id, peer) bool`,
-  `Done(id)`, `Release(id)`, `Len()`, `Close() error`, plus the exported cap
-  `wantset.MaxClaims = 10000` (§5.3). The deadline is a parameter (callers pass
-  `rangesync.ClaimDeadline`); `wantset` imports only `fingerprint` and `swarm`. A non-positive
-  deadline panics in `New` (programmer error at start-up, like the T1.1 helpers). The clock and
-  the cap are injected only through `export_test.go` (`NewWithClock(deadline, maxClaims, now)`).
-  §8.2 writes `claim(id, peer, deadline)` with a per-call deadline; the task fixes it per set,
-  and the implementation relies on that (see below).
-- **T1.7 semantics:** `Claim` denies an ID with an active claim through **any** peer, the holder
-  included (a second `Want` to the same peer from a parallel stripe or session would be a
-  duplicate delivery). It denies when the set holds `MaxClaims` IDs (the caller skips the ID; the
-  next round finds it again) and after `Close`. A claim expires at exactly `claimed + deadline`
-  (`now >= expires`); a reclaim gets a full deadline of its own. `Done` and `Release` behave
-  identically in T1.7 (both end the claim, no-op on an unknown ID); they are separate entry points
-  for T4.4 (`want_claims{result}`, rejected cache). `Close` drops every claim, is idempotent and
-  returns nil (fits the node's closers). The holder peer is stored but not read yet.
+- **T1.7 API (implementation, after review round 1):** `New(deadline) *Set`,
+  `Claim(id, peer) Result`, `Done(id)`, `Release(id, peer)`, `Len()`, `Close() error`, and the
+  exported caps `wantset.MaxClaims = 10000` (§5.3) and `wantset.MaxClaimsPerPeer = 1000`. The
+  deadline is a parameter (callers pass `rangesync.ClaimDeadline`); `wantset` imports only
+  `fingerprint` and `swarm`. A non-positive deadline panics in `New` (programmer error at
+  start-up, like the T1.1 helpers). The clock and both caps are injected only through
+  `export_test.go` (`NewWithClock(deadline, maxClaims, maxPerPeer, now)`). §8.2 writes
+  `claim(id, peer, deadline)` with a per-call deadline; the task fixes it per set, and the
+  expiry list relies on that. Deviations from the task text (review round 1, made now because
+  the API has no callers yet): `Claim` returns a `Result` instead of `bool`, and `Release` takes
+  the peer.
+- **T1.7 `Result`:** `Granted`, `Held` (active claim through any peer), `Full` (node-wide cap),
+  `PeerFull` (per-peer cap; another peer may still work), `Closed`; starts at `iota + 1`.
+  `String()` gives metric labels (`granted`, `held`, `full`, `peer_full`, `closed`) for T4.4's
+  `want_claims{result}`. Checks run in the order Closed, Held, Full, PeerFull: when the node is
+  full another peer does not help, so `Full` wins over `PeerFull`.
+- **T1.7 semantics:** `Claim` reports `Held` for an ID with an active claim through **any**
+  peer, the holder included (a second `Want` to the same peer from a parallel stripe or session
+  would be a duplicate delivery). A claim expires at exactly `claimed + deadline`
+  (`now >= expires`); a reclaim gets a full deadline of its own. `Done(id)` ends the claim
+  whoever holds it (once stored, any claim is moot). `Release(id, peer)` ends it only if `peer`
+  holds it, so a fetch that outlived its claim cannot end a later claim through another peer
+  (the duplicate-grant case found in review). Both are no-ops on an unknown ID. `Close` drops
+  every claim, is idempotent and returns nil (fits the node's closers).
+- **T1.7 per-peer cap (review round 1):** `MaxClaimsPerPeer = 1000` = four `Want` messages of
+  250 IDs (§6.2), i.e. one session fetch plus a few pipelined stripe pages (T3.2) in flight for a
+  peer at once; at the 250 chunks/s per-peer delivery limit that is 4 s of deliveries, well inside
+  the 30 s deadline. Without it one peer could make IDs look `onlyRemote`, win every claim up to
+  the node-wide cap and stall, denying all `rangesync` fetches for 30 s, repeatably. With it one
+  peer holds at most 10 % of the cap; filling the set takes 10 stalling peers.
 - **T1.7 no goroutines:** expiry is lazy: `Claim` and `Len` drop expired claims first. With one
   deadline per set and the time read under the lock, expiry order is insertion order, so the
   claims sit in a `container/list` in expiry order and pruning is O(1) amortized. Memory is
-  strictly bounded by `MaxClaims` (expired-but-unpruned claims count against the cap until the
-  next `Claim`, which prunes before checking it). Nothing to stop, so nothing leaks (`goleak` in
-  `TestMain`).
-- **T1.7 memory (measured):** 284 B per claim, ≈ 2.8 MB at the 10k cap, against §5.3's
+  strictly bounded by `MaxClaims`. Nothing to stop, so nothing leaks (`goleak` in `TestMain`).
+  Per-peer counts live in a map keyed by the peer's address bytes and are deleted at zero.
+- **T1.7 clock:** `now` must not go backwards; `time.Now` carries a monotonic reading, so wall
+  steps do not matter. With an injected clock that steps back, `Claim` still checks the expiry of
+  the claim on its own ID exactly, but a claim made after the step keeps counting in `Len` and
+  against both caps until every earlier claim has expired: by at most the size of the step.
+  Pinned by `TestClockBackwards`; no full-scan fallback.
+- **T1.7 memory (measured):** 268 B per claim, ≈ 2.7 MB at the 10k cap, against §5.3's
   "≈ 1.2 MB". The `map[fingerprint.ID]*list.Element` alone is ≈ 1.2 MB (64-byte keys); the list
-  element and the claim (ID, peer, expiry) are the rest. An index-linked slab would save < 20 %,
-  so the simple form stays; the total budget (≈ 21 MB) is not affected materially.
+  element and the claim (ID, peer counter pointer, expiry) are the rest. An index-linked slab
+  would save < 20 %, so the simple form stays; the total budget (≈ 21 MB) is not affected
+  materially.
 
 ## Follow-ups
 _(sessions append here)_
@@ -693,17 +712,24 @@ _(sessions append here)_
   proposed name `chunks_fetched_total`** (optionally `{result}`: stored, duplicate, rejected). §10
   has no chunk count. Without it, `cross_protocol_duplicates_total` and `bytes_chunks` can't be
   turned into ratios (AC-B3, AC-D2, AC-D3).
-- **T1.7 → T1.10:** `Done`/`Release` take no peer, so they end the claim on the ID whoever holds
-  it. If a fetch outlives its claim and the ID is meanwhile reclaimed through another peer, a late
-  `Release`/`Done` from the first fetch ends the second claim and a third fetch may start (one
-  duplicate delivery, not a correctness problem). Bound each `Fetch` (from `Want` to the last
-  `Delivery`) by the claim deadline so a fetch never ends a claim after it expired. If T4.4 needs
-  holder-checked ends, it adds a peer-scoped variant (API change, its call).
+- **T1.7 → T1.10/T3.2/T4.4:** claim right before each `Want`, only the IDs that `Want` carries
+  (≤ 250), never a whole decoded set or stripe ahead of time: claims held for IDs not yet
+  requested count against both caps and expire unused. On `Result`: `Held` → skip the ID;
+  `PeerFull` → leave it for another peer that has it; `Full` → stop claiming for now (no other
+  peer helps); `Closed` → shutting down. End every `Granted` claim on every path:
+  `Done(id)` after `Put` succeeds or returns `ErrOverwriteNewerChunk`, `Release(id, peer)` with
+  the same peer otherwise. A `Release` after the claim expired is harmless (it only ends the
+  claim if that peer still holds it), but bounding each `Fetch` by the claim deadline still
+  avoids a duplicate request.
 - **T1.7 → T4.4:** expiry is passive (no notification, no goroutine). Claim-and-stall must be
   detected by the fetch that times out (it knows the peer) and reported to `PeerScorer`; or T4.4
   adds an expiry hook. The rejected cache goes into `Set` as a second bounded structure; `New`
   then needs `RejectTTL` too (e.g. `New(claimDeadline, rejectTTL)`; the only call site will be
   the one T1.10 adds).
+- **T1.7 → proposal §5.3:** update the memory table's "In-flight want set (≤ 10k IDs) ≈ 1.2 MB"
+  row to the measured ≈ 2.7 MB (and the totals), or note it; editing the proposal is out of
+  scope for T1.7.
 - **T1.7 (tooling):** `-race` could not run on the dev host. `TestConcurrentClaims`,
-  `TestConcurrentChurn` and `TestConcurrentExpiry` in `pkg/rangesync/wantset` should run under
-  `make test-race` in CI; here they ran with `-count=50 -cpu=1,2,4`.
+  `TestConcurrentPeerCap`, `TestConcurrentChurn` and `TestConcurrentExpiry` in
+  `pkg/rangesync/wantset` should run under `make test-race` in CI; here they ran with
+  `-count=50 -cpu=1,2,4`.

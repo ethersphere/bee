@@ -6,6 +6,7 @@ package wantset
 
 import (
 	"container/list"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,9 +14,54 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// MaxClaims is the largest number of IDs a Set created by New holds at once
-// (the in-flight want set budget of proposal §5.3). Claims over it are denied.
-const MaxClaims = 10000
+const (
+	// MaxClaims is the largest number of IDs a Set created by New holds at
+	// once (the in-flight want set budget of proposal §5.3).
+	MaxClaims = 10000
+	// MaxClaimsPerPeer is the largest number of IDs a Set created by New
+	// holds at once for one peer: four Want messages of 250 IDs (§6.2). It
+	// keeps a peer that wins claims and stalls from denying every fetch of
+	// the node until its claims expire.
+	MaxClaimsPerPeer = 1000
+)
+
+// Result is the outcome of Claim.
+type Result int
+
+const (
+	// Granted means the ID was claimed: the caller requests it from the peer
+	// and ends the claim with Done or Release.
+	Granted Result = iota + 1
+	// Held means the ID has an active claim (through any peer, the given one
+	// included); the caller skips it.
+	Held
+	// Full means the set holds its maximum number of IDs; trying another
+	// peer does not help until claims end or expire.
+	Full
+	// PeerFull means the set holds the maximum number of IDs for this peer;
+	// the ID can still be claimed through another peer.
+	PeerFull
+	// Closed means the set is closed.
+	Closed
+)
+
+// String returns the name of r, usable as a metric label.
+func (r Result) String() string {
+	switch r {
+	case Granted:
+		return "granted"
+	case Held:
+		return "held"
+	case Full:
+		return "full"
+	case PeerFull:
+		return "peer_full"
+	case Closed:
+		return "closed"
+	default:
+		return "Result(" + strconv.Itoa(int(r)) + ")"
+	}
+}
 
 // Set is the node-wide set of IDs requested through rangesync and not yet
 // received (proposal §7.8, §8.2). Before an ID is requested from a peer it is
@@ -26,12 +72,19 @@ const MaxClaims = 10000
 // A Set is safe for concurrent use. It starts no goroutines: expired claims
 // are dropped by the calls that observe them.
 type Set struct {
-	deadline  time.Duration
-	maxClaims int
-	now       func() time.Time
+	deadline   time.Duration
+	maxClaims  int
+	maxPerPeer int
+	// now must not go backwards. time.Now carries a monotonic clock reading,
+	// so wall-clock steps do not affect it. If now does step back (an
+	// injected clock), a claim made after the step still expires on time for
+	// Claim on its own ID, but it keeps counting in Len and against the caps
+	// until every claim made before it has expired: by at most the step.
+	now func() time.Time
 
 	mu     sync.Mutex
 	claims map[fingerprint.ID]*list.Element // values are *claim
+	peers  map[string]*peerClaims           // by peer address bytes
 	// expiry holds the active claims in the order they expire. The deadline
 	// is the same for every claim and the time is read under mu, so this is
 	// the order in which they were made.
@@ -39,79 +92,110 @@ type Set struct {
 	closed bool
 }
 
+// peerClaims counts the active claims of one peer.
+type peerClaims struct {
+	key string
+	n   int
+}
+
 // claim is one active claim.
 type claim struct {
-	id fingerprint.ID
-	// peer is the peer the ID is requested from. Nothing reads it yet; it
-	// lets the claim be attributed to a peer when it expires.
-	peer    swarm.Address
+	id      fingerprint.ID
+	peer    *peerClaims
 	expires time.Time
 }
 
 // New returns an empty Set whose claims expire after deadline (the protocol
-// uses rangesync.ClaimDeadline, 30 s) and which holds at most MaxClaims IDs.
-// It panics if deadline is not positive.
+// uses rangesync.ClaimDeadline, 30 s) and which holds at most MaxClaims IDs,
+// and at most MaxClaimsPerPeer for one peer. It panics if deadline is not
+// positive.
 func New(deadline time.Duration) *Set {
-	return newSet(deadline, MaxClaims, time.Now)
+	return newSet(deadline, MaxClaims, MaxClaimsPerPeer, time.Now)
 }
 
-func newSet(deadline time.Duration, maxClaims int, now func() time.Time) *Set {
+func newSet(deadline time.Duration, maxClaims, maxPerPeer int, now func() time.Time) *Set {
 	if deadline <= 0 {
 		panic("wantset: claim deadline must be positive")
 	}
 	return &Set{
-		deadline:  deadline,
-		maxClaims: maxClaims,
-		now:       now,
-		claims:    make(map[fingerprint.ID]*list.Element),
-		expiry:    list.New(),
+		deadline:   deadline,
+		maxClaims:  maxClaims,
+		maxPerPeer: maxPerPeer,
+		now:        now,
+		claims:     make(map[fingerprint.ID]*list.Element),
+		peers:      make(map[string]*peerClaims),
+		expiry:     list.New(),
 	}
 }
 
-// Claim records that id is about to be requested from peer and reports
-// whether the caller may request it. It returns false, and records nothing,
-// if id already has an active claim (through any peer, peer included), if the
-// set holds its maximum number of IDs, or if the set is closed. A denied ID
-// is skipped by the caller; it can be claimed again once the active claim
-// ends or expires, or once a slot frees up.
-func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) bool {
+// Claim records that id is about to be requested from peer unless something
+// stops it, and reports the outcome. Only Granted records a claim. The checks
+// are made in the order Closed, Held, Full, PeerFull.
+//
+// Callers claim right before each Want, only the IDs that Want carries.
+func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.closed {
-		return false
+		return Closed
 	}
 	now := s.now()
 	s.expire(now)
-	if _, ok := s.claims[id]; ok {
-		return false
+	if e, ok := s.claims[id]; ok {
+		if now.Before(e.Value.(*claim).expires) {
+			return Held
+		}
+		// Expired, but behind a claim that has not: the clock went back.
+		s.drop(e)
 	}
 	if len(s.claims) >= s.maxClaims {
-		return false
+		return Full
 	}
+	p := s.peers[string(peer.Bytes())]
+	if p != nil && p.n >= s.maxPerPeer {
+		return PeerFull
+	}
+	if p == nil {
+		p = &peerClaims{key: string(peer.Bytes())}
+		s.peers[p.key] = p
+	}
+	p.n++
 	s.claims[id] = s.expiry.PushBack(&claim{
 		id:      id,
-		peer:    peer,
+		peer:    p,
 		expires: now.Add(s.deadline),
 	})
-	return true
+	return Granted
 }
 
 // Done ends the claim on id because the chunk was stored (or Put returned
-// ErrOverwriteNewerChunk, so a newer stamp is already held). The claim ends
-// whichever peer holds it; Done is a no-op if id has no active claim.
+// ErrOverwriteNewerChunk, so a newer stamp is already held). Once the chunk is
+// stored any claim on it is moot, so Done ends the claim whichever peer holds
+// it. It is a no-op if id has no active claim.
 func (s *Set) Done(id fingerprint.ID) {
-	s.remove(id)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if e, ok := s.claims[id]; ok {
+		s.drop(e)
+	}
 }
 
 // Release ends the claim on id because the chunk was not delivered or was
-// invalid, so that it can be claimed again through another peer. The claim
-// ends whichever peer holds it; Release is a no-op if id has no active claim.
-func (s *Set) Release(id fingerprint.ID) {
-	s.remove(id)
+// invalid, so that it can be claimed again through another peer. It ends the
+// claim only if peer holds it, so a fetch that outlived its claim does not end
+// a later claim on the same ID through another peer. Otherwise it is a no-op.
+func (s *Set) Release(id fingerprint.ID, peer swarm.Address) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if e, ok := s.claims[id]; ok && e.Value.(*claim).peer.key == string(peer.Bytes()) {
+		s.drop(e)
+	}
 }
 
-// Len returns the number of active claims.
+// Len drops the expired claims and returns the number of active claims.
 func (s *Set) Len() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -123,7 +207,7 @@ func (s *Set) Len() int {
 	return len(s.claims)
 }
 
-// Close drops every claim. Afterwards Claim always returns false and Len
+// Close drops every claim. Afterwards Claim always returns Closed and Len
 // returns 0. Close is idempotent and always returns nil.
 func (s *Set) Close() error {
 	s.mu.Lock()
@@ -131,28 +215,29 @@ func (s *Set) Close() error {
 
 	s.closed = true
 	s.claims = nil
+	s.peers = nil
 	s.expiry.Init()
 	return nil
 }
 
-func (s *Set) remove(id fingerprint.ID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if e, ok := s.claims[id]; ok {
-		s.expiry.Remove(e)
-		delete(s.claims, id)
+// expire drops the claims at the front of s.expiry that expired at or before
+// now. s.mu must be held.
+func (s *Set) expire(now time.Time) {
+	for e := s.expiry.Front(); e != nil; e = s.expiry.Front() {
+		if now.Before(e.Value.(*claim).expires) {
+			return
+		}
+		s.drop(e)
 	}
 }
 
-// expire drops the claims that expired at or before now. s.mu must be held.
-func (s *Set) expire(now time.Time) {
-	for e := s.expiry.Front(); e != nil; e = s.expiry.Front() {
-		c := e.Value.(*claim)
-		if now.Before(c.expires) {
-			return
-		}
-		s.expiry.Remove(e)
-		delete(s.claims, c.id)
+// drop removes the claim held in e. s.mu must be held.
+func (s *Set) drop(e *list.Element) {
+	c := e.Value.(*claim)
+	s.expiry.Remove(e)
+	delete(s.claims, c.id)
+	c.peer.n--
+	if c.peer.n == 0 {
+		delete(s.peers, c.peer.key)
 	}
 }
