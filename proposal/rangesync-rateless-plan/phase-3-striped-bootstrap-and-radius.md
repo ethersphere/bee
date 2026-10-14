@@ -122,3 +122,9 @@ _(sessions append here — T3.1 bootstrap threshold and stripe redundancy defaul
 
 ## Follow-ups
 _(sessions append here)_
+- **(T6.0) Stripe and verification metrics (T3.2, T3.3).** §10 has none, but AC-B2 (verification
+  ≤ 1 MB, "a few KB" in §7.4) and the T6.1 Churn scenario ("stripes reassigned") need them.
+  Proposed: `stripes_total{result}` (done, reassigned, timeout) in T3.2 and `verification_diff`
+  (differences found per verified stripe, histogram) in T3.3. Bytes spent in the verification
+  round can come from `bytes_metadata` if T3.3 counts them separately (e.g. a `{phase}` label) or
+  via a test hook.
