@@ -227,8 +227,52 @@ deployment, and `IntegerMapper` should become the default before rollout.
 - **Mapper (pre-implementation):** start with `FloatMapper` (ID 1) behind an injectable `Mapper`
   interface; peers exchange the mapper ID in `Status` and only sync with equal IDs; an integer
   mapper (T2.7) can replace it later.
+- **T2.0 recommendation (gate G3): Rateless IBLT, not CertainSync.** Both papers read in full
+  from arxiv.org: Yang/Gilad/Alizadeh arXiv:2402.02668v3 ("RIBLT") and Keniagin/Yaakobi/
+  Rottenstreich arXiv:2504.08314v1 ("CS"). *[p]* = the paper says so, *[ours]* = our computation
+  or inference. Our elements are 64-byte `id`s, so the universe is n = 2⁵¹².
+
+  | | Rateless IBLT | CertainSync, EGH construction (the only one CS §6.2.3 keeps for large n) |
+  |---|---|---|
+  | Symbols per difference | 1.72 at d = 4, → 1.35 for d > 128 (§5.1, Fig. 5, Cor. 5.2), independent of n *[p]* | Guarantee needs m_d = Σ of the first k primes with Π_k ≥ nᵈ (Def. 4.2, Thm 4.3), O(d² log²n / (log d + log log n)) (Table 1) *[p]*. At n = 2⁵¹²: d = 1 → 13,101 cells, d = 4 → 157,589, d = 22 → 3.7 M *[ours]*. Average case (random sets, n = 10⁶, 8-B elements): close to RIBLT up to d ≈ 100, ~4× RIBLT at d = 1000 (§5.1, Fig. 6), worst scaling above 1000 (§5.3, Fig. 8b) *[p]* |
+  | Decode failure | Peeling stalls → ask for more symbols, nothing received is wasted; done = symbol 0 decoded, because ρ(0) = 1 (§4.1.2) *[p]*. Success only w.h.p. (Thm 5.1), no worst-case bound | Same stall-and-ask loop (Fig. 4b; Alg. 5 returns FAIL while cells remain) *[p]*. After m_d cells success is certain for *any* d-set (Def. 3.1), but the receiver doesn't know d, so in practice it also stops on "listing succeeded" *[ours]* |
+  | False "pure" symbols | Checksum collisions; §4.3 proposes a keyed 64-bit SipHash *[p]*. We use a fixed 128-bit checksum + `ErrCorrupt` fallback (§9) | "Probability 1" assumes pure cells are recognised exactly (§2.2, Alg. 5); with a hashed checksum the same collision risk remains *[ours]*, so §9's mitigations are needed either way |
+  | Cached prefixes 4096 / 512 / 32 | ≈ 2,900 / 360 / 22 differences (proposal §4.3.5) | Prefix property holds (Def. 4.1: one block per prime 2, 3, 5, …), but the caches hold 45 / 18 / 5 prime blocks (Π ≈ 2²⁶⁴ / 2⁷⁷ / 2¹¹) → guaranteed d = **0** at every level for n = 2⁵¹² *[ours]*; on average fewer differences than RIBLT at the root (Fig. 6) |
+  | Linearity (Fenwick sums) | Yes (§4.1.1: deterministic per-element mapping rule) | Yes: fixed 0/1 mapping matrix, XOR + count, subtraction (Alg. 3, 4) |
+  | Per-update cost | ~15.8 / 11.6 / 6.2 indices below 4096 / 512 / 32, generated in O(log m) (§4.1.2, proposal §4.3.4) | One cell per prime block: 45 / 18 / 5, plus 45 reductions of a 512-bit integer mod p → ~2× the root + level-1 XORs, bucket about equal *[ours]* |
+  | Implementation size | 353-line self-contained Go library (§6) *[p]* | Mapping is a few lines (`(y+1) mod p` per prime); reference Python/Go repo not reviewed. About equal |
+  | Other variants | — | OLS needs ⌈√n⌉ = 2²⁵⁶ cells per step (Def. 4.4). Extended Hamming stops at d = 3 (Thm 4.7). UniverseReduceSync (§6.2–6.3) hashes ids with a per-round salt: certainty is lost (Table 3: collisions, ≥ 1 rounds) and a per-round salt remaps every element, so the caches would have to be rebuilt each round (the same objection as keyed checksums, proposal §9) |
+
+  CS itself concludes "Rateless IBLT consistently demonstrating superior overall performance"
+  (CS §5, Findings), measured with 24-byte cells and n = 10⁶ (Figs. 6, 8). CertainSync's one distinctive
+  property, a worst-case listing guarantee, grows with log n and is out of reach for 512-bit ids:
+  guaranteeing a single difference takes 13,101 cells, 3× the whole root cache. Its average cost is
+  no better than Rateless IBLT for any d and worse from d ≈ 1000, and the variant that shrinks the
+  universe gives up both the guarantee and the caches.
+
+  **Downstream changes: none.** T2.1–T2.4 proceed as written, and T2.1 may freeze the §6.2
+  `Symbols`/`More` format as specified (`Data = n × (Sum 64 B ‖ Check 16 B ‖ varint zigzag(count −
+  Expected))`, ≈ 82 B per symbol, with the count compressed as in RIBLT §6). For reference, had
+  CertainSync (EGH) won, the wire format would still not change (EGH fits `Mapper`: `Indices` = block
+  offset + `(y+1) mod p` per prime, `Expected = round(count/p)`), but: `Decoder.Done()` ("symbol 0
+  empty") would need a stop rule defined by the `Mapper` (e.g. the 2-cell first block is empty); the cap
+  table and sizing in §4.3.5 / §6.3 / T2.4 (`≈ symbols/1.4`, `n0 = ⌈1.6·d̂⌉ + 2`) would need EGH
+  numbers; T2.1's decode-cost band [1.3, 1.8] would not hold; and T2.2's `Apply` would do ~2× the
+  XORs.
 
 _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arch vector result)_
 
 ## Follow-ups
 _(sessions append here)_
+- **(T2.0) Mapping grinding, not covered by either paper or §9 *[ours]*.** Rateless IBLT has no
+  worst-case guarantee, so an uploader could grind `stampHash` (e.g. via the stamp timestamp) for
+  two ids x, y that map to exactly the same indices within a cached prefix. The chance that two
+  random ids do is ∏(ρ² + (1 − ρ)²) = 2⁻¹²·⁹ / 2⁻²⁸·⁶ / 2⁻⁴⁰·⁶ for the first 32 / 512 / 4096 symbols.
+  If x is held only on A and y only on B, that prefix can't peel them (count 0) → `Exhausted` →
+  split → scan path (unlimited; the mappings diverge beyond the prefix) resolves it. So the impact
+  is extra cost in one bucket, not divergence. Suggest a §9 row and a T2.5 adversarial test (x and
+  y with equal first-32 index sets on A and B in one bucket → the session converges via split
+  and scan).
+- **(T2.0)** `Decoder.Done()` relies on ρ(0) = 1. If a `Mapper` without an all-elements symbol 0
+  is ever added, the stop rule has to move into the `Mapper` interface. This is not needed for
+  T2.1 / T2.7, which use the same ρ.
