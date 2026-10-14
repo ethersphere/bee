@@ -129,7 +129,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T1.1 Package skeleton, protobuf, constants
 - [x] T1.2 LtHash16 primitive (+ ECMH benchmark)
 - [x] T1.3 Fenwick tree
-- [ ] T1.4 Storer: opt-in `ChunkAddrItem`, write/delete paths, `ReserveObserver` hook
+- [x] T1.4 Storer: opt-in `ChunkAddrItem`, write/delete paths, `ReserveObserver` hook
 - [ ] T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
 - [ ] T1.6 `fingerprint.Index` (counts + LtHash, Apply, Summary, Rebuild) + observer adapter
 - [x] T1.7 Want set (`pkg/rangesync/wantset`)
