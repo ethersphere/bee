@@ -189,23 +189,29 @@ var (
 // (address, stamp hash) set made by the reserve's Put, eviction and Reset
 // paths while the reserve address index is enabled.
 //
-// Registration: one observer is registered, once; a second registration
-// and a nil observer are rejected. Registration returns only after every
-// set-changing transaction that started without the observer has
-// committed, and every transaction started after it is wrapped by Commit,
-// so a rebuild started after registration sees every later commit either
-// in its snapshot or in the delta stream. The reserve guarantees this with
-// a reserve-level registration lock: each set-changing path loads the
-// observer and runs its transaction, wrapped or not, under the read lock,
-// and registration takes the write lock. Lock order: reserve per-batch and
-// per-bin locks, registration lock (read), the observer's lock (read,
+// Registration: one observer is registered, once; a second registration,
+// a nil observer and a registration while the address index is disabled
+// are rejected. Registration returns only after every set-changing
+// transaction that started without the observer has committed, and every
+// transaction started after it is wrapped by Commit, so a rebuild started
+// after registration sees every later commit either in its snapshot or in
+// the delta stream. The reserve guarantees this with a reserve-level
+// registration lock: each set-changing transaction loads the observer and
+// runs, wrapped or not, under the read lock, and registration takes the
+// write lock. The read lock is taken per transaction, in the goroutine
+// that runs it, and released when that transaction (and its Commit) has
+// returned; it is never held across waiting for other transactions (such
+// as the per-item goroutines of eviction and Reset) and never taken twice
+// by one goroutine, since a holder waiting for a goroutine that is blocked
+// behind a pending registration deadlocks. Lock order: reserve per-batch
+// and per-bin locks, registration lock (read), the observer's lock (read,
 // inside Commit), per-address chunk locks, leveldb.
 //
 // Not reported: changes made before registration, and changes not made by
 // the Put, eviction and Reset paths, such as start-up recovery, migrations
 // and the address index fill (including a background fill running
 // concurrently with Commit). The observer's first rebuild, from a snapshot
-// taken once the address index is ready, covers them.
+// opened once the address index is ready, covers them.
 //
 // All methods may be called concurrently from several goroutines.
 type ReserveObserver interface {
@@ -218,20 +224,30 @@ type ReserveObserver interface {
 	// if an entry was written where none existed. A wrong remove would
 	// subtract an element the observer never added and leave a phantom
 	// difference forever. The delta is a group difference, so adds and
-	// removes may be applied in either order. Both are empty when the
-	// transaction failed. The slices are not reused by the reserve and may
-	// be retained (the ChunkID contents are read-only, see ChunkID).
+	// removes may be applied in either order. The slices are not reused by
+	// the reserve and may be retained (the ChunkID contents are read-only,
+	// see ChunkID).
+	//
+	// A transaction failed when its leveldb batch was not written; then run
+	// returns an error and an empty delta. A transaction whose batch was
+	// written succeeded, even if it reports an error afterwards (releasing
+	// sharky locations after the batch commit): run returns its full delta
+	// and a nil error, and the reserve returns that error to its own caller
+	// after Commit returns.
 	//
 	// Holding a read lock across run and the application of its delta is
 	// what lets a rebuild that opens an index snapshot under the write lock
 	// see every commit either in the snapshot or in the delta stream, never
 	// both and never neither.
 	//
-	// Until the observer has built its first index from a snapshot it may
-	// drop deltas. It decides this from its own state ("no index built
-	// yet"), read under the same read lock it holds across run, never by
-	// asking the storer (point 3); the first rebuild's snapshot covers
-	// anything dropped.
+	// Until its first rebuild opens a snapshot the observer may drop deltas,
+	// deciding from its own state, read under the read lock it holds across
+	// run, never by asking the storer (point 3). It switches from dropping
+	// to queuing for the new index in the same write-locked section that
+	// opens the first snapshot iterator, so a commit is either before that
+	// section (in the snapshot) or after it (queued). Keeping on dropping
+	// until the first index is swapped in would lose every commit made
+	// during the first iteration.
 	//
 	// Contract:
 	//  1. Commit calls run exactly once, synchronously, and returns its
@@ -255,20 +271,26 @@ type ReserveObserver interface {
 	// RadiusChanged is a hint that the reserve radius may have changed. It
 	// is called at the end of every reserve SetRadius, after the new radius
 	// is in effect (also when persisting it failed), with the value that
-	// call set. Concurrent SetRadius calls are not serialized, so calls may
-	// arrive out of order and the argument may already be stale: the
-	// observer must not trust it, and must not drop a call because the
-	// argument equals its current root (root 5, rebuild to 6 queued, a
-	// later 5 dropped leaves the index at 6 and the reserve at 5). It only
-	// queues an asynchronous rebuild and returns; the rebuild goroutine
-	// re-reads StorageRadius when it starts, without holding the observer's
-	// lock, and skips only if that equals the root of the last rebuild it
-	// started. It is called from the reserve workers, so it must not block
-	// and must not call into the storer.
+	// call set. SetRadius loads the observer after storing the radius,
+	// through a synchronized load, so a SetRadius racing with registration
+	// either notifies the observer or stored its radius before the
+	// observer's first rebuild reads it. Concurrent SetRadius calls are not
+	// serialized, so calls may arrive out of order and the argument may
+	// already be stale: the observer must not trust it, and must not drop a
+	// call because the argument equals its current root (root 5, rebuild to
+	// 6 queued, a later 5 dropped leaves the index at 6 and the reserve at
+	// 5). It only queues an asynchronous rebuild (a coalescing wake-up) and
+	// returns. The rebuild goroutine takes the wake-up before it reads
+	// StorageRadius, without holding the observer's lock, and skips only if
+	// the value equals the root of the last rebuild that completed; a
+	// failed rebuild leaves no such root, and initially there is none (0 is
+	// a valid radius). It is called from the reserve workers, so it must
+	// not block and must not call into the storer.
 	RadiusChanged(radius uint8)
 
 	// Reset is called once at the end of a successful reserve Reset, after
-	// every per-item transaction went through Commit. It must not call into
+	// every per-item transaction went through Commit; the reserve loads the
+	// observer for it through a synchronized load. It must not call into
 	// the storer.
 	Reset()
 }

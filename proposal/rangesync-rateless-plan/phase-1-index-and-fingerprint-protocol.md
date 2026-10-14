@@ -749,6 +749,50 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   (point 3). The observer keys the drop on its own state ("no index built yet"), read under the
   `ix.mu` read lock it holds across `run`; the first rebuild's snapshot, taken under the write
   lock once the index is ready, covers anything dropped. Stated in the `Commit` godoc.
+- **T1.4 first-snapshot switch (contract review round 2, MEDIUM; supersedes "no index built
+  yet" in the entry above):** keying the drop on "no index built yet" (slab set at the swap)
+  loses every commit made during the 10–20 s first iteration: it is in neither the snapshot nor
+  the delta stream. The drop state ends at rebuild **step 1**: the observer switches from
+  dropping to queuing for the new slab in the same `ix.mu` write-locked section that opens the
+  first snapshot iterator. A commit is then before that section (in the snapshot) or after it
+  (queued). Stated in the `Commit` godoc.
+- **T1.4 registration lock details (contract review round 2; extends the T1.0 lock order to
+  `r.multx` → registration lock (R) → `ix.mu` (R, inside `Commit`) → `chunkLocker` →
+  leveldb):** the read lock is taken per transaction, in the goroutine that runs it, and
+  released when that transaction and its `Commit` returned; never held across `eg.Wait` (the
+  `EvictBatchBin`/`Reset` parents don't hold it) and never taken twice by one goroutine
+  (a parent holding R + a pending registration + a worker blocked on R deadlocks). A second
+  registration is rejected by an atomic flag checked before the write lock, so it never
+  waits for in-flight transactions. **Decision:** with `AddrIndex` disabled the reserve rejects
+  registration, so no observer can exist and the registration lock is skipped entirely (the
+  disabled path stays as today: no lock, no wrapping, no allocation).
+- **T1.4 `RadiusChanged` hint protocol (contract review round 2; supersedes "the root of the
+  last rebuild it started"):** (1) the rebuild goroutine takes the wake-up token *before* it
+  reads `StorageRadius()`, so a `SetRadius` that lands after the read leaves a token behind;
+  (2) it skips only if the value equals the root of the last rebuild that **completed**; a
+  failed rebuild clears it, and the initial value is "none", not 0 (0 is a valid radius);
+  (3) `SetRadius` loads the observer **after** storing the radius, through a synchronized load
+  (an atomic pointer, or the registration read lock released before calling `RadiusChanged`),
+  so a `SetRadius` racing with registration either notifies the observer or stored its radius
+  before the observer's first rebuild reads it; `Reset`'s final `observer.Reset()` uses the same
+  load. (1)–(2) are T1.6's, (3) the T1.4 implementation's; all are in the godoc.
+- **T1.4 "failed" transaction (contract review round 2, LOW C):** `transaction.Commit` can
+  return an error after the leveldb batch was written (sharky `Release` errors joined after
+  `batch.Commit`, `pkg/storer/internal/transaction/transaction.go:186–196`), so `Run`'s error
+  alone doesn't say whether the transaction committed. Definition: a transaction failed iff its
+  leveldb batch was not written. **Choice:** contract point 1 stays as is (error ⇒ apply
+  nothing); the reserve keeps a post-commit error out of `run` — `run` returns the full delta
+  and nil, and the reserve returns the stashed error to its caller after `Commit` (the caller
+  sees the same error as today). To tell the cases apart, the implementation adds an additive,
+  identifiable post-commit error in `pkg/storer/internal/transaction` (a sentinel wrapped into
+  the post-commit release errors only; rollback-path errors are unchanged). Stated in the
+  `Commit` godoc.
+- **T1.4 superseded phrases (contract review round 2):** in "T1.4 observer semantics" above,
+  "`RadiusChanged` … with the radius in effect … the observer dedupes" is superseded by the
+  hint entries (the argument is the value that call set, possibly stale); and "Set changes made
+  before the observer is registered (… the T1.5 fill)" is superseded: the fill is never
+  reported regardless of timing (a background fill runs concurrently with `Commit`); only the
+  `Put`, eviction and `Reset` paths are.
 
 ## Follow-ups
 _(sessions append here)_
@@ -856,3 +900,15 @@ _(sessions append here)_
   (`removeRogueChunks.go:78`, `reserveRepair.go:183,191`) pass the option explicitly to the
   package-level removal functions. Registration (`SetReserveObserver`) is once-only and rejects
   nil; it needs an error return or a documented panic, since §5.4 gives it none.
+- **T1.4 → T1.6 (round 2; supersedes the two T1.4 → T1.6 follow-ups above where they differ):**
+  the drop state ends at rebuild step 1, switched to queuing in the same `ix.mu` write-locked
+  section that opens the first snapshot iterator (not at the swap). Rebuild goroutine: take the
+  wake-up token before reading `StorageRadius()`; skip only if it equals the root of the last
+  **completed** rebuild (cleared on failure, initially none). Tests: a `Put` and an eviction
+  committing after the first rebuild's iterator opened (and before the swap) appear in the
+  final index; a failed rebuild followed by a wake-up with the same radius rebuilds.
+- **T1.4 → T1.5 (round 2):** settle `SetReserveObserver`'s failure mode (error return vs
+  documented panic for a second registration, nil, or a disabled index) **before** T1.6/T1.9
+  declare their local interfaces over it. T1.5's "calls return an error when the address index
+  is disabled" conflicts with §5.4's signatures: `SetReserveObserver(o)` and
+  `ReserveAddrIndexReady() bool` have no error return.
