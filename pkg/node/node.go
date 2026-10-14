@@ -180,6 +180,7 @@ type Options struct {
 	PaymentTolerance              int64
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
+	PostageSnapshotFile           string
 	PostageSyncBlockRange         uint64
 	PriceOracleAddress            string
 	RedistributionContractAddress string
@@ -912,11 +913,30 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
-		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
-		if err != nil {
-			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+	snapshotSource, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode)
+	if skipReason != "" {
+		logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", skipReason)
+	}
+	if snapshotSource != nil {
+		snap, info, err := snapshot.Load(logger, snapshotSource, snapshot.Config{
+			Contract:        postageStampContractAddress,
+			ABI:             postageStampContractABI,
+			StartBlock:      postageSyncStart,
+			BlockTime:       o.BlockTime,
+			StallingTimeout: postageSyncingStallingTimeout,
+			BackoffTimeout:  postageSyncingBackoffTimeout,
+			SyncingStopped:  b.syncingStopped,
+		})
+		switch {
+		case err != nil && o.PostageSnapshotFile != "":
+			// The operator asked for this file explicitly, so do not start without it.
+			return nil, fmt.Errorf("postage snapshot file %q: %w", o.PostageSnapshotFile, err)
+		case err != nil:
+			// A corrupt embedded snapshot is not fatal: rebuild from the chain instead.
 			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
+		default:
+			batchSnapshot = snap
+			logger.Info("using postage snapshot", "source", snapshotSource.Name(), "path", o.PostageSnapshotFile, "log_count", info.LogCount, "max_block", info.MaxBlock)
 		}
 	}
 
@@ -924,6 +944,11 @@ func NewBee(
 	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+	if batchSnapshot != nil && o.PostageSnapshotFile != "" && !snapshotLoaded {
+		// The replay failed and the batch service fell back to the chain, but the
+		// operator asked for this file explicitly, so do not start without it.
+		return nil, fmt.Errorf("postage snapshot file %q: replay failed", o.PostageSnapshotFile)
 	}
 	if snapshotLoaded {
 		// The snapshot rebuilt the store up to its block height, so the node can
@@ -1676,10 +1701,37 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	return hasOne, err
 }
 
+// snapshotSkipReason explains why a postage snapshot would not be replayed, or
+// returns an empty string when it would be.
+func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) string {
+	switch {
+	case mode == api.UltraLightMode:
+		return "ultra-light node does not sync postage data"
+	case batchStoreExists && !resync:
+		return "batch store already exists; use --resync to rebuild it from the snapshot"
+	default:
+		return ""
+	}
+}
+
 // useEmbeddedSnapshot reports whether to rebuild the batch store from the
 // embedded snapshot: mainnet, full or light node, and the store will be built
 // from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
 func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
-	storeWillRebuild := !batchStoreExists || resync
-	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
+	return !skip && snapshotSkipReason(batchStoreExists, resync, mode) == "" && networkID == mainnetNetworkID
+}
+
+// chooseSnapshotSource picks the snapshot source, if any. A file named by the
+// operator wins on any network; skipReason says why it will not be used.
+func chooseSnapshotSource(file string, skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, skipReason string) {
+	if file != "" {
+		if reason := snapshotSkipReason(batchStoreExists, resync, mode); reason != "" {
+			return nil, reason
+		}
+		return snapshot.File(file), ""
+	}
+	if useEmbeddedSnapshot(skip, batchStoreExists, resync, networkID, mode) {
+		return snapshot.Embedded(archive.Getter{}), ""
+	}
+	return nil, ""
 }

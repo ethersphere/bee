@@ -426,10 +426,8 @@ func TestListener(t *testing.T) {
 	})
 }
 
-// TestListenerPageSize verifies that the block paging window is selected based
-// on the backend: a plain backend pages by the configured block page, while a
-// backend that also exposes GetBatchSnapshot (the snapshot filterer) pages by
-// blockPageSnapshot.
+// TestListenerPageSize verifies that the block paging window is the configured
+// block page, with zero falling back to the default.
 func TestListenerPageSize(t *testing.T) {
 	t.Parallel()
 
@@ -494,15 +492,6 @@ func TestListenerPageSize(t *testing.T) {
 		const blockPage = 5000
 		to := firstPageTo(t, blockPage, standard)
 		if want := uint64(blockPage - 1); to != want {
-			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
-		}
-	})
-
-	t.Run("snapshot backend uses snapshot page", func(t *testing.T) {
-		to := firstPageTo(t, listener.DefaultBlockPage, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
-			return snapshotPageCaptureFilterer{f}
-		})
-		if want := listener.BlockPageSnapshot - 1; to != want {
 			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
 		}
 	})
@@ -613,14 +602,6 @@ func (f *pageCaptureFilterer) FilterLogs(ctx context.Context, q ethereum.FilterQ
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
-
-// snapshotPageCaptureFilterer additionally exposes GetBatchSnapshot, matching the
-// interface the listener type-asserts against to detect a snapshot backend.
-type snapshotPageCaptureFilterer struct {
-	*pageCaptureFilterer
-}
-
-func (snapshotPageCaptureFilterer) GetBatchSnapshot() []byte { return nil }
 
 func newEventUpdaterMock() *updater {
 	return &updater{
@@ -958,3 +939,26 @@ type Option interface {
 type optionFunc func(*mockFilterer)
 
 func (f optionFunc) apply(r *mockFilterer) { f(r) }
+
+func TestSyncTarget(t *testing.T) {
+	t.Parallel()
+
+	// Tests run with the default batch factor (5) and tail size (4).
+	for _, tc := range []struct {
+		head   uint64
+		want   uint64
+		wantOK bool
+	}{
+		{head: 0, want: 0, wantOK: false},
+		{head: 3, want: 0, wantOK: false},
+		{head: 4, want: 0, wantOK: true},
+		{head: 13, want: 5, wantOK: true},
+		{head: 14, want: 10, wantOK: true},
+		{head: 104, want: 100, wantOK: true},
+	} {
+		got, ok := listener.SyncTarget(tc.head)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("SyncTarget(%d) = (%d, %v), want (%d, %v)", tc.head, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}
