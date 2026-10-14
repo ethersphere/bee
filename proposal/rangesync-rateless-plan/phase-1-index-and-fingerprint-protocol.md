@@ -1,0 +1,480 @@
+# Phase 1 — Foundations and `rangesync` with fingerprints + item lists
+
+**Goal:** a new `pkg/rangesync` package tree with its own protocol, fingerprint index, want
+set and a minimal reconciler. A node started with `--puller-enable=false
+--rangesync-enable=true` can sync its neighborhood using **only range fingerprints and item
+lists** (Meyer). No coded symbols yet. With default flags the node behaves exactly as today.
+
+**Proposal sections:** §4.1–4.3.3, §4.3.5 (fingerprints/counts), §4.3.6, §5.1–§5.4, §6
+(FP + Items), §7.6, §8.2 (want set, rate limits), §8.3, §8.4, §9, §10, §11, §12 row 1, §13.
+
+**Depends on:** nothing. Read the README "Ground rules" first — **`pkg/pullsync` and
+`pkg/puller` are not modified.**
+
+---
+
+## T1.0 Spike: snapshot isolation and lock ordering (open question 6)
+
+**Why first:** T1.4 fixes the storer's `ReserveObserver` interface and T1.6 builds the rebuild
+protocol on it (§5.2). Both assume the IndexStore iterator reads a consistent snapshot through
+`transaction.Storage` and its caching layer. If that's false, the interface changes.
+
+**Scope:** a test-only investigation, no production code.
+1. In `pkg/storer/internal/transaction` (or a `_test.go` next to the reserve), open an iterator
+   over a namespace via the same path the reserve uses, then commit transactions that add and
+   delete keys in that namespace while iterating. Assert the iterator sees exactly the pre-open
+   state. Cover the caching layer if the reserve's `IndexStore` goes through one (check
+   `pkg/storer/storer.go` for how the index store is constructed).
+2. Map the lock order: `Reserve.Put` and eviction take `r.multx` per batch ID and per bin, then
+   run the transaction. Confirm no reserve code path is reachable while holding a lock the Index
+   would hold in write mode (the rule in §5.2 "Lock ordering").
+3. Record in the Decisions log: snapshot holds (yes/no, with the test), and the final shape of
+   `ReserveObserver.Commit`. If the snapshot does **not** hold, propose the alternative
+   (e.g. rebuild under the reserve's own locks, or sequence numbers per commit) and update T1.4 and
+   T1.6 here before they start.
+
+Keep the test as a regression test.
+
+**Size:** S (timeboxed). **Parallel:** wave 0. **Blocks:** T1.4, T1.6.
+
+---
+
+## T1.1 Package skeleton, protobuf, constants
+
+**Do this first (wave 0):** T1.2, T1.3, T1.7 and T1.8 build on the package and types it creates.
+It is small; merge it before starting wave A.
+
+**Scope:** create the tree from README "Package layout" with `doc.go` files.
+`pkg/rangesync/pb/rangesync.proto` exactly as §6.2 — including `Symbols`, `More`,
+`Status.Mapping` and `Message.AuditRound` (reserved now so Phase 2 and Phase 5 need no version
+bump; README issue 8) — generated with `make protobuf` (gogo, like `pkg/pullsync/pb`).
+Two constants files, split by the import rule (`fingerprint` is the leaf package):
+- `pkg/rangesync/fingerprint/constants.go`: index constants (`LeafBits`, `RootSymbols`,
+  `Level1Symbols`, `BucketSymbols`, `ScanLimit`) and `DefaultMapperID = 1` (the float mapper of
+  T2.1, whose `ID()` must return it);
+- `pkg/rangesync/constants.go`: every protocol constant from the README table.
+Phase 1 handlers ignore a non-zero `Message.AuditRound` (salted sessions arrive in T5.3).
+`pkg/rangesync/rangesync.go`: `Service`, `New(...)`, `Protocol() p2p.ProtocolSpec` with name
+`rangesync`, version `1.0.0`, streams `status`, `reconcile`, `fetch` (handlers return "not
+implemented" until T1.9/T1.10).
+
+Shared value types used by both `fingerprint` and the protocol (`ID [64]byte`, `Range{Prefix,
+Bits}`, `Summary{Count, Digest}`) go in `pkg/rangesync/fingerprint/types.go` so it stays the leaf
+package; `rangesync` converts to/from `storer.ChunkID` at the boundary.
+
+**Tests:** proto round-trip; `Protocol()` spec test; `Range` containment helpers.
+
+**Size:** S. **Parallel:** wave 0 (alongside T1.0).
+
+---
+
+## T1.2 LtHash16 primitive (+ ECMH benchmark)
+
+**Depends on:** T1.1 (`fingerprint.ID`).
+
+**Scope:** `pkg/rangesync/fingerprint/lthash.go` per §5.2: `type LtHash [1024]uint16`,
+`Add(id)`, `Sub(id)`, `AddHash`, `SubHash`, `Digest() [32]byte` (keccak256 of the lanes,
+little-endian — fix and document the byte order), element expansion
+`SHAKE128("rangesync/v1" ‖ id)` → 2048 B, plus a salted expansion `Expand(salt, id)` reused by
+Phase 5. Use `golang.org/x/crypto/sha3`.
+
+**Benchmark (open question 1):** a throwaway ECMH in a `_test.go` file using
+`github.com/btcsuite/btcd/btcec/v2` (already in `go.mod`). Measure `Add` ns/op and memory per
+bucket; compare with reserve `Put` throughput (write a small `BenchmarkReservePut` in the
+storer tests if none exists). Record numbers + decision in the Decisions log.
+
+**Tests:** group laws (identity, inverse, commutativity, associativity), `Add` then `Sub` =
+zero, digest test vector in `testdata/`, fuzz `Add/Sub` sequences.
+
+**Size:** S–M. **Parallel:** wave A.
+
+---
+
+## T1.3 Fenwick tree
+
+**Depends on:** T1.1 (package only).
+
+**Scope:** `pkg/rangesync/fingerprint/fenwick.go`: a **generic** Fenwick tree over a flat slab of
+`B` elements of any type satisfying a small group interface (in-place `Add(other)`,
+`Sub(other)`, `Zero()`): `Add(i, delta)`, `Prefix(j, out)`, `Range(i, j, out)`. No allocation per
+query (accumulate into `out *T`; an LtHash element is 2 KB). It must not depend on `LtHash` or
+`CodedSymbol`: their group adapters are added where those types are used (T1.6 for `LtHash`,
+T2.2 for symbol arrays).
+
+**Tests:** range sums vs brute force (B = 1, 2, 4096) with a `uint32` and a small fixed-size
+array test type; fuzz. A benchmark with a 2 KB array type at B = 4096 (target: a few µs, §4.3.5).
+
+**Size:** S. **Parallel:** wave A.
+
+---
+
+## T1.4 Storer: opt-in `ChunkAddrItem`, write/delete paths, `ReserveObserver` hook
+
+**Depends on:** T1.0.
+
+**Scope (additive changes to `pkg/storer` only)**
+
+1. `ChunkAddrItem` in `pkg/storer/internal/reserve/items.go` per §5.1: namespace `chunkAddr`,
+   `ID() = addr ‖ stampHash`, value = `BatchID (32 B) ‖ ChunkType (1 B)`;
+   `Marshal/Unmarshal/Clone/String`; extend `items_test.go` and `items_fuzz_test.go`. Also the
+   `chunkAddrValid` marker item (used by T1.5).
+2. Public types in `pkg/storer/storer.go`: `ChunkID`, `ReserveObserver` (§5.4: `Commit(run)`,
+   `RadiusChanged(radius)`, `Reset()`).
+3. A reserve option `AddrIndex bool` (default false). **When false, every code path below is
+   skipped and the reserve's behaviour is byte-identical to today.** When true, write/delete
+   `ChunkAddrItem` **in the same transaction** as `ChunkBinItem`
+   (`pkg/storer/internal/reserve/reserve.go`):
+
+   | Path | Location | Change |
+   |---|---|---|
+   | `Put`, new chunk | `Put`, final `errors.Join(... ChunkBinItem ...)` | put, delta `+id` |
+   | `Put`, same address, newer stamp | `Put`, `oldStampIndex.ChunkAddress.Equal(...)` branch | delete old, put new, `−old +new` |
+   | `Put`, different address, same stamp index | `removeChunk` → `RemoveChunkWithItem` | covered there |
+   | eviction | `RemoveChunkWithItem`, `RemoveChunkMetaData` | delete, `−id` |
+   | corruption | `DeleteCorruptedChunkMetadata` (also used by `pkg/storer/recover.go`) | delete if present; `−id` only if it was present |
+   | reset | `Reset` | delete in the per-item transaction; call `observer.Reset()` at the end |
+
+   `RemoveChunkWithItem`, `RemoveChunkMetaData` and `DeleteCorruptedChunkMetadata` are
+   package-level functions (also used by migrations) — pass the option/observer explicitly
+   rather than adding globals.
+
+   **Deltas must be exact (§5.4).** On every delete path, check inside the same transaction
+   whether the `ChunkAddrItem` exists and emit `−id` only if it did; emit `+id` only for an item
+   actually written. During a background fill (T1.5) or after an interrupted one, items can be
+   missing, and a `−id` for an element the Index never added leaves a phantom difference forever.
+4. **Observer plumbing.** When an observer is registered, each set-changing `r.st.Run(...)` is
+   wrapped as `observer.Commit(func() (adds, removes, err) { ...Run...; return delta })`; the
+   delta is empty when `Run` fails. `EvictBatchBin` runs one transaction per item in an
+   errgroup — wrap each. With no observer: no wrapping, no allocation. Radius changes go
+   through `db.reserve.SetRadius` (three call sites in `pkg/storer/reserve.go`:
+   `startReserveWorkers`, `reserveWorker`, `unreserve`) — call `observer.RadiusChanged` from
+   one place (wrap `SetRadius` inside `Reserve`).
+
+**Tests (first):** with `AddrIndex=false`, a test asserts no `chunkAddr` keys are ever written
+across Put/replace/evict/reset. With `AddrIndex=true`: a table test per path (item
+exists/doesn't, exact delta delivered), failed transaction → empty delta, deleting a chunk whose
+`ChunkAddrItem` is absent → no `−id`, property test that
+`ChunkAddrItem`s always equal the set derived from `ChunkBinItem`s after random
+Put/replace/evict. Existing `pkg/storer/...` tests pass unchanged.
+
+**Size:** M. **Parallel:** wave B (the only wave-B task in `pkg/storer`).
+
+---
+
+## T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
+
+**Depends on:** T1.4.
+
+**Scope**
+
+1. **Toggle logic (§5.1 "Filling and toggling").** In storer start-up: enabled + marker present
+   → nothing; enabled + no marker → drop the `chunkAddr` namespace, fill it from `ChunkBinItem` in
+   batched transactions (follow the structure/logging of
+   `pkg/storer/migration/removeRogueChunks.go`), write the marker **last**; disabled + marker
+   present → delete the marker, then drop the namespace in a background goroutine (low priority,
+   cancellable on shutdown). **Not** a numbered migration step. `storer.Options` gets
+   `ReserveAddrIndex bool`.
+2. **Fill strategy (§5.1 "Blocking or background fill").** First write a benchmark that fills
+   4.2M items on the leveldb store and record the time. If < 60 s: fill blocking, before the
+   reserve workers start. Otherwise implement the background variant: `AddrIndex` writes are on
+   from start-up; the filler takes `r.multx.Lock(batchID)` per item and re-checks that the
+   `BatchRadiusItem` still exists inside the same transaction that writes the `ChunkAddrItem`
+   (an item evicted during the fill must not come back). Record the measurement and the chosen
+   variant in the Decisions log. In both variants `ReserveAddrIndexReady() bool` reports whether
+   the marker exists (with the blocking variant it is true by the time anyone can ask).
+3. `pkg/storer/migration/reserveRepair.go` (`ReserveRepairer`): drop the namespace and marker.
+4. `pkg/storer/internal/reserve/addr.go`: `IterateAddr(prefix, bits, after, cb)` over
+   `ChunkAddrItem`; `GetByID(addr, stampHash)` (resolve `BatchID`, then the existing `Get`).
+5. `ReserveAddrStore` interface (§5.4) implemented on `*DB`: `ReserveIterateAddr`,
+   `ReserveGetByID`, `ReserveHasID` (existence of the `ChunkAddrItem`; peers exchange ids without
+   the batch ID, so `ReserveHas` can't be used), `ReserveAddrIndexReady`, `SetReserveObserver`.
+   Calls return an error when the address index is disabled. Extend `pkg/storer/mock` with an in-memory implementation for protocol tests.
+
+**Tests:** enable → fill matches `ChunkBinItem`; disable → marker gone, no writes, namespace
+eventually empty; disable → mutate reserve → enable → refill, index equals truth (no stale
+element); crash mid-fill (cancel the context) → no marker → next start refills; if the
+background variant is chosen: concurrent Put/evict during the fill → final index equals truth
+(`-race`); iteration with prefix/after cursors at several bit lengths; `ReserveGetByID`
+round-trip; `ReserveHasID` true/false/after eviction; repair tool drops both.
+
+**Size:** M.
+
+---
+
+## T1.6 `fingerprint.Index` (counts + LtHash) + observer adapter
+
+**Depends on:** T1.0, T1.2, T1.3. *Not* on T1.4/T1.5 (same or later wave): the observer adapter
+declares the subset of `storer.ReserveObserver` / `ReserveAddrStore` it needs as local interfaces
+and is tested with a fake; T1.9 wires it to the real storer.
+
+**Scope**
+
+- `pkg/rangesync/fingerprint/index.go` per §5.2 **without symbol caches** (T2.2), plus the
+  `LtHash` group adapter for T1.3's generic Fenwick tree:
+  `Index{mu, root, leafBits, counts, hashes}`, `Apply(adds, removes)`, `Summary(r)` (levels
+  0..`leafBits` via Fenwick; deeper → `ErrBelowLeaf`, the caller scans), `Rebuild(root,
+  iterate)`, `SubscribeRootChange()` (debounce interval is a constructor option, 0 in tests).
+  Bucket = address bits `r … r+leafBits−1` (`LeafBits = 12`). Elements outside the root are
+  ignored by `Apply` and counted in a metric.
+- `pkg/rangesync/indexer.go` (or similar): implements `storer.ReserveObserver`:
+  - `Commit` takes `mu.RLock()` around `run` and applies the returned delta — but **drops deltas
+    while `ReserveAddrIndexReady()` is false** (the first rebuild covers them);
+  - `RadiusChanged` **only queues an asynchronous rebuild and returns** (no-op if the radius
+    equals the current root's). It's called from the reserve worker and from `unreserve`; a
+    synchronous rebuild would stall eviction or deadlock against writers waiting for `ix.mu`. A
+    single rebuild goroutine coalesces queued requests;
+  - `Reset` clears.
+  - **Start-up order:** `SetReserveObserver` first, then wait for `ReserveAddrIndexReady()`, then
+    the initial rebuild from the persisted radius (`StorageRadius()`), so no commit is missed. The
+    start-up `SetRadius` in `startReserveWorkers` then only triggers a second rebuild if the radius
+    actually changed.
+- **Rebuild protocol (§5.2):** steps 1–5 exactly, as confirmed (or amended) by T1.0, and the
+  lock-ordering rule: never hold `ix.mu` in write mode while calling into the reserve or
+  iterating. While rebuilding, `Summary` for uncovered ranges returns `ErrBusy`.
+- **Open question 5 (resolved):** the root is `(overlay, StorageRadius())` = `reserve.Radius()`,
+  the same value `DB.IsWithinStorageRadius` uses. `CommittedDepth()` is `Radius() +
+  capacityDoubling`, i.e. a sub-prefix of the root; only the audit (Phase 5) uses it. Test: a
+  chunk accepted by `IsWithinStorageRadius` is inside the root.
+
+**Tests:** fuzz: random add/remove sequences, `Rebuild()` equals the live index for every
+range at every level; concurrent writers during `Rebuild` (`-race`); memory at B = 4096
+matches §5.3 (counts 16 KB, LtHash 8 MB); storer-level test via the mock: put/evict/replace,
+summaries match brute force; radius change → root moves, and `RadiusChanged` returns
+immediately while the rebuild runs; deltas before the address index is ready are dropped and the
+first rebuild still equals brute force; a chunk evicted before the fill reached it produces no
+phantom difference.
+
+**Size:** M–L.
+
+---
+
+## T1.7 Want set (`pkg/rangesync/wantset`)
+
+**Depends on:** T1.1 (`fingerprint.ID`).
+
+**Scope (§7.8, §8.2):** node-wide in-flight set used by every `rangesync` fetch:
+```go
+type Set struct{ ... }
+func New(deadline time.Duration) *Set              // default 30s
+func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) bool
+func (s *Set) Done(id fingerprint.ID)              // stored (or ErrOverwriteNewerChunk)
+func (s *Set) Release(id fingerprint.ID)           // not delivered / invalid
+func (s *Set) Len() int
+func (s *Set) Close() error
+```
+Expired claims are reclaimable through another peer. Bounded memory (≈ 10k IDs, §5.3).
+The rejected cache (T4.4) will live here too; leave room for it.
+
+**Tests:** claim/deny/expire/reclaim; concurrent claims (`-race`); bounded size.
+
+**Size:** S. **Parallel:** wave A.
+
+---
+
+## T1.8 Pure session decision logic (fingerprints + items) and session-root relation
+
+**Depends on:** T1.1.
+
+**Scope:** `pkg/rangesync/session.go` — **no I/O**. A `Session` value takes incoming
+`Message`s and local summaries (through a small interface) and returns outgoing `Message`s and
+wants.
+
+1. **Session root (§7.6):** `SessionRoot(rootA, rootB) (Range, bool)` — narrower root if one
+   contains the other, else not ok. Edge-peer cases from §7.6 as table tests.
+2. **`Fingerprint` rule (§6.3) in Phase-1 form:** equal → nothing; `cR == 0` → `Items{all
+   local, paged}`; `cL == 0` → `Items{none, Reply: true}`; `d̂ > LargeDiff` → a `Striper`
+   interface (no-op until T3.1, falls through to split); otherwise split into `2^FanoutBits`
+   children; at session leaf depth (`min(Root.Bits + LeafBits)` over both peers) →
+   `Items{local, Reply: true}`. Leave the "fits in symbols" branch as a seam for T2.4.
+3. **`Items`:** queue IDs not held; if `Reply`, answer with local IDs not in the list; paging
+   with `After`/`More`, `ItemsPageSize = 1024`.
+4. Validation helpers for T1.9 (§6.4): range inside session root and ≤ leaf depth (+4 bits
+   slack), children must partition a range this side sent in its previous message, `MaxParts`.
+5. Phase 1 rejects `Symbols`/`More` parts.
+
+**Tests:** table tests per branch; property test: two in-memory sets, two `Session`s driven
+against each other until both send empty messages → both hold the union (diffs 0, 1, 20, 1k,
+100%, equal counts hiding a diff). Fuzz the message handler.
+
+**Size:** M–L.
+
+---
+
+## T1.9 `status` and `reconcile` stream handlers + validation
+
+**Depends on:** T1.5, T1.6, T1.8.
+
+**Scope:**
+- `status` stream: send/receive `Status{Root, Count, Digest, LeafBits, Mapping}` (audit fields
+  empty). `SendStatus(ctx, peer)`, handler, `LastStatus(peer)`. Gossip timing is Phase 4.
+  A peer whose `Mapping` differs from ours is not eligible for sessions (metric
+  `mapping_mismatch_total`); Phase-1 nodes send `fingerprint.DefaultMapperID` (`1`, defined in
+  T1.1 so Phase 1 doesn't depend on T2.1).
+- `reconcile` stream: initiator `Reconcile(ctx, peer) (wants []storer.ChunkID, err error)` and
+  the responder handler, driving `Session` until an empty message. Below-leaf summaries come from
+  a `ReserveIterateAddr` scan. Enforce §6.4: invalid range / non-partition / oversize → reset the
+  stream and **disconnect** the peer (same approach as `pullsync`'s `Syncer.disconnect`; no
+  blocklisting) and report the failure through a `PeerScorer` interface defined here
+  (`Fail(peer, reason)`, `Succeed(peer)`), no-op by default. The reconciler implements it (T1.11)
+  and owns the single per-peer failure score that T3.3 and T4.4 also feed.
+  `MaxConcurrentSessions = 16` node-wide, 1 per peer; over cap, while the
+  requested range is rebuilding, or while the storer's address index is still filling
+  (`ReserveAddrIndexReady()`, T1.5) → `Message{Busy: true}`.
+- `Service` start-up wires T1.6's observer adapter to the real storer in the order T1.6
+  prescribes (`SetReserveObserver`, wait for `ReserveAddrIndexReady()`, initial rebuild).
+- Per-peer stream limits: **copy** `pkg/pullsync/streamlimit.go` into
+  `pkg/rangesync/streamlimit.go` (do not import or move it).
+
+**Tests:** `pkg/p2p/streamtest` two-node tests: equal sets → one round trip; small diff → wants
+on both sides; Busy at cap; malformed messages reset the stream.
+
+**Size:** M.
+
+---
+
+## T1.10 `fetch` stream + delivery validation
+
+**Depends on:** T1.5, T1.7.
+
+**Scope:** `pkg/rangesync/fetch.go`: `Fetch(ctx, peer, ids)` sends `Want` (≤ 250 IDs) and reads
+`Delivery`s; handler resolves via `ReserveGetByID` with a per-peer delivery limiter
+(`pkg/ratelimit`, same budget as `pullsync`'s `handleMaxChunksPerSecond = 250`) and a global
+requester-side fetch limiter (1000 chunks/s, configurable).
+
+- Before each `Want`: drop IDs the want set denies, IDs `ReserveHasID` now reports present (cuts
+  cross-protocol duplicates in dual mode), **and IDs outside `IsWithinStorageRadius`**.
+  `Reserve.Put` does not check the radius itself — `pullsync.Sync` filters at offer time — and
+  the radius can grow mid-session, so `rangesync` must filter too.
+- Delivery validation applies the same rules as `pullsync.Sync`
+  (`pkg/pullsync/pullsync.go:329–410`), **re-implemented** in `rangesync` (no import, no
+  extraction): unsolicited check against the requested set, stamp unmarshal + hash,
+  `validStamp`, CAC → `unwrap`, SOC → `gsocHandler`, otherwise invalid;
+  `ReservePutter().Put`; `ErrOverwriteNewerChunk` not fatal. `New` takes the same
+  `unwrap`, `gsocHandler`, `validStamp` arguments `pullsync.New` gets in `pkg/node/node.go`.
+- Want-set bookkeeping: `Claim` before `Want`; `Done`/`Release` after; every claim released on
+  any early return.
+- Metric `cross_protocol_duplicates_total`: chunk already present when `Put` is called.
+
+**Tests:** happy path; unsolicited chunk; invalid stamp; unknown ID (no delivery, claim
+released); `ReserveHasID` true right before `Want` → not requested; out-of-radius ID → not requested; fuzz the handler with
+malformed `Want`.
+
+**Size:** M.
+
+---
+
+## T1.11 Minimal reconciler (topology subscription, timer-driven sessions, `SyncRate`)
+
+**Depends on:** T1.9, T1.10.
+
+**Scope:** `pkg/rangesync/reconciler/` — a minimal version Phase 4 grows into the full one:
+- Own `topology.Driver.SubscribeTopologyChange()` subscription (multiple subscribers are
+  supported) and peer iteration; for each connected peer, exchange `Status`; eligible if
+  `SessionRoot` is ok. Peers without the protocol are skipped (not handed anywhere).
+- Every 60 s and on topology change: for eligible peers with differing digests where our overlay
+  is lower, run `Reconcile` then `Fetch`.
+- **Owns the per-peer failure score:** implements T1.9's `PeerScorer`; T3.3 (withholding) and T4.4
+  (claim-and-stall) report into the same score. Peers above a threshold are deprioritised.
+- Implements **`storer.Syncer`** (`SyncRate() float64`, `Start(ctx)`; see
+  `pkg/storer/reserve.go:39`). `SyncRate` = chunks/s fetched by catch-up work over a 10-minute
+  window, where in Phase 1 "catch-up" means sessions whose resolved difference (the number of
+  wants they produced) is ≥ `CatchUpMinDiff = 256` (Phase 3 adds stripes). Use `pkg/rate` like the puller does.
+  **Start-up guard:** the reserve worker ticks (and may lower the radius when `SyncRate() == 0`)
+  as soon as the storer starts. The puller's rate rises within seconds of `Start`; rangesync's
+  wouldn't until it has exchanged `Status` with its neighbors and detected a gap (§8.4). So `SyncRate()`
+  must return a non-zero sentinel until the first status exchange with every eligible connected
+  neighbor has completed **and** any catch-up it triggered has started, **or** until
+  `2 × StatusMaxInterval` (120 s) after `Start`, whichever comes first — a neighbor that never
+  answers must not pin the rate above zero. Tests: a fresh rangesync-only node with an empty
+  reserve never lowers its radius before that point; a silent neighbor releases the guard after
+  120 s.
+  `Start` must be safe to call once from the storer's reserve-worker start-up.
+- `Close()`; metrics registration hook.
+
+**Tests:** topology mock: peer join/leave; only lower overlay initiates; `SyncRate` > 0 during a
+large catch-up and 0 with only small sessions (fake clock); failure score raised on `Fail`.
+
+**Size:** M.
+
+---
+
+## T1.12 Node wiring: flags, combined syncer, metrics registration
+
+**Depends on:** T1.11.
+
+**Scope (`cmd/bee/cmd/cmd.go`, `pkg/node/node.go` only):**
+- Flags `--rangesync-enable` (default false) and `--puller-enable` (default true), options
+  plumbed into `node.Options`. Full node with both false → start-up error. Document in the flag
+  help that `--puller-enable=false` only stops *pulling* via pullsync; the pullsync handlers
+  stay registered.
+- **Full nodes only.** `rangesync` applies only when `o.FullNodeMode && !o.BootnodeMode`. On
+  light, ultra-light and boot nodes, `--rangesync-enable` is ignored with a Warning log: the
+  storer is opened without the address index and the protocol is not registered (unlike
+  `pullsync`, which is registered everywhere and wrapped in `WithBlocklistStreams` on light nodes,
+  `node.go:~1196`).
+- `rangesync` enabled on a full node: open the storer with `ReserveAddrIndex: true`; construct
+  `rangesync.New` (next to `pullsync.New`, `node.go:~1184`) and register its protocol; construct
+  the reconciler inside the existing `if o.FullNodeMode && !o.BootnodeMode` block.
+- `pullsync` disabled: don't construct `puller.New`; `pullsync.New` + its protocol registration
+  stay.
+- **Combined syncer (§8.4)** — a small type in `pkg/node` implementing `storer.Syncer` and
+  `status`'s `SyncReporter`: `Start` starts the enabled drivers, `SyncRate` sums them. Replace the
+  direct uses of `pullerService` with it: `localStore.StartReserveWorker(...)`,
+  `nodeStatus.SetSync(...)`, `isFullySynced` and the warm-up check (`node.go:~1290`, `~1330`),
+  the debug log at `~1302`, and metric registration (`~1404`, add rangesync metrics). With
+  default flags the combined syncer wraps only the puller and returns its exact values. The
+  status protocol and `/status` API keep reporting it in the existing `PullsyncRate` field; don't
+  rename it (wire and API compatibility) — add a code comment saying it is the combined rate.
+- Closers: register the rangesync service and reconciler like `b.pullerCloser`.
+
+**Tests:** node-level: defaults → no `rangesync` protocol registered, storer opened without the
+address index; rangesync-only → puller not constructed, pullsync still registered; both false →
+error; light node with `--rangesync-enable` → warning, no address index, protocol not registered.
+Unit tests for the combined syncer.
+
+**Size:** M.
+
+---
+
+## T1.13 Integration, coexistence and adversarial tests, metrics
+
+**Depends on:** T1.12.
+
+**Scope**
+- Metrics (§10) for Phase 1: `sessions_total{result}`, `session_rounds`,
+  `parts_sent/received{type}`, `bytes_metadata{dir}`, `bytes_chunks{dir}`, `pairwise_diff`,
+  `index_rebuild_seconds`, `index_apply_seconds`, `index_memory_bytes`, `sync_rate`,
+  `cross_protocol_duplicates_total`.
+- Protocol (§13): two in-memory reserves via `streamtest`, random overlapping sets, diffs 0, 1,
+  20, 1k, 4k, 100%, hidden diffs → both hold the union; message/byte counts within Meyer bounds.
+- **Coexistence (§13):** `go test ./pkg/pullsync/... ./pkg/puller/...` unchanged and green; a test
+  with one node running both protocols against a `pullsync`-only peer and a `rangesync`-only peer
+  converges.
+- Adversarial (§13): ranges outside root, non-partitioning children, oversized messages,
+  endless `Items` paging, `Symbols`/`More` sent to a Phase-1 node. Fuzz targets modelled on
+  `pkg/pullsync/client_fuzz_test.go` and `handler_fuzz_test.go` (copied patterns, new files).
+
+**Size:** M.
+
+---
+
+## Decisions log
+- **Penalty policy (pre-implementation):** protocol violations reset the stream and disconnect
+  the peer, as `pullsync` does; the reconciler's failure score is raised. No blocklisting for now.
+- **Fill strategy (pre-implementation):** blocking fill if it takes < 60 s on a full reserve,
+  otherwise background fill with per-batch locking and revalidation (T1.5 measures).
+- **Disk cleanup (pre-implementation):** disabling `rangesync` drops the namespace in the
+  background.
+- **Exact deltas (review):** `−id`/`+id` only for items actually deleted/written; the observer
+  drops deltas until the address index is ready.
+- **Async rebuild (review):** `RadiusChanged` queues; one rebuild goroutine; observer registered
+  before the first rebuild.
+- **Full nodes only (review):** the flag is ignored with a warning elsewhere.
+- **Failure score (review):** one per-peer score in the reconciler (T1.11), fed through
+  `PeerScorer`.
+- **Start-up guard timeout (review):** 2 × `StatusMaxInterval`.
+
+_(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill measurement)_
+
+## Follow-ups
+_(sessions append here)_
