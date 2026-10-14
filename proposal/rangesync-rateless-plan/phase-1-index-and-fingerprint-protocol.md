@@ -864,6 +864,62 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   of the stream, both normal. The peer sending an empty `Message` while one of its streams has
   `More` set is a violation.
 
+- **§6.4 deviation, decided by the user 2026-10-14 (T1.8 contract review; supersedes the
+  "deviation from §6.4" entry above where they differ).** The §6.4 wording "a `Fingerprint` child
+  set must partition a range the receiver sent in the previous message" is replaced by: a split
+  must answer a range this side sent a `Fingerprint` for and has not had answered, at most once,
+  as exactly `R.Children(FanoutBits)` in one message (answers can be deferred to any later
+  message). Plus a depth bound: (a) a peer split of `R` is rejected unless
+  `R.Bits + FanoutBits ≤ LeafDepth` (this covers the review's `R.Bits >= LeafDepth` case and
+  every other split the honest rule never makes; before, `CheckRange`'s slack let such splits
+  through); (b) the decision rule splits only when `R.Bits + FanoutBits ≤ LeafDepth`, otherwise
+  it exchanges items, so children are never deeper than the leaf depth. **State bound
+  (corrects "at most the range tree of the scope" above):** with `LeafDepth − Root.Bits ≤
+  LeafBits = 12` (the local `LeafBits` bounds it, since the session root lies inside the local
+  root), an honest session opened with the root holds at most 16 + 4096 unanswered ranges on the
+  responder and 1 + 256 on the initiator, ~80 B each (`RangeKey` + map overhead), ≈ 330 KB worst;
+  misaligned adversarial openings stay at ~4096 per side because splits stop at the leaf depth.
+- **T1.8 contract review fixes (2026-10-14).**
+  - `Config.Open []fingerprint.Range` (default `{Scope.Root}`; each passes `CheckRange`, pairwise
+    disjoint, ≤ `MaxParts`) lets T3.2/T3.3 open with a stripe and T3.4 with the two halves of a
+    new root.
+  - Decision order is now Equal → send items → request items → stripe (initiator,
+    splittable, `d̂ > LargeDiff`) → *T2.4 seam* → split (splittable) → exchange items.
+    `Decide(DecisionInput)` takes a struct so T2.4 can add `cap(R)` and the hint without
+    changing callers. `Decision` integers are not stable (T2.4 inserts `DecisionSymbols`): never
+    send, store, log or use them as metric labels by value.
+  - **Pending Reply pages (`MaxPendingReplies = 16`, `constants.go`).** Answers are produced
+    lazily: an own `Items` stream is a cursor over `Local.IterateIDs`; an answer to a peer `Reply`
+    page is its covered interval plus the page's IDs this node holds (the exclusion). At most 16
+    pending Reply pages keep their exclusion lists (≤ 16 × 1024 IDs, 1 MiB). Past that, a Reply
+    page is kept as its interval only, merged with the earlier pending intervals of the same range,
+    and answered with every local ID in it: the peer gets IDs it already holds (no want), memory
+    stays bounded by the number of ranges, and an honest session never stalls or errors. A hard
+    cap with an error was rejected: the sender cannot observe the receiver's backlog (an empty
+    answer is silent), so honest sessions could not stay under it, and ending the session on it
+    could livelock (the next session hits the same backlog).
+  - The peer's answer stream to this side's `Reply` stream for a range may end (no `More`) only
+    after this side sent its last `Reply` page for that range; earlier is a violation.
+  - `Busy` is valid only as the first message an initiator handles, with no parts
+    (`ErrPeerBusy`); anywhere else it wraps `ErrInvalidMessage`.
+  - Salted sessions (for T1.9/T5.3): the responder's handler reads the opening's `AuditRound`
+    before `NewResponder` to choose a salted `Local`; the initiator's caller sets `AuditRound` on
+    the opening message. The `Session` ignores `AuditRound`.
+  - `Handle`'s per-call work is bounded and stated in its doc: one `Summary` per received and per
+    emitted `Fingerprint` (each ≤ `MaxParts`), one `HasID` per received ID, `IterateIDs` only as
+    far as the emitted IDs plus the received Reply pages; output ≤ `MaxMessageBytes`. A `Local`
+    error (e.g. the Index busy rebuilding) ends the session, does not wrap `ErrInvalidMessage` and
+    is not scored.
+  - `NewScope` no longer rejects `LeafDepth + LeafDepthSlack > MaxBits` (supersedes that part of
+    "T1.8 (contract): scope bounds"): with (b) no split goes past the leaf depth, so `Child` cannot
+    be asked for depth > 255. It still rejects a root deeper than the leaf depth, and re-checks
+    `Root.Bits + LeafBits ≤ MaxBits` for both statuses.
+- **Correction (T1.8 contract review, L3; corrects "computed in `int`" in the G2 items and in
+  "T1.8 (contract): `Status` lives here"):** `Status.LeafBits` is a `uint32` on the wire, and
+  `int(Root.Bits) + int(LeafBits)` wraps on 32-bit builds (goreleaser ships 386 and arm).
+  `ParseStatus` compares in `uint64` (equivalently, rejects `LeafBits > MaxBits` first). In
+  `NewScope` both terms are already `uint8`, so the `int` sum is safe there.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -993,3 +1049,13 @@ _(sessions append here)_
 - **T1.8 → T3.1:** the hook is `Striper.Stripe(r, local, remote uint64) bool`, offered by
   initiators only for ranges above the session leaf depth; returning `false` makes the session
   split.
+- **T1.8 → proposal (§6.4, §9):** update the text to the user's 2026-10-14 decision: "a
+  `Fingerprint` child set answers, at most once and possibly in a later message, a range the
+  receiver sent and has not had answered; it is exactly the `2^FanoutBits` children; ranges are
+  split only while `R.Bits + FanoutBits ≤ LeafDepth`, then items are exchanged". Also §6.3's
+  flowchart (leaf-depth items branch) and the "+4 bits" slack, which is now only for opening
+  ranges.
+- **T1.8 → T1.9:** add a session-level cap (a deadline, a message count or a total of IDs
+  received): a malicious peer can keep a session open indefinitely with `Items` streams of fake,
+  ascending IDs, since each page is valid on its own. Score the peer when the cap is hit with
+  streams still open.

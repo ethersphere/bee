@@ -16,10 +16,9 @@ var (
 	// other: the peers' neighborhoods do not overlap and they do not sync
 	// (proposal §7.6).
 	ErrDisjointRoots = errors.New("rangesync: disjoint roots")
-	// ErrInvalidScope is returned by NewScope when the session root is deeper
-	// than the session leaf depth, or when the leaf depth plus LeafDepthSlack
-	// exceeds fingerprint.MaxBits. Ranges of such a session could not be split
-	// or could not be represented.
+	// ErrInvalidScope is returned by NewScope when a status has Root.Bits +
+	// LeafBits over fingerprint.MaxBits, or when the session root is deeper
+	// than the session leaf depth.
 	ErrInvalidScope = errors.New("rangesync: invalid session scope")
 )
 
@@ -48,19 +47,25 @@ type Scope struct {
 
 // NewScope returns the scope of a session between a node with status local
 // and a peer with status remote. It returns an error wrapping
-// ErrDisjointRoots when the roots do not overlap and ErrInvalidScope when the
-// session root is deeper than the session leaf depth or the leaf depth plus
-// LeafDepthSlack exceeds fingerprint.MaxBits. It does not compare the
-// Mapping fields; the caller checks them first. remote is expected to come
-// from ParseStatus.
+// ErrDisjointRoots when the roots do not overlap, and ErrInvalidScope when
+// either status has Root.Bits + LeafBits over fingerprint.MaxBits (checked
+// again, since a Status need not come from ParseStatus; the sum of two uint8
+// values is computed in int, which cannot overflow) or the session root is
+// deeper than the session leaf depth. It does not compare the Mapping
+// fields; the caller checks them first.
+//
+// Because the decision rule splits only while R.Bits +
+// fingerprint.FanoutBits <= LeafDepth, no range of the session is ever split
+// past the leaf depth, so no further bound on LeafDepth is needed.
 func NewScope(local, remote Status) (Scope, error) {
 	return Scope{}, errNotImplemented
 }
 
 // CheckRange reports whether a range received from the peer may be used in
 // this session (proposal §6.4): r must lie inside s.Root, and be at most
-// LeafDepthSlack bits deeper than s.LeafDepth, to allow for the split of a
-// range just above the leaf depth. Errors wrap ErrInvalidMessage.
+// LeafDepthSlack bits deeper than s.LeafDepth (computed in int). Splits never
+// go past the leaf depth, so the slack is left only for the peer's opening
+// ranges. Errors wrap ErrInvalidMessage.
 func (s Scope) CheckRange(r fingerprint.Range) error {
 	return errNotImplemented
 }

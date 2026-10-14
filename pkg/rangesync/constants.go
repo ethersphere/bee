@@ -47,6 +47,12 @@ const (
 	// symbols are produced by scanning the address index.
 	MaxScansPerMessage = 64
 
+	// MaxPendingReplies is the largest number of the peer's Reply pages a
+	// session keeps with the listed IDs it must not send back while their
+	// answers wait for room in a later Message. Pages past it are answered
+	// without that exclusion (at most 16 × ItemsPageSize stored IDs, 1 MiB).
+	MaxPendingReplies = 16
+
 	// MaxConcurrentSessions is the largest number of reconcile sessions a node
 	// serves at once; sessions over the cap are answered with Busy.
 	MaxConcurrentSessions = 16

@@ -64,15 +64,24 @@ type Config struct {
 	// Striper, if not nil, is offered ranges with a large difference. It is
 	// used by initiators only; responders split such ranges.
 	Striper Striper
+	// Open lists the ranges whose Fingerprints form the opening Message of an
+	// initiator: the whole scope by default (nil means {Scope.Root}), a
+	// stripe, or the two halves of a new root. The ranges must pass
+	// Scope.CheckRange, be pairwise disjoint and number at most MaxParts. It
+	// is not used by responders.
+	Open []fingerprint.Range
 }
 
 // Decision is the outcome of the per-range decision rule (proposal §6.3) for
 // one Fingerprint received from the peer.
+//
+// The numeric values are not stable: Phase 2 inserts a symbol decision and
+// renumbers the ones after it. Never send, store, log or use a Decision as a
+// metric label by its integer value.
 type Decision int
 
 // Decisions in the order Decide tests them. The Phase-2 symbol stream ("fits
-// in symbols") is decided after DecisionStripe and before
-// DecisionExchangeItems.
+// in symbols") is decided after DecisionStripe and before DecisionSplit.
 const (
 	// DecisionEqual: both summaries are equal and the range is reconciled;
 	// nothing is emitted.
@@ -83,26 +92,44 @@ const (
 	// DecisionRequestItems: this node has no element in the range (cL == 0);
 	// Items{R, no IDs, Reply} is emitted and the peer answers with its IDs.
 	DecisionRequestItems
-	// DecisionStripe: initiator only, the range is above the session leaf
-	// depth and the estimated difference max(|cL − cR|, 1) exceeds LargeDiff;
-	// the range is offered to the Striper and split if it is declined or
-	// there is none.
+	// DecisionStripe: initiator only, the range is splittable (R.Bits +
+	// fingerprint.FanoutBits <= LeafDepth) and the estimated difference
+	// max(|cL − cR|, 1) exceeds LargeDiff; the range is offered to the
+	// Striper and split if it is declined or there is none.
 	DecisionStripe
-	// DecisionExchangeItems: the range is at least as deep as the session
-	// leaf depth (R.Bits >= LeafDepth); the local IDs in it are emitted as
-	// Items pages with Reply.
-	DecisionExchangeItems
-	// DecisionSplit: the range is split; the Fingerprints of its
+	// DecisionSplit: the range is splittable (R.Bits +
+	// fingerprint.FanoutBits <= LeafDepth); the Fingerprints of its
 	// 1<<fingerprint.FanoutBits children (R.Children(fingerprint.FanoutBits))
-	// are emitted together.
+	// are emitted together. Children are therefore never deeper than the
+	// session leaf depth.
 	DecisionSplit
+	// DecisionExchangeItems: the range is not splittable (R.Bits +
+	// fingerprint.FanoutBits > LeafDepth, which includes every range at or
+	// below the leaf depth); the local IDs in it are emitted as Items pages
+	// with Reply.
+	DecisionExchangeItems
 )
 
+// DecisionInput holds the inputs of the decision rule for one range. Phase 2
+// adds the inputs of the symbol decision (both peers' capacities for the
+// range and the size of the last decoded difference).
+type DecisionInput struct {
+	// Scope is the session scope.
+	Scope Scope
+	// Range is the range of the received Fingerprint; it passed
+	// Scope.CheckRange.
+	Range fingerprint.Range
+	// Local is this node's summary of Range; Remote is the peer's.
+	Local, Remote fingerprint.Summary
+	// Initiator reports whether this node opened the session.
+	Initiator bool
+}
+
 // Decide applies the per-range decision rule of proposal §6.3, in its Phase-1
-// form, to range r of scope, in which this node's summary is local and the
-// peer's is remote. initiator reports whether this node opened the session.
-// It is a pure function. r must have passed scope.CheckRange.
-func Decide(scope Scope, r fingerprint.Range, local, remote fingerprint.Summary, initiator bool) Decision {
+// form, to in. It is a pure function. The order is: DecisionEqual,
+// DecisionSendItems, DecisionRequestItems, DecisionStripe, (Phase 2: the
+// symbol stream,) DecisionSplit, DecisionExchangeItems.
+func Decide(in DecisionInput) Decision {
 	return 0
 }
 
@@ -120,11 +147,28 @@ func Decide(scope Scope, r fingerprint.Range, local, remote fingerprint.Summary,
 // the end of the stream, both normal.
 //
 // Every Message the session returns has at most MaxParts parts and encodes to
-// at most MaxMessageBytes. Work that does not fit is kept for later Messages:
-// whole splits (all children of a range in one Message) and Items pages,
-// which carry at most ItemsPageSize IDs and fewer when the Message is nearly
+// at most MaxMessageBytes. Work that does not fit is deferred to later
+// Messages: whole splits (all children of a range in one Message), Items
+// pages of this side's streams, and answers to the peer's Reply pages. Items
+// pages carry at most ItemsPageSize IDs and fewer when the Message is nearly
 // full. A side never sends an empty Message while it has work pending or an
 // Items stream with More set.
+//
+// Deferred work is kept small: a deferred split is its range, and the IDs of
+// an Items stream are read lazily from Local.IterateIDs with a cursor when
+// the page is emitted, never ahead of time. An answer to a peer's Reply page
+// is kept as the interval the page covers plus the IDs of the page that this
+// node holds, which it must not send back. At most MaxPendingReplies Reply
+// pages keep those IDs. A Reply page received while that many are pending is
+// kept as its interval only, merged with the pending intervals before it in
+// the same range, and answered with every local ID in the interval: the peer
+// receives IDs it already holds, which it does not want, and the memory
+// stays bounded by the number of ranges.
+//
+// Unanswered ranges are bounded by the scope: splits stop at the leaf depth,
+// so with LeafDepth − Scope.Root.Bits <= fingerprint.LeafBits an honest
+// responder holds at most 16 + 4096 unanswered ranges and an initiator
+// opening with the root at most 1 + 256.
 //
 // A Session is not safe for concurrent use.
 type Session struct {
@@ -133,14 +177,19 @@ type Session struct {
 }
 
 // NewInitiator returns the session of the node that opens it, and the opening
-// Message: the Fingerprint of the session root.
+// Message: the Fingerprints of cfg.Open. It returns an error if cfg.Open
+// breaks its rules, or if Local fails. The caller sets the opening Message's
+// AuditRound for a salted session (Phase 5), with a cfg.Local that salts its
+// summaries accordingly.
 func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
 	return &Session{cfg: cfg, initiator: true}, nil, errNotImplemented
 }
 
 // NewResponder returns the session of the node that serves it. The first
-// Message it handles is the initiator's opening Message. cfg.Striper is not
-// used.
+// Message it handles is the initiator's opening Message. The stream handler
+// reads the opening Message's AuditRound before calling NewResponder, to
+// choose a cfg.Local that salts its summaries for that round (Phase 5); the
+// Session itself ignores AuditRound. cfg.Striper and cfg.Open are not used.
 func NewResponder(cfg Config) *Session {
 	return &Session{cfg: cfg}
 }
@@ -156,18 +205,26 @@ func NewResponder(cfg Config) *Session {
 // it is answered with the local IDs in the interval the page covers that the
 // page does not list (see Items), as Items pages without Reply.
 //
-// Handle returns ErrPeerBusy if in.Busy is set. A non-zero in.AuditRound is
-// ignored in Phase 1. Every violation of the rules below by the peer returns
-// an error wrapping ErrInvalidMessage, after which the session must not be
-// used:
+// The work of one call is bounded: at most one Summary per received
+// Fingerprint and one per emitted Fingerprint (each at most MaxParts), one
+// HasID per received ID, and IterateIDs reads only as far as the IDs the
+// returned Message carries plus the IDs of the received Reply pages.
+//
+// A Message with Busy set is valid only as the first Message an initiator
+// handles, and only with no parts; Handle then returns ErrPeerBusy and the
+// session ends. A non-zero in.AuditRound is ignored. Every violation of the
+// rules below by the peer returns an error wrapping ErrInvalidMessage, after
+// which the session must not be used:
 //
 //   - in passes Scope.CheckMessage;
+//   - Busy is set only as described above;
 //   - the responder's first Message is the opening: one or more Fingerprint
 //     parts and nothing else, of pairwise disjoint ranges;
 //   - after the opening, a Fingerprint part belongs to the split of a range
-//     this side sent a Fingerprint for and the peer has not answered yet:
-//     all 1<<fingerprint.FanoutBits children of that range, each once, in
-//     the same Message, which answers the range;
+//     R this side sent a Fingerprint for and the peer has not answered yet,
+//     with R.Bits + fingerprint.FanoutBits <= Scope.LeafDepth (a split the
+//     decision rule makes): exactly R.Children(fingerprint.FanoutBits), each
+//     once, in the same Message, which answers R;
 //   - an Items part with an empty After starts the peer's stream for its
 //     range, which answers either a range this side sent a Fingerprint for
 //     and the peer has not answered yet, or, without Reply, a range for
@@ -176,12 +233,19 @@ func NewResponder(cfg Config) *Session {
 //   - an Items part with After set continues the peer's stream for its
 //     range, whose last page had More set, and After equals the last ID the
 //     stream listed;
+//   - the peer's stream that answers this side's Reply pages for a range
+//     ends (a page without More) only after this side sent its last Reply
+//     page for that range;
 //   - the peer sends an empty Message only when none of its Items streams
 //     has More set.
 //
-// The peer may answer a Fingerprint in any later Message, since work that
-// does not fit is deferred; a range it never answers was equal at its end.
-// Errors from Local are returned wrapped and end the session.
+// A range is answered at most once. The peer may answer a Fingerprint in
+// any later Message, since work that does not fit is deferred; a range it
+// never answers was equal at its end.
+//
+// An error from Local (for example the Index being busy with a rebuild) is
+// returned wrapped, does not wrap ErrInvalidMessage and ends the session; it
+// is not the peer's fault and must not be scored.
 func (s *Session) Handle(in *pb.Message) (out *pb.Message, wants []fingerprint.ID, err error) {
 	return nil, nil, errNotImplemented
 }

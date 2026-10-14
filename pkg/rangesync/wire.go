@@ -95,7 +95,9 @@ func ParseItems(p *pb.Items) (Items, error) {
 // ParseStatus decodes a Status received from a peer: p.Root must not be nil
 // and decodes by ParseRange; p.Digest must be empty when p.Count is 0 and
 // exactly 32 bytes otherwise; Root.Bits + LeafBits must be at most
-// fingerprint.MaxBits, computed without overflow. Mapping is returned as is:
+// fingerprint.MaxBits. LeafBits is a uint32 on the wire, so the sum is
+// computed in uint64 (an int sum wraps on 32-bit platforms such as 386 and
+// arm, which bee is released for). Mapping is returned as is:
 // whether it matches is the caller's decision. AuditRound and AuditDigest are
 // ignored in Phase 1. Errors wrap ErrInvalidMessage.
 func ParseStatus(p *pb.Status) (Status, error) {
