@@ -9,7 +9,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.3
 	github.com/coreos/go-semver v0.3.1
 	github.com/ethereum/go-ethereum v1.17.3
-	github.com/ethersphere/batch-archive v0.1.0
+	github.com/ethersphere/batch-archive v0.1.3
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
