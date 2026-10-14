@@ -127,7 +127,7 @@ the implementer (otherwise every task conflicts on this list).
 **Phase 1**
 - [x] T1.0 Spike: snapshot isolation and lock ordering (blocks T1.4, T1.6)
 - [x] T1.1 Package skeleton, protobuf, constants
-- [ ] T1.2 LtHash16 primitive (+ ECMH benchmark)
+- [x] T1.2 LtHash16 primitive (+ ECMH benchmark)
 - [x] T1.3 Fenwick tree
 - [ ] T1.4 Storer: opt-in `ChunkAddrItem`, write/delete paths, `ReserveObserver` hook
 - [ ] T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
