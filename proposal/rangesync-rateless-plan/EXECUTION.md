@@ -33,8 +33,8 @@ There are **no PRs**. Work lands on a stack of local phase branches (§3).
 | P2 | T1.6's tests used the storer mock, which arrives in T1.5. T1.6 now uses a local fake; the mock-based check moved to T1.9. | Done |
 | P3 | Implementers no longer tick README; the orchestrator does when landing. README no longer refers to PRs. | Done |
 | P4 | Cross-architecture vectors deferred: T2.1 checks amd64 only; the arm64 run is T2.8 (D22); testnet cohorts are amd64-only until then (T6.3). | Done |
-| P5 | Set a git identity in the bee repo. Nothing is configured (no `~/.gitconfig`, no repo `user.*`), so sessions can't commit. The last commit used `acud <12988138+acud@users.noreply.github.com>`. Worktrees share the repo config. | **Open** |
-| P6 | Install `protoc` on PATH (`make protobuftools` then installs `protoc-gen-gogofaster` v1.3.1). Check that `make format` bootstraps `gofumpt`/`gci`; neither is on PATH. `golangci-lint` is already in `~/go/bin`. | **Open** (needed by T1.1) |
+| P5 | Set a git identity in the bee repo (repo config, shared by worktrees): `acud <12988138+acud@users.noreply.github.com>`. | Done |
+| P6 | Tools: `protoc` 3.21.12 (apt), `~/go/bin` on PATH, `protoc-gen-gogofaster` **v1.3.2** (not the Makefile's stale v1.3.1; the committed `*.pb.go` files and `go.mod` use v1.3.2), `gofumpt`, `gci` (`go install`, not `make install-formatters`, which runs `go get` and edits `go.mod`). Regenerating with this toolchain changes only the gzipped descriptor bytes of existing files, so T1.1 generates only `pkg/rangesync/pb`. | Done |
 | P7 | Commit the plan fixes on `docs/rangesync-rateless-proposal`, then create the phase branches (§3). | Done |
 | P8 | Decide whether Phase 5 runs before Phase 6 (D11). The schedule fits it in without lengthening the critical path. | **Open** |
 | P9 | `proposal/pullsync-rangesync-proposal.md` (the earlier, non-rateless proposal) is untracked. Commit it as history or leave it out. | **Open** |

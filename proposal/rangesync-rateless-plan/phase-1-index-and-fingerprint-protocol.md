@@ -47,7 +47,12 @@ It is small; merge it before starting wave A.
 **Scope:** create the tree from README "Package layout" with `doc.go` files.
 `pkg/rangesync/pb/rangesync.proto` exactly as §6.2 — including `Symbols`, `More`,
 `Status.Mapping` and `Message.AuditRound` (reserved now so Phase 2 and Phase 5 need no version
-bump; README issue 8) — generated with `make protobuf` (gogo, like `pkg/pullsync/pb`).
+bump; README issue 8) — gogo, like `pkg/pullsync/pb` (a `doc.go` with the same `go:generate`
+line). Generate **only this package**: `GOFLAGS=-mod=mod go generate -run protoc ./pkg/rangesync/pb/`.
+Don't run `make protobuf`: it regenerates every `*.pb.go` in the repo, and with Go 1.27 the gzipped
+descriptors of all twelve existing files change bytes (same content), which is out of scope. Use
+`protoc-gen-gogofaster` **v1.3.2** (matches `go.mod` and the committed files); the Makefile's
+`GOGOPROTOBUF_VERSION ?= v1.3.1` is stale and produces different unmarshal code.
 Two constants files, split by the import rule (`fingerprint` is the leaf package):
 - `pkg/rangesync/fingerprint/constants.go`: index constants (`LeafBits`, `RootSymbols`,
   `Level1Symbols`, `BucketSymbols`, `ScanLimit`) and `DefaultMapperID = 1` (the float mapper of
