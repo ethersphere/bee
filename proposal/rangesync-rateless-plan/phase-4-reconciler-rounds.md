@@ -136,3 +136,11 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 
 ## Follow-ups
 _(sessions append here)_
+- **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
+  (convergence within 2 × `RoundInterval`) and T6.3 ("confirm or adjust `RoundInterval` bounds")
+  can't be checked on testnet without it.
+- **(T6.0) `want_claims{result}` values (T4.4).** At least `granted`, `denied`, `expired`, and
+  `late` (a delivery that arrives after its claim expired and the ID was claimed through another
+  peer). AC-D1/AC-D2 bound intra-`rangesync` duplicates by expired claims and need `late` to tell
+  them apart from pushsync races in `cross_protocol_duplicates_total`. If `late` needs the fetch
+  path (T1.10) to know whether its claim is still held, extend the T1.7 want-set API additively.
