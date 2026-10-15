@@ -7,7 +7,12 @@ package fingerprint
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
+	"math/bits"
+	"slices"
+
+	"golang.org/x/crypto/sha3"
 )
 
 // Rateless IBLT (Yang, Gilad, Alizadeh, SIGCOMM 2024), proposal §4.3.4–§4.3.7.
@@ -49,7 +54,28 @@ var (
 	ErrInvalidSymbolData = errors.New("fingerprint: invalid symbol data")
 )
 
-var errNotImplemented = errors.New("fingerprint: not implemented")
+// checksumBytes is the number of checksum bytes Checksum keeps; the rest are
+// zero. It is ChecksumSize except in tests that truncate the checksum to
+// provoke collisions.
+var checksumBytes = ChecksumSize
+
+// peelFactor caps the number of recovered ids at peelFactor × Received()
+// (proposal §6.4). Tests lower it.
+var peelFactor uint64 = 2
+
+var (
+	checksumPrefix = []byte("rangesync/check")
+	mapPrefix      = []byte("rangesync/map")
+)
+
+// keccak256 returns the legacy Keccak-256 of prefix ‖ id.
+func keccak256(prefix []byte, id *ID) (out [32]byte) {
+	h := sha3.NewLegacyKeccak256()
+	_, _ = h.Write(prefix)
+	_, _ = h.Write(id[:])
+	h.Sum(out[:0])
+	return out
+}
 
 // Checksum returns the 128-bit checksum of id: the first ChecksumSize bytes of
 // keccak256("rangesync/check" ‖ id), with keccak256 the legacy Keccak used by
@@ -61,7 +87,10 @@ var errNotImplemented = errors.New("fingerprint: not implemented")
 // id to many symbol arrays (the Index caches) compute it once and add it with
 // CodedSymbol.Add at each index of Mapper.Indices(id).
 func Checksum(id ID) [ChecksumSize]byte {
-	return [ChecksumSize]byte{}
+	var c [ChecksumSize]byte
+	h := keccak256(checksumPrefix, &id)
+	copy(c[:checksumBytes], h[:])
+	return c
 }
 
 // CodedSymbol is one symbol of a Rateless IBLT stream (proposal §4.3.4): the
@@ -83,13 +112,34 @@ type CodedSymbol struct {
 }
 
 // Add sets s to s + o: Sum and Check are XORed, Count is added.
-func (s *CodedSymbol) Add(o *CodedSymbol) {}
+func (s *CodedSymbol) Add(o *CodedSymbol) {
+	s.xor(o)
+	s.Count += o.Count
+}
 
 // Sub sets s to s − o: Sum and Check are XORed, Count is subtracted.
-func (s *CodedSymbol) Sub(o *CodedSymbol) {}
+func (s *CodedSymbol) Sub(o *CodedSymbol) {
+	s.xor(o)
+	s.Count -= o.Count
+}
 
 // Zero sets s to the symbol of the empty set.
-func (s *CodedSymbol) Zero() {}
+func (s *CodedSymbol) Zero() {
+	*s = CodedSymbol{}
+}
+
+func (s *CodedSymbol) xor(o *CodedSymbol) {
+	for k := 0; k < IDSize; k += 8 {
+		binary.LittleEndian.PutUint64(s.Sum[k:], binary.LittleEndian.Uint64(s.Sum[k:])^binary.LittleEndian.Uint64(o.Sum[k:]))
+	}
+	for k := 0; k < ChecksumSize; k += 8 {
+		binary.LittleEndian.PutUint64(s.Check[k:], binary.LittleEndian.Uint64(s.Check[k:])^binary.LittleEndian.Uint64(o.Check[k:]))
+	}
+}
+
+func (s *CodedSymbol) isZero() bool {
+	return *s == CodedSymbol{}
+}
 
 // CodedSymbol is the element type of the bucket symbol Fenwick tree (T2.2
 // adapts arrays of it).
@@ -179,12 +229,87 @@ func (FloatMapper) ID() uint32 {
 
 // Indices returns the symbol indices of id (see FloatMapper).
 func (FloatMapper) Indices(id ID) IndexIterator {
-	return nil
+	seed := keccak256(mapPrefix, &id)
+	it := &floatIterator{}
+	for k := range it.s {
+		it.s[k] = binary.LittleEndian.Uint64(seed[8*k:])
+	}
+	return it
+}
+
+// maxFloatIndex is the largest index of a FloatMapper mapping: 2^53 − 1, the
+// largest integer a float64 holds exactly.
+const maxFloatIndex = 1<<53 - 1
+
+// floatIterator is the IndexIterator of FloatMapper.
+type floatIterator struct {
+	s       [4]uint64 // xoshiro256** state
+	i       uint64    // the last index returned, or EndIndex
+	started bool      // index 0 has been returned
+}
+
+// next returns the next xoshiro256** 1.0 output and advances the state.
+func (it *floatIterator) next() uint64 {
+	s := &it.s
+	result := bits.RotateLeft64(s[1]*5, 7) * 9
+	t := s[1] << 17
+	s[2] ^= s[0]
+	s[3] ^= s[1]
+	s[1] ^= s[2]
+	s[0] ^= s[3]
+	s[2] ^= t
+	s[3] = bits.RotateLeft64(s[3], 45)
+	return result
+}
+
+// Next returns the next index (see FloatMapper).
+func (it *floatIterator) Next() uint64 {
+	if !it.started {
+		it.started = true
+		it.i = 0
+		return 0
+	}
+	if it.i == EndIndex {
+		return EndIndex
+	}
+	// One IEEE 754 operation per statement, each result explicitly converted,
+	// so that no compiler may fuse them (see FloatMapper).
+	x := it.next()
+	w := float64(float64((x>>11)+1) * 0x1p-53) // 1 − u in (0, 1], exact
+	t := float64(1 / math.Sqrt(w))
+	a := float64(1.5 + float64(it.i))
+	b := float64(t - 1)
+	p := float64(a * b)
+	c := math.Ceil(p)
+	// Range check before converting: a gap of 2^53 or more ends the mapping
+	// anyway.
+	if c >= 0x1p53 {
+		it.i = EndIndex
+		return EndIndex
+	}
+	gap := uint64(1)
+	if c > 1 {
+		gap = uint64(c)
+	}
+	if gap > maxFloatIndex-it.i {
+		it.i = EndIndex
+		return EndIndex
+	}
+	it.i += gap
+	return it.i
 }
 
 // Expected returns round(count·ρ(i)) (see FloatMapper).
 func (FloatMapper) Expected(count, i uint64) int64 {
-	return 0
+	// Separate, explicitly converted statements (see FloatMapper).
+	c := float64(count)
+	num := float64(c * 2)
+	den := float64(float64(i) + 2)
+	q := float64(num / den)
+	if q >= 0x1p63 {
+		return math.MaxInt64
+	}
+	return int64(math.Round(q))
 }
 
 // Encode adds id with the given sign to the symbols syms, which hold symbols
@@ -195,7 +320,31 @@ func (FloatMapper) Expected(count, i uint64) int64 {
 //
 // Encoding is linear: the symbols of a set are the sum of the symbols of its
 // elements, so encode(A) − encode(B) = encode(A \ B) − encode(B \ A).
-func Encode(m Mapper, syms []CodedSymbol, start uint64, id ID, sign int64) {}
+func Encode(m Mapper, syms []CodedSymbol, start uint64, id ID, sign int64) {
+	if sign != 1 && sign != -1 {
+		panic(fmt.Sprintf("fingerprint: Encode sign %d", sign))
+	}
+	end := windowEnd(start, len(syms))
+	if len(syms) == 0 {
+		return
+	}
+	one := CodedSymbol{Sum: id, Check: Checksum(id), Count: sign}
+	it := m.Indices(id)
+	for i := it.Next(); i < end; i = it.Next() {
+		if i >= start {
+			syms[i-start].Add(&one)
+		}
+	}
+}
+
+// windowEnd returns start+n and panics if it overflows a uint64.
+func windowEnd(start uint64, n int) uint64 {
+	end, carry := bits.Add64(start, uint64(n), 0)
+	if carry != 0 {
+		panic("fingerprint: symbol window overflows the index space")
+	}
+	return end
+}
 
 // AppendSymbolData appends the wire encoding of the coded symbols syms, which
 // are symbols [start, start+len(syms)) of the sender's stream for a range
@@ -213,6 +362,14 @@ func Encode(m Mapper, syms []CodedSymbol, start uint64, id ID, sign int64) {}
 // MinSymbolSize to MaxSymbolSize bytes. AppendSymbolData panics if
 // start+len(syms) overflows a uint64.
 func AppendSymbolData(dst []byte, m Mapper, count, start uint64, syms []CodedSymbol) []byte {
+	windowEnd(start, len(syms))
+	dst = slices.Grow(dst, len(syms)*MinSymbolSize)
+	for k := range syms {
+		s := &syms[k]
+		dst = append(dst, s.Sum[:]...)
+		dst = append(dst, s.Check[:]...)
+		dst = binary.AppendVarint(dst, s.Count-m.Expected(count, start+uint64(k)))
+	}
 	return dst
 }
 
@@ -229,7 +386,34 @@ func AppendSymbolData(dst []byte, m Mapper, count, start uint64, syms []CodedSym
 // caller bounds len(data) (MaxMessageBytes). A peer that lies about count only
 // makes its own encoding longer, so count is not validated here.
 func ParseSymbolData(m Mapper, count, start uint64, data []byte) ([]CodedSymbol, error) {
-	return nil, errNotImplemented
+	const head = IDSize + ChecksumSize
+	syms := make([]CodedSymbol, 0, len(data)/MinSymbolSize)
+	for i := start; len(data) > 0; i++ {
+		// start plus the number of symbols must fit in a uint64, so the
+		// index of a symbol is at most MaxUint64 − 1.
+		if i == math.MaxUint64 {
+			return nil, fmt.Errorf("%w: symbol %d: index overflows", ErrInvalidSymbolData, len(syms))
+		}
+		if len(data) < MinSymbolSize {
+			return nil, fmt.Errorf("%w: symbol %d: %d bytes left", ErrInvalidSymbolData, len(syms), len(data))
+		}
+		var s CodedSymbol
+		copy(s.Sum[:], data)
+		copy(s.Check[:], data[IDSize:])
+		v, n := binary.Varint(data[head:])
+		if n <= 0 {
+			return nil, fmt.Errorf("%w: symbol %d: bad count varint", ErrInvalidSymbolData, len(syms))
+		}
+		// A varint is the shortest encoding of its value unless it ends in a
+		// zero continuation byte.
+		if n > 1 && data[head+n-1] == 0 {
+			return nil, fmt.Errorf("%w: symbol %d: non-minimal count varint", ErrInvalidSymbolData, len(syms))
+		}
+		s.Count = v + m.Expected(count, i)
+		syms = append(syms, s)
+		data = data[head+n:]
+	}
+	return syms, nil
 }
 
 // Decoder peels the difference between a peer's symbol stream for a range and
@@ -276,13 +460,35 @@ func ParseSymbolData(m Mapper, count, start uint64, data []byte) ([]CodedSymbol,
 // The decoder does not bound the number of symbols it keeps (one CodedSymbol
 // per symbol received); the session does (SessionSymbolBudget). A Decoder is
 // not safe for concurrent use.
-type Decoder struct{}
+type Decoder struct {
+	m Mapper
+	r Range
+
+	syms    []CodedSymbol // d_i = local_i − remote_i, for the received symbols
+	nonzero int           // number of non-zero symbols in syms
+
+	peeled    []peeled        // recovered ids, to remove from later symbols
+	seen      map[ID]struct{} // recovered ids
+	onlyLocal []ID            // ids recovered from +1 symbols
+	onlyRem   []ID            // ids recovered from −1 symbols
+	queue     []uint64        // indices of symbols that may be pure
+	scratch   []uint64        // indices of the id being recovered
+	err       error           // sticky corruption
+}
+
+// peeled is a recovered id together with the part of its mapping beyond the
+// received symbols, from which it is removed as more symbols arrive.
+type peeled struct {
+	sym  CodedSymbol // the coded symbol of the id, with Count its sign in d
+	it   IndexIterator
+	next uint64 // the next index of the mapping not yet removed
+}
 
 // NewDecoder returns a decoder for the symbol stream of range r under mapper
 // m. Both peers must use mappers with the same ID; the decoder cannot detect
 // a mismatch, which only shows as a stream that never decodes.
 func NewDecoder(m Mapper, r Range) *Decoder {
-	return &Decoder{}
+	return &Decoder{m: m, r: r, seen: make(map[ID]struct{})}
 }
 
 // Add feeds the next batch: remote holds the peer's symbols [start,
@@ -297,25 +503,157 @@ func NewDecoder(m Mapper, r Range) *Decoder {
 // error wrapping ErrCorrupt if the stream is corrupt (see Decoder). It does
 // not retain remote or local.
 func (d *Decoder) Add(start uint64, remote, local []CodedSymbol) error {
-	return errNotImplemented
+	if d.err != nil {
+		return d.err
+	}
+	received := d.Received()
+	if start != received {
+		return fmt.Errorf("%w: start %d, received %d", ErrInvalidBatch, start, received)
+	}
+	if len(local) != 0 && len(local) != len(remote) {
+		return fmt.Errorf("%w: %d remote and %d local symbols", ErrInvalidBatch, len(remote), len(local))
+	}
+	if len(remote) == 0 {
+		return nil
+	}
+	if d.Done() {
+		return fmt.Errorf("%w: decoder is done", ErrInvalidBatch)
+	}
+	if uint64(len(remote)) >= EndIndex-received {
+		return fmt.Errorf("%w: batch overflows the index space", ErrInvalidBatch)
+	}
+
+	// d_i = local_i − remote_i for the new symbols.
+	for k := range remote {
+		var s CodedSymbol
+		if len(local) != 0 {
+			s = local[k]
+		}
+		s.Sub(&remote[k])
+		d.syms = append(d.syms, s)
+		if !s.isZero() {
+			d.nonzero++
+		}
+	}
+	end := d.Received()
+
+	// Remove the ids recovered earlier from the new symbols they map to.
+	for k := range d.peeled {
+		p := &d.peeled[k]
+		for ; p.next < end; p.next = p.it.Next() {
+			d.remove(p.next, &p.sym)
+		}
+	}
+
+	for i := received; i < end; i++ {
+		d.queue = append(d.queue, i)
+	}
+	if err := d.peel(); err != nil {
+		d.err = err
+		return err
+	}
+
+	// Rule (b): once the whole difference is recovered every symbol is
+	// empty.
+	if d.syms[0].isZero() && d.nonzero != 0 {
+		d.err = fmt.Errorf("%w: symbol 0 empty while %d symbols are not", ErrCorrupt, d.nonzero)
+		return d.err
+	}
+	return nil
+}
+
+// remove removes the coded symbol of a recovered id from symbol i and queues
+// i if that may have made it pure.
+func (d *Decoder) remove(i uint64, one *CodedSymbol) {
+	s := &d.syms[i]
+	if !s.isZero() {
+		d.nonzero--
+	}
+	s.Sub(one)
+	if !s.isZero() {
+		d.nonzero++
+	}
+	if s.Count == 1 || s.Count == -1 {
+		d.queue = append(d.queue, i)
+	}
+}
+
+// peel recovers ids from pure symbols until the queue is empty. The queue is
+// a stack, so a new batch is peeled from its highest index down: the sparse
+// symbols first, and symbol 0, which holds the whole difference and so is the
+// likeliest to look pure by a checksum collision, last.
+func (d *Decoder) peel() error {
+	end := d.Received()
+	for len(d.queue) > 0 {
+		j := d.queue[len(d.queue)-1]
+		d.queue = d.queue[:len(d.queue)-1]
+
+		s := &d.syms[j]
+		if s.Count != 1 && s.Count != -1 {
+			continue
+		}
+		id := s.Sum
+		check := Checksum(id)
+		if s.Check != check {
+			continue
+		}
+		one := CodedSymbol{Sum: id, Check: check, Count: s.Count}
+
+		// Rule (a): the id must map to j, or removing it would not clear j.
+		it := d.m.Indices(id)
+		idx := d.scratch[:0]
+		next := it.Next()
+		for ; next < end; next = it.Next() {
+			idx = append(idx, next)
+		}
+		d.scratch = idx
+		if _, ok := slices.BinarySearch(idx, j); !ok {
+			d.queue = d.queue[:0]
+			return fmt.Errorf("%w: id recovered at symbol %d does not map to it", ErrCorrupt, j)
+		}
+		if !d.r.ContainsID(id) {
+			d.queue = d.queue[:0]
+			return fmt.Errorf("%w: id recovered at symbol %d is outside range %s", ErrCorrupt, j, d.r)
+		}
+		if _, ok := d.seen[id]; ok {
+			d.queue = d.queue[:0]
+			return fmt.Errorf("%w: id recovered twice, at symbol %d", ErrCorrupt, j)
+		}
+		if uint64(d.Recovered()) >= peelFactor*end {
+			d.queue = d.queue[:0]
+			return fmt.Errorf("%w: more than %d peel steps for %d symbols", ErrCorrupt, peelFactor*end, end)
+		}
+
+		d.seen[id] = struct{}{}
+		if one.Count == 1 {
+			d.onlyLocal = append(d.onlyLocal, id)
+		} else {
+			d.onlyRem = append(d.onlyRem, id)
+		}
+		for _, i := range idx {
+			d.remove(i, &one)
+		}
+		d.peeled = append(d.peeled, peeled{sym: one, it: it, next: next})
+	}
+	return nil
 }
 
 // Received returns the number of symbols added so far: the start of the next
 // batch.
 func (d *Decoder) Received() uint64 {
-	return 0
+	return uint64(len(d.syms))
 }
 
 // Recovered returns the number of ids recovered so far, len(onlyLocal) +
 // len(onlyRemote) of Result, without copying them.
 func (d *Decoder) Recovered() int {
-	return 0
+	return len(d.onlyLocal) + len(d.onlyRem)
 }
 
 // Done reports whether the difference is completely recovered: at least one
 // symbol has been received, symbol 0 is empty and the decoder is not corrupt.
 func (d *Decoder) Done() bool {
-	return false
+	return d.err == nil && len(d.syms) > 0 && d.syms[0].isZero()
 }
 
 // Result returns the ids recovered so far, each list sorted in ID.Compare
@@ -323,5 +661,9 @@ func (d *Decoder) Done() bool {
 // onlyRemote by the peer and not this node. Once Done, they are the whole
 // difference. The slices are copies owned by the caller.
 func (d *Decoder) Result() (onlyLocal, onlyRemote []ID) {
-	return nil, nil
+	onlyLocal = slices.Clone(d.onlyLocal)
+	onlyRemote = slices.Clone(d.onlyRem)
+	slices.SortFunc(onlyLocal, ID.Compare)
+	slices.SortFunc(onlyRemote, ID.Compare)
+	return onlyLocal, onlyRemote
 }

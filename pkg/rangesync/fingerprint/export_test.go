@@ -47,3 +47,25 @@ func metricValue(m prometheus.Metric) float64 {
 	}
 	return d.GetCounter().GetValue()
 }
+
+// SetChecksumBytes truncates Checksum to its first n bytes (the rest zero)
+// until the test ends. Tests that use it must not run in parallel.
+func SetChecksumBytes(t interface{ Cleanup(func()) }, n int) {
+	old := checksumBytes
+	checksumBytes = n
+	t.Cleanup(func() { checksumBytes = old })
+}
+
+// SetPeelFactor sets the corruption cap on recoveries per received symbol
+// until the test ends. Tests that use it must not run in parallel.
+func SetPeelFactor(t interface{ Cleanup(func()) }, f uint64) {
+	old := peelFactor
+	peelFactor = f
+	t.Cleanup(func() { peelFactor = old })
+}
+
+// NewFloatIteratorAt returns a FloatMapper iterator past index 0, at index i,
+// with xoshiro256** state s.
+func NewFloatIteratorAt(s [4]uint64, i uint64) IndexIterator {
+	return &floatIterator{s: s, i: i, started: true}
+}
