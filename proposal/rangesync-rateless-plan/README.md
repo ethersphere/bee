@@ -131,7 +131,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T1.2 LtHash16 primitive (+ ECMH benchmark)
 - [x] T1.3 Fenwick tree
 - [x] T1.4 Storer: opt-in `ChunkAddrItem`, write/delete paths, `ReserveObserver` hook
-- [ ] T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
+- [x] T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
 - [x] T1.6 `fingerprint.Index` (counts + LtHash, Apply, Summary, Rebuild) + observer adapter
 - [x] T1.7 Want set (`pkg/rangesync/wantset`)
 - [x] T1.8 Pure session decision logic (fingerprints + items) and session-root relation
