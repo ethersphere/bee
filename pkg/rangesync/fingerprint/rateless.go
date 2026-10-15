@@ -57,6 +57,10 @@ var (
 // checksumBytes is the number of checksum bytes Checksum keeps; the rest are
 // zero. It is ChecksumSize except in tests that truncate the checksum to
 // provoke collisions.
+//
+// checksumBytes and peelFactor are package variables only so that tests can
+// override them (SetChecksumBytes, SetPeelFactor in export_test.go); tests
+// that change them must not run in parallel.
 var checksumBytes = ChecksumSize
 
 // peelFactor caps the number of recovered ids at peelFactor × Received()

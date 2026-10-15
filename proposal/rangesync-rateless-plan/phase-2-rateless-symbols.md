@@ -360,7 +360,8 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     implementation written from the spec (by the first T2.1 session; that script is not in the tree)
     and is re-derived by a second, separately written pure-Python script (own Keccak-f[1600] checked against keccak256("") / ("abc"), own xoshiro256**, IEEE double
     ops one per statement, ties away from zero via floor/fraction, not `round()`): 0 mismatches. The
-    Go code was not used to produce or check them.
+    Go code was not used to produce or check them. Mappings that end (next index past 2^53 − 1)
+    are padded with `EndIndex` to 64 entries.
   - *Peel order.* The peel queue is a stack: a batch is peeled from its highest index down, so symbol
     0 (the whole difference, the likeliest false-pure symbol) is tried last. Consequence for
     `TestDecoderTruncatedChecksumCollision`: a 4-symbol batch with a colliding x^y^z may decode

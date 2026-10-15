@@ -5,7 +5,7 @@
 package fingerprint_test
 
 import (
-	binenc "encoding/binary"
+	bin "encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,7 +32,7 @@ type testMapper struct{}
 func (testMapper) ID() uint32 { return 0x7e57 }
 
 func (testMapper) Indices(id fingerprint.ID) fingerprint.IndexIterator {
-	return &testIterator{x: binenc.LittleEndian.Uint64(id[:8]) ^ binenc.LittleEndian.Uint64(id[32:40])}
+	return &testIterator{x: bin.LittleEndian.Uint64(id[:8]) ^ bin.LittleEndian.Uint64(id[32:40])}
 }
 
 func (testMapper) Expected(count, i uint64) int64 {
@@ -101,26 +101,24 @@ func newRand(seed uint64) *rand.Rand {
 	return rand.New(rand.NewPCG(seed, 0x5eed))
 }
 
-func randIDv2(r *rand.Rand) fingerprint.ID {
+func randomID(r *rand.Rand) fingerprint.ID {
 	var id fingerprint.ID
-	for k := 0; k < fingerprint.IDSize; k += 8 {
-		binenc.LittleEndian.PutUint64(id[k:], r.Uint64())
-	}
+	fill(r, id[:])
 	return id
 }
 
 func randIDs(r *rand.Rand, n int) []fingerprint.ID {
 	ids := make([]fingerprint.ID, n)
 	for k := range ids {
-		ids[k] = randIDv2(r)
+		ids[k] = randomID(r)
 	}
 	return ids
 }
 
 func randSymbol(r *rand.Rand) fingerprint.CodedSymbol {
-	s := fingerprint.CodedSymbol{Sum: randIDv2(r), Count: int64(r.Uint64())}
-	binenc.LittleEndian.PutUint64(s.Check[:], r.Uint64())
-	binenc.LittleEndian.PutUint64(s.Check[8:], r.Uint64())
+	s := fingerprint.CodedSymbol{Sum: randomID(r), Count: int64(r.Uint64())}
+	bin.LittleEndian.PutUint64(s.Check[:], r.Uint64())
+	bin.LittleEndian.PutUint64(s.Check[8:], r.Uint64())
 	return s
 }
 
@@ -263,7 +261,9 @@ func mustID(t *testing.T, s string) fingerprint.ID {
 // Python Keccak-256, xoshiro256**, IEEE double arithmetic, ties rounded away
 // from zero) and cross-checked against a second, separately written pure
 // Python derivation from the FloatMapper spec. They are checked on amd64
-// only; other architectures are T2.8.
+// only; other architectures are T2.8. A FloatMapper mapping ends once the
+// next index would pass 2^53 − 1; the vectors pad such sequences with
+// EndIndex to 64 entries.
 // Changing them changes the mapping of mapper ID 1, a wire change.
 func TestFloatMapperVectors(t *testing.T) {
 	t.Parallel()
@@ -310,7 +310,7 @@ func TestChecksum(t *testing.T) {
 
 func TestChecksumTruncated(t *testing.T) {
 	fingerprint.SetChecksumBytes(t, 2)
-	id := randIDv2(newRand(2))
+	id := randomID(newRand(2))
 	c := fingerprint.Checksum(id)
 	if c[0] == 0 && c[1] == 0 {
 		t.Fatal("truncated checksum lost its first bytes")
@@ -332,7 +332,7 @@ func TestFloatMapperIndices(t *testing.T) {
 	hits := make([]int, len(probe))
 	below := map[uint64]int{32: 0, 512: 0, 4096: 0}
 	for range ids {
-		id := randIDv2(r)
+		id := randomID(r)
 		it := m.Indices(id)
 		prev := it.Next()
 		if prev != 0 {
@@ -527,7 +527,7 @@ func TestEncodeSingle(t *testing.T) {
 	t.Parallel()
 
 	m := fingerprint.NewFloatMapper()
-	id := randIDv2(newRand(6))
+	id := randomID(newRand(6))
 	syms := make([]fingerprint.CodedSymbol, 64)
 	fingerprint.Encode(m, syms, 0, id, 1)
 	one := fingerprint.CodedSymbol{Sum: id, Check: fingerprint.Checksum(id), Count: 1}
@@ -594,7 +594,7 @@ func TestDecoderWorkedExample(t *testing.T) {
 	t.Parallel()
 
 	r := newRand(7)
-	x, y, z := randIDv2(r), randIDv2(r), randIDv2(r)
+	x, y, z := randomID(r), randomID(r), randomID(r)
 	m := scriptedMapper{x: {0, 1}, y: {0, 2}, z: {0, 1, 3}}
 	local, remote := diffStreams(m, nil, []fingerprint.ID{x}, []fingerprint.ID{y, z}, 0, 4)
 
@@ -883,7 +883,7 @@ func idNotMappedTo(t *testing.T, r *rand.Rand, j uint64) fingerprint.ID {
 	t.Helper()
 	m := fingerprint.NewFloatMapper()
 	for range 1000 {
-		id := randIDv2(r)
+		id := randomID(r)
 		it := m.Indices(id)
 		i := it.Next()
 		for i < j {
@@ -912,7 +912,7 @@ func TestDecoderCorruption(t *testing.T) {
 		t.Parallel()
 		r := newRand(12)
 		rg := fingerprint.NewRange(swarm.NewAddress([]byte{0x00}), 8)
-		id := randIDv2(r)
+		id := randomID(r)
 		id[0] = 0xff
 		dec := fingerprint.NewDecoder(m, rg)
 		err := dec.Add(0, []fingerprint.CodedSymbol{pureSymbol(id, 1)}, nil)
@@ -923,7 +923,7 @@ func TestDecoderCorruption(t *testing.T) {
 	t.Run("recovered twice", func(t *testing.T) {
 		t.Parallel()
 		r := newRand(13)
-		x := randIDv2(r)
+		x := randomID(r)
 		k := firstIndexAfterZero(x)
 		// remote: s0 = {x} and s_k = {0, 0, count 2}. Peeling x from s0
 		// turns s_k into {x, count -1}: x again.
@@ -986,10 +986,10 @@ func TestDecoderPeelSteps(t *testing.T) {
 // the pure symbol of x^y^z.
 func collision(t *testing.T, r *rand.Rand) (x, y, z fingerprint.ID) {
 	t.Helper()
-	x, y = randIDv2(r), randIDv2(r)
+	x, y = randomID(r), randomID(r)
 	hx, hy := fingerprint.Checksum(x), fingerprint.Checksum(y)
 	for range 1 << 22 {
-		z = randIDv2(r)
+		z = randomID(r)
 		var s fingerprint.ID
 		for k := range s {
 			s[k] = x[k] ^ y[k] ^ z[k]
@@ -1017,6 +1017,7 @@ func TestDecoderTruncatedChecksumCollision(t *testing.T) {
 	fingerprint.SetChecksumBytes(t, 2)
 	r := newRand(17)
 	m := fingerprint.NewFloatMapper()
+	var corrupt, correct, open int
 	for range 20 {
 		x, y, z := collision(t, r)
 		local, remote := diffStreams(m, nil, []fingerprint.ID{x}, []fingerprint.ID{y, z}, 0, 4)
@@ -1036,15 +1037,22 @@ func TestDecoderTruncatedChecksumCollision(t *testing.T) {
 			if dec.Done() {
 				t.Fatal("corrupt decoder is done")
 			}
+			corrupt++
 			continue
 		}
 		if !dec.Done() {
-			continue // a batch of 4 need not suffice
+			open++ // a batch of 4 need not suffice
+			continue
 		}
 		gotLocal, gotRemote := dec.Result()
 		if !equalIDs(gotLocal, []fingerprint.ID{x}) || !equalIDs(gotRemote, []fingerprint.ID{y, z}) {
 			t.Fatal("wrong Done with a batch of 4")
 		}
+		correct++
+	}
+	t.Logf("20 collisions: %d corrupt, %d correct, %d not done", corrupt, correct, open)
+	if corrupt+correct == 0 {
+		t.Fatal("no trial reached Done or ErrCorrupt")
 	}
 
 	// Rule (a) catches the collision: x, y and z all map to {0, 1}, so
@@ -1222,7 +1230,7 @@ func TestParseSymbolDataStrict(t *testing.T) {
 		t.Fatalf("10-byte varint: %v", err)
 	}
 	// The varint is the zigzag difference from Expected(count, start+k).
-	if want := binenc.AppendVarint(slices.Clone(head), sym.Count-m.Expected(100, 0)); !slices.Equal(good, want) {
+	if want := bin.AppendVarint(slices.Clone(head), sym.Count-m.Expected(100, 0)); !slices.Equal(good, want) {
 		t.Fatalf("encoding %x, want %x", good, want)
 	}
 }

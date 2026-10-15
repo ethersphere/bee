@@ -65,7 +65,7 @@ func FuzzDecoderAdd(f *testing.F) {
 		ids = append(ids, id[:]...)
 	}
 	m := fingerprint.NewFloatMapper()
-	junk := fingerprint.AppendSymbolData(nil, m, 0, 0, []fingerprint.CodedSymbol{randSymbol(r), pureSymbol(randIDv2(r), 1)})
+	junk := fingerprint.AppendSymbolData(nil, m, 0, 0, []fingerprint.CodedSymbol{randSymbol(r), pureSymbol(randomID(r), 1)})
 	f.Add(ids, []byte{}, []byte{3, 1, 7}, uint8(0))
 	f.Add(ids, []byte{}, []byte{0}, uint8(2))
 	f.Add(ids, junk, []byte{1, 2}, uint8(0))
