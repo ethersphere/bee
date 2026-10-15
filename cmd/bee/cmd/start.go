@@ -62,6 +62,17 @@ func (c *command) initStartCmd() (err error) {
 			fmt.Print(beeWelcomeMessage)
 			logger.Info("bee version", "version", bee.Version)
 
+			// Resolve the node mode before the node is built, so that an invalid
+			// configuration exits with a non-zero status, and before the keystore
+			// is unlocked.
+			nodeMode, err := c.resolveNodeMode(logger)
+			if err != nil {
+				return err
+			}
+			if c.config.GetBool(optionNameBootnodeMode) && nodeMode != node.FullMode {
+				return errors.New("boot node must be started as a full node")
+			}
+
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
 			sysInterruptChannel := make(chan os.Signal, 1)
@@ -79,7 +90,7 @@ func (c *command) initStartCmd() (err error) {
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
-			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
+			respC := buildBeeNodeAsync(ctx, c, cmd, logger, nodeMode)
 			var beeNode atomic.Value
 
 			p := &program{
@@ -180,18 +191,18 @@ type buildBeeNodeResp struct {
 	err error
 }
 
-func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
+func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger, nodeMode node.NodeMode) <-chan buildBeeNodeResp {
 	respC := make(chan buildBeeNodeResp, 1)
 
 	go func() {
-		bee, err := buildBeeNode(ctx, c, cmd, logger)
+		bee, err := buildBeeNode(ctx, c, cmd, logger, nodeMode)
 		respC <- buildBeeNodeResp{bee, err}
 	}()
 
 	return respC
 }
 
-func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
+func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger, nodeMode node.NodeMode) (*node.Bee, error) {
 	var err error
 
 	// If the resolver is specified, resolve all connection strings
@@ -211,15 +222,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	}
 
 	bootNode := c.config.GetBool(optionNameBootnodeMode)
-
-	nodeMode, err := c.resolveNodeMode(logger)
-	if err != nil {
-		return nil, err
-	}
-
-	if bootNode && nodeMode != node.FullMode {
-		return nil, errors.New("boot node must be started as a full node")
-	}
 
 	mainnet := c.config.GetBool(optionNameMainNet)
 	userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
