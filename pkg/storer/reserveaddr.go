@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 const (
@@ -125,7 +126,8 @@ func (db *DB) startAddrIndexDrop() {
 		defer close(done)
 		dropped, err := reserve.DropAddrIndex(ctx, db.storage)
 		switch {
-		case errors.Is(err, context.Canceled):
+		case errors.Is(err, context.Canceled), errors.Is(err, leveldb.ErrClosed):
+			// ErrClosed: Close timed out waiting and closed the store
 			db.logger.Debug("reserve address index drop interrupted; it resumes at the next start", "dropped", dropped)
 			return
 		case err != nil:
@@ -154,7 +156,10 @@ func (db *DB) compactAddrIndex() {
 
 // closeWithAddrIndex is Close with an enabled address index or a background
 // drop running: stop the drop, wait for the workers, rewrite the marker, then
-// close the store (see Close).
+// close the store (see Close). The waits run one after the other, so Close
+// can take up to about 48 s in the worst case: the drop (5 s), the workers
+// (5 s each), the marker's digest count and write (30 s, ≈ 3 s at 4.2M items
+// as measured for G4) and the store close (3 s).
 func (db *DB) closeWithAddrIndex() error {
 	waited := true
 

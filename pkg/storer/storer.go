@@ -934,20 +934,13 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 // ResetReserve removes all entries of the reserve.
 //
-// With the address index enabled the index ends up empty and valid: if a
-// background address index fill is running, ResetReserve cancels it and
-// waits for it to stop, then resets the reserve (which deletes each element's
-// index entry), then writes the marker, so ReserveAddrIndexReady reports
-// true afterwards. A fill racing with the reset could otherwise write the
-// index entry of a chunk the reset just removed (the reset takes no batch
-// lock) behind a valid marker. If the reset fails, the marker is not
-// written and, with a background fill, ReserveAddrIndexReady stays false
-// until the next start. The reset deletes the reserve epoch item, so the
-// marker it writes no longer matches at the next start: a reset costs one
-// refill then (see Options.ReserveAddrIndex).
+// With the address index enabled the index ends up empty and valid: the fill
+// completes in New, so none runs here; the reset deletes each element's index
+// entry, then ResetReserve writes the marker. If the reset fails, the marker
+// is not written. The reset deletes the reserve epoch item, so the marker it
+// writes no longer matches at the next start: a reset costs one refill then
+// (see Options.ReserveAddrIndex).
 func (db *DB) ResetReserve(ctx context.Context) error {
-	// The fill is blocking (it completes in New), so no fill can be running
-	// here; a background fill would be canceled and waited for first.
 	if err := db.reserve.Reset(ctx); err != nil {
 		return err
 	}

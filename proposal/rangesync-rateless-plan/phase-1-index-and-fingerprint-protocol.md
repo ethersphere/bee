@@ -1106,7 +1106,12 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   guarantee (T1.0 follow-up).
 - **T1.5 (contract): fill variant.** Pending G4. The contract is the same for both variants: `New`
   either completes the fill before it returns or leaves it to a background goroutine, and
-  `ReserveAddrIndexReady` covers both (D16).
+  `ReserveAddrIndexReady` covers both (D16). **Settled by G4 = (b) (2026-10-15): blocking fill**
+  (see "T1.5 G4 decision" below): first enable 41–44 s, refill start ≈ 64–74 s at 4.2M items.
+  The blocking fill takes no per-batch `r.multx` lock, although the T1.4 entry ("the T1.5 fill
+  must take the batch lock too") asks for it: it runs in `New` before the reserve workers start
+  and before `New` returns, so no `Put` or eviction can write the same key concurrently. A
+  background fill would need the lock.
 - **T1.5 contract review (2026-10-15), H1: marker namespace renamed (amends T1.4).**
   `ChunkAddrValidItem.Namespace()` is now `"addrIndexValid"` (was `"chunkAddrValid"`;
   `pkg/storer/internal/reserve/items.go`, unreleased). `leveldbstore.Iterate` with

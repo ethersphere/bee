@@ -56,6 +56,9 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 
 	// Delete the address index entries of corrupted chunks whenever the index
 	// is enabled or a marker vouches for it (see Options.ReserveAddrIndex).
+	// A prune changes the reserve digest, so the marker no longer matches and
+	// the next enabled start drops and refills the whole index: correct, but
+	// it costs a full refill.
 	addrIndex := opts.ReserveAddrIndex
 	if !addrIndex {
 		addrIndex, err = reserve.HasAddrIndexMarker(store)
