@@ -264,6 +264,8 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 
 // Has chunks.
 func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if _, ok := s.chunks[addr.String()+string(batchID)+string(stampHash)]; !ok {
 		return false, nil
 	}

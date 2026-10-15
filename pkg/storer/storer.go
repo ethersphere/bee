@@ -649,20 +649,34 @@ type Options struct {
 	// entry is written and the reserve behaves as without the index. A
 	// storer without a reserve (ReserveCapacity 0) treats it as false.
 	//
-	// The index is trusted only behind its validity marker, which records
-	// the index layout version and a digest of the reserve state: the
-	// reserve epoch, the last bin ID of every bin and the reserve size.
-	// Bin IDs only grow and every put takes a new one, a removal without a
-	// put lowers the size, and a reserve reset replaces the epoch, so the
-	// digest matches only a reserve that has not changed since the marker
-	// was written. The marker is written when a fill completes and rewritten
-	// by a clean Close, after every background goroutine has stopped. A
-	// reserve changed by anything that does not maintain the index (an
-	// older bee build after a downgrade, a storer opened with the index
-	// disabled or in keep mode) no longer matches it. After an unclean
-	// shutdown the reserve normally does not match either, so a crash costs
-	// a refill, although the index, written in the same transactions as the
-	// reserve, is still exact.
+	// Validity marker. The index is trusted only behind its marker, which
+	// records the index layout version and a digest of the reserve state:
+	// the reserve epoch (0 when the epoch item is absent), the last bin ID
+	// of every bin, and the number of BatchRadiusItems counted in the
+	// store (never the in-memory reserve size, which can drift). The epoch
+	// and the bin IDs are read first and the count after them, in one
+	// store snapshot where possible. Within an epoch bin IDs only grow and
+	// every put takes a new one, and a removal without a put lowers the
+	// count, so the digest matches only a reserve that has not changed
+	// since the marker was written. A read torn by a concurrent write is
+	// safe in this order: a put landing between the two reads leaves the
+	// recorded bin IDs behind the store's for good, so the marker never
+	// matches again (a refill, never a stale index); a removal between them
+	// is in the count and in the index alike. The marker is written when a
+	// fill completes and rewritten by a clean Close (see Close). A reserve
+	// changed by anything that does not maintain the index (an older bee
+	// build after a downgrade, a storer opened with the index disabled or
+	// in keep mode) no longer matches it. After an unclean shutdown the
+	// reserve normally does not match either, so a crash costs a refill,
+	// although the index, written in the same transactions as the reserve,
+	// is still exact. A reserve reset deletes the epoch item and only the
+	// next start recreates it (with a new value), so a reset costs one
+	// refill at the next start.
+	//
+	// Rule for migrations and tools: anything that rewrites reserve items
+	// while reusing bin IDs, or changes stamp hashes in place, must delete
+	// the epoch item or the marker, or the digest could match a changed
+	// reserve.
 	//
 	// New reconciles the option with the marker at start-up; this is not a
 	// numbered migration:
@@ -674,12 +688,15 @@ type Options struct {
 	//     fill is redone at the next start. Only the fill may run in the
 	//     background (after New returned); until the marker is written
 	//     ReserveAddrIndexReady reports false;
-	//   - disabled: the marker is deleted (writes stop, so the index would
-	//     go stale), and leftover index entries, with or without a marker,
-	//     are dropped in a background goroutine; Close stops it and waits
-	//     for it before closing the store, and an interrupted drop is
-	//     resumed at the next start with the index disabled;
+	//   - disabled: if a marker exists it is deleted (writes stop, so the
+	//     index would go stale); if any index entry exists, the entries are
+	//     dropped in a background goroutine. With neither present nothing is
+	//     written. An interrupted drop is resumed at the next start with
+	//     the index disabled;
 	//   - keep: see ReserveAddrIndexKeep.
+	//
+	// After a drop completes, the index key range is compacted, so the
+	// tombstones it left do not slow down later seeks into the range.
 	//
 	// Start-up recovery of the chunk store (before the reserve opens)
 	// deletes the index entry of each corrupted chunk it removes whenever
@@ -690,16 +707,16 @@ type Options struct {
 	ReserveAddrIndex bool
 
 	// ReserveAddrIndexKeep is for tooling (the bee db commands) that opens
-	// the storer without serving rangesync. With ReserveAddrIndex false it
-	// leaves the marker and the index entries as they are, instead of
-	// deleting them, so a command that does not change the reserve (info,
-	// compact, validate, export) does not force a refill. The index is not
-	// maintained meanwhile, and ReserveAddrStore behaves as with the index
-	// disabled: a command that changes the reserve (import)
-	// should open the storer with the index disabled, so the marker is
-	// deleted explicitly; a change made in keep mode anyway is caught by the
-	// marker's digest at the next enabled start. It is ignored when
-	// ReserveAddrIndex is true.
+	// the storer with New without serving rangesync. With ReserveAddrIndex
+	// false it leaves the marker and the index entries as they are, instead
+	// of deleting them, so a command that does not change the reserve
+	// (info, export, import of pinning collections) does not force a
+	// refill. The index is not maintained meanwhile, and ReserveAddrStore
+	// behaves as with the index disabled. A command that changes the
+	// reserve (import of a reserve) should open the storer with the index
+	// disabled, so the marker is deleted explicitly; a change made in keep
+	// mode anyway is caught by the marker's digest at the next enabled
+	// start. It is ignored when ReserveAddrIndex is true.
 	ReserveAddrIndexKeep bool
 }
 
@@ -911,7 +928,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 // index entry), then writes the marker, so ReserveAddrIndexReady reports
 // true afterwards. A fill racing with the reset could otherwise write the
 // index entry of a chunk the reset just removed (the reset takes no batch
-// lock) behind a valid marker.
+// lock) behind a valid marker. If the reset fails, the marker is not
+// written and, with a background fill, ReserveAddrIndexReady stays false
+// until the next start. The reset deletes the reserve epoch item, so the
+// marker it writes no longer matches at the next start: a reset costs one
+// refill then (see Options.ReserveAddrIndex).
 func (db *DB) ResetReserve(ctx context.Context) error {
 	return db.reserve.Reset(ctx)
 }
@@ -942,6 +963,22 @@ func (db *DB) StatusMetrics() []prometheus.Collector {
 	return collectors
 }
 
+// Close stops the DB and closes the store.
+//
+// With the address index disabled or in keep mode and no address index
+// goroutine running, Close behaves as before the address index existed.
+// Otherwise it runs in this order:
+//  1. cancel a running address index fill or drop and wait for it; a fill
+//     canceled by Close writes no marker;
+//  2. wait for the reserve and cache workers, as before;
+//  3. only if the index is enabled, ReserveAddrIndexReady reports true and
+//     every wait above finished in time: compute the reserve digest and
+//     rewrite the marker (see Options.ReserveAddrIndex). This step has its
+//     own deadline, chosen from the measured digest time on a full
+//     reserve; when it passes, or the step fails, no marker is written and
+//     the next enabled start refills (an older marker left in place never
+//     matches a reserve that changed after it was written);
+//  4. close the store, under the existing 3 s limit.
 func (db *DB) Close() error {
 	close(db.quit)
 

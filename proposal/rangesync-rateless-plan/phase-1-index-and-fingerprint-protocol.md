@@ -1263,6 +1263,68 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   exact deltas computed under a fake per-batch lock held across `Commit` (the role of
   `r.multx`), which `ReserveIterateAddr` never takes. Regression test: a rebuild that opens while
   a `Commit` holds that lock (and waits for `mu`) completes.
+- **Marker design decided by the user 2026-10-15:** digest at fill completion and clean Close; a
+  crash costs a refill; the shadow-bin-ID crash-tolerant alternative was considered and not chosen.
+- **T1.5 contract review round 2, M-A: digest source and read order.** The digest is the epoch (see
+  M-B), the per-bin last bin IDs (`BinItem`), then `Count(BatchRadiusItem)` from the store, in that
+  order and in one leveldb snapshot where the store allows it; never `r.size`, which is updated
+  after `run` returns and drifts on `ErrAfterCommit` (low after `Put`, high after an eviction). Why the order makes a torn read safe: bin
+  IDs only grow within an epoch and every put takes a new one. A put landing between the bin-ID
+  read and the count leaves the recorded bin IDs behind the store's forever, so the marker never
+  matches again (a spurious refill, never a stale index). A removal between them is in both the
+  count and the index. The reverse order is unsafe: count, then a put, then the bin-ID read, then
+  an older build removing one chunk gives the recorded digest with a changed set. The count is on
+  the `Close` path and `DB.Close` caps itself at 3 s, so the marker step gets its own deadline
+  (see L-A), set from the measured count time at 4.2M items (part of the G4 numbers). When the
+  deadline passes, no marker is written and the next start refills. `r.size` drift on
+  `ErrAfterCommit` is not fixed here: it predates T1.4 (Put and EvictBatchBin already returned
+  before adding to the size on that error), the digest no longer reads it, and fixing it changes
+  the default path (follow-up below).
+- **T1.5 contract review round 2, M-B: epoch after a reset.** `Reserve.Reset` deletes the
+  `EpochItem` and only `reserve.New` recreates it. The digest encodes an absent epoch as 0, which
+  never matches a later start (`New` always creates one, with a timestamp). So a reset costs one
+  refill at the next start. Documented on `Options.ReserveAddrIndex` and `ResetReserve`; `Reset`
+  does not recreate the epoch.
+- **T1.5 contract review round 2, L-A: the order of `Close`.** With the index disabled or in keep
+  mode and no address index goroutine running, `Close` is unchanged. Otherwise:
+  1. cancel and wait for the fill or drop goroutine (a fill canceled by `Close` writes nothing);
+  2. wait for the reserve and cache workers as before;
+  3. only when the index is enabled, ready, and every wait finished in time, compute the digest
+     and rewrite the marker, under its own deadline;
+  4. close the store under the existing 3 s limit.
+
+  Today `dbCloser.Close` runs concurrently with the waits (`storer.go`, `Close`); with the index
+  on it moves after them. Documented on `Close`.
+- **T1.5 contract review round 2, L-B: compaction and no stray tombstones.** After a drop
+  completes, the `chunkAddr` key range is compacted (`--db-disable-seeks-compaction` defaults to
+  true, so seek-triggered compaction would not clean the tombstones). The disabled start-up path
+  deletes the marker only if it exists, and starts a drop only if an index entry exists: a leveldb
+  `Delete` of an absent key still writes a tombstone. With neither present nothing is written
+  (`TestReserveAddrIndexDefaultNoWrites` asserts no write at all).
+- **T1.5 contract review round 2, L-D: rule for migrations and tools** (in the
+  `Options.ReserveAddrIndex` godoc): anything that rewrites reserve items while reusing bin IDs, or
+  changes stamp hashes in place, must delete the `EpochItem` or the marker. `ReserveRepairer`
+  (renumbers bin IDs) drops the marker under T1.5 scope item 3.
+- **T1.5 contract review round 2, M3 note: recovery keeps `|| markerPresent`.** With the digest the
+  rule is redundant: recovery's removals lower the count, so the marker no longer matches. It is
+  kept because it is harmless (one `Has` read, only when corrupted chunks exist) and stays correct
+  if G4 relaxes the digest rule.
+- **T1.5 contract review round 2, nits.**
+  - A result ID is accepted only as 65 bytes with a leading `/` (`leveldbstore` with
+    `PrefixAtStart`) or exactly 64 bytes (`inmemstore`); anything else is an error.
+  - `inmemstore`'s `PrefixAtStart` walks its keys linearly and holds its `s.mu.RLock` across the
+    callback, so T1.6's rule 2 (O(1) to the first callback) holds only on leveldb. That is
+    harmless: `inmemstore` backs only the reserve unit tests (`internal.NewInmemStorage`), and the
+    storer's in-memory repository is `leveldbstore` with an empty path. There is no deadlock
+    either, because writers take `ix.mu` (R) before the store lock.
+  - If `ResetReserve` fails while a background fill is pending, `ReserveAddrIndexReady` stays
+    false until the next start (on `ResetReserve`).
+  - The mock's `ReserveHas` now takes `s.mtx`, like `ReserveGet`.
+  - More planned tests: clean `Close` rewrites the marker only when enabled and ready; a fill
+    canceled by `Close` leaves no marker; `Close` in keep or disabled mode writes nothing; reset
+    → next start refills; a put between the digest's bin-ID read and count (hook) → the marker
+    never matches afterwards; result IDs of 64 bytes, 65 with `/`, and other lengths (rejected);
+    the drop is followed by a compaction of the range.
 
 ## Follow-ups
 _(sessions append here)_
@@ -1462,11 +1524,19 @@ _(sessions append here)_
 - **T1.6 → T1.13 (contract review L4):** rerun the fake-reserve scenario "a rebuild opening while
   a `Commit` holds the per-batch lock completes" against the real `*storer.DB` (`Put` holding
   `r.multx` while the rebuild opens its iterator).
-- **T1.5 → T1.12 (keep mode):** pass `ReserveAddrIndexKeep: true` from the `bee db` commands that
-  do not change the reserve (`info`, `compact`, the `validate*` commands, `export`); `import` and
-  `repair-reserve` keep the default (`import` must invalidate the index; `repair-reserve` drops it
-  itself). Without this, `bee db info` on a rangesync node deletes the marker and forces a full
+- **T1.5 → T1.12 (keep mode; corrected in contract review round 2):** pass
+  `ReserveAddrIndexKeep: true` from the `bee db` commands that call `storer.New` and do not change
+  the reserve: `info`, `export reserve`, `export pinning`, `import pinning`. `import reserve` keeps
+  the default (disabled: the marker is deleted, the index invalidated). `repair-reserve` also keeps
+  the default; its drop is redundant, since `ReserveRepairer` drops the namespace and the marker
+  itself. `compact`, `validate` and `validate-pin` open the store with `initStore`, not `storer.New`,
+  and are not affected (compaction moves chunks in sharky only, so the index and the digest stay
+  valid). Without this, `bee db info` on a rangesync node deletes the marker and forces a full
   refill at the next start.
 - **T1.5 → T1.8/T1.9 (N1):** `ReserveIterateAddr` returns `cb`'s error wrapped (via
   `leveldbstore`'s "iterate callback function errored: %w"): compare with `errors.Is`, never `==`,
   e.g. for a stop sentinel or `ErrInvalidMessage` raised inside `Local.IterateIDs`.
+- **T1.5 (contract review round 2, out of scope):** `Reserve.Put` and `EvictBatchBin` skip their
+  `r.size` update when `Run` returns `transaction.ErrAfterCommit` (the batch was written), so the
+  in-memory reserve size drifts until restart: low after `Put`, high after an eviction. This predates T1.4. Fix it in a storer task: add
+  to or subtract from the size when `errors.Is(err, transaction.ErrAfterCommit)`.
