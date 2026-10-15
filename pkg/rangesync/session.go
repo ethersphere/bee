@@ -189,8 +189,9 @@ func estimate(a, b uint64) uint64 {
 // Messages: whole splits (all children of a range in one Message), Items
 // pages of this side's streams, and answers to the peer's Reply pages. Items
 // pages carry at most ItemsPageSize IDs and fewer when the Message is nearly
-// full. A side never sends an empty Message while it has work pending or an
-// Items stream with More set.
+// full. A side never sends an empty Message while it has work pending, or
+// while one of its Items streams has More set, unless that stream answers
+// the peer's Reply stream and waits for the peer's next Reply page.
 //
 // Deferred work is kept small: a deferred split is its range, and the IDs of
 // an Items stream are read lazily from Local.IterateIDs with a cursor when
@@ -299,6 +300,10 @@ func NewResponder(cfg Config) *Session {
 // the fetch stream. A nil out with a nil error means that the session is
 // over: in was empty and this side has nothing pending, so nothing is sent.
 // An out with no parts is the empty Message.
+//
+// The caller should read in with a reader limited to MaxMessageBytes; Handle
+// also rejects a larger in as a violation, since the state kept for the
+// peer's Reply pages while a Message is handled is bounded by its size.
 //
 // Each Fingerprint part is answered by the decision rule (Decide). Each Items
 // part adds the listed IDs that Local does not hold to wants; with Reply set

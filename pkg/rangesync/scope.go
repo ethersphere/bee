@@ -101,12 +101,12 @@ func (s Scope) CheckRange(r fingerprint.Range) error {
 }
 
 // CheckMessage checks the parts of a reconcile Message that need no session
-// state: at most MaxParts parts; every part is a Fingerprint or an Items
-// part (Phase 1 rejects Symbols and More, and a part with no kind); every
-// part decodes strictly (ParseFingerprint, ParseItems) and its range passes
-// CheckRange. Busy and AuditRound are not checked. Errors wrap
-// ErrInvalidMessage. Session.Handle runs it on every message before the
-// checks that depend on the session state.
+// state: at most MaxParts parts and MaxMessageBytes encoded bytes; every part
+// is a Fingerprint or an Items part (Phase 1 rejects Symbols and More, and a
+// part with no kind); every part decodes strictly (ParseFingerprint,
+// ParseItems) and its range passes CheckRange. Busy and AuditRound are not
+// checked. Errors wrap ErrInvalidMessage. Session.Handle runs it on every
+// message before the checks that depend on the session state.
 func (s Scope) CheckMessage(m *pb.Message) error {
 	_, err := s.parseMessage(m)
 	return err
@@ -127,6 +127,9 @@ func (s Scope) parseMessage(m *pb.Message) ([]part, error) {
 	}
 	if len(m.Parts) > MaxParts {
 		return nil, invalid("message of %d parts", len(m.Parts))
+	}
+	if n := m.Size(); n > MaxMessageBytes {
+		return nil, invalid("message of %d bytes", n)
 	}
 	parts := make([]part, len(m.Parts))
 	for i, p := range m.Parts {

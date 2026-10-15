@@ -446,6 +446,13 @@ func TestSessionValidation(t *testing.T) {
 	}
 	opening := msg(fpPart(root, sum(3, 3)))
 	busy := &pb.Message{Busy: true}
+	// a page per child of the root, 16 × ItemsPageSize IDs: over MaxMessageBytes
+	oversize := make([]*pb.Part, 0, 16)
+	for _, r := range root.Children(4) {
+		page := randIDs(rng, r, rangesync.ItemsPageSize)
+		slices.SortFunc(page, fingerprint.ID.Compare)
+		oversize = append(oversize, itemsPart(rangesync.Items{Range: r, IDs: page}))
+	}
 
 	for _, tc := range []struct {
 		name     string
@@ -477,6 +484,7 @@ func TestSessionValidation(t *testing.T) {
 		{"more", responder(scope), []*pb.Message{msg(&pb.Part{Kind: &pb.Part_More{More: &pb.More{Range: rangesync.EncodeRange(root)}}})}},
 		{"fingerprint out of scope", responder(scope), []*pb.Message{msg(fpPart(rangeOf("10"), sum(1, 1)))}},
 		{"nil message", responder(scope), []*pb.Message{nil}},
+		{"over max bytes", initiator(scope), []*pb.Message{msg(oversize...)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -129,33 +129,84 @@ func FuzzSessionHandle(f *testing.F) {
 
 // FuzzSessionConverges drives two honest sessions over fuzzed sets and
 // scopes and checks that each side wants exactly what the other holds and it
-// lacks inside the session root. The seeds include a root at the leaf depth
-// with 40000 common IDs, whose Items streams span three or more messages.
+// lacks inside the opened ranges. swap gives the initiator the narrower root
+// and the fewer LeafBits instead of the responder; openMode picks the opening
+// (the root, its halves, one stripe, or ranges below the leaf depth). The
+// seeds include a root at the leaf depth with 40000 common IDs, whose Items
+// streams must span three or more messages.
 func FuzzSessionConverges(f *testing.F) {
-	f.Add(uint64(1), uint16(40000), uint8(3), uint8(3), uint8(0), uint8(0), false)
-	f.Add(uint64(2), uint16(3000), uint8(50), uint8(50), uint8(12), uint8(1), false)
-	f.Add(uint64(3), uint16(2000), uint8(20), uint8(20), uint8(8), uint8(2), true)
-	f.Add(uint64(4), uint16(0), uint8(200), uint8(0), uint8(12), uint8(0), false)
-	f.Add(uint64(5), uint16(20000), uint8(255), uint8(255), uint8(3), uint8(1), false)
+	f.Add(uint64(1), uint16(40000), uint8(3), uint8(3), uint8(0), uint8(0), false, false, uint8(0))
+	f.Add(uint64(2), uint16(3000), uint8(50), uint8(50), uint8(12), uint8(1), false, true, uint8(1))
+	f.Add(uint64(3), uint16(2000), uint8(20), uint8(20), uint8(8), uint8(2), true, false, uint8(2))
+	f.Add(uint64(4), uint16(0), uint8(200), uint8(0), uint8(12), uint8(0), false, true, uint8(0))
+	f.Add(uint64(5), uint16(20000), uint8(255), uint8(255), uint8(3), uint8(1), false, false, uint8(1))
+	f.Add(uint64(6), uint16(3000), uint8(30), uint8(30), uint8(9), uint8(1), false, false, uint8(3))
+	// a narrower root at the leaf depth holding about half of the IDs
+	f.Add(uint64(1), uint16(40000), uint8(3), uint8(3), uint8(0), uint8(52), false, false, uint8(0))
 
-	f.Fuzz(func(t *testing.T, seed uint64, common uint16, onlyA, onlyB, leafBits, rootDelta uint8, paired bool) {
+	f.Fuzz(func(t *testing.T, seed uint64, common uint16, onlyA, onlyB, leafBits, rootDelta uint8, paired, swap bool, openMode uint8) {
 		rng := newRand(seed)
-		localRoot := rangeOf("01")
-		remoteRoot := randRange(rng, localRoot, int(rootDelta%3))
-		scope, err := rangesync.NewScope(status(localRoot, fingerprint.LeafBits), status(remoteRoot, leafBits%(fingerprint.LeafBits+1)))
+		wide := status(rangeOf("01"), fingerprint.LeafBits)
+		narrow := status(randRange(rng, wide.Root, int(rootDelta%3)), leafBits%(fingerprint.LeafBits+1))
+		local, remote := wide, narrow
+		if swap {
+			local, remote = narrow, wide
+		}
+		scope, err := rangesync.NewScope(local, remote)
 		if err != nil {
 			return
 		}
-		la, lb, a2b, b2a := convergenceSets(rng, localRoot, scope, int(common)%40001, int(onlyA), int(onlyB), paired)
-		a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la})
+		var open []fingerprint.Range
+		switch openMode % 4 {
+		case 1:
+			open = scope.Root.Children(1)
+		case 2:
+			open = []fingerprint.Range{randRange(rng, scope.Root, 2)}
+		case 3:
+			// below the leaf depth, as far as LeafDepthSlack allows
+			below := int(scope.LeafDepth-scope.Root.Bits) + 1
+			if below > 10 {
+				return
+			}
+			open = scope.Root.Children(uint8(below))
+		}
+		la, lb, a2b, b2a := convergenceSets(rng, wide.Root, scope, int(common)%40001, int(onlyA), int(onlyB), paired)
+		if open != nil {
+			a2b, b2a = inRanges(a2b, open), inRanges(b2a, open)
+		}
+		a, first, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Open: open})
 		if err != nil {
 			t.Fatal(err)
 		}
 		b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: lb})
-		wantsA, wantsB, _ := drive(t, a, open, b, pageChecker(t, new(int)))
+		// at a root at the leaf depth, the responder lists its IDs (the
+		// initiator lists its own when the responder has none); more than
+		// two messages of them make one stream of three or more messages
+		sa, _ := la.Summary(scope.Root)
+		sb, _ := lb.Summary(scope.Root)
+		listed := sb.Count
+		if listed == 0 {
+			listed = sa.Count
+		}
+		long := open == nil && scope.Root.Bits == scope.LeafDepth && sa != sb && listed >= 32000
+		wantsA, wantsB, _ := drive(t, a, first, b, pageChecker(t, new(int)), spanChecker(t, long))
 		assertSet(t, wantsA, a2b)
 		assertSet(t, wantsB, b2a)
 	})
+}
+
+// inRanges returns the IDs that lie in one of the ranges.
+func inRanges(ids []fingerprint.ID, ranges []fingerprint.Range) []fingerprint.ID {
+	var out []fingerprint.ID
+	for _, id := range ids {
+		for _, r := range ranges {
+			if r.ContainsID(id) {
+				out = append(out, id)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // randRange returns a random sub-range of r that is extra bits deeper.

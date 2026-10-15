@@ -51,8 +51,9 @@ const (
 	// whose answers wait for room in a later Message and that a session
 	// keeps with the listed IDs it must not send back. Pages past it are
 	// answered without that exclusion (at most 16 × ItemsPageSize stored
-	// IDs, 1 MiB). Answers sent in the Message built right after the page
-	// arrived always keep it.
+	// IDs: 1 MiB of IDs, about 1.2–1.3 MiB with the map overhead). Answers
+	// sent in the Message built right after the page arrived always keep
+	// it.
 	MaxPendingReplies = 16
 
 	// MaxConcurrentSessions is the largest number of reconcile sessions a node

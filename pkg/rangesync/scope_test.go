@@ -138,6 +138,17 @@ func TestScopeCheckMessage(t *testing.T) {
 	in := fpPart(rangeOf("0110"), fingerprint.Summary{})
 	out := fpPart(rangeOf("10"), fingerprint.Summary{})
 	items := itemsPart(rangesync.Items{Range: rangeOf("011")})
+	// full pages over n sub-ranges: 14 fit in MaxMessageBytes, 16 do not
+	rng := newRand(14)
+	fullPages := func(n int) []*pb.Part {
+		parts := make([]*pb.Part, 0, n)
+		for _, r := range rangeOf("01").Children(4)[:n] {
+			ids := randIDs(rng, r, rangesync.ItemsPageSize)
+			slicesSort(ids)
+			parts = append(parts, itemsPart(rangesync.Items{Range: r, IDs: ids}))
+		}
+		return parts
+	}
 	many := func(n int) []*pb.Part {
 		parts := make([]*pb.Part, n)
 		for i := range parts {
@@ -155,6 +166,8 @@ func TestScopeCheckMessage(t *testing.T) {
 		{"fingerprint and items", msg(in, items), true},
 		{"max parts", msg(many(rangesync.MaxParts)...), true},
 		{"over max parts", msg(many(rangesync.MaxParts + 1)...), false},
+		{"near max bytes", msg(fullPages(14)...), true},
+		{"over max bytes", msg(fullPages(16)...), false},
 		{"nil part", msg(in, nil), false},
 		{"part without kind", msg(&pb.Part{}), false},
 		{"fingerprint without body", msg(&pb.Part{Kind: &pb.Part_FP{}}), false},

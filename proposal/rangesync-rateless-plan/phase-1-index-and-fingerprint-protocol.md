@@ -1428,6 +1428,12 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     stronger `FuzzSessionHandle` invariants (wants only from listed, unheld IDs, once each; sent IDs
     held; output ranges only ones the peer asked about).
 
+- **T1.8 re-review (2026-10-15):** `Scope.CheckMessage` (so also `Session.Handle`) rejects a
+  message whose encoded size exceeds `MaxMessageBytes` as a violation. The exclusion lists kept
+  while a message is handled are bounded by its size, so the bound no longer depends on the caller
+  alone; T1.9 must still read the `reconcile` stream with a `MaxMessageBytes` reader (G2), and
+  `Handle`'s doc says so.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
