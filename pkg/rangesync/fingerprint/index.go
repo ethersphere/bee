@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -29,8 +31,6 @@ var (
 	// on a root the index has since moved away from.
 	ErrOutsideRoot = errors.New("fingerprint: range outside root")
 )
-
-var errNotImplemented = errors.New("fingerprint: not implemented")
 
 // maxIndexLeafBits bounds IndexOptions.LeafBits: 1<<16 buckets already hold
 // a 128 MB LtHash slab.
@@ -151,7 +151,85 @@ type Index struct {
 	leafBits uint8
 	debounce time.Duration
 	metrics  metrics
+
+	// mu orders commits against the snapshot of a rebuild, see Locking.
+	mu sync.RWMutex
+	// live answers Summary; nil before the first rebuild completed. The
+	// pointer is read and replaced under mu, the contents are guarded by
+	// slabMu.
+	live *slab
+	// next is the slab of the running rebuild, nil when none runs. The
+	// pointer is set and cleared under mu in write mode, the contents are
+	// guarded by nextMu.
+	next *buildSlab
+
+	// slabMu guards the contents of live.
+	slabMu sync.RWMutex
+	// nextMu guards the contents of next.
+	nextMu sync.Mutex
+
+	// subMu guards subs, timer and closed.
+	subMu  sync.Mutex
+	subs   []chan struct{}
+	timer  *time.Timer
+	closed bool
+
+	// afterConvert, if set, is called by Rebuild between the conversion of
+	// the new slab and the swap (tests only).
+	afterConvert func()
 }
+
+// slab is a complete index of one root: Fenwick trees over its buckets.
+type slab struct {
+	root   Range
+	counts *Fenwick[countNode, *countNode]
+	hashes *Fenwick[ltHashNode, *ltHashNode]
+}
+
+// add adds (sign > 0) or subtracts the element with LtHash h to bucket b.
+func (s *slab) add(b int, h *ltHashNode, sign int) {
+	one := countNode(1)
+	if sign > 0 {
+		s.counts.Add(b, &one)
+		s.hashes.Add(b, h)
+		return
+	}
+	s.counts.Sub(b, &one)
+	s.hashes.Sub(b, h)
+}
+
+// buildSlab is the slab of a running rebuild: plain per-bucket sums until
+// converted is set, then the converted Fenwick trees (rebuild step 5).
+type buildSlab struct {
+	root      Range
+	counts    []countNode
+	hashes    []ltHashNode
+	converted *slab
+}
+
+// add adds (sign > 0) or subtracts the element with LtHash h to bucket b:
+// to the plain sums before the conversion, to the trees after it.
+func (s *buildSlab) add(b int, h *ltHashNode, sign int) {
+	if s.converted != nil {
+		s.converted.add(b, h, sign)
+		return
+	}
+	if sign > 0 {
+		s.counts[b]++
+		s.hashes[b].Add(h)
+		return
+	}
+	s.counts[b]--
+	s.hashes[b].Sub(h)
+}
+
+// slabBytes is the memory of one slab of 1<<leafBits buckets.
+func slabBytes(leafBits uint8) int {
+	return (1 << leafBits) * (countSize + LtHashSize)
+}
+
+// countSize is the size of a countNode.
+const countSize = 4
 
 // NewIndex returns an empty index with no root: until the first Rebuild opens
 // its snapshot, deltas are dropped and Summary returns ErrBusy. It panics if
@@ -192,11 +270,73 @@ func (ix *Index) LeafBits() uint8 {
 // snapshot, the delta is dropped.
 // A change inside the live root is signaled to SubscribeRootChange.
 func (ix *Index) Commit(run func() (adds, removes []ID, err error)) error {
-	_, _, err := run()
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+
+	adds, removes, err := run()
 	if err != nil {
 		return err
 	}
-	return errNotImplemented
+	ix.apply(adds, removes)
+	return nil
+}
+
+// apply applies a delta to the live slab and to the slab of a running
+// rebuild. mu must be held in read mode.
+func (ix *Index) apply(adds, removes []ID) {
+	live, next := ix.live, ix.next
+	if live == nil && next == nil {
+		return // no snapshot opened yet: the first one covers the delta
+	}
+	start := time.Now()
+	changed := false
+	for _, d := range [...]struct {
+		ids  []ID
+		sign int
+	}{{adds, 1}, {removes, -1}} {
+		for _, id := range d.ids {
+			if ix.applyOne(live, next, id, d.sign) {
+				changed = true
+			}
+		}
+	}
+	ix.metrics.ApplySeconds.Observe(time.Since(start).Seconds())
+	if changed {
+		ix.signal()
+	}
+}
+
+// applyOne applies one element to live and next and reports whether it
+// changed the live slab. The element is expanded once, outside slabMu and
+// nextMu.
+func (ix *Index) applyOne(live *slab, next *buildSlab, id ID, sign int) bool {
+	inLive := live != nil && live.root.ContainsID(id)
+	inNext := next != nil && next.root.ContainsID(id)
+	if !inLive && !inNext {
+		ix.metrics.OutsideRoot.Inc()
+		return false
+	}
+	h := getScratch()
+	defer putScratch(h)
+	*h = ltHashNode(Expand(nil, id))
+	if inLive {
+		b := ix.bucket(live.root, id)
+		ix.slabMu.Lock()
+		live.add(b, h, sign)
+		ix.slabMu.Unlock()
+	}
+	if inNext {
+		b := ix.bucket(next.root, id)
+		ix.nextMu.Lock()
+		next.add(b, h, sign)
+		ix.nextMu.Unlock()
+	}
+	return inLive
+}
+
+// bucket returns the bucket of root that holds id.
+func (ix *Index) bucket(root Range, id ID) int {
+	return int(root.ChildIndex(swarm.NewAddress(id[:swarm.HashSize]), ix.leafBits))
 }
 
 // Apply applies a delta: it is Commit with a run that returns adds and
@@ -219,14 +359,64 @@ func (ix *Index) Apply(adds, removes []ID) {
 // in read mode; the keccak256 digest is computed after both are
 // released.
 func (ix *Index) Summary(r Range) (Summary, error) {
-	return Summary{}, errNotImplemented
+	r = NewRange(r.Prefix, r.Bits)
+	var count countNode
+	hash := getScratch()
+	defer putScratch(hash)
+
+	ix.mu.RLock()
+	live, next := ix.live, ix.next
+	if live == nil || !live.root.ContainsRange(r) {
+		ix.mu.RUnlock()
+		if live == nil || (next != nil && next.root.ContainsRange(r)) {
+			return Summary{}, ErrBusy
+		}
+		return Summary{}, ErrOutsideRoot
+	}
+	lo, n, ok := live.root.BucketSpan(r, ix.leafBits)
+	if !ok {
+		ix.mu.RUnlock()
+		return Summary{}, ErrBelowLeaf // live.root contains r, so r is too deep
+	}
+	ix.slabMu.RLock()
+	live.counts.Range(int(lo), int(lo+n), &count)
+	live.hashes.Range(int(lo), int(lo+n), hash)
+	ix.slabMu.RUnlock()
+	ix.mu.RUnlock()
+
+	return summarize(count, hash), nil
+}
+
+// summarize returns the Summary of a count and an LtHash: the zero Digest
+// when the count is 0.
+func summarize(count countNode, hash *ltHashNode) Summary {
+	if count == 0 {
+		return Summary{}
+	}
+	return Summary{Count: uint64(count), Digest: (*LtHash)(hash).Digest()}
 }
 
 // RootSummary returns the root of the live slab and its Summary, read
 // together under one lock, for the status message. It returns ErrBusy when
 // there is no live slab.
 func (ix *Index) RootSummary() (Range, Summary, error) {
-	return Range{}, Summary{}, errNotImplemented
+	var count countNode
+	hash := getScratch()
+	defer putScratch(hash)
+
+	ix.mu.RLock()
+	live := ix.live
+	if live == nil {
+		ix.mu.RUnlock()
+		return Range{}, Summary{}, ErrBusy
+	}
+	ix.slabMu.RLock()
+	live.counts.Prefix(live.counts.Len(), &count)
+	live.hashes.Prefix(live.hashes.Len(), hash)
+	ix.slabMu.RUnlock()
+	ix.mu.RUnlock()
+
+	return live.root, summarize(count, hash), nil
 }
 
 // Rebuild replaces the index with one of root, built from one snapshot of
@@ -254,8 +444,116 @@ func (ix *Index) RootSummary() (Range, Summary, error) {
 // running. On success the new slab replaces the live one and the change is
 // signaled to SubscribeRootChange. Cancellation is up to iterate: fn's
 // caller stops when fn returns an error, for example on shutdown.
-func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) error {
-	return errNotImplemented
+func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err error) {
+	root = NewRange(root.Prefix, root.Bits)
+	if int(root.Bits)+int(ix.leafBits) > MaxBits {
+		return fmt.Errorf("fingerprint: rebuild root %s too deep for %d leaf bits", root, ix.leafBits)
+	}
+	start := time.Now()
+	buckets := 1 << ix.leafBits
+	next := &buildSlab{
+		root:   root,
+		counts: make([]countNode, buckets),
+		hashes: make([]ltHashNode, buckets),
+	}
+
+	// Step 1: install the new slab and open the snapshot under mu.
+	ix.mu.Lock()
+	if ix.next != nil {
+		ix.mu.Unlock()
+		return ErrBusy
+	}
+	ix.next = next
+	ix.setMemory()
+
+	// released is set by whoever releases the write lock taken above: the
+	// first element callback, or the deferred cleanup on any other exit.
+	var released atomic.Bool
+	release := func() {
+		if released.CompareAndSwap(false, true) {
+			ix.mu.Unlock()
+		}
+	}
+	swapped := false
+	defer func() {
+		if swapped {
+			return
+		}
+		// Failed or panicked: discard the new slab.
+		if !released.CompareAndSwap(false, true) {
+			ix.mu.Lock()
+		}
+		ix.next = nil
+		ix.setMemory()
+		ix.mu.Unlock()
+	}()
+
+	// Step 2: build the plain bucket sums, without mu.
+	h := getScratch()
+	defer putScratch(h)
+	var outside int
+	iterErr := iterate(func(id ID) error {
+		release()
+		if !root.ContainsID(id) {
+			outside++
+			return nil
+		}
+		*h = ltHashNode(Expand(nil, id))
+		b := ix.bucket(root, id)
+		ix.nextMu.Lock()
+		next.add(b, h, 1)
+		ix.nextMu.Unlock()
+		return nil
+	})
+	ix.metrics.OutsideRoot.Add(float64(outside))
+	if iterErr != nil {
+		return fmt.Errorf("fingerprint: rebuild %s: %w", root, iterErr)
+	}
+	// With an empty root iterate returned without calling fn and the write
+	// lock is still held; the conversion below runs without mu.
+	release()
+
+	// Step 5: convert under nextMu, flagging the conversion in the same
+	// critical section, then swap under mu.
+	ix.nextMu.Lock()
+	converted := &slab{
+		root:   root,
+		counts: NewFenwickFromBuckets[countNode, *countNode](next.counts),
+		hashes: NewFenwickFromBuckets[ltHashNode, *ltHashNode](next.hashes),
+	}
+	if converted.counts.Len() != buckets || converted.hashes.Len() != buckets {
+		panic(fmt.Sprintf("fingerprint: rebuilt slab has %d/%d buckets, want %d", converted.counts.Len(), converted.hashes.Len(), buckets))
+	}
+	next.counts, next.hashes = nil, nil
+	next.converted = converted
+	ix.nextMu.Unlock()
+
+	if ix.afterConvert != nil {
+		ix.afterConvert()
+	}
+
+	ix.mu.Lock()
+	ix.live = converted
+	ix.next = nil
+	swapped = true
+	ix.setMemory()
+	ix.mu.Unlock()
+
+	ix.metrics.RebuildSeconds.Observe(time.Since(start).Seconds())
+	ix.signal()
+	return nil
+}
+
+// setMemory updates the memory gauge. mu must be held in write mode.
+func (ix *Index) setMemory() {
+	slabs := 0
+	if ix.live != nil {
+		slabs++
+	}
+	if ix.next != nil {
+		slabs++
+	}
+	ix.metrics.MemoryBytes.Set(float64(slabs * slabBytes(ix.leafBits)))
 }
 
 // SubscribeRootChange returns a channel that receives a value after the root
@@ -269,15 +567,109 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) erro
 func (ix *Index) SubscribeRootChange() (c <-chan struct{}, unsubscribe func()) {
 	ch := make(chan struct{}, 1)
 	var once sync.Once
-	return ch, func() { once.Do(func() { close(ch) }) }
+
+	ix.subMu.Lock()
+	ix.subs = append(ix.subs, ch)
+	ix.subMu.Unlock()
+
+	return ch, func() {
+		once.Do(func() {
+			ix.subMu.Lock()
+			defer ix.subMu.Unlock()
+			for i, s := range ix.subs {
+				if s == ch {
+					ix.subs = append(ix.subs[:i], ix.subs[i+1:]...)
+					break
+				}
+			}
+			close(ch)
+		})
+	}
+}
+
+// signal reports a root change to the subscribers, at once or after the
+// debounce interval.
+func (ix *Index) signal() {
+	ix.subMu.Lock()
+	defer ix.subMu.Unlock()
+
+	switch {
+	case ix.closed:
+	case ix.debounce <= 0:
+		ix.broadcast()
+	case ix.timer == nil:
+		ix.timer = time.AfterFunc(ix.debounce, func() {
+			ix.subMu.Lock()
+			defer ix.subMu.Unlock()
+			ix.timer = nil
+			if !ix.closed {
+				ix.broadcast()
+			}
+		})
+	}
+}
+
+// broadcast sends a signal to every subscriber that has none pending. subMu
+// must be held.
+func (ix *Index) broadcast() {
+	for _, ch := range ix.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // Close stops a pending debounce timer; changes after Close are not
 // signaled. Subscriptions stay open until unsubscribed. It does not stop a
 // running Rebuild (its iterate function does). It returns nil.
 func (ix *Index) Close() error {
+	ix.subMu.Lock()
+	defer ix.subMu.Unlock()
+	ix.closed = true
+	if ix.timer != nil {
+		ix.timer.Stop()
+		ix.timer = nil
+	}
 	return nil
 }
+
+// scratch holds 2 KB LtHash buffers for expansions and query results, which
+// would otherwise escape to the heap through the generic Fenwick calls.
+var scratch = sync.Pool{New: func() any { return new(ltHashNode) }}
+
+func getScratch() *ltHashNode { return scratch.Get().(*ltHashNode) }
+
+func putScratch(h *ltHashNode) { scratch.Put(h) }
+
+// countNode is the Group adapter of the element counts. Arithmetic is modulo
+// 2^32, so removals subtract exactly; a node or range never holds more than
+// the reserve's element count, far below 2^32. A count that underflowed
+// because of a remove that was never added reads as a huge value.
+type countNode uint32
+
+// Add sets c to c plus o.
+func (c *countNode) Add(o *countNode) { *c += *o }
+
+// Sub sets c to c minus o.
+func (c *countNode) Sub(o *countNode) { *c -= *o }
+
+// Zero sets c to 0.
+func (c *countNode) Zero() { *c = 0 }
+
+// ltHashNode is the Group adapter of LtHash, whose own Add and Sub take an
+// ID: Add and Sub map to AddHash and SubHash, in place. It is converted from
+// and to *LtHash with pointer conversions.
+type ltHashNode LtHash
+
+// Add sets h to h plus o.
+func (h *ltHashNode) Add(o *ltHashNode) { (*LtHash)(h).AddHash((*LtHash)(o)) }
+
+// Sub sets h to h minus o.
+func (h *ltHashNode) Sub(o *ltHashNode) { (*LtHash)(h).SubHash((*LtHash)(o)) }
+
+// Zero sets h to the empty set.
+func (h *ltHashNode) Zero() { *h = ltHashNode{} }
 
 // Metrics returns the index's prometheus collectors.
 func (ix *Index) Metrics() []prometheus.Collector {

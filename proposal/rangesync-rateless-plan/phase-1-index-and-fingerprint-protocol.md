@@ -1325,6 +1325,33 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     → next start refills; a put between the digest's bin-ID read and count (hook) → the marker
     never matches afterwards; result IDs of 64 bytes, 65 with `/`, and other lengths (rejected);
     the drop is followed by a compaction of the range.
+- **T1.6 (implementation).** `Index` as contracted (after the review fixes). Details settled:
+  - `Rebuild` releases `mu` (write) through an atomic "released" flag shared by the first element
+    callback and a deferred cleanup, so every exit from `iterate` (return, error before the first
+    element, panic) releases it once; on failure or panic the deferred cleanup clears `next`
+    (taking `mu` again if the callback had released it), so a later `Rebuild` is not refused.
+    The new slab is allocated before `mu` is taken; `NewFenwickFromBuckets` takes ownership of
+    the plain sums, which are then set to nil, so a missing `converted` check would panic rather
+    than corrupt (negative control: dropping the flag fails `TestIndexRebuildConversionWindow`).
+  - 2 KB LtHash scratch buffers (expansions, query results) come from a `sync.Pool`: as locals
+    they escape to the heap through the generic Fenwick calls (2 × 2 KB allocations per call).
+    Benchmarks at B = 4096 (Core Ultra 7 165U, noisy): `Apply` of one element ≈ 9.1–9.3 µs
+    (one expansion + ≤ 13 nodes in two trees), `Summary` of a level-1 range or a bucket
+    ≈ 10.6–11 µs (range + keccak digest), 1 allocation of 4 B (the count delta).
+  - `index_memory_bytes` is `slabs × B × (4 + 2048)`: 8 404 992 at B = 4096 with one slab,
+    twice that while a rebuild runs (`TestIndexMemory`).
+  - `index_apply_seconds` is observed per commit that reaches a slab (not for dropped deltas).
+  - Indexer: one goroutine; a buffered (1) wake channel; `Close` before `Start` is fine and a
+    `Start` after `Close` does nothing. A rebuild canceled by `Close` (`errIndexerClosed` from
+    the iterate callback) ends the goroutine without logging. The first failure of a run logs a
+    Warning ("unable to rebuild the rangesync index, retrying"), later ones Debug; a completed
+    rebuild logs Debug. The wait for `ReserveAddrIndexReady` polls with a ticker and stops on
+    `Close`; `StorageRadius` is read only after it.
+  - Tests: the on-disk fake (`pkg/rangesync/indexer_test.go`) skips leveldbstore's own keys
+    (any key that is not 64 bytes); `pkg/rangesync`'s `TestMain` ignores leveldb's
+    `mpoolDrain` goroutine, as `pkg/puller` and others do. `TestIndexerConcurrent` slows the
+    iterations down and asserts that commits overlapped them (≈150–330 per run) with memtable
+    flushes (16 KiB write buffer).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1540,3 +1567,17 @@ _(sessions append here)_
   `r.size` update when `Run` returns `transaction.ErrAfterCommit` (the batch was written), so the
   in-memory reserve size drifts until restart: low after `Put`, high after an eviction. This predates T1.4. Fix it in a storer task: add
   to or subtract from the size when `errors.Is(err, transaction.ErrAfterCommit)`.
+- **T1.6 (CI, no cgo on the dev host):** run with `-race`: `TestIndexConcurrent`,
+  `TestIndexRebuildSnapshot`, `TestIndexRebuildIterateExits`, `TestIndexRebuildBusy`,
+  `TestIndexSubscribeRootChange` (`pkg/rangesync/fingerprint`); `TestIndexerConcurrent`,
+  `TestIndexerRebuildUnderBatchLock`, `TestIndexerCommitsDuringFirstRebuild`,
+  `TestIndexerRadiusChanged`, `TestIndexerRadiusOutOfOrder`, `TestIndexerRetry`,
+  `TestIndexerClose` (`pkg/rangesync`). Here they ran with `-count=20` (fingerprint) and
+  `-count=10` (rangesync) at `-cpu=1,2,4`.
+- **T1.6 → T1.5/T1.13 (measurement):** the T1.0 follow-up on a rebuild pinning one leveldb
+  iterator for 10–20 s (`alive_iterators`, disk usage) needs the real storer at 4.2M elements;
+  T1.6 only has the fake. Measure it with the T1.5 fill benchmark or in T1.13.
+- **T1.6 (note):** a remove of an element the index never added makes a count wrap modulo 2^32
+  (it reads as ~4.3e9) instead of failing; the exact-delta contract of T1.4 rules it out, and
+  nothing detects it. If T1.13 wants a tripwire, `Summary` could report a count above the
+  reserve capacity as corruption.

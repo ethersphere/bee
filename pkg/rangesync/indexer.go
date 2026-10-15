@@ -5,6 +5,8 @@
 package rangesync
 
 import (
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -107,7 +109,19 @@ type Indexer struct {
 	overlay swarm.Address
 	logger  log.Logger
 	opts    IndexerOptions
+
+	// wake holds at most one pending wake-up of the rebuild goroutine.
+	wake chan struct{}
+	// quit is closed by Close; done is closed when the goroutine exits.
+	quit      chan struct{}
+	done      chan struct{}
+	startOnce sync.Once
+	closeOnce sync.Once
+	started   bool // set in startOnce, read after closeOnce
 }
+
+// errIndexerClosed stops the iteration of a rebuild canceled by Close.
+var errIndexerClosed = errors.New("rangesync: indexer closed")
 
 // NewIndexer returns an Indexer that keeps index current from store for the
 // neighborhood of overlay. It starts nothing; see Start.
@@ -124,18 +138,34 @@ func NewIndexer(index *fingerprint.Index, store IndexerStore, overlay swarm.Addr
 		overlay: overlay,
 		logger:  logger.WithName(loggerName).Register(),
 		opts:    o,
+		wake:    make(chan struct{}, 1),
+		quit:    make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 }
 
 // Start starts the rebuild goroutine with the initial rebuild queued. It
 // must be called once, after the Indexer was registered as the reserve
 // observer.
-func (x *Indexer) Start() {}
+func (x *Indexer) Start() {
+	x.startOnce.Do(func() {
+		x.started = true
+		x.notify()
+		go x.run()
+	})
+}
 
 // Close stops the rebuild goroutine, canceling a running rebuild (the Index
 // keeps its previous slab), and waits for it to exit. Commits after Close are
 // still applied. It returns nil.
 func (x *Indexer) Close() error {
+	x.closeOnce.Do(func() {
+		x.startOnce.Do(func() {}) // a later Start does nothing
+		close(x.quit)
+		if x.started {
+			<-x.done
+		}
+	})
 	return nil
 }
 
@@ -147,16 +177,140 @@ func (x *Indexer) Close() error {
 // calls run exactly once and returns its error as is; it never calls into
 // the storer.
 func (x *Indexer) Commit(run func() (adds, removes []storer.ChunkID, err error)) error {
-	_, _, err := run()
-	return err
+	return x.index.Commit(func() ([]fingerprint.ID, []fingerprint.ID, error) {
+		adds, removes, err := run()
+		if err != nil {
+			return nil, nil, err
+		}
+		return toIDs(adds), toIDs(removes), nil
+	})
+}
+
+// toIDs converts storer ChunkIDs to fingerprint IDs.
+func toIDs(cs []storer.ChunkID) []fingerprint.ID {
+	if len(cs) == 0 {
+		return nil
+	}
+	ids := make([]fingerprint.ID, len(cs))
+	for i, c := range cs {
+		ids[i] = fingerprint.NewID(c.Address, c.StampHash)
+	}
+	return ids
 }
 
 // RadiusChanged implements storer.ReserveObserver. It treats the call as a
 // hint, ignoring radius: it queues a coalesced wake-up of the rebuild
 // goroutine and returns without blocking.
-func (x *Indexer) RadiusChanged(uint8) {}
+func (x *Indexer) RadiusChanged(uint8) {
+	x.notify()
+}
+
+// notify queues a wake-up of the rebuild goroutine, coalesced with a pending
+// one.
+func (x *Indexer) notify() {
+	select {
+	case x.wake <- struct{}{}:
+	default:
+	}
+}
+
+// run is the rebuild goroutine.
+func (x *Indexer) run() {
+	defer close(x.done)
+
+	var (
+		completed    uint8 // root depth of the last completed rebuild
+		hasCompleted bool  // false initially and after a failed rebuild
+		failures     int   // consecutive failed rebuilds
+		retry        *time.Timer
+		retryC       <-chan time.Time
+	)
+	defer func() {
+		if retry != nil {
+			retry.Stop()
+		}
+	}()
+
+	for {
+		select {
+		case <-x.quit:
+			return
+		case <-x.wake:
+		case <-retryC:
+		}
+		if retry != nil {
+			retry.Stop()
+			retry, retryC = nil, nil
+		}
+
+		// The wake-up is taken; wait for the address index, then read the
+		// radius.
+		if !x.waitReady() {
+			return
+		}
+		radius := x.store.StorageRadius()
+		if hasCompleted && radius == completed {
+			continue
+		}
+
+		root := fingerprint.NewRange(x.overlay, radius)
+		err := x.index.Rebuild(root, x.iterate(root))
+		if err == nil {
+			completed, hasCompleted, failures = radius, true, 0
+			x.logger.Debug("fingerprint index rebuilt", "radius", radius)
+			continue
+		}
+		hasCompleted = false
+		if errors.Is(err, errIndexerClosed) {
+			return
+		}
+		failures++
+		if failures == 1 {
+			x.logger.Warning("unable to rebuild the rangesync index, retrying", "radius", radius, "error", err)
+		} else {
+			x.logger.Debug("rebuild of the fingerprint index failed", "radius", radius, "failures", failures, "error", err)
+		}
+		retry = time.NewTimer(x.opts.RebuildRetryInterval)
+		retryC = retry.C
+	}
+}
+
+// waitReady waits until the address index is ready. It returns false if the
+// Indexer was closed first.
+func (x *Indexer) waitReady() bool {
+	if x.store.ReserveAddrIndexReady() {
+		return true
+	}
+	ticker := time.NewTicker(x.opts.ReadyPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-x.quit:
+			return false
+		case <-ticker.C:
+			if x.store.ReserveAddrIndexReady() {
+				return true
+			}
+		}
+	}
+}
+
+// iterate returns the iterate function of a rebuild of root: one
+// ReserveIterateAddr call over root, stopped by Close.
+func (x *Indexer) iterate(root fingerprint.Range) func(fn func(fingerprint.ID) error) error {
+	return func(fn func(fingerprint.ID) error) error {
+		return x.store.ReserveIterateAddr(root.Prefix, root.Bits, nil, func(c storer.ChunkID) (bool, error) {
+			select {
+			case <-x.quit:
+				return true, errIndexerClosed
+			default:
+			}
+			return false, fn(fingerprint.NewID(c.Address, c.StampHash))
+		})
+	}
+}
 
 // Reset implements storer.ReserveObserver. It does nothing: the reserve's
 // Reset delivered every per-item delete through Commit with an exact delta,
 // so the Index is already exact, and the root changes were signaled then.
-func (x *Indexer) Reset() {}
+func (*Indexer) Reset() {}
