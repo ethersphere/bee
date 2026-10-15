@@ -771,6 +771,8 @@ type DB struct {
 	reserveOptions   reserveOpts
 
 	pinIntegrity *PinIntegrity
+
+	addrIndex addrIndexState
 }
 
 type reserveOpts struct {
@@ -890,6 +892,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
+			reserve.WithAddrIndex(addrIndexModeOf(opts) == addrIndexOn),
 		)
 		if err != nil {
 			return nil, err
@@ -914,6 +917,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
+	err = db.startAddrIndex(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("reserve address index: %w", err)
+	}
+
 	db.inFlight.Add(1)
 	go db.cacheWorker(ctx)
 
@@ -934,7 +942,17 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 // marker it writes no longer matches at the next start: a reset costs one
 // refill then (see Options.ReserveAddrIndex).
 func (db *DB) ResetReserve(ctx context.Context) error {
-	return db.reserve.Reset(ctx)
+	// The fill is blocking (it completes in New), so no fill can be running
+	// here; a background fill would be canceled and waited for first.
+	if err := db.reserve.Reset(ctx); err != nil {
+		return err
+	}
+	if db.addrIndex.mode == addrIndexOn {
+		if err := db.reserve.WriteAddrIndexMarker(ctx); err != nil {
+			return fmt.Errorf("reset reserve: %w", err)
+		}
+	}
+	return nil
 }
 
 // Metrics returns set of prometheus collectors.
@@ -981,6 +999,10 @@ func (db *DB) StatusMetrics() []prometheus.Collector {
 //  4. close the store, under the existing 3 s limit.
 func (db *DB) Close() error {
 	close(db.quit)
+
+	if db.addrIndex.active() {
+		return db.closeWithAddrIndex()
+	}
 
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {

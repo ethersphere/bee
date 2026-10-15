@@ -35,7 +35,9 @@ func WithChunks(chs ...swarm.Chunk) Option {
 		for _, c := range chs {
 			if c.Stamp() != nil {
 				stampHash, _ := c.Stamp().Hash()
-				p.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(stampHash)] = c
+				key := c.Address().String() + string(c.Stamp().BatchID()) + string(stampHash)
+				p.chunks[key] = c
+				p.ids[elementID(c.Address(), stampHash)] = key
 			} else {
 				p.chunks[c.Address().String()] = c
 			}
@@ -122,12 +124,17 @@ type ReserveStore struct {
 
 	addrIndex      bool // the address index is enabled (WithAddrIndex)
 	addrIndexReady bool
+	// ids maps the element ID (address ‖ stamp hash) of every stamped chunk
+	// to its key in chunks.
+	ids      map[string]string
+	observer storer.ReserveObserver
 }
 
 // NewReserve returns a new Reserve mock.
 func NewReserve(opts ...Option) *ReserveStore {
 	s := &ReserveStore{
 		chunks: make(map[string]swarm.Chunk),
+		ids:    make(map[string]string),
 	}
 	for _, v := range opts {
 		v.apply(s)
@@ -150,7 +157,11 @@ func (s *ReserveStore) StorageRadius() uint8 {
 func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.mtx.Lock()
 	s.radius = r
+	o := s.observer
 	s.mtx.Unlock()
+	if o != nil {
+		o.RadiusChanged(r)
+	}
 }
 
 func (s *ReserveStore) CommittedDepth() uint8 {
@@ -237,29 +248,47 @@ func (s *ReserveStore) ReservePutter() storage.Putter {
 		func(ctx context.Context, c swarm.Chunk) error {
 			s.mtx.Lock()
 			s.putCalls++
+			o := s.observer
 			s.mtx.Unlock()
-			return s.put(ctx, c)
+			if o == nil {
+				_, err := s.put(ctx, c)
+				return err
+			}
+			return o.Commit(func() (adds, removes []storer.ChunkID, err error) {
+				added, err := s.put(ctx, c)
+				if err != nil {
+					return nil, nil, err
+				}
+				return added, nil, nil
+			})
 		},
 	)
 }
 
-// Put chunks.
-func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
+// put stores the chunks and returns the elements that were not in the set.
+func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) ([]storer.ChunkID, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+	var added []storer.ChunkID
 	for _, c := range chs {
 		if s.putHook != nil {
 			if err := s.putHook(c); err != nil {
-				return err
+				return added, err
 			}
 		}
 		stampHash, err := c.Stamp().Hash()
 		if err != nil {
-			return err
+			return added, err
 		}
-		s.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(stampHash)] = c
+		key := c.Address().String() + string(c.Stamp().BatchID()) + string(stampHash)
+		s.chunks[key] = c
+		id := elementID(c.Address(), stampHash)
+		if _, ok := s.ids[id]; !ok {
+			added = append(added, storer.ChunkID{Address: c.Address(), StampHash: stampHash, BatchID: c.Stamp().BatchID()})
+		}
+		s.ids[id] = key
 	}
-	return nil
+	return added, nil
 }
 
 // Has chunks.

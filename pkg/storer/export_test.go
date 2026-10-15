@@ -48,3 +48,16 @@ func DefaultOptions() *Options {
 func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	return transformedAddress(hasher, ch.Address(), ch.Data(), chType)
 }
+
+// AddrIndexFills returns how many address index fills New ran.
+func (db *DB) AddrIndexFills() int {
+	return db.addrIndex.fills
+}
+
+// WaitAddrIndexDrop waits for the background drop of a disabled address
+// index, if New started one.
+func (db *DB) WaitAddrIndexDrop() {
+	if db.addrIndex.dropDone != nil {
+		<-db.addrIndex.dropDone
+	}
+}

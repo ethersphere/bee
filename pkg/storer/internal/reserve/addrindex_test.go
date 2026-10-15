@@ -34,10 +34,10 @@ import (
 // test storage writes through without atomic commits and blocks commits during
 // iteration, so it cannot show transaction or snapshot behaviour.
 
-func newAddrIndexReserve(t *testing.T, baseAddr swarm.Address, st transaction.Storage, enabled bool) *reserve.Reserve {
+func newAddrIndexReserve(t *testing.T, baseAddr swarm.Address, st transaction.Storage, enabled bool, opts ...reserve.Option) *reserve.Reserve {
 	t.Helper()
 
-	r, err := reserve.New(baseAddr, st, 0, kademlia.NewTopologyDriver(), log.Noop, reserve.WithAddrIndex(enabled))
+	r, err := reserve.New(baseAddr, st, 0, kademlia.NewTopologyDriver(), log.Noop, append([]reserve.Option{reserve.WithAddrIndex(enabled)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

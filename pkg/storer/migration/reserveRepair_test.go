@@ -154,3 +154,46 @@ func TestReserveRepair(t *testing.T) {
 	}
 	assert.NoError(t, err)
 }
+
+// TestReserveRepairDropsAddrIndex checks that the repair tool, which does not
+// maintain the reserve address index, drops the index and its marker.
+func TestReserveRepairDropsAddrIndex(t *testing.T) {
+	t.Parallel()
+
+	store := internal.NewInmemStorage()
+	baseAddr := swarm.RandAddress(t)
+	ctx := context.Background()
+
+	items := make([]*reserve.ChunkAddrItem, 0, 3)
+	for b := range 3 {
+		ch := chunktest.GenerateTestRandomChunkAt(t, baseAddr, b)
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		items = append(items, &reserve.ChunkAddrItem{Address: ch.Address(), StampHash: stampHash, BatchID: ch.Stamp().BatchID()})
+	}
+	err := store.Run(ctx, func(s transaction.Store) error {
+		for _, item := range items {
+			if err := s.IndexStore().Put(item); err != nil {
+				return err
+			}
+		}
+		return s.IndexStore().Put(&reserve.ChunkAddrValidItem{Version: reserve.ChunkAddrIndexVersion})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = localmigration.ReserveRepairer(store, func(swarm.Chunk) swarm.ChunkType { return swarm.ChunkTypeContentAddressed }, log.Noop)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := store.IndexStore().Count(&reserve.ChunkAddrItem{}); err != nil || n != 0 {
+		t.Fatalf("%d address index entries left: %v", n, err)
+	}
+	if has, err := store.IndexStore().Has(&reserve.ChunkAddrValidItem{}); err != nil || has {
+		t.Fatalf("marker left: %v, %v", has, err)
+	}
+}

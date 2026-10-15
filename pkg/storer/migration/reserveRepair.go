@@ -73,6 +73,15 @@ func ReserveRepairer(
 			logger.Info("pre-repair check failed", "error", err)
 		}
 
+		// The reserve address index is not maintained here: drop it and its
+		// validity marker, so the next start with the index enabled refills it.
+		if _, err := reserve.DisableAddrIndex(context.Background(), st); err != nil {
+			return err
+		}
+		if _, err := reserve.DropAddrIndex(context.Background(), st); err != nil {
+			return err
+		}
+
 		// STEP 0
 		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Delete(&reserve.EpochItem{})

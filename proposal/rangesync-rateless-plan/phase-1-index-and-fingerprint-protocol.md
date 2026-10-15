@@ -1433,6 +1433,148 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   while a message is handled are bounded by its size, so the bound no longer depends on the caller
   alone; T1.9 must still read the `reconcile` stream with a `MaxMessageBytes` reader (G2), and
   `Handle`'s doc says so.
+- **T1.5 (implementation): where things are.**
+  - `pkg/storer/internal/reserve/addr.go` holds:
+    - the package-level `IterateAddr(storage.Reader, …)` and `(*Reserve).IterateAddr`, `GetByID`,
+      `HasID` and `AddrIndexReady`;
+    - the marker and digest helpers `ReadAddrIndexDigest`, `HasAddrIndexMarker`,
+      `DisableAddrIndex`, `DropAddrIndex` and `AddrIndexKeyRange`;
+    - the start-up steps `(*Reserve).CheckAddrIndex` (marker check + synchronous drop),
+      `FillAddrIndex` (blocking fill + marker) and `WriteAddrIndexMarker` (digest + marker + ready).
+  - `items.go`: the marker layout.
+  - `pkg/storer/reserveaddr.go`:
+    - the mode (`addrIndexOff`/`On`/`Keep`, from `ReserveAddrIndex`, `ReserveAddrIndexKeep` and
+      `ReserveCapacity`);
+    - the start-up step `startAddrIndex`, run at the end of `New` after the dirty-state cleanups,
+      so nothing has written to the reserve yet;
+    - the background drop, the compaction and `closeWithAddrIndex`;
+    - the `*DB` methods, with the same method-call metrics as `ReserveGet`/`ReserveHas`.
+  - `recover.go` passes `opts.ReserveAddrIndex || HasAddrIndexMarker`. `ReserveRepairer` drops the
+    marker and the index before its STEP 0. `ResetReserve` rewrites the marker after the reset.
+- **T1.5 (implementation): marker layout.** The value is `version ‖ epoch ‖ last bin ID of bins
+  0..31 ‖ count`, big-endian, 273 bytes. A marker of another version decodes to its version alone,
+  whatever its length, so a newer or older layout is seen as "another version" (refill) instead of
+  failing to decode; a marker of the current version must have exactly 273 bytes. A damaged marker
+  (decode error) counts as missing and is deleted. `ChunkAddrIndexVersion` stays 1: T1.4's one-byte
+  value never shipped. The fuzz target and the item tests cover both kinds of value.
+- **T1.5 (implementation): the digest is not read in one snapshot.** `transaction.Storage` has no
+  snapshot API, and adding one would change the storage layer. The epoch and the 32 bin IDs are
+  point reads, then the count is one iterator. The read-order argument in the `Options` godoc covers
+  the gap; `TestReadAddrIndexDigest` tests it with a put injected between the bin-ID reads and the
+  count. The count uses `Iterate` (IDs only) with a context check every 4096 items, so `Close` can
+  bound it; leveldbstore's `Count` cannot be interrupted.
+- **T1.5 (implementation): blocking fill.** `FillAddrIndex` pages through `ChunkBinItem`s
+  (10 000 per transaction, a new iterator per page resumed after the last ID) and writes plain
+  `ChunkAddrItem` puts without taking any reserve lock. That is safe because it runs inside `New`
+  before anything else can write; on the storer it is never concurrent with a reserve writer.
+  Resuming compares IDs instead of using `SkipFirst`, so a background variant whose cursor element
+  was deleted meanwhile cannot skip a live element. A background variant would reuse this loop with
+  a per-element step (batch lock → re-check `BatchRadiusItem` → put → commit).
+- **T1.5 (implementation): the drop works one address-byte sub-range at a time.** The first
+  version paged with `PrefixAtStart` from the last deleted key. leveldbstore's `PrefixAtStart` does
+  `Seek` + `Prev`, which walks back over every tombstone already written, so the drop was quadratic:
+  2.0 s at 100k entries in the first G4 run, extrapolating to roughly an hour at 4.2M. Now each of
+  the 256 sub-ranges is read with one iterator (the IDs are kept, at most a few MB at 4.2M) and then
+  deleted in transactions of 10 000: 0.30–0.36 s at 100k. With a query `Prefix`, leveldbstore
+  trims the prefix byte from the result ID and inmemstore does not; both forms are accepted (63
+  bytes plus the prefix, or 64).
+- **T1.5 (implementation): compaction after every drop.** It is done by the storer through
+  `leveldbstore.Storer.DB().CompactRange(reserve.AddrIndexKeyRange())`; the in-memory storer
+  skips it. It follows the synchronous drop of the enabled path and the background drop of the
+  disabled path. G4 numbers below: one seek into a just-dropped range costs tens to hundreds of ms
+  before the compaction, ~10 ms or less after it.
+- **T1.5 (implementation): what the default path does.**
+  - At start-up `DisableAddrIndex` makes two reads (a `Has` for the marker, one iterator seek
+    for an index entry) and writes nothing when neither exists (`TestDisableAddrIndex`: zero
+    writes, through a write-counting storage wrapper).
+  - `Close` keeps its old code path when the index is off and no drop is running.
+  - `reserve.New` gets `WithAddrIndex(false)`.
+  - `TestReserveAddrIndexDefaultNoWrites` checks that no index entry or marker is ever written
+    across Put, eviction, reset and a reopen.
+- **T1.5 (implementation): migrations keep passing `false`** (justification asked for in the T1.4
+  follow-up). `removeRogueChunks` is a numbered migration that runs once per database, before the
+  start-up check of the index. No database can have a marker when it runs: it ships in the same or
+  an earlier build than the index, and a marker is only written after the migrations of that start.
+  Even if one did, the migration's removals lower the count, so the marker's digest no longer
+  matches and the next enabled start refills. `ReserveRepairer` drops the index and the marker
+  itself, so its two removal calls passing `false` are correct.
+- **T1.5 (implementation): `Close` with the index on.**
+  - The marker step's deadline is `addrIndexMarkerTimeout = 30 s`; the count it bounds took 2.8 s
+    at 4.2M (G4).
+  - The drop wait is bounded at 5 s; the drop checks its context between transactions.
+  - When any wait times out, the marker is not rewritten; an older marker left in place never
+    matches a reserve that changed after it was written.
+  - `ResetReserve` writes the marker after a successful reset. With the blocking fill, no fill can
+    be running then.
+- **T1.5 (implementation): mock.**
+  - `ReserveStore` keeps an `ids` map (element ID → chunk key), maintained by `WithChunks`, `put`,
+    `RemoveID` and `ResetReserve`.
+  - `ReserveIterateAddr` collects and sorts the matching IDs under the lock, then calls `cb`
+    without it: O(n log n) per call, fine for protocol tests.
+  - Puts, `RemoveID` and `ResetReserve` go through the observer's `Commit`, with the mock lock taken
+    only inside `run`; `SetStorageRadius` calls `RadiusChanged` after unlocking.
+  - The existing put path now returns the added IDs; its behaviour without an observer is
+    unchanged (the `pullsync` and `puller` tests pass).
+- **T1.5 (implementation): manual negative controls (not committed).** Each of these mutations made
+  the named tests fail:
+  - the old `chunkAddrValid` namespace: `TestIterateAddr` (unmarshal of the marker, both stores);
+  - no strict-`after` skip: `TestIterateAddr`;
+  - recovery passing `false`: `TestRecoveryDeletesChunkAddrItem`;
+  - no marker rewrite in `Close`: `TestReserveAddrIndexClose`, `…Toggle`, `…KeepMode` and
+    `…UncleanShutdown`.
+- **T1.5 G4 measurement (2026-10-15).** `BenchmarkAddrIndexFill`
+  (`pkg/storer/internal/reserve/addr_bench_test.go`), measured directly at 4.2M items, no
+  extrapolation. **Setup**:
+  - Host: Intel Core Ultra 7 165U (4 cores available to the process), 7 GB RAM, ext4 on
+    `/dev/sda1` (`/var/tmp`; `/tmp` is tmpfs and was not used).
+  - The host was shared with other agents. Load average (1 min) during the runs:
+    5.7 → 3.4 (4.2M #1), 2.3 → 4.2 (4.2M #2), 6–10 for the smaller sizes.
+  - leveldb was opened with the storer's `initStore` options: 32 MiB write buffer, 32 MiB block
+    cache, `CompactionL0Trigger` 8, bloom filter, and seeks compaction disabled as the node's
+    `--db-disable-seeks-compaction` default.
+  - The store was populated directly (untimed) with n `ChunkBinItem`s and `BatchRadiusItem`s
+    (random addresses over 100 batches), the bin IDs, the epoch, and 3 random filler entries per
+    chunk (64 B key, 80 B value) standing in for the retrieval index, chunk stamp and stamp
+    index. Chunk data is not written; the fill does not read it.
+  - One iteration per size (`-benchtime 1x`). Each step is one call of the production code.
+
+  | step (production call) | 100k | 500k | 1M | 4.2M #1 | 4.2M #2 |
+  |---|---|---|---|---|---|
+  | **fill**: first enable, empty index (`CheckAddrIndex` + `FillAddrIndex`, incl. the marker's count) | 0.42 s | 3.4 s | 7.9 s | **40.6 s** | **44.1 s** |
+  | **count**: `ReadAddrIndexDigest` (also `Close`'s marker step) | 0.07 s | 0.43 s | 0.82 s | 2.8 s | 3.1 s |
+  | **clean start**: `CheckAddrIndex`, valid marker | 0.06 s | 0.43 s | 0.79 s | 2.9 s | 3.2 s |
+  | full `IterateAddr` scan (a T1.6 rebuild's iteration, without the LtHash work) | 0.07 s | 0.34 s | 0.80 s | 4.7 s | 4.7 s |
+  | **drop**: synchronous, `CheckAddrIndex` without a marker | 0.30 s | 1.4 s | 2.4 s | **11.8 s** | **13.9 s** |
+  | one seek into the dropped range, before compaction | 18 ms | 126 ms | 297 ms | 2.0 s | 1.6 s |
+  | **compaction** of the `chunkAddr` range | 1.7 s | 3.3 s | 9.3 s | **18.6 s** | **20.6 s** |
+  | one seek into the dropped range, after compaction | 8.5 ms | 13 ms | 2.2 ms | 0.11 ms | 0.22 ms |
+  | **refill** after the drop (`FillAddrIndex`) | 0.37 s | 2.3 s | 5.0 s | **30.1 s** | **35.8 s** |
+  | leveldb on disk: populated → filled → after drop + compaction | 80 → 80 → 110 MiB | 348 → 565 → 510 MiB | 690 → 960 → 683 MiB | 2880 → 3475 → 2865 MiB | 2873 → 3499 → 2865 MiB |
+
+  **Reading it for G4.**
+  - **First enable** (empty namespace): 41–44 s, under the 60 s limit.
+  - **Restart that must refill** (marker missing, of another version or not matching: a crash,
+    a downgrade, a keep-mode change, a reset, toggling off and on): count + drop + compaction +
+    fill ≈ 3 + 12–14 + 19–21 + 30–36 = **64–74 s**, over the limit by 7–23 %. The compaction is
+    the largest single item that is not the fill.
+  - **Clean restart**: ≈ 3 s (one count of the `BatchRadiusItem`s).
+  - **Disk**: the filled index adds ≈ 600 MiB (≈ 150 B per entry, uncompacted) against §5.1's
+    ≈ 350 MB estimate. A drop plus compaction gives all of it back.
+  - The measurement does not include a real node's chunk data. The per-chunk leveldb entries are
+    approximated by the filler, which with the fill's own writes compete for compaction, so a
+    real node can be slower. A quieter or faster host can be faster: the two 4.2M runs, under
+    different loads, differ by 9–19 % per step.
+
+  **Options for the decision** (the blocking variant is implemented):
+  1. Keep the blocking fill as is: a refill start blocks for ≈ 65–75 s on this host.
+  2. Blocking fill with the post-drop compaction moved after `New` returns (in the background,
+     stopped by `Close` like the disabled drop): a refill start ≈ 45–50 s. A refill rewrites the
+     same keys, so live keys should sit next to the tombstones and seeks should stay short, leaving
+     the compaction only to reclaim disk. Expected from how leveldb merges versions, **not
+     measured**; it would need a seek-after-refill step in the benchmark. This is a small change and does not need the background fill.
+  3. The background fill (proposal §5.1), as planned for > 60 s: start-up stays ≈ 3 s plus the
+     synchronous drop (12–14 s, which M4 keeps synchronous), and rangesync answers `Busy` until the
+     marker is written (T1.9 `Busy` handling, T6.2's first case).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1674,3 +1816,17 @@ _(sessions append here)_
   session **sends** (bytes or messages): one ~50-byte `Items{R, Reply}` makes this side list every
   ID in `R`, up to ~4M IDs ≈ 280 MB for a root-sized range, which an honest bootstrap can need but
   a malicious peer can ask for repeatedly.
+- **T1.5 (CI, no cgo on the dev host):** run with `-race`: `TestIterateAddrNoReserveLock`,
+  `TestIterateAddrSnapshot`, `TestReadAddrIndexDigest`, `TestAddrIndexFillCanceled`
+  (`pkg/storer/internal/reserve`), `TestReserveAddrIndexDropInterrupted`, `TestSetReserveObserver`
+  (`pkg/storer`), `TestReserveAddrStoreMock` (`pkg/storer/mock`). Here they ran with
+  `-count=10 -cpu=1,2,4`.
+- **T1.5 → T1.6/T1.9 (tombstones):** a seek into a range with many recent deletions pays for
+  skipping their tombstones (leveldbstore's `PrefixAtStart` steps back with `Prev`) until compaction
+  removes them. After the drop the storer compacts the range; scattered evictions leave only
+  scattered tombstones, so normal seeks stay cheap. Watch `index_rebuild_seconds` after mass
+  evictions (e.g. a radius increase) in T1.13/T6.
+- **T1.5 (possible optimization):** every enabled start with a valid marker counts the
+  `BatchRadiusItem`s twice: `reserve.New` counts them for the size, and the digest check counts them
+  again (2.8 s at 4.2M on this host). Before any writer exists the two counts are equal, so the check
+  could reuse `reserve.New`'s count. Left out to keep "never `r.size`" literal.

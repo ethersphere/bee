@@ -54,7 +54,17 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	pruned, err := validateAndAddLocations(ctx, store, sharkyRecover, opts.Address, logger)
+	// Delete the address index entries of corrupted chunks whenever the index
+	// is enabled or a marker vouches for it (see Options.ReserveAddrIndex).
+	addrIndex := opts.ReserveAddrIndex
+	if !addrIndex {
+		addrIndex, err = reserve.HasAddrIndexMarker(store)
+		if err != nil {
+			return closer, 0, err
+		}
+	}
+
+	pruned, err := validateAndAddLocations(ctx, store, sharkyRecover, opts.Address, addrIndex, logger)
 	if err != nil {
 		return closer, 0, err
 	}
@@ -72,7 +82,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 // If a corrupted index entry cannot be deleted, an error is returned and the
 // node startup is aborted to prevent serving or operating on corrupt state.
 // It returns the number of corrupted entries that were pruned.
-func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, baseAddr swarm.Address, logger log.Logger) (int, error) {
+func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, baseAddr swarm.Address, addrIndex bool, logger log.Logger) (int, error) {
 	var corrupted []*chunkstore.RetrievalIndexItem
 
 	buf := make([]byte, swarm.SocMaxChunkSize)
@@ -103,7 +113,7 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 	}
 
 	for _, item := range corrupted {
-		if err := reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address, false); err != nil {
+		if err := reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address, addrIndex); err != nil {
 			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk metadata %s: %w", item.Address, err)
 		}
 		if err := store.Delete(item); err != nil {

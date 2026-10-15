@@ -263,12 +263,30 @@ func (c *ChunkAddrItem) Unmarshal(buf []byte) error {
 }
 
 // ChunkAddrIndexVersion is the version of the address index layout recorded in
-// its validity marker.
+// its validity marker. A marker of another version is treated as missing.
 const ChunkAddrIndexVersion uint8 = 1
 
-// ChunkAddrValidItem marks the ChunkAddrItem namespace as complete. It is
-// written last by the address index fill and removed when the index is
-// disabled.
+// AddrIndexDigest summarizes the reserve state that a validity marker vouches
+// for: the reserve epoch (0 when the epoch item is absent, as after a reset),
+// the last bin ID of every bin (0 when unset) and the number of
+// BatchRadiusItems in the store. Within an epoch bin IDs only grow and every
+// put takes a new one, and a removal without a put lowers the count, so a
+// reserve changed after the digest was taken has a different digest.
+type AddrIndexDigest struct {
+	Epoch  uint64
+	BinIDs [swarm.MaxBins]uint64
+	Count  uint64
+}
+
+// chunkAddrValidItemSize is the marker size of ChunkAddrIndexVersion:
+// version, epoch, the bin IDs and the count.
+const chunkAddrValidItemSize = 1 + 8 + 8*int(swarm.MaxBins) + 8
+
+// ChunkAddrValidItem marks the ChunkAddrItem namespace as complete for the
+// reserve state recorded in Digest. It is written last by the address index
+// fill, rewritten at a clean storer Close and after a reserve reset, and
+// removed when the index is disabled. The index is trusted only when Version
+// is ChunkAddrIndexVersion and Digest equals the digest of the reserve.
 //
 // Its namespace must not start with the ChunkAddrItem namespace "chunkAddr":
 // leveldbstore iterations with PrefixAtStart cover every key with the bare
@@ -277,6 +295,7 @@ const ChunkAddrIndexVersion uint8 = 1
 // run to the end of the address space.
 type ChunkAddrValidItem struct {
 	Version uint8
+	Digest  AddrIndexDigest
 }
 
 func (c *ChunkAddrValidItem) Namespace() string { return "addrIndexValid" }
@@ -287,18 +306,48 @@ func (c *ChunkAddrValidItem) Clone() storage.Item {
 	if c == nil {
 		return nil
 	}
-	return &ChunkAddrValidItem{Version: c.Version}
+	clone := *c
+	return &clone
 }
 
+// Marshal encodes Version ‖ Epoch ‖ BinIDs ‖ Count, integers big-endian.
 func (c *ChunkAddrValidItem) Marshal() ([]byte, error) {
-	return []byte{c.Version}, nil
+	buf := make([]byte, chunkAddrValidItemSize)
+	buf[0] = c.Version
+	i := 1
+	binary.BigEndian.PutUint64(buf[i:], c.Digest.Epoch)
+	i += 8
+	for _, id := range c.Digest.BinIDs {
+		binary.BigEndian.PutUint64(buf[i:], id)
+		i += 8
+	}
+	binary.BigEndian.PutUint64(buf[i:], c.Digest.Count)
+	return buf, nil
 }
 
+// Unmarshal decodes a marker. A marker of another version decodes to its
+// Version only, whatever its length, so that callers see the version
+// mismatch; one of the current version must have the current size.
 func (c *ChunkAddrValidItem) Unmarshal(buf []byte) error {
-	if len(buf) != 1 {
+	if len(buf) == 0 {
+		return errUnmarshalInvalidSize
+	}
+	if buf[0] != ChunkAddrIndexVersion {
+		*c = ChunkAddrValidItem{Version: buf[0]}
+		return nil
+	}
+	if len(buf) != chunkAddrValidItemSize {
 		return errUnmarshalInvalidSize
 	}
 	c.Version = buf[0]
+	i := 1
+	c.Digest.Epoch = binary.BigEndian.Uint64(buf[i:])
+	i += 8
+	for bin := range c.Digest.BinIDs {
+		c.Digest.BinIDs[bin] = binary.BigEndian.Uint64(buf[i:])
+		i += 8
+	}
+	c.Digest.Count = binary.BigEndian.Uint64(buf[i:])
 	return nil
 }
 

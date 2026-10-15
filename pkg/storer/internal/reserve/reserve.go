@@ -69,6 +69,10 @@ type Reserve struct {
 	obsMu       sync.RWMutex
 	observer    Observer // guarded by obsMu
 	obsRegister atomic.Bool
+	// addrReady is set once the address index is complete (AddrIndexReady).
+	addrReady atomic.Bool
+	// addrBatchSize is the number of entries per fill transaction.
+	addrBatchSize int
 }
 
 // Option configures a Reserve.
@@ -95,6 +99,8 @@ func New(
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
 		multx:        multex.New(),
+
+		addrBatchSize: defaultAddrIndexBatchSize,
 	}
 	for _, o := range opts {
 		o(rs)

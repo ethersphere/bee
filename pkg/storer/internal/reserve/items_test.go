@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -92,6 +93,20 @@ func TestReserveItems(t *testing.T) {
 			},
 		},
 		{
+			name: "ChunkAddrValidItem with digest",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item: &reserve.ChunkAddrValidItem{
+					Version: reserve.ChunkAddrIndexVersion,
+					Digest: reserve.AddrIndexDigest{
+						Epoch:  math.MaxUint64,
+						BinIDs: [swarm.MaxBins]uint64{0: 1, 7: 1 << 40, swarm.MaxBins - 1: math.MaxUint64},
+						Count:  4_194_304,
+					},
+				},
+				Factory: func() storage.Item { return new(reserve.ChunkAddrValidItem) },
+			},
+		},
+		{
 			name: "ChunkAddrItem zero address",
 			test: &storagetest.ItemMarshalAndUnmarshalTest{
 				Item:       &reserve.ChunkAddrItem{BatchID: storagetest.MaxAddressBytes[:]},
@@ -114,8 +129,8 @@ func TestReserveItems(t *testing.T) {
 			name: "ChunkAddrValidItem invalid size",
 			test: &storagetest.ItemMarshalAndUnmarshalTest{
 				Item: &storagetest.ItemStub{
-					MarshalBuf:   []byte{0xFF, 0xFF},
-					UnmarshalBuf: []byte{0xFF, 0xFF},
+					MarshalBuf:   []byte{reserve.ChunkAddrIndexVersion, 0xFF},
+					UnmarshalBuf: []byte{reserve.ChunkAddrIndexVersion, 0xFF},
 				},
 				Factory:      func() storage.Item { return new(reserve.ChunkAddrValidItem) },
 				UnmarshalErr: reserve.ErrUnmarshalInvalidSize,
@@ -286,6 +301,26 @@ func TestChunkAddrItem(t *testing.T) {
 		}
 		if err := m.Unmarshal(nil); !errors.Is(err, reserve.ErrUnmarshalInvalidSize) {
 			t.Fatalf("unmarshal of empty value: %v", err)
+		}
+	})
+
+	t.Run("other version", func(t *testing.T) {
+		t.Parallel()
+
+		// A marker of another version decodes to its version only, whatever
+		// its length, so the caller sees the mismatch and refills.
+		for _, buf := range [][]byte{
+			{reserve.ChunkAddrIndexVersion + 1},
+			{0},
+			append([]byte{reserve.ChunkAddrIndexVersion + 1}, make([]byte, 300)...),
+		} {
+			m := &reserve.ChunkAddrValidItem{Digest: reserve.AddrIndexDigest{Count: 5}}
+			if err := m.Unmarshal(buf); err != nil {
+				t.Fatalf("unmarshal of version %d (%d bytes): %v", buf[0], len(buf), err)
+			}
+			if m.Version != buf[0] || m.Digest != (reserve.AddrIndexDigest{}) {
+				t.Fatalf("decoded %+v", m)
+			}
 		}
 	})
 }

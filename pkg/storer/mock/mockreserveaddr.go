@@ -5,9 +5,12 @@
 package mockstorer
 
 import (
+	"bytes"
 	"context"
-	"errors"
+	"fmt"
+	"slices"
 
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -41,10 +44,6 @@ import (
 
 var _ storer.ReserveAddrStore = (*ReserveStore)(nil)
 
-// errNotImplemented is returned by the address index methods until the mock
-// implements them.
-var errNotImplemented = errors.New("mockstorer: address index not implemented")
-
 // WithAddrIndex enables the mock's address index. It is ready
 // (ReserveAddrIndexReady reports true) until SetAddrIndexReady(false). Without
 // this option the storer.ReserveAddrStore methods that return an error return
@@ -67,21 +66,97 @@ func (s *ReserveStore) SetAddrIndexReady(ready bool) {
 	s.addrIndexReady = ready
 }
 
+func elementID(addr swarm.Address, stampHash []byte) string {
+	return addr.ByteString() + string(stampHash)
+}
+
+// hasBitPrefix reports whether the first bits bits of addr equal those of
+// prefix; missing prefix bytes count as zero.
+func hasBitPrefix(addr, prefix []byte, bits uint8) bool {
+	for i := range int(bits) {
+		var p byte
+		if i/8 < len(prefix) {
+			p = prefix[i/8]
+		}
+		if (addr[i/8]>>(7-i%8))&1 != (p>>(7-i%8))&1 {
+			return false
+		}
+	}
+	return true
+}
+
 // ReserveIterateAddr implements storer.ReserveAddrStore.
 func (s *ReserveStore) ReserveIterateAddr(prefix swarm.Address, bits uint8, after []byte, cb func(storer.ChunkID) (stop bool, err error)) error {
-	return s.addrIndexErr()
+	s.mtx.Lock()
+	if !s.addrIndex {
+		s.mtx.Unlock()
+		return storer.ErrAddrIndexDisabled
+	}
+	var ids []storer.ChunkID
+	for id, key := range s.ids {
+		addr := []byte(id[:swarm.HashSize])
+		if !hasBitPrefix(addr, prefix.Bytes(), bits) {
+			continue
+		}
+		if after != nil && bytes.Compare([]byte(id), after) <= 0 {
+			continue
+		}
+		ids = append(ids, storer.ChunkID{
+			Address:   swarm.NewAddress(addr),
+			StampHash: []byte(id[swarm.HashSize:]),
+			BatchID:   s.chunks[key].Stamp().BatchID(),
+		})
+	}
+	s.mtx.Unlock()
+
+	slices.SortFunc(ids, func(a, b storer.ChunkID) int {
+		if c := bytes.Compare(a.Address.Bytes(), b.Address.Bytes()); c != 0 {
+			return c
+		}
+		return bytes.Compare(a.StampHash, b.StampHash)
+	})
+	for _, id := range ids {
+		stop, err := cb(id)
+		if err != nil {
+			return fmt.Errorf("mockstorer: iterate address index: %w", err)
+		}
+		if stop {
+			return nil
+		}
+	}
+	return nil
 }
 
 // ReserveGetByID implements storer.ReserveAddrStore. It resolves the batch ID
 // from the address index and returns ReserveGet's result, so an evil chunk
 // (WithEvilChunk) is returned for its address.
 func (s *ReserveStore) ReserveGetByID(ctx context.Context, addr swarm.Address, stampHash []byte) (swarm.Chunk, error) {
-	return nil, s.addrIndexErr()
+	s.mtx.Lock()
+	if !s.addrIndex {
+		s.mtx.Unlock()
+		return nil, storer.ErrAddrIndexDisabled
+	}
+	key, ok := s.ids[elementID(addr, stampHash)]
+	var batchID []byte
+	if ok {
+		batchID = s.chunks[key].Stamp().BatchID()
+	}
+	s.mtx.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("mockstorer: get by id: %w", storage.ErrNotFound)
+	}
+	return s.ReserveGet(ctx, addr, batchID, stampHash)
 }
 
 // ReserveHasID implements storer.ReserveAddrStore.
 func (s *ReserveStore) ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error) {
-	return false, s.addrIndexErr()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if !s.addrIndex {
+		return false, storer.ErrAddrIndexDisabled
+	}
+	_, ok := s.ids[elementID(addr, stampHash)]
+	return ok, nil
 }
 
 // ReserveAddrIndexReady implements storer.ReserveAddrStore.
@@ -95,7 +170,51 @@ func (s *ReserveStore) ReserveAddrIndexReady() bool {
 // errors: storer.ErrAddrIndexDisabled, storer.ErrNilObserver and
 // storer.ErrObserverRegistered.
 func (s *ReserveStore) SetReserveObserver(o storer.ReserveObserver) error {
-	return s.addrIndexErr()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	switch {
+	case !s.addrIndex:
+		return storer.ErrAddrIndexDisabled
+	case o == nil:
+		return storer.ErrNilObserver
+	case s.observer != nil:
+		return storer.ErrObserverRegistered
+	}
+	s.observer = o
+	return nil
+}
+
+// remove deletes the stamped chunk of the element and reports it, if present.
+func (s *ReserveStore) remove(id string) []storer.ChunkID {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	key, ok := s.ids[id]
+	if !ok {
+		return nil
+	}
+	ch := s.chunks[key]
+	delete(s.chunks, key)
+	delete(s.ids, id)
+	return []storer.ChunkID{{
+		Address:   swarm.NewAddress([]byte(id[:swarm.HashSize])),
+		StampHash: []byte(id[swarm.HashSize:]),
+		BatchID:   ch.Stamp().BatchID(),
+	}}
+}
+
+// removeReported removes the element, through the observer's Commit if one is
+// registered.
+func (s *ReserveStore) removeReported(id string) error {
+	s.mtx.Lock()
+	o := s.observer
+	s.mtx.Unlock()
+	if o == nil {
+		s.remove(id)
+		return nil
+	}
+	return o.Commit(func() (adds, removes []storer.ChunkID, err error) {
+		return nil, s.remove(id), nil
+	})
 }
 
 // RemoveID removes the stamped chunk (addr, stampHash) from the mock, as an
@@ -103,21 +222,32 @@ func (s *ReserveStore) SetReserveObserver(o storer.ReserveObserver) error {
 // chunk that is not in the mock is a no-op (an empty delta). It works with
 // the address index enabled or not and returns the observer's Commit error.
 func (s *ReserveStore) RemoveID(addr swarm.Address, stampHash []byte) error {
-	return errNotImplemented
+	return s.removeReported(elementID(addr, stampHash))
 }
 
 // ResetReserve removes every chunk, as the storer's ResetReserve does: with an
 // observer registered each removed stamped chunk goes through its Commit,
 // then its Reset is called. It works with the address index enabled or not.
 func (s *ReserveStore) ResetReserve(ctx context.Context) error {
-	return errNotImplemented
-}
-
-func (s *ReserveStore) addrIndexErr() error {
 	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	if !s.addrIndex {
-		return storer.ErrAddrIndexDisabled
+	ids := make([]string, 0, len(s.ids))
+	for id := range s.ids {
+		ids = append(ids, id)
 	}
-	return errNotImplemented
+	s.mtx.Unlock()
+
+	for _, id := range ids {
+		if err := s.removeReported(id); err != nil {
+			return err
+		}
+	}
+
+	s.mtx.Lock()
+	clear(s.chunks)
+	o := s.observer
+	s.mtx.Unlock()
+	if o != nil {
+		o.Reset()
+	}
+	return nil
 }

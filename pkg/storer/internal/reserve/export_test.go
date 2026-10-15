@@ -11,4 +11,8 @@ type (
 var (
 	ErrMarshalInvalidAddress = errMarshalInvalidAddress
 	ErrUnmarshalInvalidSize  = errUnmarshalInvalidSize
+
+	AddrIndexElementID     = addrIndexElementID
+	WithAddrIndexBatchSize = withAddrIndexBatchSize
+	DropAddrIndexBatch     = dropAddrIndex
 )

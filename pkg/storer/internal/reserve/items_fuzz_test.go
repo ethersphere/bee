@@ -239,16 +239,30 @@ func FuzzChunkAddrValidItemUnmarshal(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Add(valid)
+	f.Add(valid[:len(valid)-1])
+	f.Add(append(valid, 0))
 	f.Add([]byte(nil))
+	f.Add([]byte{ChunkAddrIndexVersion})
 	f.Add(make([]byte, 2))
+	f.Add([]byte{ChunkAddrIndexVersion + 1, 1, 2, 3})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		item := &ChunkAddrValidItem{}
 		if err := item.Unmarshal(data); err != nil { // must not panic on any input
 			return
 		}
-		if len(data) != 1 {
-			t.Fatalf("decoded buffer of len %d, want 1", len(data))
+		if item.Version != data[0] {
+			t.Fatalf("decoded version %d from %d", item.Version, data[0])
+		}
+		if data[0] != ChunkAddrIndexVersion {
+			// another version decodes to its version only
+			if item.Digest != (AddrIndexDigest{}) {
+				t.Fatalf("version %d decoded a digest", data[0])
+			}
+			return
+		}
+		if len(data) != chunkAddrValidItemSize {
+			t.Fatalf("decoded buffer of len %d, want %d", len(data), chunkAddrValidItemSize)
 		}
 		out, err := item.Marshal()
 		if err != nil {
