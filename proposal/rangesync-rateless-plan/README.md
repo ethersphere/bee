@@ -101,7 +101,8 @@ flowchart LR
 ## Parallelism map (what can run in separate sessions at the same time)
 
 Each task's own **Depends on** line is authoritative; this table is derived from them.
-[EXECUTION.md](EXECUTION.md) turns it into a three-lane schedule.
+Execution is serial now (one subagent at a time); [EXECUTION.md](EXECUTION.md) §5 holds the
+order actually followed.
 
 | Wave | Parallel tasks (dependencies) |
 |---|---|

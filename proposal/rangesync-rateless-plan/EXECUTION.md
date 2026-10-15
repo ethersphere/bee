@@ -38,6 +38,7 @@ There are **no PRs**. Work lands on a stack of local phase branches (§3).
 | P7 | Commit the plan fixes on `docs/rangesync-rateless-proposal`, then create the phase branches (§3). | Done |
 | P10 | Host quirks found in step 0 (pass them to every implementer and verifier): `make format` rewrites ~60 unrelated files (gofumpt/gci drift; `$(go list -m)` expands empty), so check only the task's files and revert the rest; there is no `make vet` target, so run `go vet` on the touched packages; `make lint` needs `GOTOOLCHAIN=go1.26.1` (golangci-lint built with go1.26.1 vs host go1.27); no C compiler, so `-race` can't run here: substitute `-count=N -cpu=1,2,4` and flag race-relevant tests for CI. | Noted |
 | P8 | Decide whether Phase 5 runs before Phase 6 (D11). The schedule fits it in without lengthening the critical path. | **Open** |
+| P11 | Serial execution (2026-10-15): one subagent at a time, `STATE.md`, serial order (§4, §5). | Done |
 | P9 | `proposal/pullsync-rangesync-proposal.md` (the earlier, non-rateless proposal) is untracked. Commit it as history or leave it out. | **Open** |
 
 ## 3. Branches
@@ -68,8 +69,8 @@ docs/rangesync-rateless-proposal   (master + the plan)
 
 ### Task branches
 
-Several lanes work on the same phase at once (for example T1.3 and T1.7 in step 1), so each
-implementer still gets a short-lived branch and worktree:
+Each task gets a short-lived branch and worktree, so the phase branch only ever moves by a
+verified fast-forward:
 
 ```bash
 git worktree add ../bee-wt/<ID> -b rangesync/<ID>-<slug> rangesync/phase-<N>
@@ -124,15 +125,15 @@ correct as of `9edc5ac3` and will drift. Sessions should treat them as hints.
 
 | Role | Who | Does | Never does |
 |---|---|---|---|
-| Orchestrator | One Claude session started from the **bee repo root**, so it and its subagents load bee's `CLAUDE.md` → `AGENTS.md` (a session started elsewhere passes that repo's instructions to every subagent) | Creates worktrees, spawns subagents, routes findings back to implementers, lands and restacks, ticks README, consolidates Decisions logs, writes gate summaries, amends the plan after a gate | Write or fix task code; run the task's checks itself |
+| Orchestrator | One Claude session started from the **bee repo root**, so it and its subagents load bee's `CLAUDE.md` → `AGENTS.md` (a session started elsewhere passes that repo's instructions to every subagent) | Creates worktrees, runs subagents **one at a time** (see "One agent at a time"), keeps `../bee-wt/STATE.md` current, routes findings back to implementers, lands and restacks, ticks README, consolidates Decisions logs, writes gate summaries, amends the plan after a gate | Write or fix task code; run the task's checks itself |
 | Implementer | A subagent per task (an L task can use several in a row) | Contract (where required), tests first, implementation, commits on the task branch, fixes findings | Land, restack, tick README |
 | Verifier | A **fresh** subagent per verification pass | Runs the mechanical checks below and reports pass/fail with output excerpts | Edit code; judge design |
 | Reviewer | A **fresh** subagent per review pass | Reads the diff against the task text and the cited proposal sections; reports findings ranked by severity | Edit code |
 | You | — | Decide at gates (§6). Landing is automatic: a task that passes verification and review lands without asking | — |
 
-The implementer is never its own verifier or reviewer. The verifier's work is running commands and
-comparing results with the task text, so it can run on a smaller model (e.g. Sonnet) if cost
-matters.
+The implementer is never its own verifier or reviewer. The verifier runs on Sonnet
+(`model: "sonnet"`): its work is running commands and comparing results with the task text.
+Implementers and reviewers use the default model.
 
 ### Where the spec comes from
 
@@ -144,7 +145,7 @@ matters.
    example the `Index` API that T1.8 codes against while T1.6 writes it). Tasks that publish an
    interface go **contract first**: the implementer's first commit contains only the exported
    types, interfaces and doc comments (it must build and lint), plus the list of tests it will
-   write in the commit message. That commit is reviewed and landed on its own, so other lanes can
+   write in the commit message. That commit is reviewed and landed on its own, so later tasks can
    code against it before the implementation lands.
 
    Contract-first tasks: T1.1 (proto and shared types; also G2), T1.4 (`ReserveObserver`, after
@@ -164,7 +165,8 @@ matters.
    path, the gate decisions so far, and the contracts it consumes. Tests first, then code, then the
    AGENTS.md pre-commit checklist, then commits. It reports a summary, decisions, follow-ups and
    any deviation from the task text.
-4. **Verify and review, in parallel.**
+4. **Verify, then review, one after the other.** The reviewer starts only after the verifier
+   passes; there's no point reviewing code that doesn't build or pass its tests.
    - **Verifier** checks, in the task's worktree, against `rangesync/phase-<N>`:
      1. `make format` leaves no diff; `make build`, `make lint`, `make vet` pass.
      2. `go test` (with `-race` where the task involves concurrency) passes for every touched
@@ -180,7 +182,8 @@ matters.
    - **Reviewer** reads the task, the proposal sections it cites, the ground rules and the diff;
      reports correctness bugs, deviations from the proposal, and missing edge cases, by severity.
 5. **Fix.** The orchestrator sends verifier failures and reviewer findings to the **same**
-   implementer (`SendMessage`, so it keeps its context). After the fix, a fresh verifier runs
+   implementer (`SendMessage`, so it keeps its context) **if it is still warm** (rule 4 below);
+   otherwise to a fresh implementer with a handoff brief. After the fix, a fresh verifier runs
    again; a fresh reviewer runs again if any finding was high severity. After two fix rounds
    without a clean pass, the orchestrator stops and brings the task to you.
 6. **Land (orchestrator), automatically.** No approval is needed once verification and review
@@ -193,46 +196,103 @@ T1.0, the regression test). The verifier checks the test runs. Instead of a code
 orchestrator summarises the findings for you at the gate; you decide; the orchestrator amends the
 phase files before dependent tasks start.
 
-**Concurrency.** Up to three implementers at once (one per lane, §5). Verifiers and reviewers are
-short and run alongside them, but this host has 4 cores: only **one** verifier at a time may run
-the heavy suites (`pkg/storer` with `-race`, the coexistence suite, integration tags, the 4.2M-item
-fill benchmark). The orchestrator queues those.
+### One agent at a time (since 2026-10-15)
+
+The constraint is the token allowance, not CPU. With up to nine agents in parallel, the run used
+up the session allowance in 30–40 minutes. Every agent then sat waiting for the reset, its prompt
+cache expired, and the first request after the reset re-read each agent's whole context: 10–20 %
+of the next allowance spent before any work. Running one agent at a time does the same useful work,
+reaches the limit later, and keeps the one active agent's cache warm.
+
+1. **Exactly one subagent runs at any time**: implementer, verifier or reviewer. Start it, then
+   wait for its completion notification. Don't start another agent, don't poll, and don't run
+   heavy work yourself (test suites, large file reads) while it runs.
+2. **Within a task:** implement → verify → review (only after verify passes) → fix → verify again.
+3. **Tasks run in the serial order of §5.** A task starts only after the previous one has landed,
+   or has stopped at a gate.
+4. **Reuse a warm agent; replace a cold one.** Send fix rounds to the same implementer with
+   `SendMessage` only if it stopped less than 30 minutes ago and no rate limit has hit since.
+   Otherwise start a fresh implementer with a **handoff brief**: the task, the worktree, the
+   commits so far, the uncommitted files (`git status --short`), and the findings to fix. A short
+   brief costs far less than re-caching a long transcript. Agents from an earlier orchestrator
+   session can't be reached at all; always start fresh ones.
+5. **Rate limit:** when an agent stops with a rate-limit error, update `STATE.md` and stop.
+   Start nothing until the limit resets. After the reset the agent is cold (rule 4).
+6. **Lean briefs.** The brief carries:
+   - the task text;
+   - the cited proposal sections as **line ranges** in
+     `proposal/pullsync-rangesync-rateless-proposal.md` (from `grep -n '^##'`), read by range,
+     never the whole file;
+   - the P10 host quirks and the gate decisions that apply;
+   - the paths of the contracts it consumes.
+
+   Implementers also read `AGENTS.md`, `CODING.md` and `CODINGSTYLE.md`. Verifiers and reviewers
+   read `AGENTS.md` only.
+7. **Short reports.** Agents report back in at most ~300 words: verdict, commits, decisions,
+   anything blocking. The details belong in commit messages and the phase file. Test runs use
+   `-run` patterns, and only failures and summaries are printed, never full verbose logs.
+8. **Heavy suites** (`pkg/storer` with `-count=N -cpu=1,2,4`, the coexistence suite, integration
+   tags, the 4.2M-item benchmark) are only ever run by the single running agent, so they can't
+   compete for the 4 cores.
 
 **State lives on disk**, not in the orchestrator's context: the branch stack, the README
-checklist, the phase files' Decisions logs, and the worktrees in flight. A new orchestrator
-session can pick up from there.
+checklist, the phase files' Decisions logs, the worktrees in flight, and **`../bee-wt/STATE.md`**
+(outside git, so updating it needs no commit). After every agent finishes, and before stopping for
+a gate or a rate limit, the orchestrator rewrites `STATE.md`. It records:
+- the current task and its stage (contract / implement / verify / review / fix / land / gate);
+- the last agent's verdict, in two or three lines;
+- the open gate, if any;
+- the exact next action.
 
-## 5. Schedule: three lanes
+A new orchestrator session starts by reading `STATE.md`.
 
-Lanes keep conflict-prone areas in one session line. Lane A is the critical path. Lane B covers
-the pure `fingerprint` package. Lane C covers protocol/reconciler glue. A step ends when its
-tasks have landed; steps are not equal in length. Each task lands on its own phase's branch,
-whichever lane runs it.
+## 5. Schedule: serial order
 
-| Step | Lane A: spine (critical path) | Lane B: fingerprint / rateless | Lane C: protocol / reconciler | Gate after |
-|---|---|---|---|---|
-| 0 | **T1.0** snapshot spike | **T1.1** skeleton, proto, constants | T2.0 CertainSync spike · T6.0 criteria (docs) | G1, G2, G3 |
-| 1 | **T1.4** storer index + observer | T1.3 Fenwick → T1.2 LtHash | T1.7 want set → T1.8 session logic | — |
-| 2 | **T1.5** fill, iteration, API, mock | T1.6 Index | T1.8 (cont.) | G4 |
-| 3 | **T1.9** status / reconcile | T2.1 rateless library | T1.10 fetch | — |
-| 4 | **T3.1** stripe planner → **T3.2** striped transfer | T2.1 (cont.) → T2.2 symbol caches | T1.11 minimal reconciler | — |
-| 5 | **T3.2** (cont.) | T2.2 (cont.) → T2.3 | T1.12 node wiring → T1.13 | **G5** Phase 1 done |
-| 6 | **T4.2** state machine | T2.4 symbol session | T4.1 gossip → T3.4 radius → T3.3 verification | — |
-| 7 | **T4.3** scheduler | T2.5 limits · T2.6 benchmarks | T3.5 catch-up `SyncRate` · T6.2 toggle tests | — |
-| 8 | **T4.4** want set in rounds | T5.1 → T5.2 (if Phase 5) | T2.7 integer mapper (optional) | — |
-| 9 | **T4.5** replace minimal reconciler | T5.3 (if Phase 5) | T6.3 runbook + dashboards | — |
-| 10 | **T4.6** simulation | — | — | **G6** tuning |
-| 11 | **T6.1** acceptance suite | T6.2 rerun | T6.3 testnet comparison runs (human, wall-clock) | G7 |
-| 12 | **T6.4** exit report | — | — | — |
+Since 2026-10-15 the tasks run one at a time (§4 "One agent at a time"). The three-lane table
+this section used to hold is retired. The lanes only bought parallelism, and parallelism is what
+used up the token allowance.
 
-T2.8 isn't scheduled; it runs once an arm64 environment exists, any time after T2.1.
+**Done before the switch:** T1.0, T1.1, T1.2, T1.3, T1.4, T1.6, T1.7, T1.8, T2.0, T6.0. Gates G1,
+G2 and G3 are decided. The T1.5 and T2.1 contracts have landed.
 
-All dependencies were checked against each task's "Depends on" line. The non-obvious ones:
-T1.9 waits for T1.5, T1.6 **and** T1.8 (all end at step 2). T3.2 waits for T1.10. T4.2 waits for
-T3.2 and T1.11. T4.3 waits for T4.1, T4.2 and T2.4 (all step 6). T4.5 waits for T3.5.
+**Order from here.** Each task's own "Depends on" line is authoritative; this order respects all
+of them.
 
-Lane B's slack: at steps 8–10 Lane B is free if Phase 5 is skipped. Use it for T2.7 or to split
-an L task off Lane A (e.g. the analytical half of T4.6).
+| # | Task | Phase | Note |
+|---|---|---|---|
+| 1 | T1.5 (implementation) | 1 | In flight. **G4** first, then any T1.5 change G4 requires, then verify (again if the code changed) → review → fix → land |
+| 2 | T2.1 (implementation) | 2 | In flight: tests written, not committed (worktree `../bee-wt/T2.1`) |
+| 3 | T1.9 | 1 | — |
+| 4 | T1.10 | 1 | — |
+| 5 | T1.11 | 1 | Contract first |
+| 6 | T1.12 | 1 | — |
+| 7 | T1.13 | 1 | **G5** (Phase 1 done; rebase the stack onto `origin/master`; P8) |
+| 8 | T3.1 | 3 | — |
+| 9 | T3.2 | 3 | L: may land in parts |
+| 10 | T2.2 | 2 | — |
+| 11 | T2.3 | 2 | — |
+| 12 | T2.4 | 2 | — |
+| 13 | T3.3 | 3 | — |
+| 14 | T3.4 | 3 | — |
+| 15 | T4.1 | 4 | — |
+| 16 | T4.2 | 4 | — |
+| 17 | T3.5 | 3 | — |
+| 18 | T2.5 | 2 | — |
+| 19 | T2.6 | 2 | — |
+| 20 | T4.3 | 4 | — |
+| 21 | T4.4 | 4 | — |
+| 22 | T4.5 | 4 | — |
+| 23 | T4.6 | 4 | **G6** (tuning) |
+| 24 | T5.1 → T5.2 → T5.3 | 5 | Only if P8 says Phase 5 runs before Phase 6 |
+| 25 | T6.2 | 6 | — |
+| 26 | T6.1 | 6 | — |
+| 27 | T6.3 | 6 | Runbook and dashboards; the testnet runs are human wall-clock. **G7** |
+| 28 | T6.4 | 6 | Exit report |
+
+T2.7 (optional) runs only on request. T2.8 waits for an arm64 environment.
+
+Landing a lower-phase task after a higher-phase one (for example T1.9 after T2.1) is the normal
+restack of §3.
 
 ## 6. Gates (a person decides before dependent work starts)
 
@@ -250,10 +310,10 @@ an L task off Lane A (e.g. the analytical half of T4.6).
 
 | Area | Tasks | Rule |
 |---|---|---|
-| `pkg/storer` | T1.0, T1.4, T1.5 (T3.5 tests only) | Already sequential on Lane A. |
+| `pkg/storer` | T1.0, T1.4, T1.5 (T3.5 tests only) | Sequential. |
 | `pkg/rangesync/rangesync.go` (`Service`, `New`) | T1.1, T1.9, T1.10, T2.3 | T1.9 and T1.10 run at the same step: land T1.9 first; T1.10 rebases in landing step 1. |
 | `pkg/rangesync/session.go` | T1.8, T2.4, T2.5, T3.1 (Striper hook), T5.3 | T3.1 implements the hook in `reconciler/stripes.go` and only touches `session.go` to wire it. |
-| `pkg/rangesync/reconciler/` | T1.11, T3.1–T3.5, T4.1–T4.6 | Busiest package, spread over phase-3 and phase-4. At step 6, land Lane C's T4.1 before Lane A's T4.2 if both are ready. A phase-3 change here restacks into phase-4's work, so keep reconciler edits in phase-3 tasks narrow. |
+| `pkg/rangesync/reconciler/` | T1.11, T3.1–T3.5, T4.1–T4.6 | Busiest package, spread over phase-3 and phase-4. A phase-3 change here restacks into phase-4's work, so keep reconciler edits in phase-3 tasks narrow. |
 | `constants.go`, `metrics.go` | most tasks | Append-only edits; resolve restack conflicts mechanically. |
 | `pkg/node`, `cmd/bee` | T1.12, T5.1 (wiring), T6.2 | Sequential by schedule. |
 | README checklist, phase-file Decisions logs | every task | The checklist is ticked only at landing. Decisions logs are append-only. |
