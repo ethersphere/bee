@@ -16,10 +16,9 @@ import (
 // Errors returned by the Index.
 var (
 	// ErrBusy is returned by Summary and RootSummary for a range that no
-	// slab covers yet: before the first Rebuild completes, after Reset until
-	// the next Rebuild completes, and, while a Rebuild to a new root runs,
-	// for ranges of the new root outside the current one. Rebuild returns it
-	// when another Rebuild is running. The protocol answers Busy.
+	// slab covers yet: before the first Rebuild completes and, while a
+	// Rebuild to a new root runs, for ranges of the new root outside the
+	// current one. Rebuild returns it when another Rebuild is running.
 	ErrBusy = errors.New("fingerprint: index busy")
 	// ErrBelowLeaf is returned by Summary for a range inside the root but
 	// more than LeafBits bits below it. The index keeps no summaries below
@@ -69,8 +68,12 @@ type IndexOptions struct {
 // Rebuild switches from dropping to collecting deltas for the new slab in the
 // same write-locked section that opens its snapshot, so every commit is
 // either in the snapshot or in the delta stream. Once a Rebuild completes,
-// its slab answers Summary. Reset discards the slab and returns the index to
-// the dropping state unless a Rebuild is running.
+// its slab answers Summary, and from then on the index always has a live
+// slab. A failed first Rebuild returns the index to dropping deltas.
+//
+// There is no Reset: the reserve's Reset wraps every per-item delete in the
+// observer's Commit with an exact delta, so the index is exact once it
+// returns, without any action of its own.
 //
 // # Locking
 //
@@ -81,24 +84,27 @@ type IndexOptions struct {
 //     Commit and Apply hold it in read mode across the transaction and the
 //     application of its delta; Summary holds it in read mode to pick the
 //     slab; Rebuild holds it in write mode only to open its snapshot (rebuild
-//     step 1) and to swap the slabs (step 5). mu is never held, in either
-//     mode, across a call into the storer, with one exception: the opening of
-//     the rebuild's snapshot (the start of the iterate function passed to
-//     Rebuild), which must not wait for anything a commit may hold.
+//     step 1) and to swap the slabs (step 5). rangesync never calls the
+//     storer while holding mu, except Commit, which holds mu in read mode
+//     across the reserve's own run, and the opening of the rebuild's
+//     snapshot (the start of the iterate function passed to Rebuild), which
+//     must not wait for anything a commit may hold.
 //   - slabMu, a sync.RWMutex, guards the contents of the live slab: Fenwick
 //     mutations need exclusive access, since they write the upper nodes that
 //     every query reads, while commits from different reserve batches apply
 //     their deltas concurrently under mu's read lock. Commit and Apply take it
 //     in write mode, Summary in read mode. It is taken after mu.
 //   - nextMu, a sync.Mutex, guards the contents of the slab a running Rebuild
-//     builds: the rebuild's own additions (taken alone, without mu) and the
-//     deltas of concurrent commits (taken after mu). It is never held together
-//     with slabMu.
+//     builds and its converted flag (step 5): the rebuild's own additions and
+//     the conversion (taken alone, without mu) and the deltas of concurrent
+//     commits (taken after mu). It is never held together with slabMu.
 //
 // The SHAKE expansion of an element (~5 µs) is done under mu's read lock,
 // since the delta of a commit is known only after its transaction ran and
 // must be applied before the read lock is released, but outside slabMu and
-// nextMu, so only the 2 KB additions are serialized. The subscriptions of
+// nextMu, so only the 2 KB additions are serialized. Each element of a delta
+// is expanded once; during a Rebuild the same LtHash is added into both the
+// live and the new slab. The subscriptions of
 // SubscribeRootChange have their own mutex, taken last and never held while
 // taking another.
 //
@@ -114,11 +120,12 @@ type IndexOptions struct {
 //
 // Rebuild follows proposal §5.2, as confirmed by the T1.0 spike:
 //
-//  1. Take mu in write mode, install the empty new slab (from then on every
-//     commit's delta is applied to it as well, step 3), and call iterate,
-//     which opens one snapshot of the address index; release mu in the first
-//     call of the element callback, or when iterate returns if the root is
-//     empty.
+//  1. Allocate the empty new slab without any lock, then take mu in write
+//     mode, install the new slab (from then on every commit's delta is
+//     applied to it as well, step 3), and call iterate, which opens one
+//     snapshot of the address index. mu is released in the first call of the
+//     element callback, or on any other exit from iterate: its return (an
+//     empty root, or an error before the first element) or a panic.
 //  2. Build the new slab from the snapshot, as plain per-bucket sums, without
 //     mu.
 //  3. Commits that land after the snapshot was opened apply their deltas to
@@ -126,8 +133,15 @@ type IndexOptions struct {
 //  4. Commits hold mu in read mode across the transaction and the
 //     application of the delta, so each is either in the snapshot or in the
 //     delta stream, never both and never neither.
-//  5. Convert the new slab to Fenwick trees (O(B) group operations), and
-//     swap it in under mu in write mode.
+//  5. Under nextMu, convert the new slab's bucket sums to Fenwick trees
+//     with NewFenwickFromBuckets (O(B) group operations) and set its
+//     converted flag in the same critical section. A commit's delta to the
+//     new slab is a plain bucket addition before the flag and a Fenwick
+//     update (Fenwick.Add, Sub or Update) after it, so a commit between the
+//     conversion and the swap is applied correctly; a plain bucket addition
+//     into a converted tree would corrupt it for good. Then take mu in write
+//     mode only to swap the slabs (O(1)); commits after the swap apply to the
+//     new live slab alone.
 //
 // While a Rebuild runs, the live slab keeps answering for its own root, and
 // Summary returns ErrBusy for ranges of the new root it does not cover.
@@ -175,7 +189,7 @@ func (ix *Index) LeafBits() uint8 {
 // The delta is a group difference: adds and removes are applied in any
 // order, and their slices are only read. Elements outside every root are
 // ignored and counted in a metric. Before the first Rebuild opened its
-// snapshot (and after Reset, with no Rebuild running), the delta is dropped.
+// snapshot, the delta is dropped.
 // A change inside the live root is signaled to SubscribeRootChange.
 func (ix *Index) Commit(run func() (adds, removes []ID, err error)) error {
 	_, _, err := run()
@@ -186,9 +200,9 @@ func (ix *Index) Commit(run func() (adds, removes []ID, err error)) error {
 }
 
 // Apply applies a delta: it is Commit with a run that returns adds and
-// removes. It is exact only when the changes it reports are in no snapshot
-// that a running Rebuild opened; changes made by reserve transactions go
-// through Commit.
+// removes. It is for tests and has no production caller: it is exact only
+// when the changes it reports are in no snapshot that a running Rebuild
+// opened, so changes made by reserve transactions go through Commit.
 func (ix *Index) Apply(adds, removes []ID) {
 	_ = ix.Commit(func() ([]ID, []ID, error) { return adds, removes, nil })
 }
@@ -222,10 +236,14 @@ func (ix *Index) RootSummary() (Range, Summary, error) {
 // iterate must open one consistent snapshot of the elements of root when it
 // is called, then call fn for each element of the snapshot, sequentially, in
 // any order, and return the first error fn returns. Rebuild holds mu in
-// write mode from before iterate is called until fn's first call (or until
-// iterate returns), so iterate must open its snapshot without waiting for
-// anything a reserve transaction may hold (the reserve's batch and bin
-// locks, its registration lock) and must not call into the index. iterate is
+// write mode from before iterate is called until fn's first call, or until
+// iterate exits in any other way (it returns, also with an error before the
+// first element, or panics). So iterate must open its snapshot before any
+// blocking operation (no lock, channel or wait of any kind: a reserve
+// transaction may hold the reserve's batch and bin locks and its
+// registration lock while waiting for mu), must reach the first element (or
+// its return, for an empty root) after O(1) work, by seeking straight to the
+// start of root, and must not call into the index. iterate is
 // one call over one snapshot: paging with a cursor, which opens a new
 // snapshot per page, would count commits made between pages twice or not at
 // all. Elements outside root are ignored and counted in a metric.
@@ -240,18 +258,9 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) erro
 	return errNotImplemented
 }
 
-// Reset discards the live slab: until the next Rebuild completes, Summary
-// returns ErrBusy and, unless a Rebuild is running, deltas are dropped. A
-// running Rebuild is not affected, since its snapshot plus the delta stream
-// stays exact. The caller must start a Rebuild afterwards (the rangesync
-// Indexer does). Zeroing the slab in place instead would lose a commit that
-// interleaves with the reserve's Reset, which holds no reserve lock across
-// its per-item transactions. Reset signals SubscribeRootChange.
-func (ix *Index) Reset() {}
-
 // SubscribeRootChange returns a channel that receives a value after the root
 // summary may have changed: a Commit or Apply that changed an element inside
-// the live root, the swap at the end of a Rebuild, or Reset. Signals
+// the live root, or the swap at the end of a Rebuild. Signals
 // coalesce (the channel has a buffer of one and is never blocked on) and are
 // debounced by IndexOptions.RootChangeDebounce: the first change after a
 // signal is delivered that long after it happened, together with every

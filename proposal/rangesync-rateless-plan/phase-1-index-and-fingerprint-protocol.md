@@ -1098,6 +1098,32 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   directly (one leveldb batch per set-changing commit, wrapped in `Commit`;
   `ReserveIterateAddr` = one `Iterate` call), which has the same snapshot property the T1.0 spike
   established for the real stack; not `inmemstore`.
+- **T1.6 contract review (M1): step-5 conversion window.** The new slab is converted with
+  `NewFenwickFromBuckets` under `nextMu`, and a `converted` flag is set in the same critical
+  section; a commit's delta to the new slab is a plain bucket addition before the flag and a
+  `Fenwick.Add`/`Sub`/`Update` after it. Without the flag, a commit between the conversion and
+  the swap would add a plain bucket delta into a Fenwick tree (permanent corruption). The swap
+  under `mu` (write) is then O(1). Test: a commit between the end of the iteration and the swap
+  is in the final index.
+- **T1.6 contract review (M2; supersedes "`Reset` discards and rebuilds instead of zeroing" and
+  the `Index.Reset` part of "files and API"):** `Reserve.Reset` wraps every per-item delete in
+  `Commit` with an exact delta, so the index is exact after `Reset` and already signaled the root
+  changes. `Index.Reset` is **removed** (it would only re-signal); `Indexer.Reset` is a no-op that
+  queues and clears nothing. This also removes the race on the last completed root and the
+  "does not block" inaccuracy.
+- **T1.6 contract review (nits):** the new slab is allocated before `mu` is taken in write mode;
+  each delta element is expanded once and the same `LtHash` is added into both slabs during a
+  rebuild; `mu` (write) is released on every exit from `iterate` (first callback, return, error
+  before the first callback, panic); `Apply` is for tests (no production caller); a failed
+  rebuild logs a Warning first, then Debug until a rebuild completes, and a `RadiusChanged`
+  during the retry wait wakes the goroutine at once; `Start` only after `SetReserveObserver`
+  returned nil (T1.4 landed `reserve.SetObserver`, which T1.5 wraps, with an error return: `ErrAddrIndexDisabled`, `ErrNilObserver`,
+  `ErrObserverRegistered`).
+- **T1.6 contract review (L4): the fake reserve.** On-disk `leveldbstore` with a small
+  `WriteBuffer` (as `TestIndexStoreIterateSnapshot`), so memtables flush during the iteration;
+  exact deltas computed under a fake per-batch lock held across `Commit` (the role of
+  `r.multx`), which `ReserveIterateAddr` never takes. Regression test: a rebuild that opens while
+  a `Commit` holds that lock (and waits for `mu`) completes.
 
 ## Follow-ups
 _(sessions append here)_
@@ -1283,3 +1309,17 @@ _(sessions append here)_
   `StatusMinInterval`).
 - **T1.6 → T1.13:** register `Index.Metrics()` (`index_rebuild_seconds`, `index_apply_seconds`,
   `index_memory_bytes`, `index_outside_root_total`).
+- **T1.6 → T1.5 (contract review L1; supersedes the lock sentence of the T1.6 → T1.5 entry
+  above):** `ReserveIterateAddr` opens its leveldb iterator before any blocking operation (no
+  lock, channel or wait of any kind); seeks straight to the masked start of the range so the
+  first callback (or the return on an empty range) comes after O(1) work; accepts `root.Prefix`
+  of `ceil(bits/8)` bytes (empty at radius 0). T1.5 must document this on `ReserveIterateAddr`
+  as the one exception to `ReserveObserver` contract point 4.
+- **T1.6 → T1.9 (contract review L2, L3; supersede the `ErrBusy` mapping and the wiring order of
+  the T1.6 → T1.9 entry above):** `ErrBusy` becomes `Busy` only when answering the session
+  opening; a mid-session `ErrBusy` ends the session as an unscored `Local` error, like
+  `ErrOutsideRoot`. Call `indexer.Start()` only after `SetReserveObserver` returned nil; on error
+  do not `Start` (rangesync disabled, logged).
+- **T1.6 → T1.13 (contract review L4):** rerun the fake-reserve scenario "a rebuild opening while
+  a `Commit` holds the per-batch lock completes" against the real `*storer.DB` (`Put` holding
+  `r.multx` while the rebuild opens its iterator).

@@ -27,7 +27,7 @@ const (
 // storer.ReserveAddrStore (proposal §5.4) and storer.RadiusChecker. *storer.DB
 // implements it once the address index API lands (T1.5). Registration
 // (SetReserveObserver) is not part of it: the caller registers the Indexer
-// before calling Start.
+// and calls Start only if registration succeeded.
 //
 // The Indexer calls these methods only from its rebuild goroutine, never
 // from Commit, RadiusChanged or Reset, and never while holding an Index lock,
@@ -41,8 +41,14 @@ type IndexerStore interface {
 	// snapshot of the address index, opened when it is called and before cb's
 	// first call. The rebuild calls it once per rebuild with after nil, while
 	// holding the Index's lock in write mode until cb's first call or until
-	// it returns, so opening the snapshot must not wait for any reserve lock
-	// (batch and bin locks, the observer registration lock).
+	// it returns. It is the one exception to contract point 4 of
+	// storer.ReserveObserver, so it must open its leveldb iterator before any
+	// blocking operation (no lock, channel or wait of any kind: a reserve
+	// transaction may hold the reserve's batch and bin locks and the observer
+	// registration lock while it waits for the Index's lock), seek straight to
+	// the start of the range, so that cb's first call (or the return, for an
+	// empty range) comes after O(1) work, and accept a prefix of
+	// ceil(bits/8) bytes (empty at bits 0).
 	ReserveIterateAddr(prefix swarm.Address, bits uint8, after []byte, cb func(storer.ChunkID) (stop bool, err error)) error
 	// ReserveAddrIndexReady reports whether the address index is complete.
 	// The first rebuild waits for it, so that its snapshot holds every element
@@ -76,7 +82,8 @@ var (
 // single goroutine that rebuilds the Index when the root moves.
 //
 // Start-up order: register the Indexer with the storer's SetReserveObserver,
-// then call Start. Start queues the initial rebuild; the rebuild goroutine
+// then, only if that returned nil, call Start; if registration fails, do
+// not Start (rangesync stays disabled). Start queues the initial rebuild; the rebuild goroutine
 // waits for ReserveAddrIndexReady, reads StorageRadius and rebuilds the
 // Index at NewRange(overlay, radius). Until that rebuild opens its snapshot
 // the Index drops deltas, so no commit is missed: every commit after
@@ -84,14 +91,16 @@ var (
 // SetRadius of the reserve workers triggers a second rebuild only if the
 // radius changed in between.
 //
-// Rebuilds are coalesced and run one at a time. RadiusChanged and Reset only
-// queue a wake-up and return. The goroutine takes the wake-up, then waits for
-// the address index to be ready, then reads StorageRadius, and skips the
+// Rebuilds are coalesced and run one at a time. RadiusChanged only queues a
+// wake-up and returns. The goroutine takes the wake-up, then waits for the
+// address index to be ready, then reads StorageRadius, and skips the
 // rebuild only if the radius equals the root of the last rebuild that
-// completed (none initially, and none after a failed rebuild or a Reset).
-// Since the wake-up is taken before the radius is read, a SetRadius after
-// the read leaves a wake-up behind. A failed rebuild is retried after
-// IndexerOptions.RebuildRetryInterval.
+// completed (none initially, and none after a failed rebuild). Since the
+// wake-up is taken before the radius is read, a SetRadius after the read
+// leaves a wake-up behind. A failed rebuild is retried after
+// IndexerOptions.RebuildRetryInterval, or at once when a wake-up arrives
+// during that wait; the first failure of a run of failures is logged as a
+// warning, the following ones at debug level, until a rebuild completes.
 type Indexer struct {
 	index   *fingerprint.Index
 	store   IndexerStore
@@ -132,10 +141,11 @@ func (x *Indexer) Close() error {
 
 // Commit implements storer.ReserveObserver. It runs the reserve transaction
 // through Index.Commit, which holds the Index lock in read mode across run
-// and the application of the delta, converting the ChunkIDs to
-// fingerprint.IDs (address ‖ stamp hash; BatchID is not part of the
-// identity). It calls run exactly once and returns its error as is; it never
-// calls into the storer.
+// and the application of the delta, converting the ChunkIDs with
+// fingerprint.NewID (address ‖ stamp hash; BatchID is not part of the
+// identity), which cannot fail, so there is no error path after run. It
+// calls run exactly once and returns its error as is; it never calls into
+// the storer.
 func (x *Indexer) Commit(run func() (adds, removes []storer.ChunkID, err error)) error {
 	_, _, err := run()
 	return err
@@ -146,8 +156,7 @@ func (x *Indexer) Commit(run func() (adds, removes []storer.ChunkID, err error))
 // goroutine and returns without blocking.
 func (x *Indexer) RadiusChanged(uint8) {}
 
-// Reset implements storer.ReserveObserver. It resets the Index (which then
-// answers Busy), clears the root of the last completed rebuild, so the next
-// rebuild runs even at the same radius, and queues a wake-up. It does not
-// block.
+// Reset implements storer.ReserveObserver. It does nothing: the reserve's
+// Reset delivered every per-item delete through Commit with an exact delta,
+// so the Index is already exact, and the root changes were signaled then.
 func (x *Indexer) Reset() {}
