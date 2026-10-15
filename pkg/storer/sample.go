@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -71,7 +71,7 @@ func (db *DB) ReserveSample(
 	committedDepth uint8,
 	consensusTime uint64,
 	minBatchBalance *big.Int,
-) (Sample, error) {
+) (_ Sample, err error) {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -85,15 +85,15 @@ func (db *DB) ReserveSample(
 	workers := max(4, runtime.NumCPU())
 	t := time.Now()
 
+	// err is the named result, so early returns are recorded too.
 	defer func() {
 		duration := time.Since(t)
-		err := g.Wait()
 		db.recordReserveSampleMetrics(duration, allStats, workers, err)
 	}()
 
-	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
+	isExcludedBatch, err := db.batchExclusionFilter(minBatchBalance)
 	if err != nil {
-		db.logger.Error(err, "get batches below value")
+		return Sample{}, fmt.Errorf("batch exclusion filter: %w", err)
 	}
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
@@ -114,9 +114,16 @@ func (db *DB) ReserveSample(
 			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
 				return false, nil
 			}
+			stats.TotalIterated++
+
+			// exclude chunks whose batches balance are below minimum
+			if isExcludedBatch != nil && isExcludedBatch(ch.BatchID) {
+				stats.BelowBalanceIgnored++
+				return false, nil
+			}
+
 			select {
 			case chunkC <- ch:
-				stats.TotalIterated++
 				return false, nil
 			case <-gCtx.Done():
 				return false, gCtx.Err()
@@ -145,19 +152,6 @@ func (db *DB) ReserveSample(
 			}()
 
 			for chItem := range chunkC {
-				// exclude chunks who's batches balance are below minimum
-				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
-					wstat.BelowBalanceIgnored++
-					continue
-				}
-
-				// Skip chunks if they are not SOC or CAC
-				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
-					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
-					wstat.RogueChunk++
-					continue
-				}
-
 				chunkLoadStart := time.Now()
 
 				n, err := chunkStore.GetInto(gCtx, chItem.Address, buf)
@@ -289,7 +283,6 @@ func (db *DB) ReserveSample(
 
 	if err := g.Wait(); err != nil {
 		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
-
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
@@ -303,21 +296,30 @@ func le(a, b swarm.Address) bool {
 	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
-func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
-	res := make(map[string]struct{})
-
+func (db *DB) batchExclusionFilter(until *big.Int) (func([]byte) bool, error) {
 	if until == nil {
-		return res, nil
+		return nil, nil // no batches excluded
 	}
 
+	set := make(map[[32]byte]struct{})
 	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 		if b.Value.Cmp(until) < 0 {
-			res[string(b.ID)] = struct{}{}
+			var id [32]byte
+			copy(id[:], b.ID)
+			set[id] = struct{}{}
 		}
 		return false, nil
 	})
+	if err != nil || len(set) == 0 {
+		return nil, err
+	}
 
-	return res, err
+	return func(batchID []byte) bool {
+		var id [32]byte
+		copy(id[:], batchID)
+		_, found := set[id]
+		return found
+	}, nil
 }
 
 func transformedAddress(hasher bmt.Hasher, addr swarm.Address, data []byte, chType swarm.ChunkType) (swarm.Address, error) {
@@ -386,7 +388,6 @@ type SampleStats struct {
 	TaddrDuration             time.Duration
 	ValidStampDuration        time.Duration
 	BatchesBelowValueDuration time.Duration
-	RogueChunk                int64
 	ChunkLoadDuration         time.Duration
 	ChunkLoadFailed           int64
 	AssemblyChunkLoadFailed   int64
@@ -403,7 +404,6 @@ func (s *SampleStats) add(other SampleStats) {
 	s.TaddrDuration += other.TaddrDuration
 	s.ValidStampDuration += other.ValidStampDuration
 	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
-	s.RogueChunk += other.RogueChunk
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
 	s.AssemblyChunkLoadFailed += other.AssemblyChunkLoadFailed
@@ -436,7 +436,7 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) {
 	items := make([]SampleItem, len(chunks))
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch.Address(), ch.Data(), getChunkType(ch))
+		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch.Address(), ch.Data(), storage.ChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}
@@ -458,15 +458,6 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 
 func newStamp(s swarm.Stamp) *postage.Stamp {
 	return postage.NewStamp(s.BatchID(), s.Index(), s.Timestamp(), s.Sig())
-}
-
-func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
-	if cac.Valid(chunk) {
-		return swarm.ChunkTypeContentAddressed
-	} else if soc.Valid(chunk) {
-		return swarm.ChunkTypeSingleOwner
-	}
-	return swarm.ChunkTypeUnspecified
 }
 
 func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleStats, workers int, err error) {

@@ -68,7 +68,7 @@ func countErrors(err error) int {
 }
 
 const (
-	DefaultHistRateWindow = time.Minute * 15
+	DefaultHistRateWindow = time.Minute * 10
 
 	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
