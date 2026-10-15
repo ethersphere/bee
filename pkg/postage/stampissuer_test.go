@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,6 +25,39 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/sync/errgroup"
 )
+
+// oversizedStampIssuers are corrupted StampIssuer encodings, found by fuzzing,
+// that declare far more data than they contain.
+var oversizedStampIssuers = map[string][]byte{
+	// buckets array declaring 0xddddddbb elements
+	"buckets": []byte("\x9a\xc0\xa0\xa0\xc00\xc0\xdd\xdd\xdd\xdd\xbb\xbb00\x9d00"),
+	// byte string declaring 0xdbdbdbdb bytes
+	"bytes": []byte("\x9a\xa200\xa2\xdb\xdb\xdb\xdb\xdb\xdb\xdb00000\f\f\f\f\f\f\f\f000000\xb4"),
+}
+
+// TestStampIssuerUnmarshalOversized checks that corrupted array and byte string
+// lengths are rejected without allocating memory for the declared lengths.
+// It does not run in parallel so that the allocation measurement is not
+// affected by other tests.
+func TestStampIssuerUnmarshalOversized(t *testing.T) {
+	const maxAlloc = 64 << 20
+
+	for name, data := range oversizedStampIssuers {
+		t.Run(name, func(t *testing.T) {
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			err := new(postage.StampIssuer).UnmarshalBinary(data)
+			runtime.ReadMemStats(&after)
+
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if alloc := after.TotalAlloc - before.TotalAlloc; alloc > maxAlloc {
+				t.Fatalf("allocated %d bytes, want at most %d", alloc, maxAlloc)
+			}
+		})
+	}
+}
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
 func TestStampIssuerMarshalling(t *testing.T) {

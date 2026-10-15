@@ -14,6 +14,14 @@ It is preferred to use a separate test package to write tests. This allows expli
 
 Executing `make test` should pass without any warnings or errors.
 
+### Fuzzing
+
+Code that parses, decodes or validates untrusted input must have a fuzz target.
+
+- Put targets in `<name>_fuzz_test.go`.
+- Seed with `f.Add`: a valid input plus edge cases (empty, truncated, size limits).
+- After adding or changing a target, run `make fuzz FUZZPKG=./pkg/<name>/...`
+
 ## Packages
 
 Go packages with the Bee project should have a single and well defined responsibility, clear exposed API and tests that cover expected behaviour. To ensure better modularity of the codebase, every package should be treated as a library that provides a specific functionality and that can be used as a module in other applications. Every package should have a well written godoc page which should be used as the entry point for understanding the package's responsibility. The same as using any other third-party package. If the package godoc is not clear and requires looking at the code to understand behaviour that it provides, documentation should be improved.

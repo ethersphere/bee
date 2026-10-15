@@ -682,7 +682,10 @@ components:
         stakedAmount:
           $ref: "#/components/schemas/BigInt"
         minimumDeposit:
-          $ref: "#/components/schemas/BigInt"
+          description: Absent (null) when the stake is known but the price oracle cannot be read, so the commitment gap is unknown.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/BigInt"
 
     StakeDepositErrorResponse:
       type: object

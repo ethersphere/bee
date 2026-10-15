@@ -45,12 +45,9 @@ func pendingBackend() transaction.Backend {
 	)
 }
 
-// TestCashoutStatusNilCumulativePayoutLastCheque covers the guard in
-// CashoutStatus that follows LastCheque. A last-received-cheque entry of `{}`
-// unmarshals into a non-nil *SignedCheque whose CumulativePayout is a nil
-// *big.Int; every CashoutStatus branch does arithmetic on it, so without the
-// guard the arithmetic against the recorded cashout action panics. Reachable
-// from GET /chequebook/cashout/{peer}.
+// TestCashoutStatusNilCumulativePayoutLastCheque covers a last-received-cheque
+// entry of `{}`. LastCheque rejects the nil payout before CashoutStatus does
+// arithmetic on it. Reachable from GET /chequebook/cashout/{peer}.
 func TestCashoutStatusNilCumulativePayoutLastCheque(t *testing.T) {
 	t.Parallel()
 
@@ -87,8 +84,11 @@ func TestCashoutStatusNilCumulativePayoutLastCheque(t *testing.T) {
 	)
 
 	_, err = cashoutService.CashoutStatus(context.Background(), chequebookAddress)
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
 	}
 }
 
@@ -133,8 +133,8 @@ func TestCashoutStatusNilCumulativePayoutAction(t *testing.T) {
 	}
 }
 
-// TestCashChequeNilCumulativePayout covers the guard in CashCheque: the nil
-// *big.Int would otherwise be dereferenced by the ABI packer.
+// TestCashChequeNilCumulativePayout covers a last-received cheque with a nil
+// payout. LastCheque rejects it before CashCheque packs the amount for the chain.
 func TestCashChequeNilCumulativePayout(t *testing.T) {
 	t.Parallel()
 
@@ -153,14 +153,17 @@ func TestCashChequeNilCumulativePayout(t *testing.T) {
 	)
 
 	_, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress)
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
 	}
 }
 
-// TestChequebookIssueNilCumulativePayout covers the sending-side mirror in
-// Issue: a corrupt last-issued-cheque entry yields a non-nil cheque with a nil
-// CumulativePayout, which Issue would otherwise add the amount to.
+// TestChequebookIssueNilCumulativePayout covers a corrupt last-issued cheque.
+// LastCheque rejects the nil payout with its own error, so Issue must not send
+// a new cheque and must not treat the row as a first cheque starting at zero.
 func TestChequebookIssueNilCumulativePayout(t *testing.T) {
 	t.Parallel()
 
@@ -192,7 +195,10 @@ func TestChequebookIssueNilCumulativePayout(t *testing.T) {
 		t.Fatal("cheque must not be sent")
 		return nil
 	})
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected error wrapping %v, got %v", chequebook.ErrNilCumulativePayout, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("corrupt payout must not be reported as no cheque")
 	}
 }
