@@ -13,13 +13,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/sync/errgroup"
 )
 
 // ReserveRepairer runs the manual reserve repair procedure used by the db repair command.
@@ -32,9 +33,9 @@ func ReserveRepairer(
 		/*
 			STEP 0:	remove epoch item
 			STEP 1:	remove all of the BinItem entries
-			STEP 2:	remove all of the ChunkBinItem entries
+			STEP 2:	remove all of the ChunkBinItem and ChunkSumItem entries
 			STEP 3:	iterate BatchRadiusItem, get new binID
-					create new ChunkBinItem and BatchRadiusItem if the chunk exists in the chunkstore
+					create new ChunkBinItem, ChunkSumItem and BatchRadiusItem if the chunk exists in the chunkstore
 					if the chunk is invalid, it is removed from the chunkstore
 			STEP 4: save the latest binID to disk
 		*/
@@ -98,14 +99,21 @@ func ReserveRepairer(
 		logger.Info("removed all bin index entries")
 
 		// STEP 2
+		// key-only iteration: the values are all deleted anyway, and a record
+		// with an undecodable value (e.g. a pre-Sum serialization leftover)
+		// must not be able to wedge the repair tool.
 		var chunkBinItems []*reserve.ChunkBinItem
 		err = st.IndexStore().Iterate(
 			storage.Query{
-				Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
+				Factory:      func() storage.Item { return &reserve.ChunkBinItem{} },
+				ItemProperty: storage.QueryItemID,
 			},
 			func(res storage.Result) (bool, error) {
-				item := res.Entry.(*reserve.ChunkBinItem)
-				chunkBinItems = append(chunkBinItems, item)
+				bin, binID, err := reserve.ParseChunkBinID(res.ID)
+				if err != nil {
+					return false, err
+				}
+				chunkBinItems = append(chunkBinItems, &reserve.ChunkBinItem{Bin: bin, BinID: binID})
 				return false, nil
 			},
 		)
@@ -132,6 +140,49 @@ func ReserveRepairer(
 		}
 		logger.Info("removed all chunk bin items", "total_entries", len(chunkBinItems))
 		chunkBinItems = nil
+
+		// remove all chunk sum items; they are rebuilt in step 3 alongside the
+		// chunk bin items, and a full sweep also clears any orphaned entries. A
+		// ChunkSumItem's identity lives entirely in its key, so the entries are
+		// parsed from the raw key instead of unmarshaled.
+		var chunkSumItems []*reserve.ChunkSumItem
+		err = st.IndexStore().Iterate(
+			storage.Query{
+				Factory:      func() storage.Item { return &reserve.ChunkSumItem{} },
+				ItemProperty: storage.QueryItemID,
+			},
+			func(res storage.Result) (bool, error) {
+				if len(res.ID) != swarm.HashSize+storage.ChunkSumSize {
+					return false, fmt.Errorf("unexpected chunk sum key length %d", len(res.ID))
+				}
+				chunkSumItems = append(chunkSumItems, &reserve.ChunkSumItem{
+					Address: swarm.NewAddress([]byte(res.ID[:swarm.HashSize])),
+					Sum:     []byte(res.ID[swarm.HashSize:]),
+				})
+				return false, nil
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		for i := 0; i < len(chunkSumItems); i += batchSize {
+			end := min(i+batchSize, len(chunkSumItems))
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				for _, item := range chunkSumItems[i:end] {
+					err := s.IndexStore().Delete(item)
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		logger.Info("removed all chunk sum items", "total_entries", len(chunkSumItems))
+		chunkSumItems = nil
 
 		// STEP 3
 		var batchRadiusItems []*reserve.BatchRadiusItem
@@ -192,13 +243,22 @@ func ReserveRepairer(
 						}
 
 						item.BinID = newID(int(item.Bin))
+						// Recover legacy entries that were saved with an empty/zero stamp hash.
 						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
-							stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash)
+							stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", item.Address, item.BatchID)
 							if err != nil {
+								if errors.Is(err, storage.ErrNotFound) {
+									return reserve.RemoveChunkWithItem(context.Background(), s, item)
+								}
 								return err
 							}
 							stampHash, err := stamp.Hash()
 							if err != nil {
+								return err
+							}
+							// Delete the old zero-hash key before mutating StampHash;
+							// otherwise the old record remains orphaned and fails validation.
+							if err := s.IndexStore().Delete(item); err != nil {
 								return err
 							}
 							item.StampHash = stampHash
@@ -209,14 +269,23 @@ func ReserveRepairer(
 							return err
 						}
 
-						return s.IndexStore().Put(&reserve.ChunkBinItem{
-							BatchID:   item.BatchID,
-							Bin:       item.Bin,
-							Address:   item.Address,
-							BinID:     item.BinID,
-							StampHash: item.StampHash,
-							ChunkType: chunkType,
-						})
+						sum, err := storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
+						if err != nil {
+							return err
+						}
+
+						return errors.Join(
+							s.IndexStore().Put(&reserve.ChunkBinItem{
+								BatchID:   item.BatchID,
+								Bin:       item.Bin,
+								Address:   item.Address,
+								BinID:     item.BinID,
+								StampHash: item.StampHash,
+								ChunkType: chunkType,
+								Sum:       sum,
+							}),
+							s.IndexStore().Put(&reserve.ChunkSumItem{Address: item.Address, Sum: sum}),
+						)
 					})
 				})
 			}(item)

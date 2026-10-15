@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -66,6 +67,7 @@ func FuzzChunkBinItemUnmarshal(f *testing.F) {
 		BatchID:   bytes.Repeat([]byte{0xEF}, swarm.HashSize),
 		ChunkType: swarm.ChunkTypeContentAddressed,
 		StampHash: bytes.Repeat([]byte{0x12}, swarm.HashSize),
+		Sum:       bytes.Repeat([]byte{0x34}, storage.ChunkSumSize),
 	}).Marshal()
 	if err != nil {
 		f.Fatal(err)
@@ -74,6 +76,7 @@ func FuzzChunkBinItemUnmarshal(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add(make([]byte, 10))
 	f.Add(make([]byte, chunkBinItemSize))
+	f.Add(valid[:chunkBinItemSize-storage.ChunkSumSize]) // pre-Sum serialization
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		item := &ChunkBinItem{}
