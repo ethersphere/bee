@@ -325,6 +325,35 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
   `ErrCorrupt`: when the whole difference is recovered every symbol is empty, so this blocks a
   wrong "done" from a coincidental empty symbol 0. Both are sound for honest streams. `ErrCorrupt`
   is sticky; a corrupt decoder never reports `Done`.
+- **T2.1 contract review fixes (2026-10-15; supersede the T2.1 contract entries above where they
+  differ).**
+  - *Fixed sets (M1).* "Honest streams never trigger `ErrCorrupt`" holds only if `remote` and
+    `local` are each the stream of one fixed set across all batches of the decoder. The Index
+    applies deltas live, so an eviction between `More` batches can make an id recover twice
+    (duplicate rule → `ErrCorrupt`) and an addition can keep the stream from ever being `Done`. The
+    `Decoder` godoc now states the precondition; how streams get a snapshot is a follow-up for
+    T2.2/T2.4/T4.3 (below). Rule (b) (symbol 0 empty while another symbol is not) is the
+    churn-sensitive one; it is evaluated only after the peel queue of a batch drains.
+  - *Which rule catches collisions (L1; corrects "it catches most false-pure symbols" and the
+    range-rule reading of §6.4/§9).* A false pure symbol has an odd `Count`, so its `Sum` is the XOR
+    of an odd number of ids of the range, which is again in the range: the range rule cannot catch
+    a checksum collision, only a malicious peer's bogus symbols. Rule (a) (a pure symbol's id must
+    map to its index) is what catches collisions. A collision rule (a) misses can still end in a
+    wrong `Done`, so `TestDecoderTruncatedChecksum` bounds the wrong-`Done` rate (checksum
+    truncated to ≥ 16 bits, batches ≥ `MinBatch`) instead of asserting it never happens.
+  - *`Expected` rounding (L2).* Ties round away from zero (`math.Round`): `Expected(1, 2) = 1`,
+    `Expected(5, 2) = 3`; both are in the vector grid. The Python vector generator must not use
+    `round()` (half-to-even). `ParseSymbolData` takes the **received** `Symbols.Count`.
+  - *Clamp and density (L3).* The implementation clamps when the quotient is `>= 0x1p63`
+    (`float64(MaxInt64)` rounds to 2^63). `ρ(i)` only approximates the mapping probability (the
+    `Mapper` godoc says so): `FloatMapper` puts an id at index 1 with probability 0.64 against
+    `ρ(1) = 2/3`, so `TestFloatMapperIndices` uses ≥ 5 % relative tolerance at small `i`.
+  - *Nits.* The godoc cites xoshiro256** 1.0 (Blackman–Vigna; constants 5/7/9, 17/45; output taken
+    before the state advances). `Add`: `len(local) == 0` (not `local == nil`) means empty local
+    symbols; `Add(Received(), nil, nil)` is a no-op returning nil, also once `Done`; a non-empty
+    batch after `Done` is `ErrInvalidBatch`; a corrupt decoder returns `ErrCorrupt` first.
+    `Result` is sorted in `ID.Compare` order. New `Recovered() int` (count without copying, for
+    `symbols_per_difference` and the T2.4 hint).
 
 ## Follow-ups
 _(sessions append here)_
@@ -351,3 +380,22 @@ _(sessions append here)_
   T2.2's `BenchmarkIndexApply`/rebuild shows it matters, an allocation-free form (e.g.
   `AppendIndices(dst []uint64, id, end) []uint64` on `Mapper`) would be a contract change to
   `Mapper` and T2.7; not added now.
+- **(T2.1, contract review M1) Symbol streams must come from one snapshot on each side — decide
+  before T2.2.** The `Decoder` requires `remote` and `local` to be streams of fixed sets across all
+  batches, but the Index applies deltas live between `More` batches. Options: (1) at stream start,
+  copy symbols `[0, cap(R))` for both the served stream and the local side (root ≈ 360 KB,
+  level-1 ≈ 45 KB, bucket ≈ 2.8 KB per stream) and, for scan-path streams, keep the ≤ `ScanLimit`
+  ID list the stream was built from; or (2) treat `ErrCorrupt` on large ranges as a restart/split
+  of R rather than the §9 `Items` listing (and accept non-`Done` streams ending in `Exhausted`).
+  This changes T2.2's `Index.Symbols` copy semantics (T2.2), T2.4's stream state, and T4.3's
+  session memory budget.
+- **(T2.1, contract review L1) Correct §6.4/§9.** They present "recovered id outside R" as a
+  checksum-collision check. It is not: a false pure symbol XORs an odd number of in-range ids,
+  which stays in range. The range check only detects a malicious peer; collisions are caught by
+  the "pure symbol's id maps to its index" rule (T2.1 rule (a)), and the remaining ones by
+  undeliverable fetches and later rounds.
+- **(T2.1, contract review) `Indices` allocation, resolved: keep the interface.** The reviewer
+  agrees the allocation is < 1 % of a rebuild and the iterator's resumability is needed (the
+  `Decoder` resumes a recovered id's mapping batch by batch). If T2.2's benchmarks disagree, add an
+  optional fast-path interface (e.g. `AppendIndices`) that callers detect with a type assertion,
+  without changing `Mapper`.

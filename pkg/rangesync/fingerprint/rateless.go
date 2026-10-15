@@ -108,11 +108,13 @@ type Mapper interface {
 	// order, starting at 0: every id is in symbol 0 (ρ(0) = 1), which is what
 	// makes "symbol 0 is empty" the stop rule of the Decoder.
 	Indices(id ID) IndexIterator
-	// Expected returns round(count·ρ(i)): the expected Count of symbol i in
-	// the stream of a set of count elements, where ρ(i) is the probability
-	// that an id is mapped to symbol i. The wire codec sends a symbol's Count
-	// as its difference from Expected, so Expected only affects the encoded
-	// size, never correctness, but both ends must compute the same value.
+	// Expected returns round(count·ρ(i)): about the expected Count of symbol
+	// i in the stream of a set of count elements, where ρ(i) approximates the
+	// probability that an id is mapped to symbol i (the gap sampling of a
+	// mapper need not hit ρ exactly; FloatMapper gives 0.64 at i = 1 against
+	// ρ(1) = 2/3). The wire codec sends a symbol's Count as its difference
+	// from Expected, so Expected only affects the encoded size, never
+	// correctness, but both ends must compute the same value.
 	Expected(count, i uint64) int64
 }
 
@@ -128,9 +130,11 @@ type IndexIterator interface {
 // of proposal §4.3.4 with ρ(i) = 1/(1 + i/2). The zero value is ready to use.
 //
 // Indices of id: seed = keccak256("rangesync/map" ‖ id) (legacy Keccak) seeds
-// a xoshiro256** generator whose 256-bit state is the seed read as four
-// little-endian uint64 words, in order. The first index is 0. From index i,
-// the next is i + gap with
+// a xoshiro256** 1.0 generator (Blackman and Vigna: multipliers 5 and 9,
+// rotation 7 for the output, shift 17 and rotation 45 for the state update,
+// output taken from the state before it advances) whose 256-bit state is the
+// seed read as four little-endian uint64 words, in order. The first index is
+// 0. From index i, the next is i + gap with
 //
 //	x   = the next xoshiro256** output
 //	w   = float64((x >> 11) + 1) · 2^-53       // w = 1 − u, u uniform in [0, 1)
@@ -142,8 +146,10 @@ type IndexIterator interface {
 // exactly, the mapping ends and Next returns EndIndex.
 //
 // Expected(count, i) = math.Round(float64(count)·2 / (float64(i) + 2)),
-// which is round(count·ρ(i)) with a single rounded division, clamped to
-// math.MaxInt64.
+// which is round(count·ρ(i)) with a single rounded division. Ties round away
+// from zero (math.Round, not round-half-to-even): Expected(1, 2) = 1 and
+// Expected(5, 2) = 3. A quotient of 2^63 or more (float64(math.MaxInt64) is
+// 2^63) is clamped to math.MaxInt64.
 //
 // Determinism. Nodes with the same mapper ID must compute bit-identical
 // indices and expected counts, but Go does not promise identical float64
@@ -211,12 +217,13 @@ func AppendSymbolData(dst []byte, m Mapper, count, start uint64, syms []CodedSym
 }
 
 // ParseSymbolData decodes Symbols.Data as written by AppendSymbolData with the
-// same Mapper, count and start. data is untrusted peer input: it must consist
-// of whole symbols, each varint must be the shortest encoding of its value,
-// and start plus the number of symbols must not overflow a uint64; otherwise
-// it returns an error wrapping ErrInvalidSymbolData. So data is accepted only
-// if AppendSymbolData would produce it exactly. Empty data decodes to no
-// symbols.
+// same Mapper, count and start. count is the received Symbols.Count (the
+// sender's element count), not the local one. data is untrusted peer input:
+// it must consist of whole symbols, each varint must be the shortest encoding
+// of its value, and start plus the number of symbols must not overflow a
+// uint64; otherwise it returns an error wrapping ErrInvalidSymbolData. So
+// data is accepted only if AppendSymbolData would produce it exactly. Empty
+// data decodes to no symbols.
 //
 // It allocates one CodedSymbol per MinSymbolSize bytes of data at most; the
 // caller bounds len(data) (MaxMessageBytes). A peer that lies about count only
@@ -239,18 +246,32 @@ func ParseSymbolData(m Mapper, count, start uint64, data []byte) ([]CodedSymbol,
 // symbol 0 is empty (the zero CodedSymbol) exactly when the whole difference
 // has been recovered: that is Done.
 //
+// Precondition: remote and local are each the stream of one fixed set across
+// all batches of the decoder. If either set changes between batches (an
+// element added or evicted while the stream is read), Add may return
+// ErrCorrupt or the decoder may never be Done. Callers serve a stream from
+// one snapshot on each side.
+//
 // Corruption (proposal §6.4, §9). Add returns an error wrapping ErrCorrupt,
 // and the decoder stays corrupt (later Adds return ErrCorrupt, Done is false),
 // when
+//   - (a) a pure symbol at index j yields an id whose mapping does not
+//     contain j,
 //   - a recovered id lies outside the decoder's range,
 //   - an id is recovered a second time,
-//   - a pure symbol at index j yields an id whose mapping does not contain j,
 //   - more than 2 × Received() ids have been recovered (peel steps), or
-//   - symbol 0 is empty while another received symbol is not.
+//   - (b) symbol 0 is empty while another received symbol is not. Rule (b)
+//     is checked only once the peeling of a batch has run to completion.
 //
-// None of these happens for honest streams unless checksums collide, which
-// takes ~2^64 work with 128-bit checksums. A corrupt decoder never reports
-// Done; its partial Result must not be used.
+// Under the precondition, none of these happens for honest streams unless
+// checksums collide, which takes ~2^64 work with 128-bit checksums. Rule (a)
+// is the one that catches a checksum collision: a false pure symbol holds an
+// odd number of ids, and the XOR of an odd number of ids in the range is
+// again in the range, so the range rule only detects a malicious peer. A
+// collision that rule (a) misses can still end in a wrong Done: the ids it
+// yields are undeliverable on fetch and the range's fingerprints still
+// differ, so a later round reconciles it again (§9). A corrupt decoder never
+// reports Done; its partial Result must not be used.
 //
 // The decoder does not bound the number of symbols it keeps (one CodedSymbol
 // per symbol received); the session does (SessionSymbolBudget). A Decoder is
@@ -265,11 +286,14 @@ func NewDecoder(m Mapper, r Range) *Decoder {
 }
 
 // Add feeds the next batch: remote holds the peer's symbols [start,
-// start+len(remote)) and local this node's symbols at the same indices. start
-// must equal Received(), len(local) must equal len(remote) (a nil local
-// stands for empty local symbols), and the decoder must not be Done;
-// otherwise Add returns an error wrapping ErrInvalidBatch and changes
-// nothing. Add peels as far as the received symbols allow and returns an
+// start+len(remote)) and local this node's symbols at the same indices.
+//
+// A corrupt decoder returns ErrCorrupt. Otherwise start must equal Received()
+// and len(local) must equal len(remote) or be 0 (no local symbols: all empty);
+// if not, Add returns an error wrapping ErrInvalidBatch and changes nothing.
+// A batch without symbols (len(remote) == 0) is then a no-op that returns
+// nil, also once Done; a non-empty batch once Done is an ErrInvalidBatch.
+// Otherwise Add peels as far as the received symbols allow and returns an
 // error wrapping ErrCorrupt if the stream is corrupt (see Decoder). It does
 // not retain remote or local.
 func (d *Decoder) Add(start uint64, remote, local []CodedSymbol) error {
@@ -282,16 +306,22 @@ func (d *Decoder) Received() uint64 {
 	return 0
 }
 
+// Recovered returns the number of ids recovered so far, len(onlyLocal) +
+// len(onlyRemote) of Result, without copying them.
+func (d *Decoder) Recovered() int {
+	return 0
+}
+
 // Done reports whether the difference is completely recovered: at least one
 // symbol has been received, symbol 0 is empty and the decoder is not corrupt.
 func (d *Decoder) Done() bool {
 	return false
 }
 
-// Result returns the ids recovered so far, each list in ascending ID order:
-// onlyLocal are held by this node and not the peer, onlyRemote by the peer and
-// not this node. Once Done, they are the whole difference. The slices are
-// copies owned by the caller.
+// Result returns the ids recovered so far, each list sorted in ID.Compare
+// order (ascending): onlyLocal are held by this node and not the peer,
+// onlyRemote by the peer and not this node. Once Done, they are the whole
+// difference. The slices are copies owned by the caller.
 func (d *Decoder) Result() (onlyLocal, onlyRemote []ID) {
 	return nil, nil
 }
