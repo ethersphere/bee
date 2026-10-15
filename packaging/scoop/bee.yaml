@@ -4,6 +4,7 @@
 ## Selects the operational mode of this node.
 ##   full        - participates in storage and incentives; requires blockchain-rpc;
 ##                 implies swap-enable, chequebook-enable and storage-incentives-enable
+##                 (bootnodes are exempt: swap only when set, chequebook follows swap)
 ##   light       - uploads and downloads only; requires blockchain-rpc
 ##   ultra-light - free-tier downloads only; no blockchain connection needed
 ## When unset (the default), the mode is inferred from the deprecated full-node
@@ -26,7 +27,7 @@
 ## ── Swap / chequebook (full and light nodes only) ────────────────────────────
 ## enable swap
 # swap-enable: false
-## enable chequebook (requires swap-enable; implied by node-mode: full)
+## enable chequebook (requires swap-enable; when node-mode is set and this is unset, follows swap-enable)
 # chequebook-enable: true
 ## reject full-node hive/handshake records that carry no chequebook address
 # chequebook-verification: false

@@ -107,7 +107,13 @@ const (
 // ResolveNodeModeForTest runs node-mode resolution against cfg, leaving the
 // resolved option values in cfg.
 func ResolveNodeModeForTest(cfg *viper.Viper) (node.NodeMode, error) {
-	c := &command{config: cfg, logger: log.Noop}
+	return ResolveNodeModeWithLoggerForTest(cfg, log.Noop)
+}
+
+// ResolveNodeModeWithLoggerForTest is ResolveNodeModeForTest with a logger, for
+// tests that assert on the warnings resolution emits.
+func ResolveNodeModeWithLoggerForTest(cfg *viper.Viper, logger log.Logger) (node.NodeMode, error) {
+	c := &command{config: cfg, logger: logger}
 	return c.resolveNodeMode(c.logger)
 }
 

@@ -5,10 +5,12 @@
 package cmd_test
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/spf13/viper"
 )
@@ -115,8 +117,9 @@ func TestResolveNodeMode(t *testing.T) {
 			wantErr: "chequebook-enable requires swap-enable",
 		},
 		{
-			// NewBee never starts swap, push-sync or the incentives agent for a
-			// bootnode, so full mode must not imply them there.
+			// NewBee never runs the reserve or the incentives agent for a
+			// bootnode, so full mode must not imply swap, chequebook or
+			// incentives there.
 			name: "full bootnode does not imply swap, chequebook or incentives",
 			config: map[string]any{
 				cmd.OptionNameNodeMode:             "full",
@@ -128,6 +131,20 @@ func TestResolveNodeMode(t *testing.T) {
 				cmd.OptionNameSwapEnable:              false,
 				cmd.OptionNameChequebookEnable:        false,
 				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
+			name: "full bootnode with swap explicitly enabled enables chequebook",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "full",
+				cmd.OptionNameBootnodeMode:         true,
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+				cmd.OptionNameSwapEnable:           true,
+			},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameSwapEnable:       true,
+				cmd.OptionNameChequebookEnable: true,
 			},
 		},
 		{
@@ -180,6 +197,19 @@ func TestResolveNodeMode(t *testing.T) {
 			wantErr: "chequebook-enable requires swap-enable",
 		},
 		{
+			name: "light with swap enables chequebook",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "light",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+				cmd.OptionNameSwapEnable:           true,
+			},
+			wantMode: node.LightMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameSwapEnable:       true,
+				cmd.OptionNameChequebookEnable: true,
+			},
+		},
+		{
 			name: "light rejects storage-incentives-enable",
 			config: map[string]any{
 				cmd.OptionNameNodeMode:                "light",
@@ -218,6 +248,14 @@ func TestResolveNodeMode(t *testing.T) {
 				cmd.OptionNameStorageIncentivesEnable: true,
 			},
 			wantErr: "ultra-light node cannot have storage-incentives-enable",
+		},
+		{
+			name: "ultra-light rejects chequebook-enable",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:         "ultra-light",
+				cmd.OptionNameChequebookEnable: true,
+			},
+			wantErr: "ultra-light node cannot have chequebook-enable",
 		},
 		{
 			name: "node-mode takes precedence over legacy full-node",
@@ -417,6 +455,7 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 		name        string
 		args        []string
 		wantMode    node.NodeMode
+		wantErr     string
 		wantOptions map[string]bool
 	}{
 		{
@@ -449,7 +488,7 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 			},
 		},
 		{
-			name:     "node-mode light with rpc keeps sub-option defaults",
+			name:     "node-mode light with rpc leaves swap and chequebook off",
 			args:     []string{"--node-mode=light", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
 			wantMode: node.LightMode,
 			wantOptions: map[string]bool{
@@ -469,6 +508,31 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 			},
 		},
 		{
+			name:     "node-mode full bootnode with swap enables chequebook",
+			args:     []string{"--node-mode=full", "--bootnode-mode", "--swap-enable", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameSwapEnable:              true,
+				cmd.OptionNameChequebookEnable:        true,
+				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
+			name:     "node-mode ultra-light leaves chequebook and incentives off",
+			args:     []string{"--node-mode=ultra-light"},
+			wantMode: node.UltraLightMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameSwapEnable:              false,
+				cmd.OptionNameChequebookEnable:        false,
+				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
+			name:    "node-mode ultra-light rejects chequebook-enable",
+			args:    []string{"--node-mode=ultra-light", "--chequebook-enable"},
+			wantErr: "ultra-light node cannot have chequebook-enable",
+		},
+		{
 			name:     "node-mode full with incentives explicitly disabled",
 			args:     []string{"--node-mode=full", "--blockchain-rpc-endpoint=" + testRPCEndpoint, "--storage-incentives-enable=false"},
 			wantMode: node.FullMode,
@@ -484,24 +548,15 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			root, err := cmd.NewCommand(cmd.WithHomeDir(t.TempDir()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			startCmd := root.SubCommandForTest("start")
-			if startCmd == nil {
-				t.Fatal("start subcommand not found")
-			}
-			if err := startCmd.ParseFlags(tt.args); err != nil {
-				t.Fatal(err)
-			}
-
-			cfg := viper.New()
-			if err := cmd.BindStartFlagsForTest(cfg, startCmd); err != nil {
-				t.Fatal(err)
-			}
+			cfg := boundStartConfig(t, tt.args)
 
 			gotMode, err := cmd.ResolveNodeModeForTest(cfg)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -515,4 +570,58 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveNodeModeUltraLightRPCWarning(t *testing.T) {
+	t.Parallel()
+
+	const warning = "blockchain-rpc-endpoint is ignored in ultra-light mode"
+
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		wantWarn bool
+	}{
+		{name: "ultra-light with rpc", args: []string{"--node-mode=ultra-light", "--blockchain-rpc-endpoint=" + testRPCEndpoint}, wantWarn: true},
+		{name: "ultra-light without rpc", args: []string{"--node-mode=ultra-light"}, wantWarn: false},
+		{name: "light with rpc", args: []string{"--node-mode=light", "--blockchain-rpc-endpoint=" + testRPCEndpoint}, wantWarn: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := boundStartConfig(t, tc.args)
+
+			var buf bytes.Buffer
+			logger := log.NewLogger("resolve-node-mode-"+t.Name(), log.WithSink(&buf))
+			if _, err := cmd.ResolveNodeModeWithLoggerForTest(cfg, logger); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := strings.Contains(buf.String(), warning); got != tc.wantWarn {
+				t.Errorf("warning logged: got %t, want %t; log: %s", got, tc.wantWarn, buf.String())
+			}
+		})
+	}
+}
+
+// boundStartConfig returns a viper bound to the real start command flags
+// parsed from args, as production does.
+func boundStartConfig(t *testing.T, args []string) *viper.Viper {
+	t.Helper()
+
+	root, err := cmd.NewCommand(cmd.WithHomeDir(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startCmd := root.SubCommandForTest("start")
+	if startCmd == nil {
+		t.Fatal("start subcommand not found")
+	}
+	if err := startCmd.ParseFlags(args); err != nil {
+		t.Fatal(err)
+	}
+	cfg := viper.New()
+	if err := cmd.BindStartFlagsForTest(cfg, startCmd); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
 }

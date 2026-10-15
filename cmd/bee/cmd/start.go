@@ -392,11 +392,12 @@ const legacyNodeModeRemovalVersion = "v2.11.0"
 // node-mode value and the release in which the inference is removed.
 //
 // node-mode set: the mode owns the config. Options the mode implies are
-// enabled unless the operator explicitly disabled them, options the mode
-// cannot support are rejected when explicitly enabled (overriding the pflag
-// defaults of true when unset), and blockchain-rpc-endpoint is required for
-// light and full nodes. Implied values are written back to config so the rest
-// of node startup picks them up.
+// enabled unless the operator explicitly disabled them (full bootnodes are
+// exempt), options the mode cannot support are rejected when explicitly enabled
+// (overriding the pflag defaults of true when unset), and
+// blockchain-rpc-endpoint is required for light and full nodes. An unset
+// chequebook-enable follows swap-enable. Implied values are written back to
+// config so the rest of node startup picks them up.
 func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 	modeStr := c.config.GetString(optionNameNodeMode)
 	if modeStr == "" {
@@ -419,29 +420,17 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 			return "", errors.New("full node requires blockchain-rpc-endpoint to be set")
 		}
 		// A full node implies swap, chequebook and storage incentives. Bootnodes
-		// are exempt: NewBee never starts swap, push-sync or the incentives agent
-		// for them, so implying the options would only cost a chequebook deploy.
+		// are exempt: NewBee never runs the reserve or the incentives agent for
+		// them, so they have no use for the implied options. Swap still starts on
+		// a bootnode when explicitly enabled, and chequebook follows it.
 		if !c.config.GetBool(optionNameBootnodeMode) {
 			c.enableImpliedOption(logger, mode, optionNameSwapEnable)
-			// If swap was explicitly turned off by the operator and chequebook
-			// was not explicitly configured, turn off chequebook to prevent an
-			// accidental contradiction with disabled swap.
-			if !c.config.GetBool(optionNameSwapEnable) && !c.config.IsSet(optionNameChequebookEnable) {
-				c.config.Set(optionNameChequebookEnable, false)
-			}
 			if c.config.GetBool(optionNameSwapEnable) {
 				c.enableImpliedOption(logger, mode, optionNameChequebookEnable)
 			}
 			c.enableImpliedOption(logger, mode, optionNameStorageIncentivesEnable)
-		} else {
-			// Override the pflag defaults of true when unset, since swap is not
-			// implied for bootnodes and chequebook requires it.
-			if !c.config.IsSet(optionNameChequebookEnable) {
-				c.config.Set(optionNameChequebookEnable, false)
-			}
-			if !c.config.IsSet(optionNameStorageIncentivesEnable) {
-				c.config.Set(optionNameStorageIncentivesEnable, false)
-			}
+		} else if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
 		}
 	case node.LightMode:
 		if rpcEndpoint == "" {
@@ -453,11 +442,10 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
 			return "", errors.New("light node cannot have storage-incentives-enable set to true")
 		}
-		// Chequebook requires swap; if swap is off and chequebook was not explicitly configured, override to false.
-		if !c.config.GetBool(optionNameSwapEnable) && !c.config.IsSet(optionNameChequebookEnable) {
-			c.config.Set(optionNameChequebookEnable, false)
-		}
 	case node.UltraLightMode:
+		if rpcEndpoint != "" {
+			logger.Warning("blockchain-rpc-endpoint is ignored in ultra-light mode", "node_mode", mode)
+		}
 		if c.config.GetBool(optionNameSwapEnable) {
 			return "", errors.New("ultra-light node cannot have swap-enable set to true")
 		}
@@ -467,10 +455,15 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
 			return "", errors.New("ultra-light node cannot have storage-incentives-enable set to true")
 		}
-		// Chequebook is not supported on ultra-light; override the pflag default of true when unset.
-		if !c.config.IsSet(optionNameChequebookEnable) {
-			c.config.Set(optionNameChequebookEnable, false)
+		if c.config.IsSet(optionNameChequebookEnable) && c.config.GetBool(optionNameChequebookEnable) {
+			return "", errors.New("ultra-light node cannot have chequebook-enable set to true")
 		}
+	}
+
+	// Chequebook requires swap. When chequebook is not explicitly configured,
+	// follow swap rather than the pflag default of true.
+	if !c.config.IsSet(optionNameChequebookEnable) {
+		c.config.Set(optionNameChequebookEnable, c.config.GetBool(optionNameSwapEnable))
 	}
 
 	// chequebook init is gated on swap-enable in NewBee. With node-mode set the
