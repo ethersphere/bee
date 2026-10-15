@@ -101,6 +101,8 @@ const (
 	OptionNameSwapEnable              = optionNameSwapEnable
 	OptionNameChequebookEnable        = optionNameChequebookEnable
 	OptionNameStorageIncentivesEnable = optionNameStorageIncentivesEnable
+	OptionNameChequebookVerification  = optionNameChequebookVerification
+	OptionNameReserveCapacityDoubling = optionReserveCapacityDoubling
 	ConfigKeyBlockchainRpcEndpoint    = configKeyBlockchainRpcEndpoint
 )
 
@@ -127,4 +129,17 @@ func BindStartFlagsForTest(cfg *viper.Viper, startCmd *cobra.Command) error {
 	c := &command{config: cfg}
 	c.bindBlockchainRpcConfig(startCmd)
 	return nil
+}
+
+// LegacyMigrationForTest resolves a config without node-mode through the
+// production path and returns the inferred mode with the migration the
+// deprecation warning lists.
+func LegacyMigrationForTest(cfg *viper.Viper) (mode node.NodeMode, set, remove, notes []string, err error) {
+	c := &command{config: cfg, logger: log.Noop}
+	mode, err = c.resolveNodeMode(c.logger)
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	m := c.legacyMigration(mode)
+	return mode, m.set, m.remove, m.notes, nil
 }

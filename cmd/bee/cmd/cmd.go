@@ -366,9 +366,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
 	cmd.Flags().String(optionNameChequebookMinBalance, "110000000000000000", "minimum chequebook token balance required for verification, in token small units (default 11 BZZ)")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode (deprecated: use --node-mode=full)")
-	if err := cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead"); err != nil {
-		panic(err)
-	}
+	_ = cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead")
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
