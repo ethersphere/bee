@@ -268,6 +268,68 @@ func TestShallowReceipt(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 }
 
+// TestShallowReceiptThenValid verifies that a shallow receipt from one peer
+// does not end the push: the origin keeps the other multiplexed branch and
+// returns the valid receipt from it.
+func TestShallowReceiptThenValid(t *testing.T) {
+	t.Parallel()
+
+	const radius = 2
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(key)
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	storer, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := testingc.GenerateValidRandomChunkAt(t, storer, radius)
+
+	// the shallow peer is the closest to the chunk by address, so the origin
+	// pushes to it first, but it signs receipts with a key whose overlay is
+	// far from the chunk, so its receipts are shallow
+	shallowBytes := chunk.Address().Clone().Bytes()
+	shallowBytes[3] ^= 0x01 // po 31
+	shallowPeer := swarm.NewAddress(shallowBytes)
+	originBytes := chunk.Address().Clone().Bytes()
+	originBytes[0] ^= 0x80 // po 0
+	origin := swarm.NewAddress(originBytes)
+
+	psShallow, _ := createPushSyncNodeWithRadius(t, shallowPeer, defaultPrices, nil, nil, defaultSigner(chunk), radius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psStorer, _ := createPushSyncNodeWithRadius(t, storer, defaultPrices, nil, nil, signer, radius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	recorder := streamtest.New(streamtest.WithProtocols(psShallow.Protocol(), psStorer.Protocol()), streamtest.WithBaseAddr(origin))
+	psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, recorder, nil, nil, radius, mock.WithPeers(shallowPeer, storer))
+
+	receipt, err := psOrigin.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatalf("got %v, want a valid receipt", err)
+	}
+
+	pub, err := crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedBy, err := crypto.NewOverlayAddress(*pub, 1, receipt.Nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !signedBy.Equal(storer) {
+		t.Fatalf("receipt signed by %s, want the storer %s", signedBy, storer)
+	}
+
+	// both peers were pushed to: the shallow one first, the storer in parallel
+	waitOnRecordAndTest(t, shallowPeer, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, storer, recorder, chunk.Address(), chunk.Data())
+}
+
 // TestOutOfDepthStoring verifies that when a storer is forced (ErrWantSelf) but
 // the chunk is outside its AOR, it refuses to store and returns an error rather
 // than storing a chunk it will immediately evict.
