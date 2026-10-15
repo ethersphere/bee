@@ -701,3 +701,126 @@ func TestRecoveryDeletesChunkAddrItem(t *testing.T) {
 		t.Fatalf("%d entries left, want %d", len(set), len(chunks)-1)
 	}
 }
+
+// TestReserveAddrIndexFillCanceled checks that a fill interrupted in New (its
+// context canceled, as by a shutdown) leaves a partial index and no marker,
+// and that the next start refills the index exactly.
+func TestReserveAddrIndexFillCanceled(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	dir := t.TempDir()
+
+	// a reserve with neither an index nor a marker
+	db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{})
+	putReserveChunks(t, db, baseAddr, postagetesting.MustNewBatch().ID, 30)
+	closeDB(t, db)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opts := addrIndexTestOps(baseAddr, addrIndexOpts{enabled: true})
+	storer.SetReserveTestOptions(opts,
+		reserve.WithAddrIndexBatchSize(3),
+		reserve.WithAddrIndexFillHook(func(filled int) {
+			if filled >= 6 {
+				cancel()
+			}
+		}),
+	)
+	if db, err := storer.New(ctx, dir, opts); !errors.Is(err, context.Canceled) {
+		if err == nil {
+			closeDB(t, db)
+		}
+		t.Fatalf("New with an interrupted fill: %v", err)
+	}
+
+	db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{keep: true})
+	if _, ok := marker(t, db); ok {
+		t.Fatal("marker written by an interrupted fill")
+	}
+	partial, total := len(addrIndexSet(t, db)), len(reserveSet(t, db))
+	if partial == 0 || partial >= total {
+		t.Fatalf("interrupted fill wrote %d of %d entries; the test does not cover a partial index", partial, total)
+	}
+	closeDB(t, db)
+
+	db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+	defer closeDB(t, db)
+	if db.AddrIndexFills() != 1 || !db.ReserveAddrIndexReady() {
+		t.Fatalf("start after an interrupted fill: fills %d ready %v", db.AddrIndexFills(), db.ReserveAddrIndexReady())
+	}
+	checkIndexEqualsReserve(t, db)
+}
+
+// TestReserveAddrIndexCompaction checks that the storer compacts the address
+// index key range after a drop, both the background drop of a disabled index
+// and the synchronous drop of a stale one: the dropped entries leave the
+// leveldb tables instead of staying there under tombstones.
+func TestReserveAddrIndexCompaction(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	dir := t.TempDir()
+	db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+	putReserveChunks(t, db, baseAddr, postagetesting.MustNewBatch().ID, 200)
+	closeDB(t, db)
+
+	// Reopening moves the journal into the tables. Deleting the marker
+	// makes the index stale for the enabled start.
+	db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{keep: true})
+	before, err := db.AddrIndexRangeSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before == 0 {
+		t.Fatal("no address index entries in the tables; the test covers nothing")
+	}
+	m, ok := marker(t, db)
+	if !ok {
+		t.Fatal("no marker after a clean close")
+	}
+	if err := db.Storage().Run(context.Background(), func(s transaction.Store) error { return s.IndexStore().Delete(m) }); err != nil {
+		t.Fatal(err)
+	}
+	closeDB(t, db)
+	stale := t.TempDir()
+	copyDir(t, dir, stale)
+
+	rangeSize := func(t *testing.T, db *storer.DB) int64 {
+		t.Helper()
+		n, err := db.AddrIndexRangeSize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+
+		db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{})
+		defer closeDB(t, db)
+		db.WaitAddrIndexDrop()
+		if n := len(addrIndexSet(t, db)); n != 0 {
+			t.Fatalf("%d entries left after the drop", n)
+		}
+		if after := rangeSize(t, db); after != 0 {
+			t.Fatalf("address index range holds %d bytes in the tables after the drop (%d before)", after, before)
+		}
+	})
+
+	t.Run("stale", func(t *testing.T) {
+		t.Parallel()
+
+		db := openAddrIndexDB(t, stale, baseAddr, addrIndexOpts{enabled: true})
+		defer closeDB(t, db)
+		if db.AddrIndexFills() != 1 {
+			t.Fatal("no refill of a stale index")
+		}
+		checkIndexEqualsReserve(t, db)
+		// The refill writes to the memtable, which the size does not count.
+		if after := rangeSize(t, db); after != 0 {
+			t.Fatalf("address index range holds %d bytes in the tables after the drop and refill (%d before)", after, before)
+		}
+	})
+}

@@ -1575,6 +1575,17 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   3. The background fill (proposal §5.1), as planned for > 60 s: start-up stays ≈ 3 s plus the
      synchronous drop (12–14 s, which M4 keeps synchronous), and rangesync answers `Busy` until the
      marker is written (T1.9 `Busy` handling, T6.2's first case).
+- **T1.5 G4 decision (2026-10-15, user): option (b) of the gate, blocking fill as is** (option 1
+  above). No change to the fill strategy: `New` drops a stale index, compacts the range and fills
+  synchronously before it returns, and writes the marker last; a refill start takes ≈ 65–75 s at
+  4.2M items on the measurement host (first enable 41–44 s, clean restart ≈ 3 s), which is
+  accepted. Moving the post-drop compaction to the background (option 2) is rejected and not done.
+  The background fill (option 3) is not chosen, so `ReserveAddrIndexReady` is true whenever a
+  caller can reach the storer, T1.9 needs no `Busy` handling for a filling index and T6.2's first
+  case is unchanged. This settles "T1.5 (contract): fill variant" above. Test-only seams added
+  with the gap tests: `reserve.WithAddrIndexBatchSize` (now exported) and
+  `reserve.WithAddrIndexFillHook`, passed through an unexported `storer.Options` field set from
+  `export_test.go`.
 
 ## Follow-ups
 _(sessions append here)_

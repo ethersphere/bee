@@ -12,7 +12,6 @@ var (
 	ErrMarshalInvalidAddress = errMarshalInvalidAddress
 	ErrUnmarshalInvalidSize  = errUnmarshalInvalidSize
 
-	AddrIndexElementID     = addrIndexElementID
-	WithAddrIndexBatchSize = withAddrIndexBatchSize
-	DropAddrIndexBatch     = dropAddrIndex
+	AddrIndexElementID = addrIndexElementID
+	DropAddrIndexBatch = dropAddrIndex
 )

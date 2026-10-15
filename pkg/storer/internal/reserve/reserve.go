@@ -73,6 +73,8 @@ type Reserve struct {
 	addrReady atomic.Bool
 	// addrBatchSize is the number of entries per fill transaction.
 	addrBatchSize int
+	// addrFillHook, if set, is called after each fill transaction (tests).
+	addrFillHook func(filled int)
 }
 
 // Option configures a Reserve.

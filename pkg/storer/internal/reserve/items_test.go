@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -240,7 +241,9 @@ func TestChunkAddrItem(t *testing.T) {
 		if got, want := item.ID(), string(addr.Bytes())+string(stampHash); got != want {
 			t.Fatalf("id %x, want address ‖ stamp hash %x", got, want)
 		}
-		if got, want := item.String(), "chunkAddr/"+item.ID(); got != want {
+		// path.Join, as for the other reserve items: it cleans an ID that
+		// contains "/" bytes, so the expectation must too
+		if got, want := item.String(), path.Join("chunkAddr", item.ID()); got != want {
 			t.Fatalf("string %q, want %q", got, want)
 		}
 		// The key orders by address first, so a range of addresses is a

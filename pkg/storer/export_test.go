@@ -5,10 +5,14 @@
 package storer
 
 import (
+	"errors"
+
 	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 func (db *DB) Reserve() *reserve.Reserve {
@@ -60,4 +64,23 @@ func (db *DB) WaitAddrIndexDrop() {
 	if db.addrIndex.dropDone != nil {
 		<-db.addrIndex.dropDone
 	}
+}
+
+// SetReserveTestOptions sets options New passes to the reserve.
+func SetReserveTestOptions(o *Options, opts ...reserve.Option) {
+	o.reserveTestOptions = opts
+}
+
+// AddrIndexRangeSize returns the approximate size of the address index key
+// range in the leveldb tables (leveldb SizeOf; the memtable is not counted).
+func (db *DB) AddrIndexRangeSize() (int64, error) {
+	ldb, ok := db.pinIntegrity.Store.(leveldbstore.Storer)
+	if !ok {
+		return 0, errors.New("not a leveldb store")
+	}
+	sizes, err := ldb.DB().SizeOf([]util.Range{reserve.AddrIndexKeyRange()})
+	if err != nil {
+		return 0, err
+	}
+	return sizes.Sum(), nil
 }

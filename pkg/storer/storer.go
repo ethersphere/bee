@@ -718,6 +718,10 @@ type Options struct {
 	// mode anyway is caught by the marker's digest at the next enabled
 	// start. It is ignored when ReserveAddrIndex is true.
 	ReserveAddrIndexKeep bool
+
+	// reserveTestOptions are passed to reserve.New after the others (set by
+	// tests through export_test.go).
+	reserveTestOptions []reserve.Option
 }
 
 func defaultOptions() *Options {
@@ -892,7 +896,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			reserve.WithAddrIndex(addrIndexModeOf(opts) == addrIndexOn),
+			append([]reserve.Option{reserve.WithAddrIndex(addrIndexModeOf(opts) == addrIndexOn)}, opts.reserveTestOptions...)...,
 		)
 		if err != nil {
 			return nil, err

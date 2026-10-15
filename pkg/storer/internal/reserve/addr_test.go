@@ -292,6 +292,27 @@ func TestAddrIndexElementID(t *testing.T) {
 			t.Fatalf("id of %d bytes: %q, %v", len(tc.in), got, err)
 		}
 	}
+
+	// every length is tried, with and without a leading "/": only 64 bytes,
+	// or 65 bytes starting with "/", are accepted
+	for n := range 2*len(id) + 2 {
+		for _, in := range []string{strings.Repeat("a", n), "/" + strings.Repeat("a", max(n-1, 0))} {
+			if len(in) != n {
+				continue
+			}
+			var want string
+			switch {
+			case n == len(id):
+				want = in
+			case n == len(id)+1 && in[0] == '/':
+				want = in[1:]
+			}
+			got, err := reserve.AddrIndexElementID(in)
+			if (err == nil) != (want != "") || got != want {
+				t.Fatalf("id %q (%d bytes): %q, %v", in[:min(len(in), 2)], n, got, err)
+			}
+		}
+	}
 }
 
 // TestIterateAddrSnapshot checks on leveldb that one IterateAddr call reads

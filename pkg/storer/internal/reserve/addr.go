@@ -26,9 +26,17 @@ const elementIDSize = 2 * swarm.HashSize
 
 var errInvalidAddrIndexKey = errors.New("reserve: invalid address index key")
 
-// withAddrIndexBatchSize sets the number of entries per fill transaction.
-func withAddrIndexBatchSize(n int) Option {
+// WithAddrIndexBatchSize sets the number of entries per fill transaction.
+// It is meant for tests.
+func WithAddrIndexBatchSize(n int) Option {
 	return func(r *Reserve) { r.addrBatchSize = n }
+}
+
+// WithAddrIndexFillHook sets a function FillAddrIndex calls after each
+// committed transaction with the number of entries filled so far. It is meant
+// for tests, to interrupt a fill.
+func WithAddrIndexFillHook(hook func(filled int)) Option {
+	return func(r *Reserve) { r.addrFillHook = hook }
 }
 
 // addrIndexElementID returns the element ID (address ‖ stamp hash) of a
@@ -462,6 +470,9 @@ func (r *Reserve) FillAddrIndex(ctx context.Context) (int, error) {
 		}
 		filled += len(page)
 		cursor = page[len(page)-1].ID()
+		if r.addrFillHook != nil {
+			r.addrFillHook(filled)
+		}
 	}
 	if err := r.WriteAddrIndexMarker(ctx); err != nil {
 		return filled, err
