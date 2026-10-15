@@ -49,7 +49,7 @@ const (
 	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
 	MinGasLimit            = 21_000     // Minimum gas for any transaction
 	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
-	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
+	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
 )
 
 // TxRequest describes a request for a transaction that can be executed.

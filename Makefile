@@ -17,6 +17,15 @@ PLATFORM ?= linux/amd64
 # under the race detector on the slower CI runners.
 TEST_TIMEOUT ?= 30m
 
+# Fuzzing knobs.
+# FUZZTIME is the time budget per fuzz target, FUZZMINIMIZETIME caps input
+# minimization once a crasher is found. Override on the command line, e.g.
+#   make fuzz FUZZTIME=1m FUZZPKG=./pkg/soc/...
+FUZZTIME ?= 10s
+FUZZMINIMIZETIME ?= 5s
+FUZZPKG ?= ./...
+FUZZFLAGS ?=
+
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 
 VERSION ?= "$(shell git describe --tags --abbrev=0 | cut -c2-)"
@@ -89,6 +98,14 @@ format:
 lint: linter
 	$(GOLANGCI_LINT) run ./...
 
+.PHONY: nilaway
+nilaway: nilaway-bin
+	$(GOBIN)/nilaway ./...
+
+.PHONY: nilaway-bin
+nilaway-bin:
+	test -f $(GOBIN)/nilaway || $(GO) install go.uber.org/nilaway/cmd/nilaway@latest
+
 .PHONY: linter
 linter:
 	test -f $(GOLANGCI_LINT) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
@@ -134,6 +151,33 @@ ifdef cover
 else
 	$(GO) test -race -timeout $(TEST_TIMEOUT) ./...
 endif
+
+# Run every fuzz target for FUZZTIME each. Go only fuzzes one target per
+# invocation, so enumerate the targets and run them sequentially. Failures are
+# collected and reported at the end instead of stopping the whole run.
+.PHONY: fuzz
+fuzz:
+	@set -u; \
+	failed=""; \
+	for pkg in $$($(GO) list $(FUZZPKG)); do \
+		targets=$$($(GO) test -list '^Fuzz' $$pkg 2>/dev/null | grep '^Fuzz' || true); \
+		for t in $$targets; do \
+			echo "==> fuzzing $$t ($$pkg) for $(FUZZTIME)"; \
+			$(GO) test $$pkg -run '^$$' -fuzz "^$$t$$" \
+				-fuzztime=$(FUZZTIME) -fuzzminimizetime=$(FUZZMINIMIZETIME) $(FUZZFLAGS) \
+				|| failed="$$failed $$pkg:$$t"; \
+		done; \
+	done; \
+	if [ -n "$$failed" ]; then \
+		echo "fuzz failures:$$failed"; \
+		exit 1; \
+	fi
+
+# Replay the seed corpus and the regression fixtures committed under
+# testdata/fuzz/ without generating new inputs.
+.PHONY: fuzz-regression
+fuzz-regression:
+	$(GO) test -run '^Fuzz' $(FUZZFLAGS) $(FUZZPKG)
 
 .PHONY: build
 build: export CGO_ENABLED=0

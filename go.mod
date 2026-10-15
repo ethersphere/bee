@@ -9,7 +9,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.3
 	github.com/coreos/go-semver v0.3.1
 	github.com/ethereum/go-ethereum v1.17.3
-	github.com/ethersphere/batch-archive v0.1.0
+	github.com/ethersphere/batch-archive v0.1.3
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
@@ -160,7 +160,7 @@ require (
 	github.com/pion/webrtc/v4 v4.1.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.70.1
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/prometheus/statsd_exporter v0.27.1 // indirect

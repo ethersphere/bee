@@ -27,6 +27,8 @@ var (
 	ErrNoGranteeFound = errors.New("no grantee found")
 	// ErrNothingToAdd indicates that the add list is empty.
 	ErrNothingToAdd = errors.New("nothing to add")
+	// ErrInvalidGranteeList indicates that a stored grantee list is malformed.
+	ErrInvalidGranteeList = errors.New("invalid grantee list")
 )
 
 // GranteeList manages a list of public keys.
@@ -135,7 +137,10 @@ func NewGranteeListReference(ctx context.Context, ls file.LoadSaver, reference s
 	if err != nil {
 		return nil, fmt.Errorf("failed to load grantee list reference, %w", err)
 	}
-	grantees := deserialize(data)
+	grantees, err := deserialize(data)
+	if err != nil {
+		return nil, fmt.Errorf("grantee list reference %s: %w", reference, err)
+	}
 
 	return &GranteeListStruct{
 		grantees: grantees,
@@ -156,20 +161,23 @@ func serialize(publicKeys []*ecdsa.PublicKey) ([]byte, error) {
 	return b, nil
 }
 
-func deserialize(data []byte) []*ecdsa.PublicKey {
+func deserialize(data []byte) ([]*ecdsa.PublicKey, error) {
 	if len(data) == 0 {
-		return []*ecdsa.PublicKey{}
+		return []*ecdsa.PublicKey{}, nil
+	}
+	if len(data)%publicKeyLen != 0 {
+		return nil, fmt.Errorf("length %d is not a multiple of %d: %w", len(data), publicKeyLen, ErrInvalidGranteeList)
 	}
 
 	p := make([]*ecdsa.PublicKey, 0, len(data)/publicKeyLen)
 	for i := 0; i < len(data); i += publicKeyLen {
 		pubKey := deserializeBytes(data[i : i+publicKeyLen])
 		if pubKey == nil {
-			return []*ecdsa.PublicKey{}
+			return nil, fmt.Errorf("invalid public key at offset %d: %w", i, ErrInvalidGranteeList)
 		}
 		p = append(p, pubKey)
 	}
-	return p
+	return p, nil
 }
 
 func deserializeBytes(data []byte) *ecdsa.PublicKey {
