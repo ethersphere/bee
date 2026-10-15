@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -142,6 +143,9 @@ func sliceIterate(ids []fingerprint.ID) func(fn func(fingerprint.ID) error) erro
 type store struct {
 	mu  sync.Mutex
 	set model
+
+	iterating atomic.Int64 // iterations in progress
+	overlap   atomic.Int64 // commits made while an iteration was in progress
 }
 
 func newStore() *store { return &store{set: make(model)} }
@@ -150,6 +154,9 @@ func newStore() *store { return &store{set: make(model)} }
 // element, a remove only for a present one.
 func (s *store) commit(ix *fingerprint.Index, add, remove []fingerprint.ID) {
 	_ = ix.Commit(func() ([]fingerprint.ID, []fingerprint.ID, error) {
+		if s.iterating.Load() > 0 {
+			s.overlap.Add(1)
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		var adds, removes []fingerprint.ID
@@ -830,29 +837,56 @@ func TestIndexMemory(t *testing.T) {
 }
 
 // TestIndexConcurrent runs writers and Summary readers while the index is
-// rebuilt repeatedly; the result equals the reserve. Run it with -race.
+// rebuilt repeatedly, until enough commits overlapped a rebuild's iteration;
+// readers see only valid answers and the result equals the reserve. Run it
+// with -race.
 func TestIndexConcurrent(t *testing.T) {
 	t.Parallel()
 
+	const (
+		leafBits   = 5
+		writers    = 4
+		maxOwned   = 150
+		minOverlap = 20
+	)
 	r := rand.New(rand.NewPCG(13, 13))
 	overlay := randomRange(r, 255).Prefix
-	ix := newIndex(5)
+	ix := newIndex(leafBits)
 	s := newStore()
 	if err := ix.Rebuild(fingerprint.NewRange(overlay, 1), s.iterate); err != nil {
 		t.Fatal(err)
 	}
+	// A slowed-down iteration, so that commits overlap it.
+	iterate := func(fn func(fingerprint.ID) error) error {
+		s.iterating.Add(1)
+		defer s.iterating.Add(-1)
+		for i, id := range s.snapshot().ids() {
+			if err := fn(id); err != nil {
+				return err
+			}
+			if i%32 == 0 {
+				time.Sleep(20 * time.Microsecond)
+			}
+		}
+		return nil
+	}
 
-	const writers, ops = 4, 300
+	// Writers run until the rebuild loop below has seen enough overlap.
 	var wg sync.WaitGroup
-	stop := make(chan struct{})
+	stopWriters := make(chan struct{})
 	for w := range writers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			r := rand.New(rand.NewPCG(uint64(w), 99))
 			var mine []fingerprint.ID
-			for range ops {
-				if len(mine) > 0 && r.IntN(3) == 0 {
+			for {
+				select {
+				case <-stopWriters:
+					return
+				default:
+				}
+				if len(mine) > maxOwned || len(mine) > 0 && r.IntN(3) == 0 {
 					k := r.IntN(len(mine))
 					s.commit(ix, nil, mine[k:k+1])
 					mine = append(mine[:k], mine[k+1:]...)
@@ -864,6 +898,7 @@ func TestIndexConcurrent(t *testing.T) {
 			}
 		}()
 	}
+	stop := make(chan struct{})
 	var readers sync.WaitGroup
 	for range 2 {
 		readers.Add(1)
@@ -876,27 +911,135 @@ func TestIndexConcurrent(t *testing.T) {
 					return
 				default:
 				}
-				_, _ = ix.Summary(randomIDRange(r, overlay))
-				_, _, _ = ix.RootSummary()
+				// At most leafBits deep, so never below the leaf depth.
+				rg := fingerprint.NewRange(overlay, uint8(r.IntN(leafBits+1)))
+				if _, err := ix.Summary(rg); err != nil && !errors.Is(err, fingerprint.ErrOutsideRoot) && !errors.Is(err, fingerprint.ErrBusy) {
+					t.Errorf("summary %s: %v", rg, err)
+				}
+				if _, _, err := ix.RootSummary(); err != nil {
+					t.Errorf("root summary: %v", err)
+				}
 			}
 		}()
 	}
-	radius := uint8(1)
-	for i := range 6 {
+
+	var radius uint8
+	deadline := time.Now().Add(20 * time.Second)
+	for i := 0; i < 6 || s.overlap.Load() < minOverlap; i++ {
+		if time.Now().After(deadline) {
+			break // reported below, after the goroutines stopped
+		}
 		radius = uint8(i % 3)
-		if err := ix.Rebuild(fingerprint.NewRange(overlay, radius), s.iterate); err != nil {
+		if err := ix.Rebuild(fingerprint.NewRange(overlay, radius), iterate); err != nil {
 			t.Fatal(err)
 		}
 	}
+	close(stopWriters)
 	wg.Wait()
 	close(stop)
 	readers.Wait()
+	if n := s.overlap.Load(); n < minOverlap {
+		t.Fatalf("%d commits overlapped a rebuild iteration, want at least %d", n, minOverlap)
+	}
 	checkIndex(t, ix, s.snapshot(), fingerprint.NewRange(overlay, radius))
 }
 
-// randomIDRange returns a random range near overlay.
-func randomIDRange(r *rand.Rand, overlay swarm.Address) fingerprint.Range {
-	return fingerprint.NewRange(overlay, uint8(r.IntN(9)))
+// TestIndexNoPartialCommit checks that a reader never sees part of a
+// commit: under concurrent replaces (one removal and one addition per
+// commit) the reserve always holds the same number of elements, and so must
+// every root summary.
+func TestIndexNoPartialCommit(t *testing.T) {
+	t.Parallel()
+
+	const (
+		writers  = 2
+		perOwner = 32
+		replaces = 3000
+	)
+	r := rand.New(rand.NewPCG(17, 17))
+	root := randomRange(r, 2)
+	ix := newIndex(4)
+	s := newStore()
+	owned := make([][]fingerprint.ID, writers)
+	for w := range owned {
+		for range perOwner {
+			id := randomIDIn(r, root)
+			owned[w] = append(owned[w], id)
+			s.commit(ix, []fingerprint.ID{id}, nil)
+		}
+	}
+	if err := ix.Rebuild(root, s.iterate); err != nil {
+		t.Fatal(err)
+	}
+
+	stop := make(chan struct{})
+	var bad, reads atomic.Int64
+	var reader sync.WaitGroup
+	reader.Add(1)
+	go func() {
+		defer reader.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			_, sm, err := ix.RootSummary()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			reads.Add(1)
+			if sm.Count != writers*perOwner {
+				bad.Add(1)
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := rand.New(rand.NewPCG(uint64(w), 18))
+			for range replaces {
+				k := r.IntN(perOwner)
+				id := randomIDIn(r, root)
+				s.commit(ix, []fingerprint.ID{id}, []fingerprint.ID{owned[w][k]})
+				owned[w][k] = id
+			}
+		}()
+	}
+	wg.Wait()
+	close(stop)
+	reader.Wait()
+	if n := bad.Load(); n > 0 {
+		t.Fatalf("%d of %d root summaries saw a count the reserve never held", n, reads.Load())
+	}
+	checkIndex(t, ix, s.snapshot(), root)
+}
+
+// TestIndexSummaryProductionLeafBits checks every range at every level at
+// the protocol leaf bits (4096 buckets).
+func TestIndexSummaryProductionLeafBits(t *testing.T) {
+	t.Parallel()
+
+	r := rand.New(rand.NewPCG(19, 19))
+	root := randomRange(r, 7)
+	ix := newIndex(0)
+	m := make(model)
+	for range 400 {
+		m[randomIDIn(r, root)] = struct{}{}
+	}
+	if err := ix.Rebuild(root, sliceIterate(m.ids())); err != nil {
+		t.Fatal(err)
+	}
+	checkIndex(t, ix, m, root)
+	for range 50 {
+		id := randomIDIn(r, root)
+		m[id] = struct{}{}
+		ix.Apply([]fingerprint.ID{id}, nil)
+	}
+	checkIndex(t, ix, m, root)
 }
 
 func BenchmarkIndexApply(b *testing.B) {

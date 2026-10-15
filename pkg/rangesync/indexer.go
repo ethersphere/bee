@@ -85,9 +85,9 @@ var (
 //
 // Start-up order: register the Indexer with the storer's SetReserveObserver,
 // then, only if that returned nil, call Start; if registration fails, do
-// not Start (rangesync stays disabled). Start queues the initial rebuild; the rebuild goroutine
-// waits for ReserveAddrIndexReady, reads StorageRadius and rebuilds the
-// Index at NewRange(overlay, radius). Until that rebuild opens its snapshot
+// not Start (rangesync stays disabled). Start queues the initial rebuild;
+// the rebuild goroutine waits for ReserveAddrIndexReady, reads StorageRadius
+// and rebuilds the Index at NewRange(overlay, radius). Until that rebuild opens its snapshot
 // the Index drops deltas, so no commit is missed: every commit after
 // registration is in the snapshot or in the delta stream. The start-up
 // SetRadius of the reserve workers triggers a second rebuild only if the
@@ -238,6 +238,13 @@ func (x *Indexer) run() {
 		case <-x.wake:
 		case <-retryC:
 		}
+		// select picks at random among ready cases: Close wins over a
+		// pending wake-up.
+		select {
+		case <-x.quit:
+			return
+		default:
+		}
 		if retry != nil {
 			retry.Stop()
 			retry, retryC = nil, nil
@@ -278,6 +285,11 @@ func (x *Indexer) run() {
 // waitReady waits until the address index is ready. It returns false if the
 // Indexer was closed first.
 func (x *Indexer) waitReady() bool {
+	select {
+	case <-x.quit:
+		return false
+	default:
+	}
 	if x.store.ReserveAddrIndexReady() {
 		return true
 	}

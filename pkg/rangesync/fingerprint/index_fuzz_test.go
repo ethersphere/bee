@@ -5,7 +5,6 @@
 package fingerprint_test
 
 import (
-	bin "encoding/binary"
 	"math/rand/v2"
 	"testing"
 
@@ -34,7 +33,11 @@ func FuzzIndex(f *testing.F) {
 			return
 		}
 		leafBits := 1 + data[0]%5
-		r := rand.New(rand.NewPCG(bin.BigEndian.Uint64(data[2:10]), 1))
+		var seed uint64
+		for _, b := range data[2:10] {
+			seed = seed<<8 | uint64(b)
+		}
+		r := rand.New(rand.NewPCG(seed, 1))
 		var overlay [swarm.HashSize]byte
 		fill(r, overlay[:])
 		rootAt := func(b byte) fingerprint.Range {

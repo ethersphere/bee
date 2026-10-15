@@ -188,15 +188,17 @@ type slab struct {
 
 // add adds (sign > 0) or subtracts the element with LtHash h to bucket b.
 func (s *slab) add(b int, h *ltHashNode, sign int) {
-	one := countNode(1)
 	if sign > 0 {
-		s.counts.Add(b, &one)
+		s.counts.Add(b, &countOne)
 		s.hashes.Add(b, h)
 		return
 	}
-	s.counts.Sub(b, &one)
+	s.counts.Sub(b, &countOne)
 	s.hashes.Sub(b, h)
 }
+
+// countOne is the count delta of one element. It is only read.
+var countOne = countNode(1)
 
 // buildSlab is the slab of a running rebuild: plain per-bucket sums until
 // converted is set, then the converted Fenwick trees (rebuild step 5).
@@ -281,57 +283,104 @@ func (ix *Index) Commit(run func() (adds, removes []ID, err error)) error {
 	return nil
 }
 
+// element is one expanded element of a delta and its buckets in the live
+// slab and in the slab of a running rebuild (-1: not in that slab).
+type element struct {
+	sums             *sums
+	sign             int
+	liveBkt, nextBkt int
+}
+
+// maxStackDelta is the delta size for which apply needs no heap allocation
+// for its element list; reserve commits carry one to three elements.
+const maxStackDelta = 4
+
 // apply applies a delta to the live slab and to the slab of a running
-// rebuild. mu must be held in read mode.
+// rebuild. mu must be held in read mode. Every element is expanded first,
+// outside slabMu and nextMu; then the whole delta is applied in one slabMu
+// section and one nextMu section, so a reader never sees part of a commit.
 func (ix *Index) apply(adds, removes []ID) {
 	live, next := ix.live, ix.next
 	if live == nil && next == nil {
 		return // no snapshot opened yet: the first one covers the delta
 	}
 	start := time.Now()
-	changed := false
+
+	var stack [maxStackDelta]element
+	elems := stack[:0]
+	defer func() {
+		for _, e := range elems {
+			putSums(e.sums)
+		}
+	}()
+	inLive, inNext := false, false
 	for _, d := range [...]struct {
 		ids  []ID
 		sign int
 	}{{adds, 1}, {removes, -1}} {
 		for _, id := range d.ids {
-			if ix.applyOne(live, next, id, d.sign) {
-				changed = true
+			e := element{sign: d.sign, liveBkt: -1, nextBkt: -1}
+			if live != nil && live.root.ContainsID(id) {
+				e.liveBkt = ix.bucket(live.root, id)
+				inLive = true
 			}
+			if next != nil && next.root.ContainsID(id) {
+				e.nextBkt = ix.bucket(next.root, id)
+				inNext = true
+			}
+			if e.liveBkt < 0 && e.nextBkt < 0 {
+				ix.metrics.OutsideRoot.Inc()
+				continue
+			}
+			e.sums = getSums()
+			e.sums.hash = ltHashNode(Expand(nil, id))
+			elems = append(elems, e)
 		}
 	}
+	if len(elems) == 0 {
+		return
+	}
+	if inLive {
+		ix.applyLive(live, elems)
+	}
+	if inNext {
+		ix.applyNext(next, elems)
+	}
 	ix.metrics.ApplySeconds.Observe(time.Since(start).Seconds())
-	if changed {
+	if inLive {
 		ix.signal()
 	}
 }
 
-// applyOne applies one element to live and next and reports whether it
-// changed the live slab. The element is expanded once, outside slabMu and
-// nextMu.
-func (ix *Index) applyOne(live *slab, next *buildSlab, id ID, sign int) bool {
-	inLive := live != nil && live.root.ContainsID(id)
-	inNext := next != nil && next.root.ContainsID(id)
-	if !inLive && !inNext {
-		ix.metrics.OutsideRoot.Inc()
-		return false
+// applyLive applies the elements of a delta to the live slab in one slabMu
+// section.
+func (ix *Index) applyLive(live *slab, elems []element) {
+	ix.slabMu.Lock()
+	defer ix.slabMu.Unlock()
+	for _, e := range elems {
+		if e.liveBkt >= 0 {
+			live.add(e.liveBkt, &e.sums.hash, e.sign)
+		}
 	}
-	h := getScratch()
-	defer putScratch(h)
-	*h = ltHashNode(Expand(nil, id))
-	if inLive {
-		b := ix.bucket(live.root, id)
-		ix.slabMu.Lock()
-		live.add(b, h, sign)
-		ix.slabMu.Unlock()
+}
+
+// applyNext applies the elements of a delta to the slab of a running
+// rebuild in one nextMu section.
+func (ix *Index) applyNext(next *buildSlab, elems []element) {
+	ix.nextMu.Lock()
+	defer ix.nextMu.Unlock()
+	for _, e := range elems {
+		if e.nextBkt >= 0 {
+			next.add(e.nextBkt, &e.sums.hash, e.sign)
+		}
 	}
-	if inNext {
-		b := ix.bucket(next.root, id)
-		ix.nextMu.Lock()
-		next.add(b, h, sign)
-		ix.nextMu.Unlock()
-	}
-	return inLive
+}
+
+// addNext adds one element of the rebuild's snapshot to its slab.
+func (ix *Index) addNext(next *buildSlab, b int, h *ltHashNode) {
+	ix.nextMu.Lock()
+	defer ix.nextMu.Unlock()
+	next.add(b, h, 1)
 }
 
 // bucket returns the bucket of root that holds id.
@@ -360,9 +409,8 @@ func (ix *Index) Apply(adds, removes []ID) {
 // released.
 func (ix *Index) Summary(r Range) (Summary, error) {
 	r = NewRange(r.Prefix, r.Bits)
-	var count countNode
-	hash := getScratch()
-	defer putScratch(hash)
+	sm := getSums()
+	defer putSums(sm)
 
 	ix.mu.RLock()
 	live, next := ix.live, ix.next
@@ -378,31 +426,37 @@ func (ix *Index) Summary(r Range) (Summary, error) {
 		ix.mu.RUnlock()
 		return Summary{}, ErrBelowLeaf // live.root contains r, so r is too deep
 	}
-	ix.slabMu.RLock()
-	live.counts.Range(int(lo), int(lo+n), &count)
-	live.hashes.Range(int(lo), int(lo+n), hash)
-	ix.slabMu.RUnlock()
+	ix.readLive(func() {
+		live.counts.Range(int(lo), int(lo+n), &sm.count)
+		live.hashes.Range(int(lo), int(lo+n), &sm.hash)
+	})
 	ix.mu.RUnlock()
 
-	return summarize(count, hash), nil
+	return summarize(sm), nil
+}
+
+// readLive runs fn, which reads the live slab, under slabMu in read mode.
+func (ix *Index) readLive(fn func()) {
+	ix.slabMu.RLock()
+	defer ix.slabMu.RUnlock()
+	fn()
 }
 
 // summarize returns the Summary of a count and an LtHash: the zero Digest
 // when the count is 0.
-func summarize(count countNode, hash *ltHashNode) Summary {
-	if count == 0 {
+func summarize(sm *sums) Summary {
+	if sm.count == 0 {
 		return Summary{}
 	}
-	return Summary{Count: uint64(count), Digest: (*LtHash)(hash).Digest()}
+	return Summary{Count: uint64(sm.count), Digest: (*LtHash)(&sm.hash).Digest()}
 }
 
 // RootSummary returns the root of the live slab and its Summary, read
 // together under one lock, for the status message. It returns ErrBusy when
 // there is no live slab.
 func (ix *Index) RootSummary() (Range, Summary, error) {
-	var count countNode
-	hash := getScratch()
-	defer putScratch(hash)
+	sm := getSums()
+	defer putSums(sm)
 
 	ix.mu.RLock()
 	live := ix.live
@@ -410,13 +464,14 @@ func (ix *Index) RootSummary() (Range, Summary, error) {
 		ix.mu.RUnlock()
 		return Range{}, Summary{}, ErrBusy
 	}
-	ix.slabMu.RLock()
-	live.counts.Prefix(live.counts.Len(), &count)
-	live.hashes.Prefix(live.hashes.Len(), hash)
-	ix.slabMu.RUnlock()
+	ix.readLive(func() {
+		live.counts.Prefix(live.counts.Len(), &sm.count)
+		live.hashes.Prefix(live.hashes.Len(), &sm.hash)
+	})
+	root := Range{Prefix: live.root.Prefix.Clone(), Bits: live.root.Bits}
 	ix.mu.RUnlock()
 
-	return live.root, summarize(count, hash), nil
+	return root, summarize(sm), nil
 }
 
 // Rebuild replaces the index with one of root, built from one snapshot of
@@ -489,8 +544,8 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err
 	}()
 
 	// Step 2: build the plain bucket sums, without mu.
-	h := getScratch()
-	defer putScratch(h)
+	sm := getSums()
+	defer putSums(sm)
 	var outside int
 	iterErr := iterate(func(id ID) error {
 		release()
@@ -498,11 +553,8 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err
 			outside++
 			return nil
 		}
-		*h = ltHashNode(Expand(nil, id))
-		b := ix.bucket(root, id)
-		ix.nextMu.Lock()
-		next.add(b, h, 1)
-		ix.nextMu.Unlock()
+		sm.hash = ltHashNode(Expand(nil, id))
+		ix.addNext(next, ix.bucket(root, id), &sm.hash)
 		return nil
 	})
 	ix.metrics.OutsideRoot.Add(float64(outside))
@@ -515,18 +567,10 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err
 
 	// Step 5: convert under nextMu, flagging the conversion in the same
 	// critical section, then swap under mu.
-	ix.nextMu.Lock()
-	converted := &slab{
-		root:   root,
-		counts: NewFenwickFromBuckets[countNode, *countNode](next.counts),
-		hashes: NewFenwickFromBuckets[ltHashNode, *ltHashNode](next.hashes),
-	}
+	converted := ix.convert(next)
 	if converted.counts.Len() != buckets || converted.hashes.Len() != buckets {
 		panic(fmt.Sprintf("fingerprint: rebuilt slab has %d/%d buckets, want %d", converted.counts.Len(), converted.hashes.Len(), buckets))
 	}
-	next.counts, next.hashes = nil, nil
-	next.converted = converted
-	ix.nextMu.Unlock()
 
 	if ix.afterConvert != nil {
 		ix.afterConvert()
@@ -542,6 +586,21 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err
 	ix.metrics.RebuildSeconds.Observe(time.Since(start).Seconds())
 	ix.signal()
 	return nil
+}
+
+// convert turns the plain bucket sums of next into Fenwick trees and sets
+// its converted flag, in one nextMu section (rebuild step 5).
+func (ix *Index) convert(next *buildSlab) *slab {
+	ix.nextMu.Lock()
+	defer ix.nextMu.Unlock()
+	converted := &slab{
+		root:   next.root,
+		counts: NewFenwickFromBuckets[countNode, *countNode](next.counts),
+		hashes: NewFenwickFromBuckets[ltHashNode, *ltHashNode](next.hashes),
+	}
+	next.counts, next.hashes = nil, nil
+	next.converted = converted
+	return converted
 }
 
 // setMemory updates the memory gauge. mu must be held in write mode.
@@ -634,13 +693,19 @@ func (ix *Index) Close() error {
 	return nil
 }
 
-// scratch holds 2 KB LtHash buffers for expansions and query results, which
-// would otherwise escape to the heap through the generic Fenwick calls.
-var scratch = sync.Pool{New: func() any { return new(ltHashNode) }}
+// sums is a scratch count and LtHash, for expansions and query results,
+// which would otherwise escape to the heap through the generic Fenwick
+// calls.
+type sums struct {
+	count countNode
+	hash  ltHashNode
+}
 
-func getScratch() *ltHashNode { return scratch.Get().(*ltHashNode) }
+var sumsPool = sync.Pool{New: func() any { return new(sums) }}
 
-func putScratch(h *ltHashNode) { scratch.Put(h) }
+func getSums() *sums { return sumsPool.Get().(*sums) }
+
+func putSums(sm *sums) { sumsPool.Put(sm) }
 
 // countNode is the Group adapter of the element counts. Arithmetic is modulo
 // 2^32, so removals subtract exactly; a node or range never holds more than

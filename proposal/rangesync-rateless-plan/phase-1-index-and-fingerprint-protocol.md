@@ -1352,6 +1352,34 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     `mpoolDrain` goroutine, as `pkg/puller` and others do. `TestIndexerConcurrent` slows the
     iterations down and asserts that commits overlapped them (≈150–330 per run) with memtable
     flushes (16 KiB write buffer).
+- **T1.6 review round 1 (L1): one slab section per commit.** `apply` used to take `slabMu` once
+  per element, with the next element's expansion in between, so a reader could see part of a
+  commit (a replace at a constant 64 elements read as 63 or 65; a phantom count could reach a
+  gossiped `Status`). Now every element of the delta is expanded first (pooled buffers, a
+  4-element array on the stack for the element list), then the whole delta is applied in one
+  `slabMu` section and one `nextMu` section. Regression test `TestIndexNoPartialCommit`
+  (negative control with per-element locking: 8095 of 12175 root summaries saw a wrong count).
+- **T1.6 review round 1 (L2):** after the `select` that takes a wake-up, the rebuild goroutine
+  checks `quit` without blocking (Go's `select` picks among ready cases at random, so a pending
+  wake-up could start one more rebuild after `Close`), and `waitReady` checks `quit` first.
+- **T1.6 review round 1 (nits):** `nextMu`/`slabMu` sections are helpers with deferred unlocks
+  (`applyLive`, `applyNext`, `addNext`, `convert`, `readLive`); `RootSummary` returns a clone
+  of the root prefix; `index_apply_seconds` is observed only for deltas that touch a slab.
+- **Correction (T1.6 review round 1, N2; corrects "1 allocation of 4 B (the count delta)" in
+  "T1.6 (implementation)"):** the count delta is now a package-level read-only `countOne`, and
+  the query/expansion scratch is one pooled `sums{count, hash}`, so `Apply` and `Summary` make
+  **0 allocations**. Timings were re-measured under load (load average 2.3–2.6) at 12–24 µs for
+  both and are not comparable to the earlier ~9–11 µs figures; the code paths did not grow.
+- **T1.6 review round 1 (L3, tests):** `TestIndexConcurrent` and `TestIndexerConcurrent` now
+  assert at least 20 commits overlapped a rebuild iteration, and the fingerprint readers accept
+  only `nil`, `ErrBusy` and `ErrOutsideRoot`. A first version with a fixed number of writer
+  operations failed 3 of 60 runs at `-cpu=1` with 0 overlaps: the writers finished before the
+  rebuild loop got going. That was the test's design, not the index (the final `checkIndex` passed
+  in those runs). Writers now run until the rebuild loop has seen enough overlap (20 s deadline,
+  reported after the goroutines stopped); 60/60 and 30/30 runs pass. Also added
+  `TestIndexSummaryProductionLeafBits` (every range at `LeafBits = 12`, 450 elements) and
+  `TestIndexerRadiusReadAfterWake` (a `SetRadius` landing right after the radius read leaves a
+  wake-up behind; the hook fires inside `StorageRadius`).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1581,3 +1609,5 @@ _(sessions append here)_
   (it reads as ~4.3e9) instead of failing; the exact-delta contract of T1.4 rules it out, and
   nothing detects it. If T1.13 wants a tripwire, `Summary` could report a count above the
   reserve capacity as corruption.
+- **T1.6 review round 1 (CI):** add `TestIndexNoPartialCommit` (`pkg/rangesync/fingerprint`) and
+  `TestIndexerRadiusReadAfterWake` (`pkg/rangesync`) to the T1.6 `-race` list.

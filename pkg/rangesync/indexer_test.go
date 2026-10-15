@@ -55,9 +55,10 @@ type fakeReserve struct {
 	radiusReads atomic.Int64
 	failNext    atomic.Int64
 
-	hookMu    sync.Mutex
-	onOpen    func()
-	onElement func(i int)
+	hookMu       sync.Mutex
+	onOpen       func()
+	onElement    func(i int)
+	onRadiusRead func() // called by StorageRadius after it loaded the radius
 }
 
 func newFakeReserve(t *testing.T, radius uint8) *fakeReserve {
@@ -291,7 +292,14 @@ func (f *fakeReserve) ReserveAddrIndexReady() bool { return f.ready.Load() }
 
 func (f *fakeReserve) StorageRadius() uint8 {
 	f.radiusReads.Add(1)
-	return uint8(f.radius.Load())
+	r := uint8(f.radius.Load())
+	f.hookMu.Lock()
+	hook := f.onRadiusRead
+	f.hookMu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return r
 }
 
 // fixture is an Indexer over a fake reserve.
@@ -742,6 +750,33 @@ func TestIndexerSameRadiusSkipped(t *testing.T) {
 	fx.check(t, 1)
 }
 
+// TestIndexerRadiusReadAfterWake checks that the rebuild goroutine takes
+// the wake-up before it reads the radius: a SetRadius that lands right after
+// the read must leave a wake-up behind. The hook changes the radius and
+// notifies after the read returned the old value; were the wake-up taken
+// after the read, the notification would coalesce into it and be lost, and
+// the index would stay at the old radius.
+func TestIndexerRadiusReadAfterWake(t *testing.T) {
+	t.Parallel()
+
+	fx := newFixture(t, 1, rangesync.IndexerOptions{}, nil)
+	for range 30 {
+		fx.reserve.put(t, fx.id(fx.rand.IntN(3)), fx.batch())
+	}
+	fx.indexer.Start()
+	fx.waitRoot(t, 1)
+
+	var once sync.Once
+	fx.reserve.hookMu.Lock()
+	fx.reserve.onRadiusRead = func() {
+		once.Do(func() { fx.reserve.setRadius(2) })
+	}
+	fx.reserve.hookMu.Unlock()
+	fx.indexer.RadiusChanged(1)
+	fx.waitRoot(t, 2)
+	fx.check(t, 2)
+}
+
 // TestIndexerFailedRebuild checks that after a failed rebuild a wake-up with
 // the same radius rebuilds, and that the retry runs on its own.
 func TestIndexerFailedRebuild(t *testing.T) {
@@ -915,6 +950,9 @@ func TestIndexerConcurrent(t *testing.T) {
 		}
 	})
 
+	// Writers run until the radius loop below has seen enough overlap.
+	const minOverlap = 20
+	stopWriters := make(chan struct{})
 	var writers sync.WaitGroup
 	for w := range 4 {
 		writers.Add(1)
@@ -929,9 +967,14 @@ func TestIndexerConcurrent(t *testing.T) {
 				copy(id[:1], fx.overlay.Bytes()[:1]) // proximity >= 8 most of the time
 				return id
 			}
-			for i := range 400 {
+			for i := 0; ; i++ {
+				select {
+				case <-stopWriters:
+					return
+				default:
+				}
 				switch {
-				case len(mine) > 0 && i%4 == 1:
+				case len(mine) > 100 || len(mine) > 0 && i%4 == 1:
 					k := r.IntN(len(mine))
 					fx.reserve.evict(t, mine[k], b)
 					mine = append(mine[:k], mine[k+1:]...)
@@ -966,19 +1009,22 @@ func TestIndexerConcurrent(t *testing.T) {
 			}
 		}()
 	}
-	for i := 0; ; i++ {
+	deadline := time.Now().Add(20 * time.Second)
+	for i := 0; i < 6 || fx.reserve.overlapping.Load() < minOverlap; i++ {
+		if time.Now().After(deadline) {
+			break // reported below, after the goroutines stopped
+		}
 		fx.reserve.setRadius(uint8(i % 3))
 		time.Sleep(2 * time.Millisecond)
-		if i >= 6 && fx.reserve.overlapping.Load() > 0 {
-			break
-		}
-		if i > 5000 {
-			t.Fatal("no commit overlapped a rebuild")
-		}
 	}
+	close(stopWriters)
 	writers.Wait()
 	close(stop)
 	readers.Wait()
+	if n := fx.reserve.overlapping.Load(); n < minOverlap {
+		t.Fatalf("%d commits overlapped a rebuild iteration, want at least %d", n, minOverlap)
+	}
+
 	// Every radius read after setRadius(1) returned reads 1, and one
 	// follows (its wake-up); after it the goroutine skips or rebuilds at 1.
 	fx.reserve.setRadius(1)
@@ -990,7 +1036,6 @@ func TestIndexerConcurrent(t *testing.T) {
 	if v, err := fx.reserve.db.GetProperty("leveldb.num-files-at-level0"); err != nil || v == "0" {
 		t.Logf("no memtable flush (level-0 files %q, %v)", v, err)
 	}
-	t.Logf("%d commits overlapped a rebuild iteration", fx.reserve.overlapping.Load())
 }
 
 // TestIndexerClose checks that Close cancels a running rebuild, keeps the
