@@ -6,9 +6,9 @@
 ##                 implies swap-enable, chequebook-enable and storage-incentives-enable
 ##   light       - uploads and downloads only; requires blockchain-rpc
 ##   ultra-light - free-tier downloads only; no blockchain connection needed
-## When unset, the mode is inferred from the deprecated full-node option and
-## blockchain-rpc presence (deprecated, removed in v2.11.0).
-# node-mode: ultra-light
+## When unset (the default), the mode is inferred from the deprecated full-node
+## option and blockchain-rpc presence (deprecated, removed in v2.11.0).
+# node-mode: ""
 
 ## ── Blockchain / RPC (required for full and light nodes) ─────────────────────
 ## blockchain rpc configuration
