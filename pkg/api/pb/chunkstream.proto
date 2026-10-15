@@ -1,0 +1,107 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package chunkstream;
+
+option go_package = "pb";
+
+// Request is sent by a client to either download (Get) or upload (Put) a chunk.
+//
+// Requests carry no identifier of their own: the chunk address is the key. The
+// response to a request carries the same address, and its type (GetResponse or
+// PutResponse) tells a download reply from an upload reply for the same chunk.
+// A client must therefore not have two requests of the same type for the same
+// address in flight on one connection.
+message Request {
+  oneof body {
+    GetRequest Get = 1;
+    PutRequest Put = 2;
+  }
+}
+
+// CacheOption controls whether a retrieved chunk is cached locally.
+enum CacheOption {
+  // CACHE_DEFAULT uses the connection's caching behaviour (Swarm-Cache).
+  CACHE_DEFAULT = 0;
+  // CACHE_DISABLE skips caching the chunk in the local store.
+  CACHE_DISABLE = 1;
+  // CACHE_ENABLE caches the chunk in the local store.
+  CACHE_ENABLE = 2;
+}
+
+// GetRequest retrieves a chunk by its address.
+message GetRequest {
+  // Address is the 32-byte chunk address (CAC or SOC).
+  bytes Address = 1;
+  // Cache optionally overrides the connection's caching behaviour.
+  CacheOption Cache = 2;
+}
+
+// PutRequest stores a chunk and pushes it to the network. Uploads are always
+// direct: STATUS_OK means the chunk was pushed to its neighbourhood.
+message PutRequest {
+  // Address is the 32-byte address of the chunk. It must match the address the
+  // node computes from Data, and it settles whether Data is a CAC or a SOC:
+  // only one reading of the data can produce the address.
+  bytes Address = 1;
+  // Data is the serialised chunk.
+  // CAC: span (8 bytes) + payload (up to 4096 bytes).
+  // SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
+  bytes Data = 2;
+  // Stamp is a serialised pre-signed postage stamp. When set, it is used as is
+  // and BatchId is ignored.
+  bytes Stamp = 3;
+  // BatchId has the node stamp the chunk with this 32-byte postage batch. When
+  // empty, the connection's Swarm-Postage-Batch-Id is used.
+  bytes BatchId = 4;
+}
+
+// Response is sent by the node in reply to each Request, with the same body type.
+message Response {
+  oneof body {
+    GetResponse Get = 1;
+    PutResponse Put = 2;
+  }
+}
+
+// GetResponse answers a GetRequest.
+message GetResponse {
+  // Address is the address from the GetRequest.
+  bytes Address = 1;
+  // Status is the outcome of the retrieval.
+  Status Status = 2;
+  // Data is the chunk (span + payload) when Status is STATUS_OK.
+  bytes Data = 3;
+  // Error is a sanitised description when Status is not STATUS_OK.
+  string Error = 4;
+}
+
+// PutResponse answers a PutRequest.
+message PutResponse {
+  // Address is the address from the PutRequest.
+  bytes Address = 1;
+  // Status is the outcome of the upload.
+  Status Status = 2;
+  // Error is a sanitised description when Status is not STATUS_OK.
+  string Error = 3;
+}
+
+// Status is the outcome of a request.
+enum Status {
+  // STATUS_UNSPECIFIED is the proto3 zero value; never sent by the node.
+  STATUS_UNSPECIFIED = 0;
+  // STATUS_OK: the chunk was retrieved, or pushed to the network.
+  STATUS_OK = 1;
+  // STATUS_NOT_FOUND: the chunk is not in the reserve and no peer could serve it.
+  STATUS_NOT_FOUND = 2;
+  // STATUS_ERROR: an internal or storage failure.
+  STATUS_ERROR = 3;
+  // STATUS_BAD_REQUEST: invalid client input, such as malformed data, an invalid
+  // stamp or batch, or an address that does not match the chunk.
+  STATUS_BAD_REQUEST = 4;
+  // STATUS_BUSY: the request queue is full; retry with backoff.
+  STATUS_BUSY = 5;
+}
