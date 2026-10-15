@@ -459,6 +459,16 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 			},
 		},
 		{
+			name:     "node-mode full bootnode does not inherit chequebook or incentives defaults",
+			args:     []string{"--node-mode=full", "--bootnode-mode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameSwapEnable:              false,
+				cmd.OptionNameChequebookEnable:        false,
+				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
 			name:     "node-mode full with incentives explicitly disabled",
 			args:     []string{"--node-mode=full", "--blockchain-rpc-endpoint=" + testRPCEndpoint, "--storage-incentives-enable=false"},
 			wantMode: node.FullMode,

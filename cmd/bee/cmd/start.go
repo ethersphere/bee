@@ -431,6 +431,15 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 				c.enableImpliedOption(logger, mode, optionNameChequebookEnable)
 			}
 			c.enableImpliedOption(logger, mode, optionNameStorageIncentivesEnable)
+		} else {
+			// Override the pflag defaults of true when unset, since swap is not
+			// implied for bootnodes and chequebook requires it.
+			if !c.config.IsSet(optionNameChequebookEnable) {
+				c.config.Set(optionNameChequebookEnable, false)
+			}
+			if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+				c.config.Set(optionNameStorageIncentivesEnable, false)
+			}
 		}
 	case node.LightMode:
 		if rpcEndpoint == "" {
