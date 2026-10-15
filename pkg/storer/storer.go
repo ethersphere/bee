@@ -388,11 +388,18 @@ type ReserveAddrStore interface {
 	ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error)
 
 	// ReserveAddrIndexReady reports whether the address index is complete:
-	// its validity marker, of the current index layout version, is written.
-	// It is false while the index is disabled and while a fill runs; once
-	// true it stays true for the lifetime of the DB. It is cheap (no store
-	// access), so callers may poll it; rangesync answers Busy until it
-	// reports true.
+	// a valid marker (see Options.ReserveAddrIndex) was found at start-up or
+	// has been written since. It is false while the index is disabled and
+	// while a fill runs; once true it stays true for the lifetime of the DB.
+	//
+	// It reads an in-memory flag (no store access), so callers may poll it;
+	// rangesync answers Busy until it reports true. The flag is set by an
+	// atomic store only after every fill transaction has committed and the
+	// marker write has returned, so once it reports true every element of
+	// the reserve is visible to any iterator opened afterwards. A background
+	// fill holds an element's per-batch lock across reading it, re-checking
+	// that the reserve still holds it, writing its index entry and
+	// committing, so an element removed during the fill is never written.
 	ReserveAddrIndexReady() bool
 
 	// SetReserveObserver registers the single observer of the address
@@ -637,28 +644,63 @@ type Options struct {
 
 	// ReserveAddrIndex enables the reserve address index, the
 	// (chunk address, stamp hash) set served by ReserveAddrStore and
-	// reported to a ReserveObserver. It is ignored when the storer has no
-	// reserve (ReserveCapacity 0). The node enables it only on full nodes
+	// reported to a ReserveObserver. The node enables it only on full nodes
 	// that run rangesync. When it is false (the default) no address index
-	// entry is written and the reserve behaves as without the index.
+	// entry is written and the reserve behaves as without the index. A
+	// storer without a reserve (ReserveCapacity 0) treats it as false.
 	//
-	// The index is complete when its validity marker is written. New
-	// reconciles the option with the marker; this is not a numbered
-	// migration:
-	//   - enabled, marker present: nothing to do;
-	//   - enabled, no marker, or a marker of another index layout version:
-	//     the index entries are dropped and refilled from the reserve, and
-	//     the marker is written last, so an interrupted fill is redone at
-	//     the next start. Until the marker is written
+	// The index is trusted only behind its validity marker, which records
+	// the index layout version and a digest of the reserve state: the
+	// reserve epoch, the last bin ID of every bin and the reserve size.
+	// Bin IDs only grow and every put takes a new one, a removal without a
+	// put lowers the size, and a reserve reset replaces the epoch, so the
+	// digest matches only a reserve that has not changed since the marker
+	// was written. The marker is written when a fill completes and rewritten
+	// by a clean Close, after every background goroutine has stopped. A
+	// reserve changed by anything that does not maintain the index (an
+	// older bee build after a downgrade, a storer opened with the index
+	// disabled or in keep mode) no longer matches it. After an unclean
+	// shutdown the reserve normally does not match either, so a crash costs
+	// a refill, although the index, written in the same transactions as the
+	// reserve, is still exact.
+	//
+	// New reconciles the option with the marker at start-up; this is not a
+	// numbered migration:
+	//   - enabled, marker of the current version whose digest matches:
+	//     nothing to do;
+	//   - enabled, otherwise: the index entries are dropped synchronously in
+	//     New, before index writes are switched on, then the index is filled
+	//     from the reserve and the marker is written last, so an interrupted
+	//     fill is redone at the next start. Only the fill may run in the
+	//     background (after New returned); until the marker is written
 	//     ReserveAddrIndexReady reports false;
-	//   - disabled: a marker is deleted (writes stop, so the index would
-	//     go stale), and leftover index entries are dropped in a background
-	//     goroutine that Close stops; an interrupted drop is resumed at the
-	//     next start with the index disabled.
+	//   - disabled: the marker is deleted (writes stop, so the index would
+	//     go stale), and leftover index entries, with or without a marker,
+	//     are dropped in a background goroutine; Close stops it and waits
+	//     for it before closing the store, and an interrupted drop is
+	//     resumed at the next start with the index disabled;
+	//   - keep: see ReserveAddrIndexKeep.
+	//
+	// Start-up recovery of the chunk store (before the reserve opens)
+	// deletes the index entry of each corrupted chunk it removes whenever
+	// the index is enabled or a marker is present.
 	//
 	// Turning the index off and on again therefore costs one refill, and a
 	// stale index is never served.
 	ReserveAddrIndex bool
+
+	// ReserveAddrIndexKeep is for tooling (the bee db commands) that opens
+	// the storer without serving rangesync. With ReserveAddrIndex false it
+	// leaves the marker and the index entries as they are, instead of
+	// deleting them, so a command that does not change the reserve (info,
+	// compact, validate, export) does not force a refill. The index is not
+	// maintained meanwhile, and ReserveAddrStore behaves as with the index
+	// disabled: a command that changes the reserve (import)
+	// should open the storer with the index disabled, so the marker is
+	// deleted explicitly; a change made in keep mode anyway is caught by the
+	// marker's digest at the next enabled start. It is ignored when
+	// ReserveAddrIndex is true.
+	ReserveAddrIndexKeep bool
 }
 
 func defaultOptions() *Options {
@@ -861,7 +903,15 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	return db, nil
 }
 
-// Reset removes all entries
+// ResetReserve removes all entries of the reserve.
+//
+// With the address index enabled the index ends up empty and valid: if a
+// background address index fill is running, ResetReserve cancels it and
+// waits for it to stop, then resets the reserve (which deletes each element's
+// index entry), then writes the marker, so ReserveAddrIndexReady reports
+// true afterwards. A fill racing with the reset could otherwise write the
+// index entry of a chunk the reset just removed (the reset takes no batch
+// lock) behind a valid marker.
 func (db *DB) ResetReserve(ctx context.Context) error {
 	return db.reserve.Reset(ctx)
 }

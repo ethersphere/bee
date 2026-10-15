@@ -216,6 +216,9 @@ func (s *ReserveStore) SetCalls() int {
 
 // Get chunks.
 func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	if s.evilAddr.Equal(addr) {
 		// inject the malicious chunk instead
 		return s.evilChunk, nil

@@ -1069,8 +1069,10 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   committed. One call is one leveldb iterator (T1.0), opened without any reserve lock (T1.6 →
   T1.5); paging with `after` opens a new snapshot (documented). `cb`'s error is returned wrapped
   (`errors.Is` matches it, which T1.6's `Close` relies on). Each `ChunkID` passed to `cb` is fresh
-  (address and stamp hash from the key, since the iterated item has a zero `Address` (T1.4); batch
-  ID from the value) and may be retained.
+  and may be retained: address and stamp hash come from the **last 64 bytes** of the result ID,
+  with a length check (the iterated item has a zero `Address` (T1.4); `leveldbstore` returns
+  `"/" + id`, 65 bytes, under `PrefixAtStart`, `inmemstore` the bare 64), the batch ID from the
+  value. *(Corrected after the contract review, H1.)*
 - **T1.5 (contract): `ReserveIterateAddr` is the one exception to `ReserveObserver` contract
   point 4** (orchestrator note from the T1.6 contract review, binding). T1.6's rebuild holds the
   Index lock in write mode from opening the snapshot until the first callback (or the return on an
@@ -1078,9 +1080,8 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   godoc therefore requires, for this and any later change: (1) the leveldb iterator is opened
   before any blocking operation (no reserve lock, channel or wait); (2) it seeks straight to the
   masked start of the range (or to `after` inside it), so the first callback or the empty return
-  comes after O(1) work, with no scanning or filtering of keys outside the range (the
-  `chunkAddrValid` marker key shares the `chunkAddr` byte prefix and sorts after every
-  `chunkAddr/` key, so the iteration ends at the first key past the range, never filters it);
+  comes after O(1) work, with no scanning or filtering of keys outside the range (no other
+  namespace may start with `chunkAddr`, see the marker rename below);
   (3) a prefix of `ceil(bits/8)` bytes, empty at `bits == 0`, is accepted; (4) one `Iterate`
   call is one snapshot. `*storer.DB` satisfies T1.6's `IndexerStore{ReserveIterateAddr,
   ReserveAddrIndexReady, StorageRadius}` (checked with a scratch build against
@@ -1106,6 +1107,75 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
 - **T1.5 (contract): fill variant.** Pending G4. The contract is the same for both variants: `New`
   either completes the fill before it returns or leaves it to a background goroutine, and
   `ReserveAddrIndexReady` covers both (D16).
+- **T1.5 contract review (2026-10-15), H1: marker namespace renamed (amends T1.4).**
+  `ChunkAddrValidItem.Namespace()` is now `"addrIndexValid"` (was `"chunkAddrValid"`;
+  `pkg/storer/internal/reserve/items.go`, unreleased). `leveldbstore.Iterate` with
+  `PrefixAtStart` opens its iterator over `util.BytesPrefix("chunkAddr")`, with no separator, so
+  the old marker key `chunkAddrValid/` was inside every seeking iteration of the index and failed
+  to unmarshal ("invalid size") whenever one ran to the top of the address space: `bits == 0`
+  (a rebuild at radius 0), any range reaching `ff…`, an empty top range, an `after` past the last
+  element. Rule, stated on the item: no namespace may start with `"chunkAddr"`. Planned tests:
+  `TestIterateAddr` covers `bits == 0` and the top range on **both** `leveldbstore` (via
+  `transaction.NewStorage`) and `inmemstore`, with the marker present; plus a check that no
+  registered storer namespace has `"chunkAddr"` as a byte prefix.
+- **T1.5 contract review, H2: `ResetReserve` vs a background fill, option (b).** `node.go` calls
+  `ResetReserve` right after `storer.New`, and `Reserve.Reset` takes no batch lock, so a background
+  fill could write the entry of a chunk the reset just removed, behind a valid marker. Chosen:
+  `ResetReserve` cancels a running fill and waits for it, resets the reserve, then writes the
+  marker (an emptied index is complete), so it is correct in any call order. Rejected (a), starting
+  the background fill from `StartReserveWorker`: it depends on the order of calls in `node.go` and
+  leaves any later `ResetReserve` caller exposed. Documented on `ResetReserve`. Planned test
+  (background variant only): a `ResetReserve` during a slowed fill leaves an empty index, a valid
+  marker and `ReserveAddrIndexReady() == true`. The blocking variant has no fill running after
+  `New`.
+- **T1.5 contract review, M1: the marker carries a digest of the reserve state.** The marker
+  value becomes `version ‖ epoch ‖ last bin ID of each bin ‖ reserve size`. It is written when a
+  fill completes and rewritten at a clean `Close` after every background goroutine stopped; an
+  enabled start trusts the index only if the version and the digest match the reserve it opened.
+  Bin IDs only grow and every put takes a new one, a removal without a put lowers the size, and a
+  reset replaces the epoch, so any change by something that does not maintain the index (an older
+  build after a downgrade, a disabled or keep-mode start) makes the digest differ and forces a
+  refill. **Deviation from the review's example:** an "in use" bit set at start and cleared at a
+  clean `Close` alone does not catch a downgrade, because the older build runs after the newer
+  one's clean `Close`, never touches the marker, and leaves it "clean". The digest catches it. A
+  crash is not a correctness problem (the index is written in the reserve's own transactions), but
+  after one the digest normally differs, so a crash costs a refill. The ChunkAddrValidItem layout
+  change lands with the implementation. The refill cost (drop + fill) goes into the G4 numbers,
+  so the user can weigh it and relax the rule to "start once disabled after a downgrade" instead.
+  Planned tests: a clean close and reopen does not refill; a reserve changed with the index off
+  (put; evict only; reset) refills; a simulated unclean shutdown refills; a marker of another
+  version refills.
+- **T1.5 contract review, M2: keep mode for tooling.** `Options.ReserveAddrIndexKeep bool`: with
+  `ReserveAddrIndex` false it leaves the marker and the entries alone, so `bee db info` and the
+  other read-only `bee db` commands no longer force a refill. Commands that change the reserve
+  (import) should open with the index disabled; a change in keep mode anyway is caught by the
+  digest (M1). Ignored when `ReserveAddrIndex` is true. Plumbing the call sites in
+  `cmd/bee/cmd/db.go` is T1.12's (follow-up below). Planned test: open in keep mode, close, reopen
+  enabled → no refill; keep mode + a put, reopen enabled → refill.
+- **T1.5 contract review, M3: no reserve means disabled.** With `ReserveCapacity` 0 the start-up
+  toggle runs as disabled (the marker is deleted, the entries dropped in the background), instead of
+  ignoring the option. Recovery (`DeleteCorruptedChunkMetadata`) is passed
+  `opts.ReserveAddrIndex || markerPresent`, stated in the `Options` godoc. Planned tests: an enabled
+  storer reopened with `ReserveCapacity` 0 loses its marker and entries; recovery with the index
+  disabled but a marker present deletes the entries of corrupted chunks.
+- **T1.5 contract review, M4: the drop is synchronous in both fill variants.** On an enabled start
+  without a valid marker, `New` drops the `chunkAddr` namespace before index writes are switched
+  on (otherwise a background drop would delete entries the reserve just wrote); only the fill may
+  run in the background. The disabled path keeps its background drop (D10): no index writes happen
+  there. The G4 benchmark reports drop + fill.
+- **T1.5 contract review, L1–L3.** (L1) The `ReserveAddrIndexReady` godoc now states that the flag is
+  set by an atomic store only after every fill transaction has committed and the marker write
+  returned, so "true" means visible to any iterator opened afterwards, and that a background filler
+  holds the per-batch lock across the read, the re-check, the write and the commit. (L2) Mock:
+  `SetAddrIndexReady` is documented as a test switch (the storer only goes false → true);
+  `ReserveGet` now takes `s.mtx` (an existing data race with `put`; fixed in this commit since
+  `ReserveGetByID` builds on it); a re-put of an existing id gives an empty delta;
+  `IsWithinStorageRadius` is always true, so T1.10's out-of-radius tests cannot use the mock;
+  `WithEvilChunk` affects `ReserveGetByID` only for an address in the set. (L3) `Close` cancels and
+  waits for the background fill/drop goroutines before closing leveldb (in the `Options`
+  godoc). A large drop leaves tombstones that the next fill's iterations and `ReserveIterateAddr`
+  seeks skip until compaction; the implementation compacts the `chunkAddr` key range after a drop
+  if the G4 benchmark shows that seeks right after a drop are slow.
 
 - **T1.6 (contract): files and API.** `fingerprint/index.go` + `fingerprint/metrics.go` and
   `rangesync/indexer.go`. `fingerprint`: `NewIndex(IndexOptions{LeafBits, RootChangeDebounce})`
@@ -1392,3 +1462,11 @@ _(sessions append here)_
 - **T1.6 → T1.13 (contract review L4):** rerun the fake-reserve scenario "a rebuild opening while
   a `Commit` holds the per-batch lock completes" against the real `*storer.DB` (`Put` holding
   `r.multx` while the rebuild opens its iterator).
+- **T1.5 → T1.12 (keep mode):** pass `ReserveAddrIndexKeep: true` from the `bee db` commands that
+  do not change the reserve (`info`, `compact`, the `validate*` commands, `export`); `import` and
+  `repair-reserve` keep the default (`import` must invalidate the index; `repair-reserve` drops it
+  itself). Without this, `bee db info` on a rangesync node deletes the marker and forces a full
+  refill at the next start.
+- **T1.5 → T1.8/T1.9 (N1):** `ReserveIterateAddr` returns `cb`'s error wrapped (via
+  `leveldbstore`'s "iterate callback function errored: %w"): compare with `errors.Is`, never `==`,
+  e.g. for a stop sentinel or `ErrInvalidMessage` raised inside `Local.IterateIDs`.

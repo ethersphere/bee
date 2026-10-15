@@ -281,7 +281,7 @@ func TestChunkAddrItem(t *testing.T) {
 		t.Parallel()
 
 		m := &reserve.ChunkAddrValidItem{}
-		if m.Namespace() != "chunkAddrValid" || m.ID() != "" || m.String() != "chunkAddrValid" {
+		if m.Namespace() != "addrIndexValid" || m.ID() != "" || m.String() != "addrIndexValid" {
 			t.Fatalf("marker key %q/%q/%q", m.Namespace(), m.ID(), m.String())
 		}
 		if err := m.Unmarshal(nil); !errors.Is(err, reserve.ErrUnmarshalInvalidSize) {

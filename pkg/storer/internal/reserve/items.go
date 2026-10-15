@@ -269,11 +269,17 @@ const ChunkAddrIndexVersion uint8 = 1
 // ChunkAddrValidItem marks the ChunkAddrItem namespace as complete. It is
 // written last by the address index fill and removed when the index is
 // disabled.
+//
+// Its namespace must not start with the ChunkAddrItem namespace "chunkAddr":
+// leveldbstore iterations with PrefixAtStart cover every key with the bare
+// namespace as a byte prefix (no separator), so a "chunkAddr…" marker key
+// would be reached, and fail to unmarshal, by address index iterations that
+// run to the end of the address space.
 type ChunkAddrValidItem struct {
 	Version uint8
 }
 
-func (c *ChunkAddrValidItem) Namespace() string { return "chunkAddrValid" }
+func (c *ChunkAddrValidItem) Namespace() string { return "addrIndexValid" }
 func (c *ChunkAddrValidItem) ID() string        { return "" }
 func (c *ChunkAddrValidItem) String() string    { return c.Namespace() }
 

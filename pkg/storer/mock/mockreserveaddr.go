@@ -30,8 +30,14 @@ import (
 //     snapshots, eviction locking or the registration guarantee: test those
 //     against the storer on transaction.NewStorage over leveldbstore, never
 //     against this mock.
+//   - Putting a chunk whose (address, stamp hash) is already in the set
+//     still goes through Commit, with an empty delta.
 //   - There is no replacement by newer stamps and no radius filtering: the
-//     mock holds whatever is put into it.
+//     mock holds whatever is put into it, and IsWithinStorageRadius always
+//     reports true, so out-of-radius cases (T1.10) cannot be tested with
+//     the mock.
+//   - WithEvilChunk affects ReserveGetByID only for an address that is in
+//     the set: the batch ID is resolved from the set first.
 
 var _ storer.ReserveAddrStore = (*ReserveStore)(nil)
 
@@ -52,7 +58,9 @@ func WithAddrIndex() Option {
 
 // SetAddrIndexReady sets what ReserveAddrIndexReady reports while the address
 // index is enabled, to test callers that wait for a fill (rangesync answers
-// Busy). The set is not changed.
+// Busy). The set is not changed. It is a test switch: the storer's readiness
+// only ever goes from false to true, so tests that model the storer start
+// with SetAddrIndexReady(false) and later set true, never back.
 func (s *ReserveStore) SetAddrIndexReady(ready bool) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
