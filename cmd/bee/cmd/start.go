@@ -362,6 +362,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
 		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
+		DevPostage:                    c.config.GetBool(optionNameDevPostage),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
