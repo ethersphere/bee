@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 )
 
@@ -180,6 +181,25 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 		}
 		if got != want {
 			t.Fatalf("closer %q registered with the wrong instance", name)
+		}
+	}
+}
+
+func TestIsChainEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		mode node.NodeMode
+		want bool
+	}{
+		{mode: node.FullMode, want: true},
+		{mode: node.LightMode, want: true},
+		{mode: node.UltraLightMode, want: false},
+		{mode: "", want: false},
+		{mode: "unknown", want: false},
+	} {
+		if got := node.IsChainEnabled(&node.Options{NodeMode: tc.mode}, log.Noop); got != tc.want {
+			t.Errorf("node mode %q: got %t, want %t", tc.mode, got, tc.want)
 		}
 	}
 }

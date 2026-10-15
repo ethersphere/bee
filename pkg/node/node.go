@@ -1624,7 +1624,7 @@ func (b *Bee) Shutdown() error {
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func isChainEnabled(o *Options, logger log.Logger) bool {
-	if o.NodeMode == UltraLightMode {
+	if o.NodeMode != FullMode && o.NodeMode != LightMode {
 		logger.Info("chain backend disabled - starting in ultra-light mode")
 		return false
 	}
