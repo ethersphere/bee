@@ -29,6 +29,8 @@ type metrics struct {
 	ShallowReceiptDepth *prometheus.CounterVec
 	ShallowReceipt      prometheus.Counter
 	OverdraftRefresh    prometheus.Counter
+	OutOfDepthStoring   prometheus.Counter
+	OriginNoPeersLeft   prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -152,6 +154,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "overdraft_refresh",
 			Help:      "Total number of times peers were skipped due to overdraft, requiring a wait to refresh balance.",
+		}),
+		OutOfDepthStoring: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "out_of_depth_storing",
+			Help:      "Total number of times a chunk was refused because it was outside the neighborhood (ErrWantSelf with proximity < radius).",
+		}),
+		OriginNoPeersLeft: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "origin_no_peers_left",
+			Help:      "Total number of pushes given up by an origin outside the chunk's neighborhood because every peer was already tried or skipped.",
 		}),
 	}
 }

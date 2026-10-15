@@ -68,6 +68,11 @@ const (
 	DefaultRetryCount = 6
 )
 
+// ErrCouldNotSync is returned for a direct upload when the retry budget is
+// exhausted without a valid receipt. It intentionally does not wrap
+// pushsync.ErrShallowReceipt, which callers treat as retryable.
+var ErrCouldNotSync = errors.New("pusher: could not sync chunk")
+
 func New(
 	networkID uint64,
 	storer Storer,
@@ -134,7 +139,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		defer func() {
 			// no peer was found which may mean that the node is suffering from connections issues
 			// we must slow down the pusher to prevent constant retries
-			if errors.Is(err, topology.ErrNotFound) {
+			// a direct push has already replied to its caller, which does its
+			// own waiting, so sleeping here would only hold a push slot
+			if errors.Is(err, topology.ErrNotFound) && !op.Direct {
 				select {
 				case <-time.After(time.Second * 5):
 				case <-s.quit:
@@ -176,7 +183,6 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-		s.metrics.TotalSynced.Inc()
 	}
 
 	go func() {
@@ -286,11 +292,15 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed reporting chunk")
 			return true, err
 		}
-	case errors.Is(err, pushsync.ErrShallowReceipt):
+		s.metrics.TotalSynced.Inc()
+		s.attempts.delete(op.identityAddress)
+	case errors.Is(err, pushsync.ErrShallowReceipt), errors.Is(err, pushsync.ErrOutOfDepthStoring):
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
-		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+		// budget exhausted; report CouldNotSync so the chunk isn't marked delivered
+		s.metrics.TotalCouldNotSync.Inc()
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
@@ -299,6 +309,8 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
+		s.metrics.TotalSynced.Inc()
+		s.attempts.delete(op.identityAddress)
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 		return true, err
@@ -339,14 +351,29 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
+		} else {
+			s.metrics.TotalSynced.Inc()
 		}
+		s.attempts.delete(op.identityAddress)
 	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
 			return err
 		}
-		// out of attempts for retry, swallow error
-		err = nil
-	case err != nil:
+		// budget exhausted; return a terminal error instead of falsely
+		// reporting success or asking the caller to retry forever
+		s.metrics.TotalCouldNotSync.Inc()
+		loggerV1.Debug("direct upload: retries exhausted on shallow receipts", "chunk_address", op.Chunk.Address())
+		err = ErrCouldNotSync
+	case errors.Is(err, pushsync.ErrOutOfDepthStoring):
+		// no reachable node is responsible for the chunk; retrying right
+		// away cannot succeed, so fail the upload
+		s.metrics.TotalCouldNotSync.Inc()
+		loggerV1.Debug("direct upload: no node within the chunk's neighborhood took it", "chunk_address", op.Chunk.Address())
+		err = ErrCouldNotSync
+	case err == nil:
+		s.metrics.TotalSynced.Inc()
+		s.attempts.delete(op.identityAddress)
+	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
 

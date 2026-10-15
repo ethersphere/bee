@@ -10,12 +10,13 @@ import (
 )
 
 type metrics struct {
-	TotalToPush      prometheus.Counter
-	TotalSynced      prometheus.Counter
-	TotalErrors      prometheus.Counter
-	MarkAndSweepTime prometheus.Histogram
-	SyncTime         prometheus.Histogram
-	ErrorTime        prometheus.Histogram
+	TotalToPush       prometheus.Counter
+	TotalSynced       prometheus.Counter
+	TotalCouldNotSync prometheus.Counter
+	TotalErrors       prometheus.Counter
+	MarkAndSweepTime  prometheus.Histogram
+	SyncTime          prometheus.Histogram
+	ErrorTime         prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -32,7 +33,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_synced",
-			Help:      "Total chunks synced successfully with valid receipts.",
+			Help:      "Total chunks synced with a valid receipt or stored by this node.",
+		}),
+		TotalCouldNotSync: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_could_not_sync",
+			Help:      "Total chunks abandoned after exhausting retries with no valid receipt (shallow receipt or no peer in the correct neighbourhood).",
 		}),
 		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
