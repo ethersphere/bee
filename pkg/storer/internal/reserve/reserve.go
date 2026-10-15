@@ -131,6 +131,9 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 	}
 
 	chunkType := storage.ChunkType(chunk)
+	if chunkType == swarm.ChunkTypeUnspecified {
+		return false, fmt.Errorf("chunk type unspecified: %w", storage.ErrInvalidChunk)
+	}
 
 	sum, err := storage.ChunkSum(chunk)
 	if err != nil {

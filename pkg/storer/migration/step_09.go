@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// step_08 backfills the pullsync divergence checksum (SWIP-101). The
+// step_09 backfills the pullsync divergence checksum (SWIP-101). The
 // ChunkBinItem serialization grew by a trailing Sum field, so every existing
 // ChunkBinItem is rewritten (reconstructed from the authoritative
 // BatchRadiusItem, whose serialization is unchanged) with its Sum populated,
@@ -36,7 +36,7 @@ import (
 // being loaded whole: at reserve capacity the full index is millions of
 // entries, and the underlying stores do not support writes during an
 // iteration.
-func step_08(
+func step_09(
 	st transaction.Storage,
 	logger log.Logger,
 ) func() error {

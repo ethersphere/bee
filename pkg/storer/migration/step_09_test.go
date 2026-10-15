@@ -72,12 +72,12 @@ func (l *legacyChunkBinItem) Clone() storage.Item {
 	return &c
 }
 
-// TestStep08 runs the Sum backfill migration against genuine pre-migration
+// TestStep09 runs the Sum backfill migration against genuine pre-migration
 // records: old-format ChunkBinItems, entries whose chunk is missing from the
 // chunkstore, an orphaned old-format ChunkBinItem and a legacy entry with an
 // unset stamp hash. The migration must upgrade the healthy entries and remove
 // every other one without failing.
-func TestStep08(t *testing.T) {
+func TestStep09(t *testing.T) {
 	t.Parallel()
 
 	store := internal.NewInmemStorage()
@@ -184,7 +184,7 @@ func TestStep08(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := localmigration.Step08(store, log.Noop)(); err != nil {
+	if err := localmigration.Step09(store, log.Noop)(); err != nil {
 		t.Fatal(err)
 	}
 

@@ -8,7 +8,9 @@ package joiner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -147,8 +149,14 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 // A Joiner provides Read, Seek and Size functionalities.
 func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address, rootChunk swarm.Chunk) (file.Joiner, int64, error) {
 	chunkData := rootChunk.Data()
-	rootData := chunkData[swarm.SpanSize:]
+	if len(chunkData) < swarm.SpanSize {
+		return nil, 0, fmt.Errorf("joiner: root chunk %s has %d bytes, want at least %d: %w", address, len(chunkData), swarm.SpanSize, swarm.ErrInvalidChunk)
+	}
 	refLength := len(address.Bytes())
+	if refLength != swarm.HashSize && refLength != encryption.ReferenceSize {
+		return nil, 0, fmt.Errorf("joiner: root address %s has reference length %d: %w", address, refLength, storage.ErrReferenceLength)
+	}
+	rootData := chunkData[swarm.SpanSize:]
 	encryption := refLength == encryption.ReferenceSize
 	rLevel, span := chunkToSpan(chunkData)
 	rootParity := 0
@@ -193,7 +201,8 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 }
 
 // Read is called by the consumer to retrieve the joined data.
-// It must be called with a buffer equal to the maximum chunk size.
+// It reads up to len(b) bytes into b, advances the read offset by the number
+// of bytes read, and returns io.EOF once the end of the data is reached.
 func (j *joiner) Read(b []byte) (n int, err error) {
 	read, err := j.ReadAt(b, j.off)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -210,7 +219,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 		return 0, io.EOF
 	}
 
-	readLen := min(int64(cap(buffer)), j.span-off)
+	readLen := min(int64(len(buffer)), j.span-off)
 	var bytesRead int64
 	var eg errgroup.Group
 	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
@@ -279,7 +288,13 @@ func (j *joiner) readAtOffset(
 		}
 
 		// fast forward the cursor
-		sec := j.subtrieSection(cursor, pSize, parity, subTrieSize)
+		sec, err := j.subtrieSection(cursor, pSize, parity, subTrieSize)
+		if err != nil {
+			eg.Go(func() error {
+				return err
+			})
+			return
+		}
 		if cur+sec <= off {
 			cur += sec
 			continue
@@ -303,7 +318,11 @@ func (j *joiner) readAtOffset(
 					return err
 				}
 
-				chunkData := ch.Data()[8:]
+				if len(ch.Data()) < swarm.SpanSize {
+					return ErrMalformedTrie
+				}
+
+				chunkData := ch.Data()[swarm.SpanSize:]
 				subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
 				_, subtrieParity := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength == encryption.ReferenceSize)
 
@@ -329,7 +348,7 @@ func (j *joiner) getShards(payloadSize, parities int) int {
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) int64 {
+func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) (int64, error) {
 	// assume we have a trie of size `y` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -342,19 +361,45 @@ func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize
 		branching  = int64(j.maxBranching)                     // branching factor is chunkSize divided by reference length
 		branchSize = int64(swarm.ChunkSize)
 	)
+	// The parity count is derived from the span, not from the references, so a
+	// chunk can claim more parities than its payload holds.
+	if refs < 1 {
+		return 0, ErrMalformedTrie
+	}
+	// fullSize returns the size of the refs-1 full branches, or false if it
+	// does not fit in an int64 and so exceeds any subtrie size.
+	fullSize := func() (int64, bool) {
+		if refs > 1 && branchSize > math.MaxInt64/(refs-1) {
+			return 0, false
+		}
+		return branchSize * (refs - 1), true
+	}
 	for {
-		whatsLeft := subtrieSize - (branchSize * (refs - 1))
-		if whatsLeft <= branchSize {
+		full, ok := fullSize()
+		if !ok || subtrieSize-full <= branchSize {
 			break
+		}
+		// subtrieSize comes from chunk data. Stop before the multiplication
+		// overflows: a wrapped branchSize, or a non-positive refs, made the
+		// exit condition unsatisfiable.
+		if branchSize > math.MaxInt64/branching {
+			return 0, ErrMalformedTrie
 		}
 		branchSize *= branching
 	}
 
+	// The size must leave at least one byte for the last branch; otherwise
+	// it cannot be split into refs branches of this trie.
+	full, ok := fullSize()
+	if !ok || subtrieSize-full <= 0 {
+		return 0, ErrMalformedTrie
+	}
+
 	// handle last branch edge case
 	if startIdx == int(refs-1)*j.refLength {
-		return subtrieSize - (refs-1)*branchSize
+		return subtrieSize - full, nil
 	}
-	return branchSize
+	return branchSize, nil
 }
 
 var (
@@ -424,7 +469,10 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		if j.refLength == encryption.ReferenceSize {
 			cursor += swarm.HashSize * min(i, shardCnt)
 		}
-		sec := j.subtrieSection(cursor, eSize, parity, subTrieSize)
+		sec, err := j.subtrieSection(cursor, eSize, parity, subTrieSize)
+		if err != nil {
+			return err
+		}
 		if sec <= swarm.ChunkSize {
 			continue
 		}
@@ -443,7 +491,11 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			return err
 		}
 
-		chunkData := ch.Data()[8:]
+		if len(ch.Data()) < swarm.SpanSize {
+			return ErrMalformedTrie
+		}
+
+		chunkData := ch.Data()[swarm.SpanSize:]
 		subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
 		_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 

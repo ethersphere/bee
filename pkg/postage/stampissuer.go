@@ -5,6 +5,7 @@
 package postage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -212,6 +213,14 @@ func (si *StampIssuer) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
 func (si *StampIssuer) UnmarshalBinary(data []byte) error {
+	// msgpack.Unmarshal allocates memory for the array and byte string lengths
+	// declared in the data before reading the elements, so a corrupted length
+	// could make it allocate gigabytes. Skip reads all values without
+	// preallocating for the declared lengths, which ensures that every length
+	// is backed by the data before it is decoded.
+	if err := msgpack.NewDecoder(bytes.NewReader(data)).Skip(); err != nil {
+		return fmt.Errorf("invalid stamp issuer data: %w", err)
+	}
 	return msgpack.Unmarshal(data, &si.data)
 }
 

@@ -153,7 +153,7 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			upTestOpts = append(upTestOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
 		}
 		t.Run(v.name, func(t *testing.T) {
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:        storerMock,
 				Logger:        logger,
 				Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -213,7 +213,7 @@ func TestAccessLogicWithoutAct(t *testing.T) {
 	)
 
 	t.Run("upload-w/-act-then-download-w/o-act", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -246,7 +246,7 @@ func TestAccessLogicWithoutAct(t *testing.T) {
 	})
 
 	t.Run("upload-w/o-act-then-download-w/-act", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -310,7 +310,7 @@ func TestAccessLogicInvalidPath(t *testing.T) {
 	)
 
 	t.Run("invalid-path-params", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -361,7 +361,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	)
 
 	t.Run("empty-history-upload-then-download-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -397,7 +397,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("with-history-upload-then-download-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -443,7 +443,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("upload-then-download-wrong-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -479,7 +479,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("upload-wrong-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -502,7 +502,7 @@ func TestAccessLogicHistory(t *testing.T) {
 	})
 
 	t.Run("download-w/o-history", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -538,7 +538,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 		fileName             = "sample.html"
 	)
 	t.Run("upload-then-download-with-timestamp-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -586,7 +586,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 
 	t.Run("download-w/o-timestamp", func(t *testing.T) {
 		encryptedRef := "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -601,7 +601,7 @@ func TestAccessLogicTimestamp(t *testing.T) {
 		)
 	})
 	t.Run("download-w/-invalid-timestamp", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -649,7 +649,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 	)
 
 	t.Run("upload-then-download-w/-publisher-and-check-data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -695,7 +695,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 	})
 
 	t.Run("upload-then-download-invalid-publickey", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -753,7 +753,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 			downloader   = "03c712a7e29bc792ac8d8ae49793d28d5bda27ed70f0d90697b2fb456c0a168bd2"
 			encryptedRef = "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
 		)
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -778,7 +778,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 			downloader = "03c712a7e29bc792ac8d8ae49793d28d5bda27ed70f0d90697b2fb456c0a168bd2"
 			testfile   = "testfile1"
 		)
-		downloaderClient, _, _, _ := newTestServer(t, testServerOptions{
+		downloaderClient, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -800,7 +800,7 @@ func TestAccessLogicPublisher(t *testing.T) {
 
 	t.Run("download-w/o-publisher", func(t *testing.T) {
 		encryptedRef := "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -820,13 +820,13 @@ func TestAccessLogicPublisher(t *testing.T) {
 func TestAccessLogicGrantees(t *testing.T) {
 	t.Parallel()
 	var (
-		spk, _          = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
-		pk, _           = crypto.DecodeSecp256k1PrivateKey(spk)
-		storerMock      = mockstorer.New()
-		h, fixtureHref  = prepareHistoryFixture(storerMock)
-		logger          = log.Noop
-		addr            = swarm.RandAddress(t)
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		spk, _             = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
+		pk, _              = crypto.DecodeSecp256k1PrivateKey(spk)
+		storerMock         = mockstorer.New()
+		h, fixtureHref     = prepareHistoryFixture(storerMock)
+		logger             = log.Noop
+		addr               = swarm.RandAddress(t)
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),
@@ -839,7 +839,7 @@ func TestAccessLogicGrantees(t *testing.T) {
 			publicKeyBytes = crypto.EncodeSecp256k1PublicKey(&pk.PublicKey)
 			publisher      = hex.EncodeToString(publicKeyBytes)
 		)
-		clientwihtpublisher, _, _, _ := newTestServer(t, testServerOptions{
+		clientwihtpublisher, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        storerMock,
 			Logger:        logger,
 			Post:          mockpost.New(mockpost.WithAcceptAll()),

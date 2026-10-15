@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -70,7 +73,50 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 		return uploaderSession.Put(ctx, c.WithStamp(stamp))
 	}
 
-	if err := s.traverser.Traverse(ctx, root, fn, rLevel); err != nil {
+	// Dispersed replicas exist for every joiner root (the reference and, for
+	// manifests, every node and entry), so re-create them for each root.
+	var opts []traversal.Option
+	if rLevel != redundancy.NONE {
+		seen := make(map[string]struct{})
+		replicaPutter := replicas.NewPutter(storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			idAddress, err := storage.IdentityAddress(ch)
+			if err != nil {
+				return fmt.Errorf("identity address for replica %s: %w", ch.Address(), err)
+			}
+			stamp, err := stamper.Stamp(ch.Address(), idAddress)
+			if err != nil {
+				return fmt.Errorf("stamping replica %s: %w", ch.Address(), err)
+			}
+			return uploaderSession.Put(ctx, ch.WithStamp(stamp))
+		}), rLevel)
+
+		opts = append(opts, traversal.WithRootFn(func(ref swarm.Address) error {
+			// replicas are keyed on the 32-byte content address, so trim encrypted references
+			addr := ref
+			if len(ref.Bytes()) == encryption.ReferenceSize {
+				addr = swarm.NewAddress(ref.Bytes()[:swarm.HashSize])
+			}
+			if _, ok := seen[addr.ByteString()]; ok {
+				return nil
+			}
+			seen[addr.ByteString()] = struct{}{}
+
+			rootChunk, err := getter.Get(ctx, addr)
+			if err != nil {
+				return fmt.Errorf("get root chunk %s for dispersed replicas: %w", addr, err)
+			}
+			// replicas only exist for content-addressed roots
+			if !cac.Valid(rootChunk) {
+				return nil
+			}
+			if err := replicaPutter.Put(ctx, rootChunk); err != nil {
+				return fmt.Errorf("re-uploading dispersed replicas of %s: %w", addr, err)
+			}
+			return nil
+		}))
+	}
+
+	if err := s.traverser.Traverse(ctx, root, fn, rLevel, opts...); err != nil {
 		return errors.Join(
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),

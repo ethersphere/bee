@@ -73,12 +73,12 @@ func seedLegacyEntry(t *testing.T, st transaction.Storage, bin uint8, binID uint
 	}
 }
 
-// TestStep08ZeroStampHashRemovalFreesSlot covers a legacy entry recorded with
+// TestStep09ZeroStampHashRemovalFreesSlot covers a legacy entry recorded with
 // an unset stamp hash. Removing it must also drop its stamp index and chunk
 // stamp rows: they are keyed by batch and index, not by hash, and if they
 // survive the slot is poisoned. Pullsync can then neither restore the same
 // chunk nor accept a newer chunk in that slot.
-func TestStep08ZeroStampHashRemovalFreesSlot(t *testing.T) {
+func TestStep09ZeroStampHashRemovalFreesSlot(t *testing.T) {
 	t.Parallel()
 
 	st := newRealStorage(t)
@@ -94,7 +94,7 @@ func TestStep08ZeroStampHashRemovalFreesSlot(t *testing.T) {
 	bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
 	seedLegacyEntry(t, st, bin, 1, ch1, swarm.EmptyAddress.Bytes())
 
-	if err := localmigration.Step08(st, log.Noop)(); err != nil {
+	if err := localmigration.Step09(st, log.Noop)(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,18 +127,18 @@ func TestStep08ZeroStampHashRemovalFreesSlot(t *testing.T) {
 	}
 }
 
-// TestStep08SameAddressRemovalsReleasePayload covers two entries at one
+// TestStep09SameAddressRemovalsReleasePayload covers two entries at one
 // address (a single owner chunk stamped twice) that are both removed within
 // one migration page. Each removal must release one reference so the payload
 // leaves the chunkstore; reading the reference count from the store while the
 // batch is still pending decrements it only once and leaks the blob.
-func TestStep08SameAddressRemovalsReleasePayload(t *testing.T) {
+func TestStep09SameAddressRemovalsReleasePayload(t *testing.T) {
 	t.Parallel()
 
 	st := newRealStorage(t)
 	baseAddr := swarm.RandAddress(t)
 
-	// an invalid payload at a SOC address: step_08 removes such entries
+	// an invalid payload at a SOC address: step_09 removes such entries
 	sc := soctesting.GenerateMockSOC(t, []byte("payload")).Chunk()
 	bad := swarm.NewChunk(sc.Address(), []byte("garbage payload that does not validate"))
 	bin := swarm.Proximity(baseAddr.Bytes(), sc.Address().Bytes())
@@ -158,7 +158,7 @@ func TestStep08SameAddressRemovalsReleasePayload(t *testing.T) {
 		t.Fatalf("seed ref count %d, want 2", rIdx.RefCnt)
 	}
 
-	if err := localmigration.Step08(st, log.Noop)(); err != nil {
+	if err := localmigration.Step09(st, log.Noop)(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,11 +171,11 @@ func TestStep08SameAddressRemovalsReleasePayload(t *testing.T) {
 	}
 }
 
-// TestStep08UnreadableChunkRemoval covers a chunk whose payload cannot be read
+// TestStep09UnreadableChunkRemoval covers a chunk whose payload cannot be read
 // from the chunkstore due to disk/I/O corruption. Rather than aborting migration
-// and causing a fatal bootloop on startup, step_08 removes the corrupted entry
+// and causing a fatal bootloop on startup, step_09 removes the corrupted entry
 // and allows the node to start and re-sync.
-func TestStep08UnreadableChunkRemoval(t *testing.T) {
+func TestStep09UnreadableChunkRemoval(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -220,8 +220,8 @@ func TestStep08UnreadableChunkRemoval(t *testing.T) {
 	}
 
 	// Migration should tolerate the unreadable chunk and complete without error.
-	if err := localmigration.Step08(st, log.Noop)(); err != nil {
-		t.Fatalf("step_08 failed on unreadable chunk: %v", err)
+	if err := localmigration.Step09(st, log.Noop)(); err != nil {
+		t.Fatalf("step_09 failed on unreadable chunk: %v", err)
 	}
 
 	// The corrupted reserve entry must be removed.
@@ -239,10 +239,10 @@ func TestStep08UnreadableChunkRemoval(t *testing.T) {
 	}
 }
 
-// TestStep08DuplicateBinIDRemoval covers two BatchRadiusItems sharing the same
+// TestStep09DuplicateBinIDRemoval covers two BatchRadiusItems sharing the same
 // (bin, binID). The migration must keep the first entry, remove the duplicate
 // entry, and avoid leaving an orphaned ChunkSumItem.
-func TestStep08DuplicateBinIDRemoval(t *testing.T) {
+func TestStep09DuplicateBinIDRemoval(t *testing.T) {
 	t.Parallel()
 
 	st := newRealStorage(t)
@@ -275,8 +275,8 @@ func TestStep08DuplicateBinIDRemoval(t *testing.T) {
 	// Seed second chunk sharing the exact same bin and binID = 10
 	seedLegacyEntry(t, st, bin, 10, ch2, stampHash2)
 
-	if err := localmigration.Step08(st, log.Noop)(); err != nil {
-		t.Fatalf("step_08 failed on duplicate binID: %v", err)
+	if err := localmigration.Step09(st, log.Noop)(); err != nil {
+		t.Fatalf("step_09 failed on duplicate binID: %v", err)
 	}
 
 	sum1, err := storage.ChunkSum(ch1)
