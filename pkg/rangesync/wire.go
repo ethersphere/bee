@@ -5,10 +5,13 @@
 package rangesync
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // ErrInvalidMessage is wrapped by every error that reports a peer message
@@ -57,20 +60,74 @@ type Items struct {
 	Reply bool
 }
 
+// digestSize is the length of a summary digest on the wire.
+const digestSize = len(fingerprint.Summary{}.Digest)
+
+// invalid returns an error wrapping ErrInvalidMessage.
+func invalid(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalidMessage, fmt.Sprintf(format, args...))
+}
+
 // ParseRange decodes a range received from a peer. The decoding is strict: p
 // must not be nil, p.Bits must be at most fingerprint.MaxBits, and p.Prefix
 // must hold exactly ceil(p.Bits/8) bytes with every bit past p.Bits zero. The
 // result is therefore canonical (as returned by fingerprint.NewRange). Errors
 // wrap ErrInvalidMessage.
 func ParseRange(p *pb.Range) (fingerprint.Range, error) {
-	return fingerprint.Range{}, errNotImplemented
+	if p == nil {
+		return fingerprint.Range{}, invalid("missing range")
+	}
+	if p.Bits > fingerprint.MaxBits {
+		return fingerprint.Range{}, invalid("range of %d bits", p.Bits)
+	}
+	bits := int(p.Bits)
+	if len(p.Prefix) != (bits+7)/8 {
+		return fingerprint.Range{}, invalid("range of %d bits with a %d byte prefix", bits, len(p.Prefix))
+	}
+	if rem := bits % 8; rem != 0 && p.Prefix[len(p.Prefix)-1]&(0xff>>rem) != 0 {
+		return fingerprint.Range{}, invalid("range of %d bits with bits set past them", bits)
+	}
+	return fingerprint.NewRange(swarm.NewAddress(p.Prefix), uint8(bits)), nil
 }
 
 // ParseID decodes an element ID received from a peer: p must not be nil and
 // p.Address and p.StampHash must hold exactly 32 bytes each
 // (fingerprint.ParseID). Errors wrap ErrInvalidMessage.
 func ParseID(p *pb.ID) (fingerprint.ID, error) {
-	return fingerprint.ID{}, errNotImplemented
+	if p == nil {
+		return fingerprint.ID{}, invalid("missing id")
+	}
+	id, err := fingerprint.ParseID(p.Address, p.StampHash)
+	if err != nil {
+		return fingerprint.ID{}, fmt.Errorf("%w: %w", ErrInvalidMessage, err)
+	}
+	return id, nil
+}
+
+// parseSummary decodes a count and its digest: the digest is empty when the
+// count is 0 and exactly 32 bytes otherwise.
+func parseSummary(count uint64, digest []byte) (fingerprint.Summary, error) {
+	s := fingerprint.Summary{Count: count}
+	if count == 0 {
+		if len(digest) != 0 {
+			return s, invalid("digest of %d bytes with count 0", len(digest))
+		}
+		return s, nil
+	}
+	if len(digest) != digestSize {
+		return s, invalid("digest of %d bytes", len(digest))
+	}
+	copy(s.Digest[:], digest)
+	return s, nil
+}
+
+// encodeDigest returns the wire form of the digest of s: omitted when the
+// count is 0.
+func encodeDigest(s fingerprint.Summary) []byte {
+	if s.Count == 0 {
+		return nil
+	}
+	return bytes.Clone(s.Digest[:])
 }
 
 // ParseFingerprint decodes a Fingerprint part: p and its range must not be
@@ -78,7 +135,18 @@ func ParseID(p *pb.ID) (fingerprint.ID, error) {
 // p.Count is 0 and exactly 32 bytes otherwise. A zero count decodes to the
 // zero Summary. Errors wrap ErrInvalidMessage.
 func ParseFingerprint(p *pb.Fingerprint) (fingerprint.Range, fingerprint.Summary, error) {
-	return fingerprint.Range{}, fingerprint.Summary{}, errNotImplemented
+	if p == nil {
+		return fingerprint.Range{}, fingerprint.Summary{}, invalid("missing fingerprint")
+	}
+	r, err := ParseRange(p.Range)
+	if err != nil {
+		return fingerprint.Range{}, fingerprint.Summary{}, fmt.Errorf("fingerprint: %w", err)
+	}
+	s, err := parseSummary(p.Count, p.Digest)
+	if err != nil {
+		return fingerprint.Range{}, fingerprint.Summary{}, fmt.Errorf("fingerprint %s: %w", r, err)
+	}
+	return r, s, nil
 }
 
 // ParseItems decodes an Items part and checks every rule of a page that
@@ -89,7 +157,51 @@ func ParseFingerprint(p *pb.Fingerprint) (fingerprint.Range, fingerprint.Summary
 // previous ID; at most ItemsPageSize IDs, and at least one when p.More is
 // set. Errors wrap ErrInvalidMessage.
 func ParseItems(p *pb.Items) (Items, error) {
-	return Items{}, errNotImplemented
+	if p == nil {
+		return Items{}, invalid("missing items")
+	}
+	r, err := ParseRange(p.Range)
+	if err != nil {
+		return Items{}, fmt.Errorf("items: %w", err)
+	}
+	if len(p.IDs) > ItemsPageSize {
+		return Items{}, invalid("items %s: page of %d ids", r, len(p.IDs))
+	}
+	if p.More && len(p.IDs) == 0 {
+		return Items{}, invalid("items %s: empty page with more", r)
+	}
+	it := Items{Range: r, More: p.More, Reply: p.Reply}
+	switch len(p.After) {
+	case 0:
+	case fingerprint.IDSize:
+		var after fingerprint.ID
+		copy(after[:], p.After)
+		if !r.ContainsID(after) {
+			return Items{}, invalid("items %s: cursor outside the range", r)
+		}
+		it.After = &after
+	default:
+		return Items{}, invalid("items %s: cursor of %d bytes", r, len(p.After))
+	}
+	if len(p.IDs) > 0 {
+		it.IDs = make([]fingerprint.ID, len(p.IDs))
+	}
+	prev := it.After
+	for i, pid := range p.IDs {
+		id, err := ParseID(pid)
+		if err != nil {
+			return Items{}, fmt.Errorf("items %s: %w", r, err)
+		}
+		if !r.ContainsID(id) {
+			return Items{}, invalid("items %s: id outside the range", r)
+		}
+		if prev != nil && id.Compare(*prev) <= 0 {
+			return Items{}, invalid("items %s: ids out of order", r)
+		}
+		it.IDs[i] = id
+		prev = &it.IDs[i]
+	}
+	return it, nil
 }
 
 // ParseStatus decodes a Status received from a peer: p.Root must not be nil
@@ -97,38 +209,69 @@ func ParseItems(p *pb.Items) (Items, error) {
 // exactly 32 bytes otherwise; Root.Bits + LeafBits must be at most
 // fingerprint.MaxBits. LeafBits is a uint32 on the wire, so the sum is
 // computed in uint64 (an int sum wraps on 32-bit platforms such as 386 and
-// arm, which bee is released for). Mapping is returned as is:
-// whether it matches is the caller's decision. AuditRound and AuditDigest are
-// ignored in Phase 1. Errors wrap ErrInvalidMessage.
+// arm, which bee is released for). Mapping is returned as is: whether it
+// matches is the caller's decision. AuditRound and AuditDigest are ignored in
+// Phase 1. Errors wrap ErrInvalidMessage.
 func ParseStatus(p *pb.Status) (Status, error) {
-	return Status{}, errNotImplemented
+	if p == nil {
+		return Status{}, invalid("missing status")
+	}
+	root, err := ParseRange(p.Root)
+	if err != nil {
+		return Status{}, fmt.Errorf("status root: %w", err)
+	}
+	if uint64(root.Bits)+uint64(p.LeafBits) > fingerprint.MaxBits {
+		return Status{}, invalid("status: root of %d bits with %d leaf bits", root.Bits, p.LeafBits)
+	}
+	s, err := parseSummary(p.Count, p.Digest)
+	if err != nil {
+		return Status{}, fmt.Errorf("status: %w", err)
+	}
+	return Status{Root: root, Summary: s, LeafBits: uint8(p.LeafBits), Mapping: p.Mapping}, nil
 }
 
 // EncodeRange returns the wire form of r. The prefix is canonical, so
 // ParseRange accepts the result and returns a range Equal to r.
 func EncodeRange(r fingerprint.Range) *pb.Range {
-	return nil
+	c := fingerprint.NewRange(r.Prefix, r.Bits)
+	return &pb.Range{Prefix: c.Prefix.Bytes(), Bits: uint32(c.Bits)}
 }
 
 // EncodeID returns the wire form of id.
 func EncodeID(id fingerprint.ID) *pb.ID {
-	return nil
+	return &pb.ID{Address: bytes.Clone(id[:swarm.HashSize]), StampHash: bytes.Clone(id[swarm.HashSize:])}
 }
 
 // EncodeFingerprint returns the Fingerprint part of range r with summary s.
 // The digest is omitted when s.Count is 0.
 func EncodeFingerprint(r fingerprint.Range, s fingerprint.Summary) *pb.Fingerprint {
-	return nil
+	return &pb.Fingerprint{Range: EncodeRange(r), Count: s.Count, Digest: encodeDigest(s)}
 }
 
 // EncodeItems returns the wire form of the page it. After is omitted when it
 // is nil.
 func EncodeItems(it Items) *pb.Items {
-	return nil
+	p := &pb.Items{Range: EncodeRange(it.Range), More: it.More, Reply: it.Reply}
+	if len(it.IDs) > 0 {
+		p.IDs = make([]*pb.ID, len(it.IDs))
+		for i, id := range it.IDs {
+			p.IDs[i] = EncodeID(id)
+		}
+	}
+	if it.After != nil {
+		p.After = bytes.Clone(it.After[:])
+	}
+	return p
 }
 
 // EncodeStatus returns the wire form of st, with the digest omitted when
 // st.Summary.Count is 0 and the audit fields empty.
 func EncodeStatus(st Status) *pb.Status {
-	return nil
+	return &pb.Status{
+		Root:     EncodeRange(st.Root),
+		Count:    st.Summary.Count,
+		Digest:   encodeDigest(st.Summary),
+		LeafBits: uint32(st.LeafBits),
+		Mapping:  st.Mapping,
+	}
 }

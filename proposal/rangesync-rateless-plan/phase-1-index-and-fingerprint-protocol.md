@@ -1381,6 +1381,28 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `TestIndexerRadiusReadAfterWake` (a `SetRadius` landing right after the radius read leaves a
   wake-up behind; the hook fires inside `StorageRadius`).
 
+- **T1.8 (implementation).**
+  - **Message budget.** `Handle` adds parts to a builder that tracks the exact encoded size
+    (`Part.Size()` plus the field framing) and admits a part only if an upper bound of its size
+    still fits: 88 B per `Fingerprint` (a split needs 16 × 88 B and 16 parts), 128 B per `Items`
+    page without IDs, 70 B per ID. So no returned message exceeds `MaxParts`/`MaxMessageBytes`
+    (checked on every message of every test by encoding it).
+  - **Deferred work** is one FIFO of tasks: a split (its range), an own listing stream (a cursor),
+    an answer stream (its pending intervals). Each message drains the queue in order; one stream may
+    emit several pages per message. Children summaries are computed when the split is emitted.
+  - **Answer intervals** are scanned with `IterateIDs` from a scan position; consecutive intervals
+    of a stream without an exclusion list are merged; `MaxPendingReplies` counts the intervals that
+    hold one (a counter, decremented when the interval is exhausted).
+  - The peer's `Items` streams stay in the session after they end, so a second stream for the same
+    range is rejected. After an error or the end, `Handle` returns an unexported `errSessionOver`.
+    `NewInitiator` reports a bad `Config.Open` with an unexported `errInvalidOpening` (not
+    `ErrInvalidMessage`: it is this node's error).
+  - Tests: `wire_test.go`, `scope_test.go`, `session_test.go` (incl. the convergence property
+    test against an in-memory fake `Local` whose digest is the XOR of `sha256(id)`, and
+    `TestSessionAnswerEnd`), fuzz targets `FuzzParseRange`, `FuzzParseFingerprint`,
+    `FuzzParseItems`, `FuzzParseStatus` (`wire_fuzz_test.go`) and `FuzzSessionHandle`
+    (`session_fuzz_test.go`). The session is single-goroutine; nothing is race-relevant.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -1611,3 +1633,9 @@ _(sessions append here)_
   reserve capacity as corruption.
 - **T1.6 review round 1 (CI):** add `TestIndexNoPartialCommit` (`pkg/rangesync/fingerprint`) and
   `TestIndexerRadiusReadAfterWake` (`pkg/rangesync`) to the T1.6 `-race` list.
+- **T1.8 → T1.9 (`Local` adapter cost):** `Session` calls `HasID` once per received ID (up to
+  ~15k per 1 MiB message), i.e. one `ReserveHasID` leveldb lookup each. If that shows up in T1.13
+  measurements, answer `Reply` pages by merging the page with one `ReserveIterateAddr` pass over
+  the covered interval instead (the `Local` interface allows adding a batch lookup).
+- **T1.8 → T1.13/T2.6:** benchmark `Session.Handle` for a full 1 MiB message of `Items` and for a
+  `MaxParts` split message, with the real Index and storer behind `Local`.

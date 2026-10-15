@@ -5,10 +5,14 @@
 package rangesync
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"slices"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
@@ -30,7 +34,14 @@ var (
 // root. Disjoint roots give ok false: the nodes do not sync. The result is
 // canonical.
 func SessionRoot(a, b fingerprint.Range) (root fingerprint.Range, ok bool) {
-	return fingerprint.Range{}, false
+	switch {
+	case a.ContainsRange(b):
+		return fingerprint.NewRange(b.Prefix, b.Bits), true
+	case b.ContainsRange(a):
+		return fingerprint.NewRange(a.Prefix, a.Bits), true
+	default:
+		return fingerprint.Range{}, false
+	}
 }
 
 // Scope is the part of the address space that one session reconciles and the
@@ -58,7 +69,20 @@ type Scope struct {
 // fingerprint.FanoutBits <= LeafDepth, no range of the session is ever split
 // past the leaf depth, so no further bound on LeafDepth is needed.
 func NewScope(local, remote Status) (Scope, error) {
-	return Scope{}, errNotImplemented
+	localLeaf := int(local.Root.Bits) + int(local.LeafBits)
+	remoteLeaf := int(remote.Root.Bits) + int(remote.LeafBits)
+	if localLeaf > fingerprint.MaxBits || remoteLeaf > fingerprint.MaxBits {
+		return Scope{}, fmt.Errorf("%w: leaf depth %d or %d over %d", ErrInvalidScope, localLeaf, remoteLeaf, fingerprint.MaxBits)
+	}
+	root, ok := SessionRoot(local.Root, remote.Root)
+	if !ok {
+		return Scope{}, fmt.Errorf("%w: %s and %s", ErrDisjointRoots, local.Root, remote.Root)
+	}
+	leaf := min(localLeaf, remoteLeaf)
+	if int(root.Bits) > leaf {
+		return Scope{}, fmt.Errorf("%w: session root %s deeper than leaf depth %d", ErrInvalidScope, root, leaf)
+	}
+	return Scope{Root: root, LeafDepth: uint8(leaf)}, nil
 }
 
 // CheckRange reports whether a range received from the peer may be used in
@@ -67,7 +91,13 @@ func NewScope(local, remote Status) (Scope, error) {
 // go past the leaf depth, so the slack is left only for the peer's opening
 // ranges. Errors wrap ErrInvalidMessage.
 func (s Scope) CheckRange(r fingerprint.Range) error {
-	return errNotImplemented
+	if !s.Root.ContainsRange(r) {
+		return invalid("range %s outside session root %s", r, s.Root)
+	}
+	if int(r.Bits) > int(s.LeafDepth)+LeafDepthSlack {
+		return invalid("range %s deeper than leaf depth %d", r, s.LeafDepth)
+	}
+	return nil
 }
 
 // CheckMessage checks the parts of a reconcile Message that need no session
@@ -78,5 +108,73 @@ func (s Scope) CheckRange(r fingerprint.Range) error {
 // ErrInvalidMessage. Session.Handle runs it on every message before the
 // checks that depend on the session state.
 func (s Scope) CheckMessage(m *pb.Message) error {
-	return errNotImplemented
+	_, err := s.parseMessage(m)
+	return err
+}
+
+// part is a decoded part of a reconcile Message: a Fingerprint (items nil)
+// or an Items page.
+type part struct {
+	r       fingerprint.Range
+	summary fingerprint.Summary
+	items   *Items
+}
+
+// parseMessage runs the checks of CheckMessage and returns the decoded parts.
+func (s Scope) parseMessage(m *pb.Message) ([]part, error) {
+	if m == nil {
+		return nil, invalid("missing message")
+	}
+	if len(m.Parts) > MaxParts {
+		return nil, invalid("message of %d parts", len(m.Parts))
+	}
+	parts := make([]part, len(m.Parts))
+	for i, p := range m.Parts {
+		switch k := p.GetKind().(type) {
+		case *pb.Part_FP:
+			r, sum, err := ParseFingerprint(k.FP)
+			if err != nil {
+				return nil, fmt.Errorf("part %d: %w", i, err)
+			}
+			parts[i] = part{r: r, summary: sum}
+		case *pb.Part_Items:
+			it, err := ParseItems(k.Items)
+			if err != nil {
+				return nil, fmt.Errorf("part %d: %w", i, err)
+			}
+			parts[i] = part{r: it.Range, items: &it}
+		case nil:
+			return nil, invalid("part %d has no kind", i)
+		default:
+			return nil, invalid("part %d: %T not supported", i, k)
+		}
+		if err := s.CheckRange(parts[i].r); err != nil {
+			return nil, fmt.Errorf("part %d: %w", i, err)
+		}
+	}
+	return parts, nil
+}
+
+// disjoint reports whether no two of the ranges overlap. Prefix ranges are
+// nested or disjoint, and sorted by their first address the ranges overlap
+// if and only if two neighbors do.
+func disjoint(ranges []fingerprint.Range) bool {
+	keys := make([]fingerprint.RangeKey, len(ranges))
+	for i, r := range ranges {
+		keys[i] = r.Key()
+	}
+	slices.SortFunc(keys, func(a, b fingerprint.RangeKey) int {
+		if c := bytes.Compare(a.Prefix[:], b.Prefix[:]); c != 0 {
+			return c
+		}
+		return int(a.Bits) - int(b.Bits)
+	})
+	for i := 1; i < len(keys); i++ {
+		a := fingerprint.Range{Prefix: swarm.NewAddress(keys[i-1].Prefix[:]), Bits: keys[i-1].Bits}
+		b := fingerprint.Range{Prefix: swarm.NewAddress(keys[i].Prefix[:]), Bits: keys[i].Bits}
+		if a.ContainsRange(b) || b.ContainsRange(a) {
+			return false
+		}
+	}
+	return true
 }

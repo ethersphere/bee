@@ -6,6 +6,8 @@ package rangesync
 
 import (
 	"errors"
+	"fmt"
+	"math/bits"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
@@ -16,6 +18,14 @@ import (
 // address index, and the session ends without a result.
 var ErrPeerBusy = errors.New("rangesync: peer busy")
 
+var (
+	// errSessionOver is returned by Handle once the session ended or failed.
+	errSessionOver = errors.New("rangesync: session over")
+	// errInvalidOpening is returned by NewInitiator for a Config.Open that
+	// breaks its rules.
+	errInvalidOpening = errors.New("rangesync: invalid opening")
+)
+
 // Summarizer returns the summary of the local elements in a range.
 // *fingerprint.Index satisfies it for ranges at most its leaf bits below its
 // root; for deeper ranges it returns an error and the caller scans.
@@ -24,6 +34,8 @@ type Summarizer interface {
 	// with the zero Digest when the count is 0. r is canonical.
 	Summary(r fingerprint.Range) (fingerprint.Summary, error)
 }
+
+var _ Summarizer = (*fingerprint.Index)(nil)
 
 // Local is the local side of a session: the node's elements, read through
 // the fingerprint index and the storer's address index. The stream handlers
@@ -130,7 +142,33 @@ type DecisionInput struct {
 // DecisionSendItems, DecisionRequestItems, DecisionStripe, (Phase 2: the
 // symbol stream,) DecisionSplit, DecisionExchangeItems.
 func Decide(in DecisionInput) Decision {
-	return 0
+	if in.Local == in.Remote {
+		return DecisionEqual
+	}
+	if in.Remote.Count == 0 {
+		return DecisionSendItems
+	}
+	if in.Local.Count == 0 {
+		return DecisionRequestItems
+	}
+	splittable := int(in.Range.Bits)+fingerprint.FanoutBits <= int(in.Scope.LeafDepth)
+	if splittable && in.Initiator && estimate(in.Local.Count, in.Remote.Count) > LargeDiff {
+		return DecisionStripe
+	}
+	// Phase 2: the symbol stream is decided here.
+	if splittable {
+		return DecisionSplit
+	}
+	return DecisionExchangeItems
+}
+
+// estimate returns the Phase-1 estimate of the difference between two
+// counts: max(|a − b|, 1).
+func estimate(a, b uint64) uint64 {
+	if a < b {
+		a, b = b, a
+	}
+	return max(a-b, 1)
 }
 
 // Session is the decision logic of one reconciliation session (proposal §6.3,
@@ -174,6 +212,41 @@ func Decide(in DecisionInput) Decision {
 type Session struct {
 	cfg       Config
 	initiator bool
+	received  bool // a Message was handled
+	over      bool // the session ended or failed
+
+	// unanswered holds the ranges this side sent a Fingerprint for that the
+	// peer has not answered.
+	unanswered map[fingerprint.RangeKey]struct{}
+	// in holds the peer's Items streams by range, ended ones included.
+	in map[fingerprint.RangeKey]*inStream
+	// replies holds this side's Items streams with Reply by range.
+	replies map[fingerprint.RangeKey]*listing
+	// answers holds this side's answers to the peer's Reply streams by range.
+	answers map[fingerprint.RangeKey]*answer
+	// tasks is the work to emit, in order.
+	tasks []task
+	// exclusions counts the pending reply intervals with an exclusion list.
+	exclusions int
+}
+
+// inStream is the state of one of the peer's Items streams.
+type inStream struct {
+	last         fingerprint.ID // last listed ID, set while more
+	more         bool
+	reply        bool
+	answersReply bool // answers this side's Reply stream for the range
+}
+
+func newSession(cfg Config, initiator bool) *Session {
+	return &Session{
+		cfg:        cfg,
+		initiator:  initiator,
+		unanswered: make(map[fingerprint.RangeKey]struct{}),
+		in:         make(map[fingerprint.RangeKey]*inStream),
+		replies:    make(map[fingerprint.RangeKey]*listing),
+		answers:    make(map[fingerprint.RangeKey]*answer),
+	}
 }
 
 // NewInitiator returns the session of the node that opens it, and the opening
@@ -182,7 +255,34 @@ type Session struct {
 // AuditRound for a salted session (Phase 5), with a cfg.Local that salts its
 // summaries accordingly.
 func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
-	return &Session{cfg: cfg, initiator: true}, nil, errNotImplemented
+	open := cfg.Open
+	if len(open) == 0 {
+		open = []fingerprint.Range{cfg.Scope.Root}
+	}
+	if len(open) > MaxParts {
+		return nil, nil, fmt.Errorf("%w: %d ranges", errInvalidOpening, len(open))
+	}
+	for _, r := range open {
+		// not wrapped: a bad opening is this node's error, not a violation
+		if cfg.Scope.CheckRange(r) != nil {
+			return nil, nil, fmt.Errorf("%w: range %s outside the scope or too deep", errInvalidOpening, r)
+		}
+	}
+	if !disjoint(open) {
+		return nil, nil, fmt.Errorf("%w: overlapping ranges", errInvalidOpening)
+	}
+	s := newSession(cfg, true)
+	parts := make([]*pb.Part, 0, len(open))
+	for _, r := range open {
+		r = fingerprint.NewRange(r.Prefix, r.Bits)
+		sum, err := cfg.Local.Summary(r)
+		if err != nil {
+			return nil, nil, fmt.Errorf("local summary of %s: %w", r, err)
+		}
+		parts = append(parts, fingerprintPart(r, sum))
+		s.unanswered[r.Key()] = struct{}{}
+	}
+	return s, &pb.Message{Parts: parts}, nil
 }
 
 // NewResponder returns the session of the node that serves it. The first
@@ -191,7 +291,7 @@ func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
 // choose a cfg.Local that salts its summaries for that round (Phase 5); the
 // Session itself ignores AuditRound. cfg.Striper and cfg.Open are not used.
 func NewResponder(cfg Config) *Session {
-	return &Session{cfg: cfg}
+	return newSession(cfg, false)
 }
 
 // Handle processes Message in from the peer and returns the Message to send
@@ -247,5 +347,528 @@ func NewResponder(cfg Config) *Session {
 // returned wrapped, does not wrap ErrInvalidMessage and ends the session; it
 // is not the peer's fault and must not be scored.
 func (s *Session) Handle(in *pb.Message) (out *pb.Message, wants []fingerprint.ID, err error) {
-	return nil, nil, errNotImplemented
+	if s.over {
+		return nil, nil, errSessionOver
+	}
+	out, wants, err = s.handle(in)
+	if err != nil || out == nil {
+		s.over = true
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, wants, nil
+}
+
+func (s *Session) handle(in *pb.Message) (*pb.Message, []fingerprint.ID, error) {
+	first := !s.received
+	s.received = true
+	if in == nil {
+		return nil, nil, invalid("missing message")
+	}
+	if in.Busy {
+		if s.initiator && first && len(in.Parts) == 0 {
+			return nil, nil, ErrPeerBusy
+		}
+		return nil, nil, invalid("unexpected busy")
+	}
+	parts, err := s.cfg.Scope.parseMessage(in)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	opening := !s.initiator && first
+	if opening {
+		if err := checkOpening(parts); err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(parts) == 0 {
+		for _, st := range s.in {
+			if st.more {
+				return nil, nil, invalid("empty message with an open items stream")
+			}
+		}
+		if !s.pending() {
+			return nil, nil, nil
+		}
+	}
+
+	var wants []fingerprint.ID
+	// splits holds, for each range the peer split in this message, the
+	// children seen so far as a bit mask.
+	splits := make(map[fingerprint.RangeKey]uint64)
+	for _, p := range parts {
+		if p.items != nil {
+			w, err := s.handleItems(*p.items)
+			if err != nil {
+				return nil, nil, err
+			}
+			wants = append(wants, w...)
+			continue
+		}
+		if !opening {
+			if err := s.checkChild(p.r, splits); err != nil {
+				return nil, nil, err
+			}
+		}
+		if err := s.decide(p.r, p.summary); err != nil {
+			return nil, nil, err
+		}
+	}
+	for _, mask := range splits {
+		if mask != 1<<splitParts-1 {
+			return nil, nil, invalid("incomplete split")
+		}
+	}
+
+	out, err := s.build()
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, wants, nil
+}
+
+// checkOpening checks the responder's first Message: one or more
+// Fingerprints of pairwise disjoint ranges and nothing else.
+func checkOpening(parts []part) error {
+	if len(parts) == 0 {
+		return invalid("empty opening")
+	}
+	ranges := make([]fingerprint.Range, len(parts))
+	for i, p := range parts {
+		if p.items != nil {
+			return invalid("items in the opening")
+		}
+		ranges[i] = p.r
+	}
+	if !disjoint(ranges) {
+		return invalid("overlapping ranges in the opening")
+	}
+	return nil
+}
+
+// checkChild checks that the Fingerprint of r belongs to the peer's split of
+// a range this side sent and the peer has not answered, which r's split in
+// this message answers. splits records the children seen per parent.
+func (s *Session) checkChild(r fingerprint.Range, splits map[fingerprint.RangeKey]uint64) error {
+	if r.Bits < fingerprint.FanoutBits {
+		return invalid("fingerprint %s is no child of a split", r)
+	}
+	parent := fingerprint.NewRange(r.Prefix, r.Bits-fingerprint.FanoutBits)
+	if int(parent.Bits)+fingerprint.FanoutBits > int(s.cfg.Scope.LeafDepth) {
+		return invalid("split of %s past leaf depth %d", parent, s.cfg.Scope.LeafDepth)
+	}
+	key := parent.Key()
+	mask, seen := splits[key]
+	if !seen {
+		if _, ok := s.unanswered[key]; !ok {
+			return invalid("split of %s, which is not an unanswered range", parent)
+		}
+		delete(s.unanswered, key)
+	}
+	bit := uint64(1) << parent.ChildIndex(r.Prefix, fingerprint.FanoutBits)
+	if mask&bit != 0 {
+		return invalid("child %s twice", r)
+	}
+	splits[key] = mask | bit
+	return nil
+}
+
+// decide answers the peer's Fingerprint of r with summary remote.
+func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error {
+	local, err := s.cfg.Local.Summary(r)
+	if err != nil {
+		return fmt.Errorf("local summary of %s: %w", r, err)
+	}
+	switch Decide(DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}) {
+	case DecisionEqual:
+	case DecisionSendItems:
+		s.addListing(r, false, false)
+	case DecisionRequestItems:
+		s.addListing(r, true, true)
+	case DecisionStripe:
+		if s.cfg.Striper != nil && s.cfg.Striper.Stripe(r, local.Count, remote.Count) {
+			break
+		}
+		s.tasks = append(s.tasks, &split{r: r})
+	case DecisionSplit:
+		s.tasks = append(s.tasks, &split{r: r})
+	case DecisionExchangeItems:
+		s.addListing(r, true, false)
+	}
+	return nil
+}
+
+func (s *Session) addListing(r fingerprint.Range, reply, empty bool) {
+	l := &listing{r: r, reply: reply, empty: empty}
+	s.tasks = append(s.tasks, l)
+	if reply {
+		s.replies[r.Key()] = l
+	}
+}
+
+// handleItems checks one of the peer's Items pages against the session state
+// and returns the listed IDs this node does not hold. A Reply page queues
+// its answer.
+func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
+	key := it.Range.Key()
+	st := s.in[key]
+	if it.After == nil {
+		if st != nil {
+			return nil, invalid("second items stream for %s", it.Range)
+		}
+		st = &inStream{reply: it.Reply}
+		if _, ok := s.unanswered[key]; ok {
+			delete(s.unanswered, key)
+		} else if s.replies[key] != nil && !it.Reply {
+			st.answersReply = true
+		} else {
+			return nil, invalid("unsolicited items for %s", it.Range)
+		}
+		s.in[key] = st
+	} else {
+		if st == nil || !st.more || *it.After != st.last {
+			return nil, invalid("items for %s do not continue a stream", it.Range)
+		}
+		if it.Reply != st.reply {
+			return nil, invalid("items for %s change the reply flag", it.Range)
+		}
+	}
+	if st.answersReply && !it.More && !s.replies[key].done {
+		return nil, invalid("answers for %s end before the last reply page", it.Range)
+	}
+	st.more = it.More
+	if len(it.IDs) > 0 {
+		st.last = it.IDs[len(it.IDs)-1]
+	}
+
+	var wants, held []fingerprint.ID
+	for _, id := range it.IDs {
+		has, err := s.cfg.Local.HasID(id)
+		if err != nil {
+			return nil, fmt.Errorf("local lookup: %w", err)
+		}
+		switch {
+		case !has:
+			wants = append(wants, id)
+		case it.Reply:
+			held = append(held, id)
+		}
+	}
+	if it.Reply {
+		s.addReplyInterval(it, held)
+	}
+	return wants, nil
+}
+
+// addReplyInterval queues the answer to the peer's Reply page it, of which
+// this node holds the IDs held.
+func (s *Session) addReplyInterval(it Items, held []fingerprint.ID) {
+	key := it.Range.Key()
+	a := s.answers[key]
+	if a == nil {
+		a = &answer{r: it.Range}
+		s.answers[key] = a
+		s.tasks = append(s.tasks, a)
+	}
+	if !it.More {
+		a.peerDone = true
+	}
+	iv := &interval{lo: it.After}
+	if it.More {
+		hi := it.IDs[len(it.IDs)-1]
+		iv.hi = &hi
+	}
+	if len(held) > 0 && s.exclusions < MaxPendingReplies {
+		iv.excl = make(map[fingerprint.ID]struct{}, len(held))
+		for _, id := range held {
+			iv.excl[id] = struct{}{}
+		}
+		s.exclusions++
+	}
+	// Consecutive intervals of a stream are contiguous; merge the ones
+	// without an exclusion list.
+	if n := len(a.intervals); n > 0 && len(iv.excl) == 0 && len(a.intervals[n-1].excl) == 0 {
+		a.intervals[n-1].hi = iv.hi
+		return
+	}
+	a.intervals = append(a.intervals, iv)
+}
+
+// pending reports whether this side has work to send.
+func (s *Session) pending() bool {
+	for _, t := range s.tasks {
+		if t.pending() {
+			return true
+		}
+	}
+	return false
+}
+
+// build emits as much of the pending work as fits in one Message.
+func (s *Session) build() (*pb.Message, error) {
+	b := new(builder)
+	kept := s.tasks[:0]
+	for _, t := range s.tasks {
+		finished, err := t.emit(s, b)
+		if err != nil {
+			return nil, err
+		}
+		if !finished {
+			kept = append(kept, t)
+		}
+	}
+	clear(s.tasks[len(kept):])
+	s.tasks = kept
+	return &pb.Message{Parts: b.parts}, nil
+}
+
+// pendingReplies reports the state kept for answers to the peer's Reply
+// pages: the intervals with an exclusion list, the IDs in those lists, and
+// all pending intervals.
+func (s *Session) pendingReplies() (withExclusion, excludedIDs, intervals int) {
+	for _, a := range s.answers {
+		for _, iv := range a.intervals {
+			excludedIDs += len(iv.excl)
+		}
+		intervals += len(a.intervals)
+	}
+	return s.exclusions, excludedIDs, intervals
+}
+
+// Upper bounds of the encoded size of the parts a Session emits, including
+// the framing of the part inside its Message (tag and length varint, at most
+// 1 + 3 bytes, once for the Part in the Message and once for the kind in the
+// Part).
+const (
+	// fingerprintWireBytes bounds a Fingerprint part: a range of at most
+	// 2 + 34 + 3 bytes, a count of at most 11 and a digest of 34.
+	fingerprintWireBytes = 88
+	// pageWireBytes bounds an Items part without IDs: a range of at most 39
+	// bytes, a cursor of 66 and two flags of 2.
+	pageWireBytes = 128
+	// idWireBytes is the size of one ID in an Items part: tag, length and
+	// the 2 × (2 + 32) byte message.
+	idWireBytes = 70
+	// splitParts is the number of children of a split.
+	splitParts = 1 << fingerprint.FanoutBits
+)
+
+// builder collects the parts of one outgoing Message within MaxParts and
+// MaxMessageBytes.
+type builder struct {
+	parts []*pb.Part
+	size  int // encoded size of the Message so far
+}
+
+func (b *builder) fits(parts, size int) bool {
+	return len(b.parts)+parts <= MaxParts && b.size+size <= MaxMessageBytes
+}
+
+func (b *builder) add(p *pb.Part) {
+	n := p.Size()
+	b.size += 1 + (bits.Len64(uint64(n)|1)+6)/7 + n
+	b.parts = append(b.parts, p)
+}
+
+// pageRoom returns the number of IDs a new Items page can carry, or -1 when
+// not even an empty page fits.
+func (b *builder) pageRoom() int {
+	if !b.fits(1, pageWireBytes) {
+		return -1
+	}
+	return min(ItemsPageSize, (MaxMessageBytes-b.size-pageWireBytes)/idWireBytes)
+}
+
+func fingerprintPart(r fingerprint.Range, s fingerprint.Summary) *pb.Part {
+	return &pb.Part{Kind: &pb.Part_FP{FP: EncodeFingerprint(r, s)}}
+}
+
+func pagePart(it Items) *pb.Part {
+	return &pb.Part{Kind: &pb.Part_Items{Items: EncodeItems(it)}}
+}
+
+// task is deferrable outgoing work.
+type task interface {
+	// pending reports whether the task has something to send now.
+	pending() bool
+	// emit adds what fits to b and reports whether the task is finished.
+	emit(s *Session, b *builder) (finished bool, err error)
+}
+
+// split emits the Fingerprints of the children of r, all together.
+type split struct {
+	r fingerprint.Range
+}
+
+func (*split) pending() bool { return true }
+
+func (t *split) emit(s *Session, b *builder) (bool, error) {
+	if !b.fits(splitParts, splitParts*fingerprintWireBytes) {
+		return false, nil
+	}
+	for _, c := range t.r.Children(fingerprint.FanoutBits) {
+		sum, err := s.cfg.Local.Summary(c)
+		if err != nil {
+			return false, fmt.Errorf("local summary of %s: %w", c, err)
+		}
+		b.add(fingerprintPart(c, sum))
+		s.unanswered[c.Key()] = struct{}{}
+	}
+	return true, nil
+}
+
+// listing is an Items stream of every local ID in r, or, when empty, one
+// page without IDs (a request for the peer's IDs).
+type listing struct {
+	r      fingerprint.Range
+	reply  bool
+	empty  bool
+	cursor *fingerprint.ID
+	done   bool
+}
+
+func (l *listing) pending() bool { return !l.done }
+
+func (l *listing) emit(s *Session, b *builder) (bool, error) {
+	for !l.done {
+		room := b.pageRoom()
+		if room < 0 || room == 0 && !l.empty {
+			return false, nil
+		}
+		page := Items{Range: l.r, After: l.cursor, Reply: l.reply}
+		if !l.empty {
+			ids, more, err := s.list(l.r, l.cursor, room)
+			if err != nil {
+				return false, err
+			}
+			page.IDs, page.More = ids, more
+		}
+		b.add(pagePart(page))
+		if n := len(page.IDs); n > 0 {
+			last := page.IDs[n-1]
+			l.cursor = &last
+		}
+		l.done = !page.More
+	}
+	return true, nil
+}
+
+// list returns up to limit IDs of local elements in r after after, and
+// whether more follow.
+func (s *Session) list(r fingerprint.Range, after *fingerprint.ID, limit int) ([]fingerprint.ID, bool, error) {
+	var ids []fingerprint.ID
+	more := false
+	err := s.cfg.Local.IterateIDs(r, after, func(id fingerprint.ID) (bool, error) {
+		if len(ids) == limit {
+			more = true
+			return true, nil
+		}
+		ids = append(ids, id)
+		return false, nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("local ids of %s: %w", r, err)
+	}
+	return ids, more, nil
+}
+
+// interval is a pending part of an answer: the local IDs after lo (the scan
+// position, nil for the start of the range) up to and including hi (nil for
+// the end of the range), except those in excl.
+type interval struct {
+	lo, hi *fingerprint.ID
+	excl   map[fingerprint.ID]struct{}
+}
+
+// answer is this side's Items stream answering the peer's Reply stream for
+// r.
+type answer struct {
+	r         fingerprint.Range
+	intervals []*interval
+	cursor    *fingerprint.ID
+	started   bool
+	ended     bool
+	peerDone  bool // the peer's Reply stream ended
+}
+
+func (a *answer) pending() bool {
+	return len(a.intervals) > 0 || a.peerDone && a.started && !a.ended
+}
+
+func (a *answer) emit(s *Session, b *builder) (bool, error) {
+	for {
+		if len(a.intervals) == 0 {
+			if !a.peerDone {
+				return false, nil // waits for the peer's next Reply page
+			}
+			if !a.started {
+				a.ended = true
+				return true, nil
+			}
+			if b.pageRoom() < 0 {
+				return false, nil
+			}
+			b.add(pagePart(Items{Range: a.r, After: a.cursor}))
+			a.ended = true
+			return true, nil
+		}
+		room := b.pageRoom()
+		if room < 1 {
+			return false, nil
+		}
+		ids, err := a.collect(s, room)
+		if err != nil {
+			return false, err
+		}
+		if len(ids) == 0 {
+			continue // the intervals held nothing to send
+		}
+		more := len(a.intervals) > 0 || !a.peerDone
+		b.add(pagePart(Items{Range: a.r, IDs: ids, After: a.cursor, More: more}))
+		last := ids[len(ids)-1]
+		a.cursor, a.started = &last, true
+		if !more {
+			a.ended = true
+			return true, nil
+		}
+	}
+}
+
+// collect reads up to limit IDs from the pending intervals, dropping the
+// intervals it exhausts.
+func (a *answer) collect(s *Session, limit int) ([]fingerprint.ID, error) {
+	var ids []fingerprint.ID
+	for len(a.intervals) > 0 && len(ids) < limit {
+		iv := a.intervals[0]
+		full := false
+		err := s.cfg.Local.IterateIDs(a.r, iv.lo, func(id fingerprint.ID) (bool, error) {
+			if iv.hi != nil && id.Compare(*iv.hi) > 0 {
+				return true, nil
+			}
+			if len(ids) == limit {
+				full = true
+				return true, nil
+			}
+			pos := id
+			iv.lo = &pos
+			if _, ok := iv.excl[id]; !ok {
+				ids = append(ids, id)
+			}
+			return false, nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("local ids of %s: %w", a.r, err)
+		}
+		if full {
+			break
+		}
+		if len(iv.excl) > 0 {
+			s.exclusions--
+		}
+		a.intervals[0] = nil
+		a.intervals = a.intervals[1:]
+	}
+	return ids, nil
 }
