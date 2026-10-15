@@ -96,8 +96,8 @@ func TestNewInitiatorOpen(t *testing.T) {
 			t.Parallel()
 			_, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: local, Open: tc.open})
 			if !tc.valid {
-				if err == nil {
-					t.Fatal("invalid opening accepted")
+				if !errors.Is(err, rangesync.ErrInvalidOpening) || isInvalid(err) {
+					t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidOpening)
 				}
 				return
 			}
@@ -635,7 +635,7 @@ func TestSessionLimits(t *testing.T) {
 					}
 				}
 				withExcl, excluded, intervals := a.PendingReplies()
-				if withExcl > rangesync.MaxPendingReplies || excluded > rangesync.MaxPendingReplies*rangesync.ItemsPageSize || intervals > len(ranges)+rangesync.MaxPendingReplies {
+				if withExcl > rangesync.MaxPendingReplies || excluded > rangesync.MaxPendingReplies*rangesync.ItemsPageSize || intervals > len(ranges)+2*rangesync.MaxPendingReplies {
 					t.Fatalf("pending: %d with exclusion, %d excluded, %d intervals", withExcl, excluded, intervals)
 				}
 			}
@@ -700,7 +700,7 @@ func TestSessionLimits(t *testing.T) {
 
 // TestSessionConverges drives two sessions over in-memory sets against each
 // other and checks that each side's wants are exactly what the other holds
-// and it lacks, inside the session root.
+// and it lacks, inside the opened ranges.
 func TestSessionConverges(t *testing.T) {
 	t.Parallel()
 
@@ -709,57 +709,219 @@ func TestSessionConverges(t *testing.T) {
 		name                 string
 		local, remote        rangesync.Status
 		common, onlyA, onlyB int
-		equalCounts          bool
+		// paired puts each A-only ID in the leaf range of a B-only one, so
+		// counts are equal at every level
+		paired bool
+		// open is the opening (default: the session root) and gen the range
+		// the IDs are drawn from (default: the local root)
+		open []fingerprint.Range
+		gen  *fingerprint.Range
+		// longStreams requires an Items stream spanning three messages
+		longStreams bool
 	}{
-		{"equal", whole, whole, 3000, 0, 0, false},
-		{"one", whole, whole, 3000, 1, 0, false},
-		{"twenty", whole, whole, 3000, 10, 10, false},
-		{"thousand", whole, whole, 3000, 500, 500, false},
-		{"responder empty", whole, whole, 0, 3000, 0, false},
-		{"initiator empty", whole, whole, 0, 0, 3000, false},
-		{"disjoint", whole, whole, 0, 2000, 2000, false},
-		{"equal counts hide a difference", whole, whole, 3000, 7, 7, true},
-		{"spread over more than MaxParts ranges", whole, whole, 1000, 3000, 3000, false},
-		{"edge peer", status(rangeOf("01"), 12), status(rangeOf("0110"), 12), 3000, 300, 300, false},
-		{"misaligned roots", status(rangeOf("01"), 12), status(rangeOf("011"), 12), 3000, 300, 300, false},
+		{name: "equal", local: whole, remote: whole, common: 3000},
+		{name: "one", local: whole, remote: whole, common: 3000, onlyA: 1},
+		{name: "twenty", local: whole, remote: whole, common: 3000, onlyA: 10, onlyB: 10},
+		{name: "thousand", local: whole, remote: whole, common: 3000, onlyA: 500, onlyB: 500},
+		{name: "responder empty", local: whole, remote: whole, onlyA: 3000},
+		{name: "initiator empty", local: whole, remote: whole, onlyB: 3000},
+		{name: "disjoint", local: whole, remote: whole, onlyA: 2000, onlyB: 2000},
+		{name: "equal counts at every level", local: whole, remote: whole, common: 3000, onlyA: 7, onlyB: 7, paired: true},
+		{name: "spread over more than MaxParts ranges", local: whole, remote: whole, common: 1000, onlyA: 3000, onlyB: 3000},
+		{name: "edge peer", local: status(rangeOf("01"), 12), remote: status(rangeOf("0110"), 12), common: 3000, onlyA: 300, onlyB: 300},
+		{name: "initiator with the narrower root", local: status(rangeOf("0110"), 12), remote: status(rangeOf("01"), 12), common: 3000, onlyA: 300, onlyB: 300},
+		{name: "misaligned roots", local: status(rangeOf("01"), 12), remote: status(rangeOf("011"), 12), common: 3000, onlyA: 300, onlyB: 300},
+		{name: "differing leaf bits", local: status(rangeOf("01"), 12), remote: status(rangeOf("01"), 7), common: 3000, onlyA: 300, onlyB: 300},
+		{name: "stripe opening", local: whole, remote: whole, common: 3000, onlyA: 300, onlyB: 300, open: []fingerprint.Range{rangeOf("0110")}},
+		{name: "halves opening", local: whole, remote: whole, common: 3000, onlyA: 300, onlyB: 300, open: []fingerprint.Range{rangeOf("0"), rangeOf("1")}},
+		{
+			name: "opening deeper than the leaf depth", local: whole, remote: whole, common: 300, onlyA: 30, onlyB: 30,
+			open: rangeOf("011011001100").Children(2), gen: rangePtr(rangeOf("011011001100")),
+		},
+		{
+			name: "streams longer than a message on both sides", local: status(rangeOf("01"), 12), remote: status(rangeOf("01"), 0),
+			common: 40000, onlyA: 5, onlyB: 5, longStreams: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			rng := newRand(uint64(len(tc.name)))
 			scope := mustScope(t, tc.local, tc.remote)
-			span, _ := rangesync.SessionRoot(tc.local.Root, tc.remote.Root)
-			wide := tc.local.Root // IDs also outside the session root
-			common := randIDs(rng, wide, tc.common)
-			onlyA := randIDs(rng, wide, tc.onlyA)
-			onlyB := randIDs(rng, wide, tc.onlyB)
-			if tc.equalCounts {
-				onlyA = randIDs(rng, span, tc.onlyA)
-				onlyB = randIDs(rng, span, tc.onlyB)
+			gen := tc.local.Root
+			if tc.gen != nil {
+				gen = *tc.gen
 			}
-			la := newFakeLocal(append(slices.Clone(common), onlyA...)...)
-			lb := newFakeLocal(append(slices.Clone(common), onlyB...)...)
-
-			a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la})
-			if err != nil {
-				t.Fatal(err)
+			open := tc.open
+			if open == nil {
+				open = []fingerprint.Range{scope.Root}
 			}
-			b := rangesync.NewResponder(rangesync.Config{Scope: mustScope(t, tc.remote, tc.local), Local: lb})
-			wantsA, wantsB, messages := drive(t, a, open, b, pageChecker(t, new(int)))
-
-			inSpan := func(ids []fingerprint.ID) []fingerprint.ID {
+			la, lb, a2b, b2a := convergenceSets(rng, gen, scope, tc.common, tc.onlyA, tc.onlyB, tc.paired)
+			inOpen := func(ids []fingerprint.ID) []fingerprint.ID {
 				var out []fingerprint.ID
 				for _, id := range ids {
-					if span.ContainsID(id) {
-						out = append(out, id)
+					for _, r := range open {
+						if r.ContainsID(id) {
+							out = append(out, id)
+							break
+						}
 					}
 				}
 				return out
 			}
-			assertSet(t, wantsA, inSpan(onlyB))
-			assertSet(t, wantsB, inSpan(onlyA))
+			if tc.paired {
+				if sa, _ := la.Summary(scope.Root); sa.Count != func() uint64 { s, _ := lb.Summary(scope.Root); return s.Count }() {
+					t.Fatal("paired sets have different counts")
+				}
+			}
+
+			a, first, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Open: tc.open})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := rangesync.NewResponder(rangesync.Config{Scope: mustScope(t, tc.remote, tc.local), Local: lb})
+			wantsA, wantsB, messages := drive(t, a, first, b, pageChecker(t, new(int)), spanChecker(t, tc.longStreams))
+			assertSet(t, wantsA, inOpen(a2b))
+			assertSet(t, wantsB, inOpen(b2a))
 			if tc.onlyA+tc.onlyB == 0 && messages != 2 {
 				t.Fatalf("equal sets took %d messages, want 2", messages)
 			}
 		})
+	}
+}
+
+func rangePtr(r fingerprint.Range) *fingerprint.Range { return &r }
+
+// spanChecker returns an inspect function that, when want is set, fails the
+// test at its end unless some Items stream had pages in three messages.
+func spanChecker(t *testing.T, want bool) func(bool, *pb.Message) {
+	t.Helper()
+	type key struct {
+		from bool
+		r    fingerprint.RangeKey
+	}
+	spans := map[key]int{}
+	longest := 0
+	if want {
+		t.Cleanup(func() {
+			if longest < 3 {
+				t.Errorf("longest Items stream spans %d messages, want at least 3", longest)
+			}
+		})
+	}
+	return func(from bool, m *pb.Message) {
+		seen := map[key]bool{}
+		_, items := partsOf(t, m)
+		for _, it := range items {
+			k := key{from, it.Range.Key()}
+			if !seen[k] {
+				seen[k] = true
+				spans[k]++
+				longest = max(longest, spans[k])
+			}
+		}
+	}
+}
+
+// TestSessionAnswerWaits is the review repro of an honest session that broke
+// the empty-message rule: the answer stream has More set while it waits for
+// the peer's next Reply page, and has nothing to send in the meantime.
+func TestSessionAnswerWaits(t *testing.T) {
+	t.Parallel()
+
+	root := rangeOf("01")
+	scope := rangesync.Scope{Root: root, LeafDepth: 2}
+	ids := randIDs(newRand(99), root, 60000)
+	slices.SortFunc(ids, fingerprint.ID.Compare)
+	// an initiator-only ID right after the first common one
+	extra := ids[0]
+	extra[63]++
+	if extra.Compare(ids[0]) <= 0 || extra.Compare(ids[1]) >= 0 {
+		t.Fatal("extra id is not between the first two")
+	}
+	a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: newFakeLocal(append(slices.Clone(ids), extra)...)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: newFakeLocal(ids...)})
+	wantsA, wantsB, _ := drive(t, a, open, b, spanChecker(t, true))
+	assertSet(t, wantsA, nil)
+	assertSet(t, wantsB, []fingerprint.ID{extra})
+}
+
+// TestSessionNoEcho is the review repro of answers sending back IDs the peer
+// listed: when the answers fit in the next message, none may be echoed.
+func TestSessionNoEcho(t *testing.T) {
+	t.Parallel()
+
+	rng := newRand(5)
+	scope := rangesync.Scope{Root: rangeOf(""), LeafDepth: 8}
+	la, lb, a2b, b2a := convergenceSets(rng, scope.Root, scope, 20000, 1000, 1000, false)
+	a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: lb})
+	listedBy := [2]map[fingerprint.ID]bool{{}, {}}
+	echoed := 0
+	inspect := func(fromInitiator bool, m *pb.Message) {
+		side := 0
+		if fromInitiator {
+			side = 1
+		}
+		_, items := partsOf(t, m)
+		for _, it := range items {
+			for _, id := range it.IDs {
+				if it.Reply {
+					listedBy[side][id] = true
+				} else if listedBy[1-side][id] {
+					echoed++
+				}
+			}
+		}
+	}
+	wantsA, wantsB, _ := drive(t, a, open, b, inspect)
+	assertSet(t, wantsA, a2b)
+	assertSet(t, wantsB, b2a)
+	if echoed != 0 {
+		t.Fatalf("%d listed IDs sent back", echoed)
+	}
+}
+
+// TestSessionExclusionCap runs an honest session whose answers do not fit in
+// one message, so more than MaxPendingReplies answers stay pending: the
+// session keeps at most that many exclusion lists and still converges.
+func TestSessionExclusionCap(t *testing.T) {
+	t.Parallel()
+
+	rng := newRand(13)
+	scope := rangesync.Scope{Root: rangeOf(""), LeafDepth: 8}
+	leaves := scope.Root.Children(8)
+	common := make([]fingerprint.ID, 0, 2*len(leaves))
+	onlyA := make([]fingerprint.ID, 0, 100*len(leaves))
+	for _, leaf := range leaves {
+		common = append(common, randIDs(rng, leaf, 2)...)
+		onlyA = append(onlyA, randIDs(rng, leaf, 100)...)
+	}
+	a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: newFakeLocal(append(slices.Clone(common), onlyA...)...)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: newFakeLocal(common...)})
+	most := 0
+	inspect := func(fromInitiator bool, _ *pb.Message) {
+		if !fromInitiator {
+			return
+		}
+		withExcl, excluded, _ := a.PendingReplies()
+		if withExcl > rangesync.MaxPendingReplies || excluded > rangesync.MaxPendingReplies*rangesync.ItemsPageSize {
+			t.Fatalf("%d pending exclusion lists with %d IDs", withExcl, excluded)
+		}
+		most = max(most, withExcl)
+	}
+	wantsA, wantsB, _ := drive(t, a, open, b, inspect)
+	assertSet(t, wantsA, nil)
+	assertSet(t, wantsB, onlyA)
+	if most != rangesync.MaxPendingReplies {
+		t.Fatalf("at most %d pending exclusion lists, want the cap %d reached", most, rangesync.MaxPendingReplies)
 	}
 }

@@ -1403,6 +1403,31 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
     `FuzzParseItems`, `FuzzParseStatus` (`wire_fuzz_test.go`) and `FuzzSessionHandle`
     (`session_fuzz_test.go`). The session is single-goroutine; nothing is race-relevant.
 
+- **T1.8 review fixes (implementation review, 2026-10-15).**
+  - **HIGH, empty-message rule (supersedes that bullet of "T1.8 contract review fixes" and of
+    `Handle`'s rule list):** an answer stream keeps `More` while it waits for the peer's next
+    `Reply` page, and may have nothing to send meanwhile, so an honest side could send an empty
+    message with that stream open, and the lister rejected it as a violation (reached by edge peers
+    with large item ranges and sparse differences). Now an empty message is a violation only if one
+    of the peer's streams has `More` set **and** is not an answer to this side's `Reply` stream whose
+    last page this side has not sent yet (the peer is waiting for that page).
+  - **MEDIUM, exclusion cap (supersedes "At most 16 pending Reply pages keep their exclusion
+    lists … Past that, a Reply page is kept as its interval only" in "T1.8 contract review fixes"):**
+    every Reply page of the received message keeps its exclusion list while `Handle` runs (bounded
+    by the 1 MiB message), and the `MaxPendingReplies = 16` cap is applied after the reply is built,
+    to the answers still pending (first 16 in queue order keep their lists; the rest drop them and
+    merge with list-less neighbours). Before, only the first 16 pages of a message kept a list even
+    when all answers fit, and the session echoed back ~2× the IDs needed.
+  - `ErrInvalidOpening` is exported, so T1.9 can tell a configuration bug (bad `Config.Open`) from a
+    `Local` error.
+  - Tests added: `TestSessionAnswerWaits` and `TestSessionNoEcho` (the review repros),
+    `TestSessionExclusionCap` (an honest run that reaches the cap), new convergence cases (equal
+    counts at every level, stripe/halves/deeper-than-leaf openings, differing `LeafBits`, the
+    initiator as the narrower root, streams spanning three messages on both sides), the fuzz target
+    `FuzzSessionConverges` (drive-based over fuzzed sets and scopes; its seeds catch the HIGH), and
+    stronger `FuzzSessionHandle` invariants (wants only from listed, unheld IDs, once each; sent IDs
+    held; output ranges only ones the peer asked about).
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
@@ -1639,3 +1664,7 @@ _(sessions append here)_
   the covered interval instead (the `Local` interface allows adding a batch lookup).
 - **T1.8 → T1.13/T2.6:** benchmark `Session.Handle` for a full 1 MiB message of `Items` and for a
   `MaxParts` split message, with the real Index and storer behind `Local`.
+- **T1.8 → T1.9 (session cap, extends the session-level cap follow-up above):** also cap what a
+  session **sends** (bytes or messages): one ~50-byte `Items{R, Reply}` makes this side list every
+  ID in `R`, up to ~4M IDs ≈ 280 MB for a root-sized range, which an honest bootstrap can need but
+  a malicious peer can ask for repeatedly.

@@ -18,13 +18,13 @@ import (
 // address index, and the session ends without a result.
 var ErrPeerBusy = errors.New("rangesync: peer busy")
 
-var (
-	// errSessionOver is returned by Handle once the session ended or failed.
-	errSessionOver = errors.New("rangesync: session over")
-	// errInvalidOpening is returned by NewInitiator for a Config.Open that
-	// breaks its rules.
-	errInvalidOpening = errors.New("rangesync: invalid opening")
-)
+// ErrInvalidOpening is returned by NewInitiator for a Config.Open that breaks
+// its rules. It is this node's configuration error: it does not wrap
+// ErrInvalidMessage and is not the peer's fault.
+var ErrInvalidOpening = errors.New("rangesync: invalid opening")
+
+// errSessionOver is returned by Handle once the session ended or failed.
+var errSessionOver = errors.New("rangesync: session over")
 
 // Summarizer returns the summary of the local elements in a range.
 // *fingerprint.Index satisfies it for ranges at most its leaf bits below its
@@ -196,10 +196,12 @@ func estimate(a, b uint64) uint64 {
 // an Items stream are read lazily from Local.IterateIDs with a cursor when
 // the page is emitted, never ahead of time. An answer to a peer's Reply page
 // is kept as the interval the page covers plus the IDs of the page that this
-// node holds, which it must not send back. At most MaxPendingReplies Reply
-// pages keep those IDs. A Reply page received while that many are pending is
-// kept as its interval only, merged with the pending intervals before it in
-// the same range, and answered with every local ID in the interval: the peer
+// node holds, which it must not send back. While a Message is handled every
+// Reply page keeps those IDs (bounded by the size of the received Message);
+// once the returned Message is built, at most MaxPendingReplies of the
+// answers still pending keep them. The others are kept as their interval
+// only, merged with neighboring intervals of the same range that have no
+// list either, and answered with every local ID in the interval: the peer
 // receives IDs it already holds, which it does not want, and the memory
 // stays bounded by the number of ranges.
 //
@@ -226,8 +228,6 @@ type Session struct {
 	answers map[fingerprint.RangeKey]*answer
 	// tasks is the work to emit, in order.
 	tasks []task
-	// exclusions counts the pending reply intervals with an exclusion list.
-	exclusions int
 }
 
 // inStream is the state of one of the peer's Items streams.
@@ -260,16 +260,16 @@ func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
 		open = []fingerprint.Range{cfg.Scope.Root}
 	}
 	if len(open) > MaxParts {
-		return nil, nil, fmt.Errorf("%w: %d ranges", errInvalidOpening, len(open))
+		return nil, nil, fmt.Errorf("%w: %d ranges", ErrInvalidOpening, len(open))
 	}
 	for _, r := range open {
 		// not wrapped: a bad opening is this node's error, not a violation
 		if cfg.Scope.CheckRange(r) != nil {
-			return nil, nil, fmt.Errorf("%w: range %s outside the scope or too deep", errInvalidOpening, r)
+			return nil, nil, fmt.Errorf("%w: range %s outside the scope or too deep", ErrInvalidOpening, r)
 		}
 	}
 	if !disjoint(open) {
-		return nil, nil, fmt.Errorf("%w: overlapping ranges", errInvalidOpening)
+		return nil, nil, fmt.Errorf("%w: overlapping ranges", ErrInvalidOpening)
 	}
 	s := newSession(cfg, true)
 	parts := make([]*pb.Part, 0, len(open))
@@ -308,7 +308,9 @@ func NewResponder(cfg Config) *Session {
 // The work of one call is bounded: at most one Summary per received
 // Fingerprint and one per emitted Fingerprint (each at most MaxParts), one
 // HasID per received ID, and IterateIDs reads only as far as the IDs the
-// returned Message carries plus the IDs of the received Reply pages.
+// returned Message carries plus the IDs it skips because a Reply page listed
+// them: those of the received Message, and at most MaxPendingReplies ×
+// ItemsPageSize kept from earlier Messages.
 //
 // A Message with Busy set is valid only as the first Message an initiator
 // handles, and only with no parts; Handle then returns ErrPeerBusy and the
@@ -337,7 +339,9 @@ func NewResponder(cfg Config) *Session {
 //     ends (a page without More) only after this side sent its last Reply
 //     page for that range;
 //   - the peer sends an empty Message only when none of its Items streams
-//     has More set.
+//     has More set, except a stream that answers this side's Reply stream
+//     for a range whose last page this side has not sent yet: the peer is
+//     waiting for that page.
 //
 // A range is answered at most once. The peer may answer a Fingerprint in
 // any later Message, since work that does not fit is deferred; a range it
@@ -384,8 +388,11 @@ func (s *Session) handle(in *pb.Message) (*pb.Message, []fingerprint.ID, error) 
 		}
 	}
 	if len(parts) == 0 {
-		for _, st := range s.in {
-			if st.more {
+		for key, st := range s.in {
+			// a stream answering our unfinished Reply stream waits for its
+			// next page, which this side still owes
+			waiting := st.answersReply && !s.replies[key].done
+			if st.more && !waiting {
 				return nil, nil, invalid("empty message with an open items stream")
 			}
 		}
@@ -580,12 +587,11 @@ func (s *Session) addReplyInterval(it Items, held []fingerprint.ID) {
 		hi := it.IDs[len(it.IDs)-1]
 		iv.hi = &hi
 	}
-	if len(held) > 0 && s.exclusions < MaxPendingReplies {
+	if len(held) > 0 {
 		iv.excl = make(map[fingerprint.ID]struct{}, len(held))
 		for _, id := range held {
 			iv.excl[id] = struct{}{}
 		}
-		s.exclusions++
 	}
 	// Consecutive intervals of a stream are contiguous; merge the ones
 	// without an exclusion list.
@@ -621,7 +627,38 @@ func (s *Session) build() (*pb.Message, error) {
 	}
 	clear(s.tasks[len(kept):])
 	s.tasks = kept
+	s.capExclusions()
 	return &pb.Message{Parts: b.parts}, nil
+}
+
+// capExclusions keeps the exclusion lists of the first MaxPendingReplies
+// pending reply intervals, in answer order, drops the others and merges the
+// neighboring intervals of an answer that have no list.
+func (s *Session) capExclusions() {
+	kept := 0
+	for _, t := range s.tasks {
+		a, ok := t.(*answer)
+		if !ok {
+			continue
+		}
+		merged := a.intervals[:0]
+		for _, iv := range a.intervals {
+			if len(iv.excl) > 0 {
+				if kept < MaxPendingReplies {
+					kept++
+				} else {
+					iv.excl = nil
+				}
+			}
+			if n := len(merged); n > 0 && len(iv.excl) == 0 && len(merged[n-1].excl) == 0 {
+				merged[n-1].hi = iv.hi
+				continue
+			}
+			merged = append(merged, iv)
+		}
+		clear(a.intervals[len(merged):])
+		a.intervals = merged
+	}
 }
 
 // pendingReplies reports the state kept for answers to the peer's Reply
@@ -630,11 +667,14 @@ func (s *Session) build() (*pb.Message, error) {
 func (s *Session) pendingReplies() (withExclusion, excludedIDs, intervals int) {
 	for _, a := range s.answers {
 		for _, iv := range a.intervals {
+			if len(iv.excl) > 0 {
+				withExclusion++
+			}
 			excludedIDs += len(iv.excl)
 		}
 		intervals += len(a.intervals)
 	}
-	return s.exclusions, excludedIDs, intervals
+	return withExclusion, excludedIDs, intervals
 }
 
 // Upper bounds of the encoded size of the parts a Session emits, including
@@ -863,9 +903,6 @@ func (a *answer) collect(s *Session, limit int) ([]fingerprint.ID, error) {
 		}
 		if full {
 			break
-		}
-		if len(iv.excl) > 0 {
-			s.exclusions--
 		}
 		a.intervals[0] = nil
 		a.intervals = a.intervals[1:]
