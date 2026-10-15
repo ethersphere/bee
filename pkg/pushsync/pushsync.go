@@ -459,11 +459,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 						if !origin || swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) >= rad {
 							return nil, topology.ErrWantSelf
 						}
-						ps.metrics.OutOfDepthStoring.Inc()
-						// Peers were tried and none of them took the chunk:
-						// retrying right away cannot succeed, unlike the case
-						// of a node that has no peers at all.
+						// Peers were tried and none of them took the chunk,
+						// or they are all skipped for now: retrying right away
+						// cannot succeed, unlike the case of a node that has
+						// no peers at all.
 						if len(fullSkip) > 0 {
+							ps.metrics.OriginNoPeersLeft.Inc()
 							return nil, ErrOutOfDepthStoring
 						}
 					}
