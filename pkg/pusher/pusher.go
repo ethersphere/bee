@@ -183,7 +183,6 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-		s.metrics.TotalSynced.Inc()
 	}
 
 	go func() {
@@ -293,6 +292,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed reporting chunk")
 			return true, err
 		}
+		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
 	case errors.Is(err, pushsync.ErrShallowReceipt), errors.Is(err, pushsync.ErrOutOfDepthStoring):
 		if s.shallowReceipt(op.identityAddress) {
@@ -309,6 +309,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
+		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
@@ -350,6 +351,8 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
+		} else {
+			s.metrics.TotalSynced.Inc()
 		}
 		s.attempts.delete(op.identityAddress)
 	case errors.Is(err, pushsync.ErrShallowReceipt):
@@ -368,6 +371,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		loggerV1.Debug("direct upload: no node within the chunk's neighborhood took it", "chunk_address", op.Chunk.Address())
 		err = ErrCouldNotSync
 	case err == nil:
+		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
