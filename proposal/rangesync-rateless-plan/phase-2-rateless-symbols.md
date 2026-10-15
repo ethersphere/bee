@@ -264,6 +264,67 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
 - **Gate G3 (2026-10-14): Rateless IBLT accepted.** T2.1–T2.4 proceed as written; the §6.2
   `Symbols`/`More` encoding is unchanged. The stamp-hash grinding risk from the T2.0 follow-ups
   is tracked there (§9 row + adversarial test in T2.5).
+- **T2.1 (contract): API.** All in `fingerprint/rateless.go`. `Mapper{ID() uint32;
+  Indices(id) IndexIterator; Expected(count, i uint64) int64}` and `IndexIterator{Next() uint64}`
+  as in §5.2; `FloatMapper` (zero value usable, `NewFloatMapper()`, `ID() = DefaultMapperID`);
+  `CodedSymbol{Sum ID; Check [ChecksumSize]byte; Count int64}`; `Checksum(id) [16]byte`;
+  `Encode(m, syms, start, id, sign)`; `NewDecoder(m, r Range)`, `Add(start, remote, local)`,
+  `Received()`, `Done()`, `Result()`; codec `AppendSymbolData(dst, m, count, start, syms)` /
+  `ParseSymbolData(m, count, start, data)`; sentinels `ErrCorrupt`, `ErrInvalidBatch`,
+  `ErrInvalidSymbolData`; constants `ChecksumSize = 16`, `MinSymbolSize = 81`,
+  `MaxSymbolSize = 90` (for T2.4/T2.5 batch sizing against `MaxMessageBytes`), `EndIndex`.
+  Format constants sit next to their types in `rateless.go` (as `IDSize`, `LtHashSize` do), not in
+  `constants.go`.
+- **T2.1 (contract): group.** `*CodedSymbol` has `Add`/`Sub` (XOR on `Sum`/`Check`, wrapping
+  `int64` add/sub on `Count`) and `Zero`, so it satisfies T1.3's `Group` (checked at compile time
+  with `var _ = NewFenwick[CodedSymbol, *CodedSymbol]`). The `[BucketSymbols]CodedSymbol` array
+  adapter is T2.2's (D20).
+- **T2.1 (contract): `Checksum` is exported for T2.2.** One id touches ~16 root, ~12 level-1 and
+  ~13 Fenwick nodes × ~6 symbols; calling `Encode` per target would recompute the checksum and the
+  mapping each time. T2.2 instead builds `CodedSymbol{id, Checksum(id), ±1}` once, collects
+  `m.Indices(id)` once (still through the `Mapper`, as the task requires) and `Add`s/`Sub`s it at
+  each index. No other helper is published.
+- **T2.1 (contract): mapping sequence end.** Indices are strictly increasing from 0; a mapping may
+  end, after which `Next` returns `EndIndex = MaxUint64` forever. `FloatMapper` ends when
+  `i + gap > 2^53 − 1` (the float64-exact range), so no float → integer conversion is ever out of
+  range (those are implementation-defined in Go). Indices that large are never reached in practice
+  (a session sees ≤ `SessionSymbolBudget` symbols).
+- **T2.1 (contract): `FloatMapper` pinned.** PRNG: xoshiro256** (spelled out in code), state = the
+  32-byte seed `keccak256("rangesync/map" ‖ id)` as four little-endian `uint64` words, so the whole
+  256-bit seed matters (a 64-bit seed would let an uploader find two ids with identical mappings in
+  ~2^32 work, cf. the T2.0 grinding follow-up). `w = float64((x>>11)+1)·2^-53` is `1 − u` in
+  `(0, 1]`; `t = 1/math.Sqrt(w)` (correctly rounded on every arch; `math.Pow` is not);
+  `gap = max(1, ⌈(1.5 + i)·(t − 1)⌉)`. **Deviation from the task formula:** the `max(1, …)`; with
+  `u = 0` the formula gives gap 0, a repeated index, which XORs the id out of that symbol again.
+  `Expected(count, i) = Round(float64(count)·2 / (float64(i) + 2))` (one rounded division, then
+  `math.Round`, ties away from zero), clamped to `MaxInt64`; this is the pinned form of
+  `round(count/(1 + i/2))`, which rounds differently. The determinism rule (separate statements,
+  explicit `float64(...)` conversions, no product feeding an addition, range-checked conversions)
+  is in the `FloatMapper` godoc.
+- **T2.1 (contract): wire codec.** Per symbol at absolute index `i = start + k`:
+  `Sum 64 B ‖ Check 16 B ‖ binary.AppendVarint(Count − m.Expected(count, i))` (Go's signed varint
+  *is* zigzag), the difference in wrapping `int64` arithmetic so any `Count` round-trips whatever
+  `Symbols.Count` says (a lying `Count` only lengthens the sender's own encoding, so it is not
+  validated). Strict: whole symbols only, shortest varint only, `start + n` must not overflow; so
+  `ParseSymbolData` accepts exactly what `AppendSymbolData` produces (the fuzz target asserts
+  re-encoding is byte-identical). Empty data = zero symbols (whether an empty batch is allowed is
+  T2.4's call).
+- **T2.1 (contract): Decoder semantics.** It works on `d_i = local_i − remote_i` (§4.3.7):
+  `+1` → only local, `−1` → only remote. `Add` requires `start == Received()` and
+  `len(local) == len(remote)` (`local == nil` = empty local symbols) and returns `ErrInvalidBatch`
+  otherwise, without changing state; the session still checks `Symbols.Start` itself (a wrong
+  `Start` is a peer violation, `ErrInvalidBatch` is a caller bug). `Add` after `Done` is
+  `ErrInvalidBatch` (overshoot inside one batch is fine: a batch is added whole before peeling).
+  `Result()` returns copies **sorted ascending**, so T2.4 can emit `Items{R, onlyLocal}` directly
+  under T1.8's ascending-order paging rule. "Peel step" = one recovered id; the cap is
+  recoveries > `2 × Received()` → corrupt (honest decoding recovers at most one id per symbol).
+- **T2.1 (contract): two corruption rules beyond §6.4's three.** (a) a pure symbol at index `j`
+  whose id does not map to `j` → `ErrCorrupt`: removing that id would not clear symbol `j`, so
+  peeling could not continue correctly anyway, and it catches most false-pure symbols of the
+  truncated-checksum test; (b) symbol 0 empty while another received symbol is not →
+  `ErrCorrupt`: when the whole difference is recovered every symbol is empty, so this blocks a
+  wrong "done" from a coincidental empty symbol 0. Both are sound for honest streams. `ErrCorrupt`
+  is sticky; a corrupt decoder never reports `Done`.
 
 ## Follow-ups
 _(sessions append here)_
@@ -285,3 +346,8 @@ _(sessions append here)_
   assume this definition. `parts_sent{type}` / `parts_received{type}` (T1.13) need `symbols` and
   `more` values once T2.4 accepts those parts. `index_memory_bytes` must include the three symbol
   caches added by T2.2 (AC-R1).
+- **(T2.1) `Mapper.Indices` allocates.** It returns an `IndexIterator` interface (§5.2), so each
+  call boxes the iterator on the heap: one allocation per element, ~4.2M per T2.2 rebuild. If
+  T2.2's `BenchmarkIndexApply`/rebuild shows it matters, an allocation-free form (e.g.
+  `AppendIndices(dst []uint64, id, end) []uint64` on `Mapper`) would be a contract change to
+  `Mapper` and T2.7; not added now.

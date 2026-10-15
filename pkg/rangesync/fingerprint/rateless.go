@@ -1,0 +1,297 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package fingerprint
+
+import (
+	"encoding/binary"
+	"errors"
+	"math"
+)
+
+// Rateless IBLT (Yang, Gilad, Alizadeh, SIGCOMM 2024), proposal §4.3.4–§4.3.7.
+//
+// A set of IDs is encoded as an unbounded stream of coded symbols. A Mapper
+// decides which symbols each ID is mapped to; nothing else in this package
+// computes symbol indices or the mapping probability ρ. Encode, the Decoder
+// and the wire codec (AppendSymbolData, ParseSymbolData) all take a Mapper,
+// and so do the symbol caches of the Index.
+
+const (
+	// ChecksumSize is the size of the checksum of an ID in bytes (proposal
+	// §9: 128 bits, so a crafted collision needs ~2^64 work).
+	ChecksumSize = 16
+
+	// MinSymbolSize and MaxSymbolSize bound the encoded size of one coded
+	// symbol in Symbols.Data: the sum, the checksum and a varint of 1 to
+	// binary.MaxVarintLen64 bytes.
+	MinSymbolSize = IDSize + ChecksumSize + 1
+	MaxSymbolSize = IDSize + ChecksumSize + binary.MaxVarintLen64
+
+	// EndIndex is returned by IndexIterator.Next when a mapping has no further
+	// indices. It is never a symbol index.
+	EndIndex uint64 = math.MaxUint64
+)
+
+// Errors returned by the rateless coder.
+var (
+	// ErrCorrupt is returned by Decoder.Add when the symbol stream cannot be
+	// the difference of two sets in the decoder's range (see Decoder). The
+	// session falls back to an exact item listing of the range (proposal §9).
+	ErrCorrupt = errors.New("fingerprint: corrupt symbol stream")
+	// ErrInvalidBatch is returned by Decoder.Add for a batch that does not
+	// continue the stream: start is not Received(), remote and local differ
+	// in length, or the decoder is already done. The decoder is unchanged.
+	ErrInvalidBatch = errors.New("fingerprint: invalid symbol batch")
+	// ErrInvalidSymbolData is returned by ParseSymbolData for data that is not
+	// a canonical encoding of whole coded symbols.
+	ErrInvalidSymbolData = errors.New("fingerprint: invalid symbol data")
+)
+
+var errNotImplemented = errors.New("fingerprint: not implemented")
+
+// Checksum returns the 128-bit checksum of id: the first ChecksumSize bytes of
+// keccak256("rangesync/check" ‖ id), with keccak256 the legacy Keccak used by
+// swarm hashing. The checksum is fixed, not keyed, so cached symbols stay
+// valid across sessions (proposal §9, "Why not keyed checksums?").
+//
+// Together with id it forms the coded symbol of the one-element set {id}:
+// CodedSymbol{Sum: id, Check: Checksum(id), Count: 1}. Callers that add one
+// id to many symbol arrays (the Index caches) compute it once and add it with
+// CodedSymbol.Add at each index of Mapper.Indices(id).
+func Checksum(id ID) [ChecksumSize]byte {
+	return [ChecksumSize]byte{}
+}
+
+// CodedSymbol is one symbol of a Rateless IBLT stream (proposal §4.3.4): the
+// XOR of the IDs mapped to it, the XOR of their checksums, and how many there
+// are. After a subtraction Count is signed: the number of IDs on one side
+// minus the number on the other.
+//
+// Coded symbols form a commutative group (XOR on Sum and Check, two's
+// complement addition on Count, which wraps on overflow), so *CodedSymbol
+// satisfies Group and symbols of disjoint sets combine symbol by symbol. The
+// zero value is the symbol of the empty set.
+type CodedSymbol struct {
+	// Sum is the XOR of the IDs mapped to the symbol.
+	Sum ID
+	// Check is the XOR of their checksums.
+	Check [ChecksumSize]byte
+	// Count is the number of IDs mapped to the symbol.
+	Count int64
+}
+
+// Add sets s to s + o: Sum and Check are XORed, Count is added.
+func (s *CodedSymbol) Add(o *CodedSymbol) {}
+
+// Sub sets s to s − o: Sum and Check are XORed, Count is subtracted.
+func (s *CodedSymbol) Sub(o *CodedSymbol) {}
+
+// Zero sets s to the symbol of the empty set.
+func (s *CodedSymbol) Zero() {}
+
+// CodedSymbol is the element type of the bucket symbol Fenwick tree (T2.2
+// adapts arrays of it).
+var _ = NewFenwick[CodedSymbol, *CodedSymbol]
+
+// Mapper defines how IDs are spread over the symbols of a stream (proposal
+// §4.3.4, §5.2). It is pluggable so that the float64 mapper can be replaced
+// by an integer one without changing anything else. Every function of a
+// Mapper is pure and must give identical results on every node that reports
+// the same ID().
+type Mapper interface {
+	// ID identifies the mapping. It is sent in Status.Mapping, and peers
+	// run sessions only when their IDs are equal.
+	ID() uint32
+	// Indices returns the symbol indices id is mapped to, in increasing
+	// order, starting at 0: every id is in symbol 0 (ρ(0) = 1), which is what
+	// makes "symbol 0 is empty" the stop rule of the Decoder.
+	Indices(id ID) IndexIterator
+	// Expected returns round(count·ρ(i)): the expected Count of symbol i in
+	// the stream of a set of count elements, where ρ(i) is the probability
+	// that an id is mapped to symbol i. The wire codec sends a symbol's Count
+	// as its difference from Expected, so Expected only affects the encoded
+	// size, never correctness, but both ends must compute the same value.
+	Expected(count, i uint64) int64
+}
+
+// IndexIterator yields the symbol indices of one id.
+type IndexIterator interface {
+	// Next returns the next index. Indices are strictly increasing and the
+	// first is 0. A mapping may end: from then on Next returns EndIndex.
+	// Callers stop at their own bound, which is always below EndIndex.
+	Next() uint64
+}
+
+// FloatMapper is the first Mapper (ID DefaultMapperID), the float64 mapping
+// of proposal §4.3.4 with ρ(i) = 1/(1 + i/2). The zero value is ready to use.
+//
+// Indices of id: seed = keccak256("rangesync/map" ‖ id) (legacy Keccak) seeds
+// a xoshiro256** generator whose 256-bit state is the seed read as four
+// little-endian uint64 words, in order. The first index is 0. From index i,
+// the next is i + gap with
+//
+//	x   = the next xoshiro256** output
+//	w   = float64((x >> 11) + 1) · 2^-53       // w = 1 − u, u uniform in [0, 1)
+//	t   = 1 / math.Sqrt(w)                     // (1 − u)^(−1/2)
+//	gap = max(1, ⌈(1.5 + float64(i)) · (t − 1)⌉)
+//
+// The gap is at least 1 so that indices increase strictly (u = 0 would give
+// 0). When i + gap would exceed 2^53 − 1, the largest integer a float64 holds
+// exactly, the mapping ends and Next returns EndIndex.
+//
+// Expected(count, i) = math.Round(float64(count)·2 / (float64(i) + 2)),
+// which is round(count·ρ(i)) with a single rounded division, clamped to
+// math.MaxInt64.
+//
+// Determinism. Nodes with the same mapper ID must compute bit-identical
+// indices and expected counts, but Go does not promise identical float64
+// results across architectures: the spec lets a compiler fuse x*y + z into a
+// fused multiply-add unless the product is explicitly converted. So every
+// step above is a separate statement whose result is explicitly converted with
+// float64(...); no product is added to anything; every operation is a single
+// IEEE 754 operation rounded to nearest; square roots use math.Sqrt, which is
+// correctly rounded on every architecture, never math.Pow; and every
+// float-to-integer conversion is range-checked first, because out-of-range
+// conversions are implementation-defined. The testdata vectors are checked on
+// amd64 only; other architectures are T2.8 (D22). Any change to these
+// formulas changes the mapping and needs a new mapper ID.
+type FloatMapper struct{}
+
+var _ Mapper = FloatMapper{}
+
+// NewFloatMapper returns the default Mapper, a FloatMapper.
+func NewFloatMapper() FloatMapper {
+	return FloatMapper{}
+}
+
+// ID returns DefaultMapperID.
+func (FloatMapper) ID() uint32 {
+	return DefaultMapperID
+}
+
+// Indices returns the symbol indices of id (see FloatMapper).
+func (FloatMapper) Indices(id ID) IndexIterator {
+	return nil
+}
+
+// Expected returns round(count·ρ(i)) (see FloatMapper).
+func (FloatMapper) Expected(count, i uint64) int64 {
+	return 0
+}
+
+// Encode adds id with the given sign to the symbols syms, which hold symbols
+// [start, start+len(syms)) of a stream: for every index i of m.Indices(id) in
+// that window, syms[i-start] gets Sum and Check XORed with id and Checksum(id)
+// and Count increased by sign. sign is +1 to add id and −1 to remove it.
+// Encode panics if sign is neither or if start+len(syms) overflows a uint64.
+//
+// Encoding is linear: the symbols of a set are the sum of the symbols of its
+// elements, so encode(A) − encode(B) = encode(A \ B) − encode(B \ A).
+func Encode(m Mapper, syms []CodedSymbol, start uint64, id ID, sign int64) {}
+
+// AppendSymbolData appends the wire encoding of the coded symbols syms, which
+// are symbols [start, start+len(syms)) of the sender's stream for a range
+// holding count elements, to dst and returns the extended slice. This is
+// Symbols.Data of proposal §6.2; count is Symbols.Count and start is
+// Symbols.Start.
+//
+// Symbol k (absolute index i = start + k) is encoded as
+//
+//	Sum (64 B) ‖ Check (16 B) ‖ varint(zigzag(Count − m.Expected(count, i)))
+//
+// with the signed varint of encoding/binary (AppendVarint, which is zigzag
+// encoded) and the difference computed with wrapping int64 arithmetic, so
+// every Count round-trips exactly, whatever count is. A symbol takes
+// MinSymbolSize to MaxSymbolSize bytes. AppendSymbolData panics if
+// start+len(syms) overflows a uint64.
+func AppendSymbolData(dst []byte, m Mapper, count, start uint64, syms []CodedSymbol) []byte {
+	return dst
+}
+
+// ParseSymbolData decodes Symbols.Data as written by AppendSymbolData with the
+// same Mapper, count and start. data is untrusted peer input: it must consist
+// of whole symbols, each varint must be the shortest encoding of its value,
+// and start plus the number of symbols must not overflow a uint64; otherwise
+// it returns an error wrapping ErrInvalidSymbolData. So data is accepted only
+// if AppendSymbolData would produce it exactly. Empty data decodes to no
+// symbols.
+//
+// It allocates one CodedSymbol per MinSymbolSize bytes of data at most; the
+// caller bounds len(data) (MaxMessageBytes). A peer that lies about count only
+// makes its own encoding longer, so count is not validated here.
+func ParseSymbolData(m Mapper, count, start uint64, data []byte) ([]CodedSymbol, error) {
+	return nil, errNotImplemented
+}
+
+// Decoder peels the difference between a peer's symbol stream for a range and
+// the local stream for the same range (proposal §4.3.7). It is fed the
+// stream batch by batch, from symbol 0 on, each batch together with the local
+// symbols at the same indices, and works incrementally: symbols received
+// earlier are kept and never wasted.
+//
+// The decoder works on d_i = local_i − remote_i. A symbol is pure when its
+// Count is +1 or −1 and its Check equals Checksum(Sum); its Sum is then a
+// recovered id, only local for +1 and only remote for −1. A recovered id is
+// removed from every received symbol it maps to (and from symbols received
+// later), which may make more symbols pure. Every id is in symbol 0, so
+// symbol 0 is empty (the zero CodedSymbol) exactly when the whole difference
+// has been recovered: that is Done.
+//
+// Corruption (proposal §6.4, §9). Add returns an error wrapping ErrCorrupt,
+// and the decoder stays corrupt (later Adds return ErrCorrupt, Done is false),
+// when
+//   - a recovered id lies outside the decoder's range,
+//   - an id is recovered a second time,
+//   - a pure symbol at index j yields an id whose mapping does not contain j,
+//   - more than 2 × Received() ids have been recovered (peel steps), or
+//   - symbol 0 is empty while another received symbol is not.
+//
+// None of these happens for honest streams unless checksums collide, which
+// takes ~2^64 work with 128-bit checksums. A corrupt decoder never reports
+// Done; its partial Result must not be used.
+//
+// The decoder does not bound the number of symbols it keeps (one CodedSymbol
+// per symbol received); the session does (SessionSymbolBudget). A Decoder is
+// not safe for concurrent use.
+type Decoder struct{}
+
+// NewDecoder returns a decoder for the symbol stream of range r under mapper
+// m. Both peers must use mappers with the same ID; the decoder cannot detect
+// a mismatch, which only shows as a stream that never decodes.
+func NewDecoder(m Mapper, r Range) *Decoder {
+	return &Decoder{}
+}
+
+// Add feeds the next batch: remote holds the peer's symbols [start,
+// start+len(remote)) and local this node's symbols at the same indices. start
+// must equal Received(), len(local) must equal len(remote) (a nil local
+// stands for empty local symbols), and the decoder must not be Done;
+// otherwise Add returns an error wrapping ErrInvalidBatch and changes
+// nothing. Add peels as far as the received symbols allow and returns an
+// error wrapping ErrCorrupt if the stream is corrupt (see Decoder). It does
+// not retain remote or local.
+func (d *Decoder) Add(start uint64, remote, local []CodedSymbol) error {
+	return errNotImplemented
+}
+
+// Received returns the number of symbols added so far: the start of the next
+// batch.
+func (d *Decoder) Received() uint64 {
+	return 0
+}
+
+// Done reports whether the difference is completely recovered: at least one
+// symbol has been received, symbol 0 is empty and the decoder is not corrupt.
+func (d *Decoder) Done() bool {
+	return false
+}
+
+// Result returns the ids recovered so far, each list in ascending ID order:
+// onlyLocal are held by this node and not the peer, onlyRemote by the peer and
+// not this node. Once Done, they are the whole difference. The slices are
+// copies owned by the caller.
+func (d *Decoder) Result() (onlyLocal, onlyRemote []ID) {
+	return nil, nil
+}
