@@ -119,6 +119,9 @@ type ReserveStore struct {
 	putHook      func(swarm.Chunk) error
 
 	sample storer.Sample
+
+	addrIndex      bool // the address index is enabled (WithAddrIndex)
+	addrIndexReady bool
 }
 
 // NewReserve returns a new Reserve mock.
@@ -141,6 +144,9 @@ func (s *ReserveStore) StorageRadius() uint8 {
 	return s.radius
 }
 
+// SetStorageRadius sets the radius. With an observer registered
+// (SetReserveObserver) it then calls the observer's RadiusChanged, as the
+// storer's SetRadius does, with no lock of the mock held.
 func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.mtx.Lock()
 	s.radius = r

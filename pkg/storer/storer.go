@@ -189,9 +189,10 @@ var (
 // (address, stamp hash) set made by the reserve's Put, eviction and Reset
 // paths while the reserve address index is enabled.
 //
-// Registration: one observer is registered, once; a second registration,
-// a nil observer and a registration while the address index is disabled
-// are rejected. Registration returns only after every set-changing
+// Registration (ReserveAddrStore.SetReserveObserver): one observer is
+// registered, once; a second registration, a nil observer and a
+// registration while the address index is disabled are rejected with an
+// error. Registration returns only after every set-changing
 // transaction that started without the observer has committed, and every
 // transaction started after it is wrapped by Commit, so a rebuild started
 // after registration sees every later commit either in its snapshot or in
@@ -293,6 +294,115 @@ type ReserveObserver interface {
 	// observer for it through a synchronized load. It must not call into
 	// the storer.
 	Reset()
+}
+
+var _ ReserveAddrStore = (*DB)(nil)
+
+var (
+	// ErrAddrIndexDisabled is returned by the ReserveAddrStore methods that
+	// return an error when the reserve address index is disabled
+	// (Options.ReserveAddrIndex false, or no reserve).
+	ErrAddrIndexDisabled = reserve.ErrAddrIndexDisabled
+	// ErrNilObserver is returned by SetReserveObserver for a nil observer.
+	ErrNilObserver = reserve.ErrNilObserver
+	// ErrObserverRegistered is returned by SetReserveObserver when an
+	// observer is already registered: there is one observer, registered
+	// once.
+	ErrObserverRegistered = reserve.ErrObserverRegistered
+)
+
+// ReserveAddrStore gives access to the reserve address index: the set of
+// (chunk address, stamp hash) pairs of the reserve, one element per ChunkID,
+// ordered by address ‖ stamp hash. rangesync reconciles this set with its
+// peers and keeps its in-memory fingerprint index over it current through a
+// ReserveObserver.
+//
+// *DB implements it. With the address index disabled (Options.ReserveAddrIndex
+// false, or no reserve) every method that returns an error returns
+// ErrAddrIndexDisabled and ReserveAddrIndexReady reports false.
+//
+// The index is complete once ReserveAddrIndexReady reports true. Before that
+// (a fill in progress) the reading methods work on the entries written so
+// far: a subset of the reserve set, which may miss elements the reserve holds
+// but never holds an element the reserve does not.
+//
+// ReserveIterateAddr and ReserveHasID take no reserve lock; ReserveGetByID
+// takes the reserve's per-batch lock, as ReserveGet does. None of the methods
+// may be called from inside a ReserveObserver method (contract point 3), and
+// an observer must not hold its own lock across any of them (point 4), with
+// the one exception documented on ReserveIterateAddr.
+type ReserveAddrStore interface {
+	// ReserveIterateAddr calls cb with the elements whose address starts
+	// with the first bits bits of prefix, in ascending order of
+	// address ‖ stamp hash, starting strictly after after (nil: at the
+	// start of the range), until cb returns stop true or an error.
+	// ReserveIterateAddr returns cb's error wrapped (errors.Is matches it).
+	//
+	// Bits of prefix past bits are ignored and missing prefix bytes count
+	// as zero, as for a fingerprint range, so a range's prefix of
+	// ceil(bits/8) bytes (empty when bits is 0) and its bit length can be
+	// passed as they are. after is compared bytewise with
+	// address ‖ stamp hash (an element ID, 64 bytes, is the usual cursor);
+	// it may lie outside the range: before the range the iteration starts
+	// at the range start, past it there is nothing to iterate.
+	//
+	// One call is one Iterate over the index store and reads one leveldb
+	// snapshot: a single iterator is opened when it is called, before cb's
+	// first call, and commits made after that are not seen. Resuming with
+	// after opens a new snapshot, so a scan paged over several calls is not
+	// one consistent view. cb runs while the iterator is open, which pins
+	// the snapshot's leveldb files, and should not block for long.
+	//
+	// The one exception to ReserveObserver contract point 4: an observer
+	// may call ReserveIterateAddr while holding its own lock in write mode,
+	// until cb's first call or, for an empty range, until it returns (the
+	// rebuild opens its snapshot this way, while reserve writers holding
+	// per-batch locks wait for that lock in read mode inside Commit). To
+	// keep that deadlock-free, ReserveIterateAddr must, and every change to
+	// it must keep to this:
+	//  1. open its leveldb iterator before any blocking operation: no
+	//     reserve lock (per-batch, per-bin, the observer registration
+	//     lock), channel or wait of any kind before cb's first call;
+	//  2. seek straight to the masked start of the range (or to after, when
+	//     after lies inside it), so cb's first call, or the return for an
+	//     empty range, comes after O(1) work, never after scanning or
+	//     filtering keys outside the range;
+	//  3. be a single Iterate call, so the whole call is one snapshot.
+	//
+	// Every ChunkID passed to cb has Address, StampHash and BatchID set; its
+	// slices are not reused, so cb may retain it (read-only, see ChunkID).
+	ReserveIterateAddr(prefix swarm.Address, bits uint8, after []byte, cb func(ChunkID) (stop bool, err error)) error
+
+	// ReserveGetByID returns the chunk of the element (addr, stampHash),
+	// with its stamp, as ReserveGet does: it resolves the batch ID from the
+	// address index and then reads the chunk under the reserve's per-batch
+	// lock. It returns an error wrapping storage.ErrNotFound when the
+	// element is not in the index, or was removed between the two steps.
+	ReserveGetByID(ctx context.Context, addr swarm.Address, stampHash []byte) (swarm.Chunk, error)
+
+	// ReserveHasID reports whether the element (addr, stampHash) is in the
+	// address index. Peers exchange element IDs without the batch ID, so
+	// ReserveHas, which needs it, cannot be used. Until
+	// ReserveAddrIndexReady reports true it may report false for an element
+	// the reserve holds.
+	ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error)
+
+	// ReserveAddrIndexReady reports whether the address index is complete:
+	// its validity marker, of the current index layout version, is written.
+	// It is false while the index is disabled and while a fill runs; once
+	// true it stays true for the lifetime of the DB. It is cheap (no store
+	// access), so callers may poll it; rangesync answers Busy until it
+	// reports true.
+	ReserveAddrIndexReady() bool
+
+	// SetReserveObserver registers the single observer of the address
+	// index set; see ReserveObserver for what registration guarantees. It
+	// may be called before ReserveAddrIndexReady reports true and does not
+	// wait for it. It returns ErrAddrIndexDisabled when the address index
+	// is disabled, ErrNilObserver for a nil observer and
+	// ErrObserverRegistered when an observer is already registered; the
+	// last check does not wait for in-flight transactions.
+	SetReserveObserver(o ReserveObserver) error
 }
 
 // LocalStore is a read-only ChunkStore. It can be used to check if chunk is known
@@ -524,6 +634,31 @@ type Options struct {
 	CacheMinEvictCount uint64
 
 	MinimumStorageRadius uint
+
+	// ReserveAddrIndex enables the reserve address index, the
+	// (chunk address, stamp hash) set served by ReserveAddrStore and
+	// reported to a ReserveObserver. It is ignored when the storer has no
+	// reserve (ReserveCapacity 0). The node enables it only on full nodes
+	// that run rangesync. When it is false (the default) no address index
+	// entry is written and the reserve behaves as without the index.
+	//
+	// The index is complete when its validity marker is written. New
+	// reconciles the option with the marker; this is not a numbered
+	// migration:
+	//   - enabled, marker present: nothing to do;
+	//   - enabled, no marker, or a marker of another index layout version:
+	//     the index entries are dropped and refilled from the reserve, and
+	//     the marker is written last, so an interrupted fill is redone at
+	//     the next start. Until the marker is written
+	//     ReserveAddrIndexReady reports false;
+	//   - disabled: a marker is deleted (writes stop, so the index would
+	//     go stale), and leftover index entries are dropped in a background
+	//     goroutine that Close stops; an interrupted drop is resumed at the
+	//     next start with the index disabled.
+	//
+	// Turning the index off and on again therefore costs one refill, and a
+	// stale index is never served.
+	ReserveAddrIndex bool
 }
 
 func defaultOptions() *Options {

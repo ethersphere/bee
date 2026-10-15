@@ -1037,6 +1037,75 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   lthash_vectors.json`: empty, 1/2/3 elements, negated, add-then-sub, salted) were produced by an
   independent Python implementation (`hashlib.shake_128`, pure-Python Keccak-256, plain uint16
   lanes); changing them is a wire change.
+- **T1.5 (contract): `SetReserveObserver` returns an error** (settles the T1.4 → T1.5 round-2
+  follow-up; deviates from §5.4's signature). `SetReserveObserver(o ReserveObserver) error`
+  returns `storer.ErrAddrIndexDisabled` (index disabled, or no reserve), `storer.ErrNilObserver`
+  and `storer.ErrObserverRegistered`. The three are the reserve's sentinels re-exported (the same
+  values, so `errors.Is` matches either name). Not a panic: the disabled case is reachable from
+  configuration (a wiring that enables `rangesync` on a storer opened without the index; light
+  nodes have no reserve at all, D15), CODINGSTYLE "Panic with care" rules out production panics,
+  and an error lets T1.9/T1.12 refuse to start `rangesync` instead of crashing the node. Local
+  interfaces that include registration (T1.6 left it out, T1.9 wires it) declare
+  `SetReserveObserver(storer.ReserveObserver) error`. `ReserveAddrIndexReady() bool` keeps
+  §5.4's shape and reports false when the index is disabled.
+- **T1.5 (contract): disabled index.** With `Options.ReserveAddrIndex` false or no reserve
+  (`ReserveCapacity` 0), every `ReserveAddrStore` method that returns an error returns
+  `ErrAddrIndexDisabled`, and `ReserveAddrIndexReady` is false. That is the task's "calls return
+  an error when the address index is disabled", applied to the methods §5.4 gives an error.
+- **T1.5 (contract): "not ready" is not an error.** While the index is enabled but not complete
+  (a background fill, should G4 choose it), the reading methods don't fail; they read the entries
+  written so far, a subset of the reserve set (never more: the filler re-checks the
+  `BatchRadiusItem` under the batch lock). Callers gate on `ReserveAddrIndexReady`: T1.6's rebuild
+  waits for it, T1.9 answers `Busy`, and T1.10's `ReserveHasID` before a `Want` can at worst
+  request a chunk the node already holds. With the blocking fill the case does not arise once `New`
+  returns.
+- **T1.5 (contract): `ReserveIterateAddr`.** The range is the first `bits` bits of `prefix`; bits
+  past `bits` are ignored and missing prefix bytes count as zero, as in `fingerprint.Range`.
+  `after` is compared bytewise with `address ‖ stamp hash` (any length, usually a 64-byte ID) and
+  may lie outside the range. So T1.9's `Local.IterateIDs(r, after, fn)` is
+  `ReserveIterateAddr(r.Prefix, r.Bits, after[:] or nil, …)` with
+  `fingerprint.NewID(c.Address, c.StampHash)`, and `HasID(id)` is
+  `ReserveHasID(id.Address(), id.StampHash())`; T1.6's `IndexerStore` matches the signature as
+  committed. One call is one leveldb iterator (T1.0), opened without any reserve lock (T1.6 →
+  T1.5); paging with `after` opens a new snapshot (documented). `cb`'s error is returned wrapped
+  (`errors.Is` matches it, which T1.6's `Close` relies on). Each `ChunkID` passed to `cb` is fresh
+  (address and stamp hash from the key, since the iterated item has a zero `Address` (T1.4); batch
+  ID from the value) and may be retained.
+- **T1.5 (contract): `ReserveIterateAddr` is the one exception to `ReserveObserver` contract
+  point 4** (orchestrator note from the T1.6 contract review, binding). T1.6's rebuild holds the
+  Index lock in write mode from opening the snapshot until the first callback (or the return on an
+  empty range), while reserve writers hold `r.multx` and wait for that lock in read mode. The
+  godoc therefore requires, for this and any later change: (1) the leveldb iterator is opened
+  before any blocking operation (no reserve lock, channel or wait); (2) it seeks straight to the
+  masked start of the range (or to `after` inside it), so the first callback or the empty return
+  comes after O(1) work, with no scanning or filtering of keys outside the range (the
+  `chunkAddrValid` marker key shares the `chunkAddr` byte prefix and sorts after every
+  `chunkAddr/` key, so the iteration ends at the first key past the range, never filters it);
+  (3) a prefix of `ceil(bits/8)` bytes, empty at `bits == 0`, is accepted; (4) one `Iterate`
+  call is one snapshot. `*storer.DB` satisfies T1.6's `IndexerStore{ReserveIterateAddr,
+  ReserveAddrIndexReady, StorageRadius}` (checked with a scratch build against
+  `bee-wt/T1.6/pkg/rangesync/indexer.go`'s method set; no compile-time check in `pkg/storer`, which
+  cannot import `pkg/rangesync`).
+- **T1.5 (contract): `ReserveGetByID`** reads the batch ID from the `ChunkAddrItem`, then calls
+  `Reserve.Get` (per-batch lock). It returns a wrapped `storage.ErrNotFound` when the element is
+  absent or was removed between the two steps.
+- **T1.5 (contract): leftovers are dropped whenever the index is disabled (beyond §5.1's table).**
+  §5.1 says "disabled, no marker: nothing", so an interrupted background drop (D10) would leave its
+  keys on disk until the index is enabled again. Instead the disabled start-up path checks for any
+  `chunkAddr` key (one iterator seek, no write) and drops leftovers in the background whether or
+  not a marker was present. On the default path that is one read at start-up and nothing else.
+- **T1.5 (contract): mock.** `mockstorer.ReserveStore` implements `storer.ReserveAddrStore`
+  (compile-time check; new file `pkg/storer/mock/mockreserveaddr.go`), and without the new option
+  it behaves as before. Exported: `WithAddrIndex()` (enabled and ready), `SetAddrIndexReady(bool)`
+  (Busy tests), the five interface methods, `RemoveID(addr, stampHash) error` (eviction of one
+  element) and `ResetReserve(ctx) error`. `ReservePutter` puts, `RemoveID` and `ResetReserve` go
+  through a registered observer's `Commit` (exact delta, one call each, no mock lock held), and
+  `SetStorageRadius` calls `RadiusChanged`. `ReserveIterateAddr` iterates a copy and holds no lock
+  during `cb`. Documented as not modeling leveldb snapshots, eviction locking or the registration
+  guarantee (T1.0 follow-up).
+- **T1.5 (contract): fill variant.** Pending G4. The contract is the same for both variants: `New`
+  either completes the fill before it returns or leaves it to a background goroutine, and
+  `ReserveAddrIndexReady` covers both (D16).
 
 - **T1.6 (contract): files and API.** `fingerprint/index.go` + `fingerprint/metrics.go` and
   `rangesync/indexer.go`. `fingerprint`: `NewIndex(IndexOptions{LeafBits, RootChangeDebounce})`
