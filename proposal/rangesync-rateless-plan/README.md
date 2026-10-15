@@ -133,7 +133,7 @@ the implementer (otherwise every task conflicts on this list).
 - [ ] T1.5 Storer: fill/marker toggle logic, address iteration, `GetByID`, public API, mock
 - [x] T1.6 `fingerprint.Index` (counts + LtHash, Apply, Summary, Rebuild) + observer adapter
 - [x] T1.7 Want set (`pkg/rangesync/wantset`)
-- [ ] T1.8 Pure session decision logic (fingerprints + items) and session-root relation
+- [x] T1.8 Pure session decision logic (fingerprints + items) and session-root relation
 - [ ] T1.9 `status` and `reconcile` stream handlers + validation
 - [ ] T1.10 `fetch` stream + delivery validation
 - [ ] T1.11 Minimal reconciler (topology subscription, timer-driven sessions, `SyncRate`)
