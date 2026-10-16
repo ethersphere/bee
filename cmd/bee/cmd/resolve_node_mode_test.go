@@ -716,6 +716,26 @@ func TestResolveNodeModeWarnings(t *testing.T) {
 			absent: []string{"blockchain-rpc-endpoint is ignored"},
 		},
 		{
+			name: "light without swap explains the upload limit",
+			args: []string{"--node-mode=light", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want: []string{"uploads and downloads are limited to the free pseudosettle allowance"},
+		},
+		{
+			name:   "light with swap does not explain the upload limit",
+			args:   []string{"--node-mode=light", "--swap-enable", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			absent: []string{"pseudosettle allowance"},
+		},
+		{
+			name:   "full without swap does not explain the upload limit",
+			args:   []string{"--node-mode=full", "--swap-enable=false", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			absent: []string{"pseudosettle allowance"},
+		},
+		{
+			name:   "legacy light does not explain the upload limit",
+			args:   []string{"--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			absent: []string{"pseudosettle allowance"},
+		},
+		{
 			name: "full bootnode with storage incentives enabled",
 			args: []string{"--node-mode=full", "--bootnode-mode", "--storage-incentives-enable", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
 			want: []string{"storage-incentives-enable has no effect on a bootnode"},

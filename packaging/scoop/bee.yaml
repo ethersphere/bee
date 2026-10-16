@@ -5,7 +5,8 @@
 ##   full        - participates in storage and incentives; requires blockchain-rpc;
 ##                 implies swap-enable, chequebook-enable and storage-incentives-enable
 ##                 (bootnodes are exempt: swap only when set, chequebook follows swap)
-##   light       - uploads and downloads only; requires blockchain-rpc
+##   light       - uploads and downloads only; requires blockchain-rpc; beyond the
+##                 free allowance also needs swap-enable and a funded chequebook
 ##   ultra-light - free-tier downloads only; no blockchain connection needed
 ## When unset (the default), the mode is inferred from the deprecated full-node
 ## option and blockchain-rpc presence (deprecated, removed in v2.11.0).

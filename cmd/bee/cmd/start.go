@@ -472,6 +472,12 @@ func (c *command) resolveExplicitNodeMode(logger log.Logger, raw string) (node.N
 		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
 			return "", errors.New("light node cannot have storage-incentives-enable set to true")
 		}
+		// Light mode does not imply swap, as before node-mode. Without it the
+		// node pays peers only through the free pseudosettle allowance, which
+		// limits uploads and downloads.
+		if !c.config.GetBool(optionNameSwapEnable) {
+			logger.Info("swap is disabled, so uploads and downloads are limited to the free pseudosettle allowance; to exceed it set swap-enable=true and fund the chequebook", "node_mode", mode)
+		}
 	case node.UltraLightMode:
 		if rpcEndpoint != "" {
 			logger.Warning("blockchain-rpc-endpoint is ignored in ultra-light mode", "node_mode", mode)
