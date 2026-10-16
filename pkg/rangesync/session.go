@@ -259,8 +259,9 @@ type Session struct {
 	over      bool // the session ended or failed
 
 	// unanswered holds the ranges this side sent a Fingerprint for that the
-	// peer has not answered.
-	unanswered map[fingerprint.RangeKey]struct{}
+	// peer has not answered, with the count the Fingerprint carried (0 for
+	// a range this side serves a symbol stream for).
+	unanswered map[fingerprint.RangeKey]uint64
 	// peerCounts holds the peer's count of each range it sent a
 	// Fingerprint for.
 	peerCounts map[fingerprint.RangeKey]uint64
@@ -275,6 +276,9 @@ type Session struct {
 
 	mapper  fingerprint.Mapper
 	symbols bool // symbol streams are used
+	// symbolsSent and symbolsReceived count the coded symbols of all
+	// streams of the session, each at most SessionSymbolBudget.
+	symbolsSent, symbolsReceived uint64
 	// served holds this side's symbol streams by range, until answered.
 	served map[fingerprint.RangeKey]*served
 	// decoding holds the decoders of the peer's symbol streams by range.
@@ -303,7 +307,7 @@ func newSession(cfg Config, initiator bool) *Session {
 		decoding:   make(map[fingerprint.RangeKey]*decoding),
 		cfg:        cfg,
 		initiator:  initiator,
-		unanswered: make(map[fingerprint.RangeKey]struct{}),
+		unanswered: make(map[fingerprint.RangeKey]uint64),
 		in:         make(map[fingerprint.RangeKey]*inStream),
 		replies:    make(map[fingerprint.RangeKey]*listing),
 		answers:    make(map[fingerprint.RangeKey]*answer),
@@ -355,7 +359,7 @@ func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
 			return nil, nil, fmt.Errorf("local summary of %s: %w", r, err)
 		}
 		parts = append(parts, fingerprintPart(r, sum))
-		s.unanswered[r.Key()] = struct{}{}
+		s.unanswered[r.Key()] = sum.Count
 	}
 	return s, &pb.Message{Parts: parts}, nil
 }
@@ -393,6 +397,11 @@ func NewResponder(cfg Config) *Session {
 // part adds the listed IDs that Local does not hold to wants; with Reply set
 // it is answered with the local IDs in the interval the page covers that the
 // page does not list (see Items), as Items pages without Reply.
+//
+// This side sends at most SessionSymbolBudget symbols in a session (the
+// batch that reaches it is Exhausted, and no range gets a symbol stream
+// after it) and at most MaxScansPerMessage batches that need the scan path
+// per Message; the others wait for a later Message.
 //
 // The work of one call is bounded: at most one Summary per received
 // Fingerprint and one per emitted Fingerprint (each at most MaxParts), one
@@ -432,10 +441,14 @@ func NewResponder(cfg Config) *Session {
 //     peer has not answered yet; a later batch must continue the stream
 //     (Start equals the symbols received) and answer this side's More, up
 //     to its UpTo; the data must parse (fingerprint.ParseSymbolData) and a
-//     batch without symbols must be Exhausted;
+//     batch without symbols must be Exhausted; its Count is at least 1, at
+//     most the peer's item limit and the same in every batch of the stream;
+//     the stream stays within cap(R) (computed from the count this side
+//     sent), which must not be 0; all streams of the session together carry
+//     at most SessionSymbolBudget symbols;
 //   - a More part continues this side's symbol stream for its range, whose
 //     last batch was not Exhausted and is not answered yet, past the
-//     symbols sent;
+//     symbols sent and up to at most cap(R);
 //   - the peer sends an empty Message only when none of its Items streams
 //     has More set, except a stream that answers this side's Reply stream
 //     for a range whose last page this side has not sent yet: the peer is
@@ -602,7 +615,7 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 	}
 	s.peerCounts[r.Key()] = remote.Count
 	in := DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}
-	if s.symbols {
+	if s.symbols && s.symbolsSent < SessionSymbolBudget {
 		in.Cap = Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, remote.Count)
 		if s.cfg.Hints != nil {
 			in.Hint = s.cfg.Hints.Hint(r)
@@ -827,6 +840,7 @@ const (
 type builder struct {
 	parts []*pb.Part
 	size  int // encoded size of the Message so far
+	scans int // Symbols parts produced by the scan path
 }
 
 func (b *builder) fits(parts, size int) bool {
@@ -881,7 +895,7 @@ func (t *split) emit(s *Session, b *builder) (bool, error) {
 			return false, fmt.Errorf("local summary of %s: %w", c, err)
 		}
 		b.add(fingerprintPart(c, sum))
-		s.unanswered[c.Key()] = struct{}{}
+		s.unanswered[c.Key()] = sum.Count
 	}
 	return true, nil
 }

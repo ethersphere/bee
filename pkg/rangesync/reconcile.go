@@ -198,7 +198,8 @@ func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r
 //
 // The opening Message is read first (with the MaxMessageBytes limit) and must
 // decode strictly. The session is answered with Busy when this node serves
-// MaxConcurrentSessions sessions or one with the peer already, while the
+// MaxConcurrentSessions sessions or one with the peer already, when the peer
+// opens sessions faster than PeerSessionBurst and PeerSessionInterval allow, while the
 // address index is not ready, while the index is not built or the opening
 // asks about a range being rebuilt, when no Status of the peer was received,
 // and when the opening does not fit the scope derived from the two Statuses
@@ -254,6 +255,9 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		return busy("peer session limit")
 	}
 	defer releaseSession()
+	if !s.sessionLimiter.Allow(peer.ByteString(), 1) {
+		return busy("peer session rate")
+	}
 	if !s.store.ReserveAddrIndexReady() {
 		return busy("address index not ready")
 	}

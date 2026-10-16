@@ -345,3 +345,33 @@ func TestReconcileDecodeCorruption(t *testing.T) {
 		t.Fatalf("decode_corruption_total %v, want 1", got)
 	}
 }
+
+// TestReconcilePeerSessionRate checks the per-peer session rate limit
+// (proposal §9): a peer that opens sessions back to back gets
+// PeerSessionBurst of them; the next is answered with Busy and not scored.
+func TestReconcilePeerSessionRate(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t, stampedChunks(t, 30)...)
+	b.start(t)
+	p := newRawPeer(t, b)
+	if err := p.sendStatus(t, statusWithRoot(rangeOf(""))); err != nil {
+		t.Fatal(err)
+	}
+	for i := range rangesync.PeerSessionBurst + 1 {
+		s := p.open(t, rangesync.ReconcileStreamName)
+		if err := protobuf.NewWriter(s).WriteMsg(msg(fpPart(rangeOf(""), fingerprint.Summary{Count: 1, Digest: [32]byte{1}}))); err != nil {
+			t.Fatal(err)
+		}
+		var answer pb.Message
+		if err := protobuf.NewReader(s).ReadMsg(&answer); err != nil {
+			t.Fatal(err)
+		}
+		if want := i == rangesync.PeerSessionBurst; answer.Busy != want {
+			t.Fatalf("session %d: busy %v, want %v", i, answer.Busy, want)
+		}
+		_ = s.FullClose()
+		_ = p.records(t, rangesync.ReconcileStreamName) // the handler returned
+	}
+	assertNotScored(t, b, p.addr)
+}

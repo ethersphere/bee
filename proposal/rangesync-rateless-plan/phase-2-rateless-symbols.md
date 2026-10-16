@@ -497,6 +497,32 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     to the decision. (2) A `Symbols{Start: 0}` for a range this side serves symbols for (crossed
     streams) is a violation. (3) The decoder's `cap(R)` is clamped to `SessionSymbolBudget`. (4) A
     `More` past `MaxBatchSymbols` is served in parts, one extra round trip each.
+- **T2.5 Symbol-stream limits.**
+  - *More.* `UpTo > cap(R)` is now a violation (was clamped). The decoding side computes `cap(R)`
+    from the count it **sent** in its Fingerprint (kept in `unanswered`), not a fresh `Summary`, so
+    an honest `More` never exceeds the peer's `cap(R)` under churn (and one `Summary` per first batch
+    is saved). An unknown range / exhausted stream was already a violation (T2.4).
+  - *Budget.* `SessionSymbolBudget` counts all streams of a session, each direction: sent symbols
+    are capped (the batch reaching it is `Exhausted`, possibly empty; `decide` gives no symbol
+    stream once it is spent → split/exchange); received symbols past it are a violation (an honest
+    peer never sends more), and this side's `More` never asks past the remaining budget.
+  - *Peer `Symbols.Count`.* Must be in `[1, itemLimit]` (the `Items` limit), equal in every batch of
+    a stream, give `cap(R) > 0`, and the stream must stay within `cap(R)`.
+  - *MaxScansPerMessage* is enforced on the serving side by **deferral**, not as a violation: at
+    most 64 batches that read past the snapshot (`symStream.scans`) per outgoing Message, the rest
+    go out in later Messages. An honest initiator can legitimately send > 64 scan-path Fingerprints
+    in one Message (several splits), so rejecting would score honest peers. The decide-time symbol-0
+    snapshot (T2.4) is not counted; it is one scan of ≤ `ScanLimit` elements per Fingerprint, the
+    same order as its `Summary`, bounded by `MaxParts`.
+  - *Per-peer session rate.* `ratelimit.Limiter` keyed by peer, `PeerSessionBurst = 4`, one more per
+    `PeerSessionInterval = MinRoundInterval / 2`; over it the responder answers `Busy` (not scored),
+    checked after the concurrency slots. Cleared on disconnect like the delivery limiter.
+  - *Tests.* `TestSessionSymbolLimits` (More to/past cap, budget across streams, endless More,
+    unknown range, Count lies, first batch past cap, no capacity, received budget),
+    `TestSessionMaxScansPerMessage`, `TestSessionMappingGrinding` (the T2.0 suggestion: ground x, y
+    with equal first-32 index sets, bucket cache 32 → exhausted → split → children decode),
+    `TestReconcilePeerSessionRate`. Violations are session-level; the reset + score path is T1.9's,
+    shared by every `ErrInvalidMessage`.
 
 ## Follow-ups
 _(sessions append here)_
@@ -580,3 +606,11 @@ _(sessions append here)_
   T2.5 should also validate `Count` against the peer's Fingerprint count / `itemLimit` and enforce
   the budget across all streams of a session.
 - **(T2.4 re-review, Low) No test guards churn between `decide` and the first emit.** The scan-path churn tests pass with or without the symbol-0 snapshot (b72b11cf); a test that changes the set between `decide`'s Summary and the first window would. Add with T2.5 or T2.6.
+- **(T2.5) Session rate limit resets on reconnect.** The per-peer session limiter is cleared on
+  disconnect (as the delivery limiter), so a peer can reconnect for a fresh burst; reconnects cost a
+  handshake. Revisit if Status/session spam is observed (T4.x).
+- **(T2.5) Churn-before-first-emit test still missing.** `decide` and the first emit run in the same
+  `Handle` call, so it needs a `Local` hook that mutates between `Summary` and `Symbols`; not cheap
+  enough for T2.5. Carry to T2.6.
+- **(T2.5) Decide-time scans are not under `MaxScansPerMessage`.** See the T2.5 decision; if T2.6
+  measures the symbol-0 scan as significant, make the snapshot lazy for deferred streams.

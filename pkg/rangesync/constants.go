@@ -78,6 +78,10 @@ const (
 	// MaxConcurrentSessionsPerPeer is the largest number of reconcile sessions
 	// a node serves for one peer at once.
 	MaxConcurrentSessionsPerPeer = 1
+	// PeerSessionBurst is the number of sessions a peer may open back to
+	// back; after it, one per PeerSessionInterval. Sessions over the rate
+	// are answered with Busy (proposal §9, Status spam).
+	PeerSessionBurst = 4
 )
 
 // Scheduling constants (proposal §6.1, §8.2, §8.4).
@@ -93,6 +97,10 @@ const (
 	// MaxRoundInterval is the longest interval between reconciliation rounds,
 	// used while every digest matches.
 	MaxRoundInterval = 30 * time.Second
+	// PeerSessionInterval is the interval at which a peer regains one
+	// session of PeerSessionBurst: half the shortest round interval, so an
+	// honest initiator never hits it.
+	PeerSessionInterval = MinRoundInterval / 2
 
 	// ClaimDeadline is how long a claimed ID stays in the want set before it
 	// can be claimed through another peer.

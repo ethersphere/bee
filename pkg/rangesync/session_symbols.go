@@ -132,6 +132,12 @@ func (st *symStream) window(s *Session, start, end uint64) ([]fingerprint.CodedS
 	return st.syms[start:end], nil
 }
 
+// scans reports whether window(_, end) reads the scan path: it needs
+// symbols past the ones taken so far.
+func (st *symStream) scans(end uint64) bool {
+	return end > uint64(len(st.syms)) && !st.exhausted
+}
+
 // ended reports whether the stream has no symbols past end.
 func (st *symStream) ended(end uint64) bool {
 	return st.exhausted && end >= uint64(len(st.syms))
@@ -157,22 +163,30 @@ func (sv *served) emit(s *Session, b *builder) (bool, error) {
 		return true, nil
 	}
 	// A request past MaxBatchSymbols is cut short; the peer asks again, at
-	// the cost of one more round trip.
-	n := min(sv.upTo-sv.sent, MaxBatchSymbols)
+	// the cost of one more round trip. Past the session budget the batch is
+	// empty and Exhausted.
+	n := min(sv.upTo-sv.sent, MaxBatchSymbols, SessionSymbolBudget-s.symbolsSent)
 	if !b.fits(1, symbolPartWireBytes+int(n)*fingerprint.MaxSymbolSize) {
 		return false, nil
+	}
+	if sv.st.scans(sv.sent + n) {
+		if b.scans >= MaxScansPerMessage {
+			return false, nil // deferred to a later Message
+		}
+		b.scans++
 	}
 	syms, err := sv.st.window(s, sv.sent, sv.sent+n)
 	if err != nil {
 		return false, err
 	}
 	end := sv.sent + uint64(len(syms))
-	exhausted := sv.st.ended(end) || end >= sv.cap
+	s.symbolsSent += uint64(len(syms))
+	exhausted := sv.st.ended(end) || end >= sv.cap || s.symbolsSent >= SessionSymbolBudget
 	data := fingerprint.AppendSymbolData(nil, s.mapper, sv.count, sv.sent, syms)
 	b.add(&pb.Part{Kind: &pb.Part_Symbols{Symbols: EncodeSymbols(Symbols{
 		Range: sv.st.r, Count: sv.count, Start: sv.sent, Data: data, Exhausted: exhausted,
 	})}})
-	s.unanswered[sv.st.r.Key()] = struct{}{}
+	s.unanswered[sv.st.r.Key()] = 0
 	sv.sent, sv.upTo = end, 0
 	sv.awaiting, sv.exhausted = true, exhausted
 	return true, nil
@@ -181,10 +195,11 @@ func (sv *served) emit(s *Session, b *builder) (bool, error) {
 // decoding is the decoding of the peer's symbol stream of a range that
 // answers this side's Fingerprint.
 type decoding struct {
-	dec  *fingerprint.Decoder
-	st   *symStream // the local stream
-	cap  uint64     // cap(R)
-	upTo uint64     // the UpTo of the More sent, 0 while none is outstanding
+	dec   *fingerprint.Decoder
+	st    *symStream // the local stream
+	count uint64     // the peer's count of the range, Symbols.Count
+	cap   uint64     // cap(R), at most SessionSymbolBudget
+	upTo  uint64     // the UpTo of the More sent, 0 while none is outstanding
 }
 
 // more is a More request of the stream dc.
@@ -263,8 +278,11 @@ func (s *Session) handleMore(mo More) error {
 	if sv == nil || !sv.awaiting || sv.exhausted || mo.UpTo <= sv.sent {
 		return invalid("more for %s does not continue a symbol stream", mo.Range)
 	}
+	if mo.UpTo > sv.cap {
+		return invalid("more for %s up to %d past the capacity %d", mo.Range, mo.UpTo, sv.cap)
+	}
 	sv.awaiting = false
-	sv.upTo = min(mo.UpTo, sv.cap)
+	sv.upTo = mo.UpTo
 	s.tasks = append(s.tasks, sv)
 	return nil
 }
@@ -294,28 +312,33 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 	case dc == nil:
 		// a range this side streams symbols for is unanswered too, but only
 		// a Fingerprint of this side can be answered by a symbol stream
-		if _, ok := s.unanswered[key]; !ok || sy.Start != 0 || s.served[key] != nil {
+		sent, ok := s.unanswered[key]
+		if !ok || sy.Start != 0 || s.served[key] != nil {
 			return nil, invalid("unsolicited symbols for %s", r)
 		}
-		delete(s.unanswered, key)
-		local, err := s.cfg.Local.Summary(r)
-		if err != nil {
-			return nil, fmt.Errorf("local summary of %s: %w", r, err)
+		// The peer chose symbols by the decision rule from the count this
+		// side sent and its own: a count of 0 or past what it may list is
+		// a lie, and so is a range without capacity. cap(R) is computed
+		// from the count sent, as the peer did, so that a More never asks
+		// past the peer's cap(R).
+		if limit := s.itemLimit(key); sy.Count == 0 || sy.Count > limit {
+			return nil, invalid("symbols for %s with count %d outside [1, %d]", r, sy.Count, limit)
 		}
+		capR := min(Capacity(s.cfg.Status, s.cfg.PeerStatus, r, sent, sy.Count), SessionSymbolBudget)
+		if capR == 0 {
+			return nil, invalid("symbols for %s, which has no capacity", r)
+		}
+		delete(s.unanswered, key)
 		st, err := s.newSymStream(r)
 		if err != nil {
 			return nil, err
 		}
-		dc = &decoding{
-			dec: fingerprint.NewDecoder(s.mapper, r),
-			st:  st,
-			// sy.Count is the peer's claim; until T2.5 validates it, the
-			// session budget bounds a claimed unlimited stream
-			cap: min(Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, sy.Count), SessionSymbolBudget),
-		}
+		dc = &decoding{dec: fingerprint.NewDecoder(s.mapper, r), st: st, count: sy.Count, cap: capR}
 		s.decoding[key] = dc
 	case dc.upTo == 0 || sy.Start != dc.dec.Received():
 		return nil, invalid("symbols for %s do not continue the stream", r)
+	case sy.Count != dc.count:
+		return nil, invalid("symbols for %s change the count", r)
 	}
 	remote, err := fingerprint.ParseSymbolData(s.mapper, sy.Count, sy.Start, sy.Data)
 	if err != nil {
@@ -327,6 +350,12 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 	}
 	if dc.upTo != 0 && sy.Start+n > dc.upTo {
 		return nil, invalid("symbols for %s past the requested %d", r, dc.upTo)
+	}
+	if sy.Start+n > dc.cap {
+		return nil, invalid("symbols for %s past the capacity %d", r, dc.cap)
+	}
+	if s.symbolsReceived += n; s.symbolsReceived > SessionSymbolBudget {
+		return nil, invalid("symbols for %s past the session budget", r)
 	}
 	dc.upTo = 0
 
@@ -360,7 +389,7 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 		return onlyRemote, nil
 	}
 	received := dc.dec.Received()
-	upTo := min(GrowthFactor*received, dc.cap)
+	upTo := min(GrowthFactor*received, dc.cap, received+SessionSymbolBudget-s.symbolsReceived)
 	if sy.Exhausted || short || upTo <= received {
 		// The stream cannot grow: split r, or exchange its items at the
 		// leaf depth. The received symbols are discarded.
