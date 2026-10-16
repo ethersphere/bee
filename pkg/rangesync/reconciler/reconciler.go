@@ -93,6 +93,7 @@ type peerState struct {
 	unsupported bool // SendStatus reported ErrProtocolUnsupported
 	sent        bool // our Status reached the peer
 	running     bool // a session with the peer is running
+	served      bool // the peer started a session with this node (Succeed or Wants)
 }
 
 // score is a peer's failure score at time at.
@@ -116,12 +117,16 @@ type Reconciler struct {
 	rate          *rate.Rate
 	metrics       metrics
 
-	mu               sync.Mutex
-	peers            map[string]*peerState
-	scores           map[string]score
-	guardArmed       bool // a round completed the exchange with every neighbor
-	pendingReconcile int  // sessions whose Reconcile has not returned
-	catchUpFetches   int  // catch-up fetches in flight
+	mu         sync.Mutex
+	peers      map[string]*peerState
+	scores     map[string]score
+	guardArmed bool // a round completed the exchange with every neighbor
+	// awaiting holds the eligible peers with a differing digest that
+	// initiate (lower overlay) and have not started a session with this
+	// node yet; the start-up guard holds while it is not empty.
+	awaiting         map[string]bool
+	pendingReconcile int // sessions whose Reconcile has not returned
+	catchUpFetches   int // catch-up fetches in flight
 	startedAt        time.Time
 
 	started       atomic.Bool
@@ -162,6 +167,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		rate:          rate.New(SyncRateWindow),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
+		awaiting:      make(map[string]bool),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -170,7 +176,8 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 }
 
 // SetService sets the Service when it was nil at New. It must be called
-// before Start.
+// before Start and is not safe for concurrent use with any other method:
+// node wiring calls it once, between New and Start.
 func (r *Reconciler) SetService(svc Service) {
 	r.svc = svc
 }
@@ -267,7 +274,11 @@ func (r *Reconciler) round(full bool) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// A peer that accepts our Status but never sends its own keeps
+	// exchanged false; the guard then releases only at StartupGuardTimeout
+	// (the fallback path). Its eligibility is unknown without its Status.
 	exchanged, eligible := true, 0
+	clear(r.awaiting)
 	var candidates []swarm.Address
 	for _, p := range connected {
 		st, ok := r.peers[p.ByteString()]
@@ -283,7 +294,16 @@ func (r *Reconciler) round(full bool) {
 			continue
 		}
 		eligible++
-		if st.running || !r.initiates(p) || sameDigest(local, remote) {
+		if sameDigest(local, remote) {
+			continue
+		}
+		if !r.initiates(p) {
+			if !st.served {
+				r.awaiting[p.ByteString()] = true
+			}
+			continue
+		}
+		if st.running {
 			continue
 		}
 		candidates = append(candidates, p)
@@ -297,10 +317,8 @@ func (r *Reconciler) round(full bool) {
 			r.session(p)
 		}()
 	}
-	if exchanged && eligible > 0 {
-		r.guardArmed = true
-		r.checkGuardLocked()
-	}
+	r.guardArmed = exchanged && eligible > 0
+	r.checkGuardLocked()
 }
 
 // probe sends Status to peers, at most maxConcurrentProbes at once, and
@@ -433,6 +451,7 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 	if r.ctx.Err() != nil {
 		return
 	}
+	r.markServedLocked(peer)
 	catchUp := len(ids) >= CatchUpMinDiff
 	if catchUp {
 		r.catchUpFetches++
@@ -448,7 +467,7 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 // exchange with every neighbor and every session it started has resolved its
 // difference (any catch-up it triggered is fetching).
 func (r *Reconciler) checkGuardLocked() {
-	if r.guardArmed && r.pendingReconcile == 0 {
+	if r.guardArmed && r.pendingReconcile == 0 && len(r.awaiting) == 0 {
 		r.guardReleased.Store(true)
 	}
 }
@@ -456,7 +475,9 @@ func (r *Reconciler) checkGuardLocked() {
 // SyncRate returns the rate, in chunks per second over SyncRateWindow, of
 // chunks fetched by sessions that resolved at least CatchUpMinDiff wants.
 // Until the first Status exchange with every eligible connected peer has
-// completed and any catch-up it triggered has started, or until
+// completed and any catch-up it triggered has started (sessions this node
+// initiates have resolved their difference, and every eligible peer with a
+// differing digest that initiates has run a session with this node), or until
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
 // eligible neighbor the guard holds until the timeout. While a catch-up
 // fetch is in flight it is at least StartupGuardRate.
@@ -487,8 +508,23 @@ func (r *Reconciler) Fail(peer swarm.Address, reason error) {
 }
 
 // Succeed implements rangesync.PeerScorer. A success does not lower the
-// score; only time does.
-func (r *Reconciler) Succeed(swarm.Address) {}
+// score; only time does. It marks that a session with peer completed, which
+// the start-up guard waits for when the peer is the initiator.
+func (r *Reconciler) Succeed(peer swarm.Address) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.markServedLocked(peer)
+}
+
+// markServedLocked records that peer ran a session with this node and
+// re-checks the start-up guard.
+func (r *Reconciler) markServedLocked(peer swarm.Address) {
+	if st, ok := r.peers[peer.ByteString()]; ok {
+		st.served = true
+	}
+	delete(r.awaiting, peer.ByteString())
+	r.checkGuardLocked()
+}
 
 // Score returns the failure score of peer at Now(), after decay: the score
 // drops by one every ScoreDecayInterval since the last Fail, down to zero.

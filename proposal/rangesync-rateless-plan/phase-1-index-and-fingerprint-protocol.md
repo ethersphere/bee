@@ -1693,6 +1693,15 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   for CI `-race`: `TestClose`, `TestStartupGuardEmptyReserve`, `TestSyncRateLargeCatchUp`,
   `TestResponderWantsFetched`, `TestPeerJoinLeave`. Ordering by score is tested on
   `orderCandidates` directly (session launch order is goroutine-scheduled).
+- **T1.11 fix round 2 (2026-10-15):** (M) the start-up guard also waits for every eligible peer
+  with a differing digest that initiates (lower overlay) to run a session with this node
+  (`Succeed` or `Wants` from that peer), so a node whose neighbors all initiate no longer
+  releases right after the exchange (`TestStartupGuardLowerPeerInitiates`, race-relevant for
+  CI). It is still capped at 120 s. (L) A peer that accepts our Status but never sends its own
+  keeps the exchange incomplete; the guard then releases via the 120 s fallback (documented). (L)
+  `SetService` is documented as wiring-only (before `Start`, not concurrent). Accepted without
+  code change: `Start`'s ctx is ignored (`Close` is the only stop), and `scores` entries are
+  pruned only when read after full decay (bounded by the peers that ever failed).
 
 ## Follow-ups
 _(sessions append here)_

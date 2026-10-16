@@ -492,6 +492,34 @@ func TestStartupGuardEmptyReserve(t *testing.T) {
 	close(svc.fetchGate)
 }
 
+func TestStartupGuardLowerPeerInitiates(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(0))
+	svc.remote[lower.ByteString()] = status(5) // lower initiates
+	h := newHarness(t, svc, lower)
+	waitFor(t, "probe", func() bool { return svc.count(svc.sent, lower) > 0 })
+	settle()
+	if got := h.r.SyncRate(); got != reconciler.StartupGuardRate || h.r.GuardReleased() {
+		t.Fatalf("sync rate %v before the lower peer's session", got)
+	}
+	// the lower peer's session lists what this node lacks
+	h.r.Wants(lower, make([]storer.ChunkID, reconciler.CatchUpMinDiff))
+	waitFor(t, "guard released", h.r.GuardReleased)
+
+	// a completed session without wants releases it too
+	svc2 := newFakeService(status(0))
+	svc2.remote[lower.ByteString()] = status(5)
+	h2 := newHarness(t, svc2, lower)
+	waitFor(t, "probe", func() bool { return svc2.count(svc2.sent, lower) > 0 })
+	settle()
+	if h2.r.GuardReleased() {
+		t.Fatal("guard released before the lower peer's session")
+	}
+	h2.r.Succeed(lower)
+	waitFor(t, "guard released", h2.r.GuardReleased)
+}
+
 func TestStartupGuardNoPeers(t *testing.T) {
 	t.Parallel()
 
