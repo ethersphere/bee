@@ -82,6 +82,10 @@ type Config struct {
 	// Scope.CheckRange, be pairwise disjoint and number at most MaxParts. It
 	// is not used by responders.
 	Open []fingerprint.Range
+	// PeerCount is the element count of the peer's last Status. It bounds
+	// the IDs the peer may list in one range (see MaxPeerItems). Zero means
+	// unknown: only the cR of the range and MaxPeerItems bound it.
+	PeerCount uint64
 }
 
 // Decision is the outcome of the per-range decision rule (proposal §6.3) for
@@ -221,6 +225,9 @@ type Session struct {
 	// unanswered holds the ranges this side sent a Fingerprint for that the
 	// peer has not answered.
 	unanswered map[fingerprint.RangeKey]struct{}
+	// peerCounts holds the peer's count of each range it sent a
+	// Fingerprint for.
+	peerCounts map[fingerprint.RangeKey]uint64
 	// in holds the peer's Items streams by range, ended ones included.
 	in map[fingerprint.RangeKey]*inStream
 	// replies holds this side's Items streams with Reply by range.
@@ -236,7 +243,8 @@ type inStream struct {
 	last         fingerprint.ID // last listed ID, set while more
 	more         bool
 	reply        bool
-	answersReply bool // answers this side's Reply stream for the range
+	answersReply bool   // answers this side's Reply stream for the range
+	listed       uint64 // IDs listed in the stream so far
 }
 
 func newSession(cfg Config, initiator bool) *Session {
@@ -247,7 +255,21 @@ func newSession(cfg Config, initiator bool) *Session {
 		in:         make(map[fingerprint.RangeKey]*inStream),
 		replies:    make(map[fingerprint.RangeKey]*listing),
 		answers:    make(map[fingerprint.RangeKey]*answer),
+		peerCounts: make(map[fingerprint.RangeKey]uint64),
 	}
+}
+
+// itemLimit returns the most IDs the peer may list in the range of key:
+// max(cR, PeerCount) + ItemsPageSize of slack for elements the peer gained
+// since it sent them, at most MaxPeerItems. cR is the peer's count of the
+// range from its Fingerprint, if it sent one. With neither known, it is
+// MaxPeerItems.
+func (s *Session) itemLimit(key fingerprint.RangeKey) uint64 {
+	cR, ok := s.peerCounts[key]
+	if !ok && s.cfg.PeerCount == 0 {
+		return MaxPeerItems
+	}
+	return min(max(cR, s.cfg.PeerCount)+ItemsPageSize, MaxPeerItems)
 }
 
 // NewInitiator returns the session of the node that opens it, and the opening
@@ -493,6 +515,7 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 	if err != nil {
 		return fmt.Errorf("local summary of %s: %w", r, err)
 	}
+	s.peerCounts[r.Key()] = remote.Count
 	switch Decide(DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}) {
 	case DecisionEqual:
 	case DecisionSendItems:
@@ -551,6 +574,10 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 		return nil, invalid("answers for %s end before the last reply page", it.Range)
 	}
 	st.more = it.More
+	st.listed += uint64(len(it.IDs))
+	if limit := s.itemLimit(key); st.listed > limit {
+		return nil, invalid("items for %s list more than %d ids", it.Range, limit)
+	}
 	if len(it.IDs) > 0 {
 		st.last = it.IDs[len(it.IDs)-1]
 	}

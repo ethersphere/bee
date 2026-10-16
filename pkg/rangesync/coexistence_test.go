@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -24,9 +25,9 @@ import (
 // through pullsync nor misses P's chunks: after the fetches D and R both
 // hold the union of the three reserves.
 //
-// P only serves: the reserve mock answers SubscribeBin with a fixed list, so
-// D's pullsync handler cannot offer what D holds and P does not pull from D
-// here (see the T1.13 entry of the Decisions log).
+// Finally P pulls from D. The reserve mock answers SubscribeBin with a fixed
+// list, so D's side of that pull is a second pullsync instance whose mock
+// offers D's final reserve (see the T1.13 entries of the Decisions log).
 func TestCoexistence(t *testing.T) {
 	t.Parallel()
 
@@ -110,4 +111,28 @@ func TestCoexistence(t *testing.T) {
 		sr, errR := r.svc.LocalStatus()
 		return errD == nil && errR == nil && sd.Summary == sr.Summary && sd.Summary.Count == uint64(len(chs))
 	})
+
+	// P <- D over pullsync: a second pullsync instance serves D's final
+	// reserve (the mock's SubscribeBin serves a fixed list)
+	dOffers := make([]*storer.BinC, len(chs))
+	for i, ch := range chs {
+		id := chunkIDOf(t, ch)
+		dOffers[i] = &storer.BinC{Address: ch.Address(), BatchID: ch.Stamp().BatchID(), BinID: uint64(i + 1), StampHash: id.StampHash}
+	}
+	dServe := pullsync.New(nil, mockstorer.NewReserve(mockstorer.WithSubscribeResp(dOffers, nil), mockstorer.WithChunks(chs...)), unwrap, gsoc, validStamp, log.Noop, uint64(len(dOffers)))
+	t.Cleanup(func() { _ = dServe.Close() })
+	pPull := pullsync.New(streamtest.New(streamtest.WithProtocols(dServe.Protocol())), pStore, unwrap, gsoc, validStamp, log.Noop, uint64(len(dOffers)))
+	t.Cleanup(func() { _ = pPull.Close() })
+	if _, _, err := pPull.Sync(context.Background(), d.addr, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range chs {
+		has, err := pStore.ReserveHas(ch.Address(), ch.Stamp().BatchID(), chunkIDOf(t, ch).StampHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatalf("P lacks %s", ch.Address())
+		}
+	}
 }

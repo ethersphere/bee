@@ -123,8 +123,8 @@ func newMetrics() metrics {
 		PairwiseDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "pairwise_diff",
-			Help:      "IDs listed by the peer and missing locally per completed reconcile session.",
+			Name:      "pairwise_diff_half",
+			Help:      "IDs listed by the peer and missing locally per completed reconcile session (this side's half of the session difference).",
 			Buckets:   append([]float64{0}, prometheus.ExponentialBuckets(1, 4, 10)...),
 		}),
 		PartsSent: prometheus.NewCounterVec(prometheus.CounterOpts{

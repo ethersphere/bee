@@ -87,7 +87,7 @@ func (s *Service) SessionRounds() (count uint64, sum float64) {
 	return histogramValue(s.metrics.SessionRounds)
 }
 
-// PairwiseDiff returns the sample count and sum of pairwise_diff.
+// PairwiseDiff returns the sample count and sum of pairwise_diff_half.
 func (s *Service) PairwiseDiff() (count uint64, sum float64) {
 	return histogramValue(s.metrics.PairwiseDiff)
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 )
 
 // Session constants (proposal §6.3).
@@ -55,6 +56,11 @@ const (
 	// sent in the Message built right after the page arrived always keep
 	// it.
 	MaxPendingReplies = 16
+
+	// MaxPeerItems is the most IDs a peer may list in one range of a
+	// session: the largest reserve, DefaultReserveCapacity with the one
+	// allowed capacity doubling.
+	MaxPeerItems = 2 * storer.DefaultReserveCapacity
 
 	// MaxWantIDs is the largest number of IDs in one Want.
 	MaxWantIDs = 250

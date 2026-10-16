@@ -1788,6 +1788,25 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   for CI `-race`: `TestCoexistence` (pullsync and rangesync over one mock reserve) and
   `TestProtocolConverges` (indexer commits during fetch). Fuzzing deferred: the client/handler
   targets are already listed in `followup-fuzzing.md` (T1.13 row); no new decoder was added.
+- **T1.13 fix round 1 (2026-10-15):** (M) Items listing cap: `Session` tracks the IDs the peer
+  listed per range (`inStream.listed`) and rejects (ErrInvalidMessage → reset, disconnect, `Fail`)
+  past `min(max(cR, Config.PeerCount) + ItemsPageSize, MaxPeerItems)`. cR is the count from
+  the peer's Fingerprint of that range (recorded in `decide`); `PeerCount` is the peer's Status
+  count (set by `Reconcile`/`handleReconcile`; zero = unknown, then only cR and the hard cap
+  apply, so session-level tests are unchanged). `MaxPeerItems = 2 × storer.DefaultReserveCapacity`
+  (one allowed capacity doubling, node.go `maxAllowedDoubling`). The ItemsPageSize slack is a
+  deviation from the review text: it covers elements an honest peer gained after its Status /
+  Fingerprint (a stale count must not disconnect it). A peer that lies about a huge Status count is
+  still bounded by MaxPeerItems per range. This supersedes the endless-paging finding above:
+  `TestReconcileEndlessItemsPaging` now has rows within / past the advertised count / not
+  continuing, and `TestReconcileAdversarial` has the row "items past the advertised count".
+  (M) `pairwise_diff` renamed `pairwise_diff_half`: in Phase 1 the initiator cannot see how many
+  of its listed IDs the responder lacked (the responder's wants stay local), so each side observes
+  its own half; full per-session n_Δ = the sum of both nodes' observations (Phase 2's decoder can
+  restore a one-sided `pairwise_diff`). (L) `TestCoexistence` now also covers P ← D: a second
+  pullsync instance whose mock `SubscribeBin` offers D's final reserve serves P's `Sync`, and P
+  ends with the union. Remaining coexistence gap: that server is a mock view of D's reserve, not
+  D's live pullsync handler, and the puller/combinedSyncer loop is not driven (T6).
 
 ## Follow-ups
 _(sessions append here)_

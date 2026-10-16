@@ -73,7 +73,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 		return nil, err
 	}
 	defer release()
-	sess, open, err := NewInitiator(Config{Scope: scope, Local: s.local})
+	sess, open, err := NewInitiator(Config{Scope: scope, Local: s.local, PeerCount: remote.Summary.Count})
 	if err != nil {
 		return nil, fmt.Errorf("open session: %w", err)
 	}
@@ -268,7 +268,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		return busy("opening outside the scope")
 	}
 
-	sess := NewResponder(Config{Scope: scope, Local: s.local})
+	sess := NewResponder(Config{Scope: scope, Local: s.local, PeerCount: remote.Summary.Count})
 	wants, handled, err := s.converse(ctx, sess, open, r, w)
 	switch {
 	case handled == 0 && errors.Is(err, fingerprint.ErrBusy):

@@ -47,9 +47,14 @@ func TestReconcileAdversarial(t *testing.T) {
 	differs := fingerprint.Summary{Count: 1, Digest: [32]byte{1}}
 	open := mustMarshalDelimited(t, msg(fpPart(whole, differs)))
 	// the server holds elements, so it answers open with the 16 children
-	// of the root, at depth 4
+	// of the root, at depth 4; an empty server asks for the peer's items
+	pastCount := randIDs(newRand(7), whole, 2*rangesync.ItemsPageSize)
+	slices.SortFunc(pastCount, fingerprint.ID.Compare)
+	page1, page2 := pastCount[:rangesync.ItemsPageSize], pastCount[rangesync.ItemsPageSize:]
 	for _, tc := range []struct {
 		name string
+		// empty runs the server with an empty reserve
+		empty bool
 		// root is the peer's Status root (default: the whole space)
 		root *fingerprint.Range
 		// first is written raw; second, if set, after the server's answer
@@ -97,6 +102,16 @@ func TestReconcileAdversarial(t *testing.T) {
 			second: mustMarshalDelimited(t, msg(fpParts(slices.Repeat(rangeOf("0000").Children(fingerprint.FanoutBits), rangesync.MaxParts/16+1), differs)...)),
 		},
 		{
+			// the peer advertised 1 element: 1 + ItemsPageSize may follow
+			name:  "items past the advertised count",
+			empty: true,
+			first: open,
+			second: mustMarshalDelimited(t, msg(
+				itemsPart(rangesync.Items{Range: whole, IDs: page1, More: true}),
+				itemsPart(rangesync.Items{Range: whole, IDs: page2, After: idPtr(page1[len(page1)-1]), More: true}),
+			)),
+		},
+		{
 			name:   "oversized message",
 			first:  open,
 			second: binary.AppendUvarint(nil, rangesync.MaxMessageBytes+1),
@@ -106,6 +121,9 @@ func TestReconcileAdversarial(t *testing.T) {
 			t.Parallel()
 
 			b := newTestNode(t, stampedChunks(t, 300)...)
+			if tc.empty {
+				b = newTestNode(t)
+			}
 			b.start(t)
 			p := newRawPeer(t, b)
 			root := whole
@@ -125,7 +143,7 @@ func TestReconcileAdversarial(t *testing.T) {
 					t.Fatal(err)
 				}
 				if answer.Busy || len(answer.Parts) == 0 {
-					t.Fatalf("server did not split: %v", &answer)
+					t.Fatalf("server did not answer with parts: %v", &answer)
 				}
 				if _, err := s.Write(tc.second); err != nil {
 					t.Fatal(err)
@@ -175,12 +193,11 @@ func TestReconcileOpeningOutsideRoot(t *testing.T) {
 	assertNotScored(t, b, p.addr)
 }
 
-// TestReconcileEndlessItemsPaging documents the Phase-1 bound on a peer that
-// keeps paging Items: each page is bounded (ItemsPageSize IDs in strictly
-// ascending order, continuing the stream), every answer is an empty Message,
-// and a page that does not continue the stream is a violation. The number of
-// pages per session is not capped; only sessionTimeout ends it (see the
-// T1.13 entry of the Decisions log).
+// TestReconcileEndlessItemsPaging checks the bound on a peer that keeps
+// paging Items: within the count it advertised for the range (plus one page)
+// every page is answered with an empty Message and the IDs reach
+// Options.Wants; past it, or with a page that does not continue the stream,
+// the session is a violation.
 func TestReconcileEndlessItemsPaging(t *testing.T) {
 	t.Parallel()
 
@@ -191,12 +208,19 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 	slices.SortFunc(ids, fingerprint.ID.Compare)
 	ids = slices.Compact(ids)
 
-	for _, broken := range []bool{false, true} {
-		name := "continuing"
-		if broken {
-			name = "page that does not continue"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// advertised is the count of the opening Fingerprint
+		advertised int
+		broken     bool
+		// violationAt is the page past the limit (-1: none)
+		violationAt int
+	}{
+		{name: "within the advertised count", advertised: len(ids), violationAt: -1},
+		{name: "past the advertised count", advertised: 4 * rangesync.ItemsPageSize, violationAt: 5},
+		{name: "page that does not continue", advertised: len(ids), broken: true, violationAt: pages / 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			// an empty server asks the peer for its items
@@ -216,7 +240,7 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 				}
 				return &m
 			}
-			if err := w.WriteMsg(msg(fpPart(whole, fingerprint.Summary{Count: uint64(len(ids)), Digest: [32]byte{1}}))); err != nil {
+			if err := w.WriteMsg(msg(fpPart(whole, fingerprint.Summary{Count: uint64(tc.advertised), Digest: [32]byte{1}}))); err != nil {
 				t.Fatal(err)
 			}
 			if _, items := partsOf(t, read()); len(items) != 1 || !items[0].Reply || len(items[0].IDs) != 0 {
@@ -228,7 +252,7 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 			for i := 0; sent < len(ids); i++ {
 				page := ids[sent:min(sent+rangesync.ItemsPageSize, len(ids))]
 				last := sent+len(page) == len(ids)
-				if broken && i == pages/2 {
+				if tc.broken && i == tc.violationAt {
 					after = idPtr(ids[0])
 				}
 				if err := w.WriteMsg(msg(itemsPart(rangesync.Items{Range: whole, IDs: page, After: after, More: !last}))); err != nil {
@@ -236,10 +260,7 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 				}
 				sent += len(page)
 				after = idPtr(page[len(page)-1])
-				if broken && i == pages/2 {
-					break
-				}
-				if last {
+				if i == tc.violationAt || last {
 					break
 				}
 				if m := read(); len(m.Parts) != 0 || m.Busy {
@@ -248,9 +269,12 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 			}
 			_ = s.Close()
 			records := p.records(t, rangesync.ReconcileStreamName)
-			if broken {
+			if tc.violationAt >= 0 {
 				assertDisconnect(t, records[0].Err())
 				assertFailed(t, b.scorer, p.addr)
+				if len(b.responderWants(p.addr)) != 0 {
+					t.Fatal("wants from a failed session")
+				}
 				return
 			}
 			if err := records[0].Err(); err != nil {
