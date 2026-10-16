@@ -60,7 +60,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	if remote.Mapping != fingerprint.DefaultMapperID {
 		return nil, fmt.Errorf("%w: peer mapping %d", ErrMappingMismatch, remote.Mapping)
 	}
-	st, err := s.localStatus()
+	st, err := s.LocalStatus()
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 	if !s.store.ReserveAddrIndexReady() {
 		return busy("address index not ready")
 	}
-	st, err := s.localStatus()
+	st, err := s.LocalStatus()
 	if err != nil {
 		return busy("index not built")
 	}

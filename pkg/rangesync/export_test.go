@@ -18,11 +18,6 @@ func (s *Session) PendingReplies() (withExclusion, excludedIDs, intervals int) {
 
 const MaxPeerReconcileStreams = maxPeerReconcileStreams
 
-// LocalStatus returns the status this node sends to its peers.
-func (s *Service) LocalStatus() (Status, error) {
-	return s.localStatus()
-}
-
 // MappingMismatches returns the value of the mapping_mismatch_total metric.
 func (s *Service) MappingMismatches() float64 {
 	var m dto.Metric

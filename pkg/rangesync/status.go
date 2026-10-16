@@ -20,10 +20,10 @@ import (
 // statusTimeout bounds the exchange of one Status.
 const statusTimeout = 10 * time.Second
 
-// localStatus returns this node's Status: the root and summary of the index
+// LocalStatus returns this node's Status: the root and summary of the index
 // and its leaf bits, with fingerprint.DefaultMapperID. It returns an error
 // wrapping fingerprint.ErrBusy until the index is built.
-func (s *Service) localStatus() (Status, error) {
+func (s *Service) LocalStatus() (Status, error) {
 	root, sum, err := s.index.RootSummary()
 	if err != nil {
 		return Status{}, fmt.Errorf("root summary: %w", err)
@@ -39,9 +39,10 @@ func (s *Service) localStatus() (Status, error) {
 // SendStatus sends this node's Status to peer on a status stream. It fails
 // with an error wrapping fingerprint.ErrBusy until the index is built. When
 // to send is the caller's decision (Phase 4 gossips on root changes and as a
-// heartbeat).
+// heartbeat). When the peer does not support the protocol the error wraps
+// ErrProtocolUnsupported.
 func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error) {
-	st, err := s.localStatus()
+	st, err := s.LocalStatus()
 	if err != nil {
 		return err
 	}
@@ -49,6 +50,9 @@ func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error
 	defer cancel()
 	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, StatusStreamName)
 	if err != nil {
+		if _, ok := errors.AsType[*p2p.IncompatibleStreamError](err); ok {
+			return fmt.Errorf("%w: %w", ErrProtocolUnsupported, err)
+		}
 		return fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {

@@ -55,6 +55,11 @@ var (
 	// when this node already runs MaxConcurrentSessions sessions or one
 	// with the peer (incoming or outgoing).
 	ErrSessionLimit = errors.New("rangesync: session limit")
+	// ErrProtocolUnsupported is returned (wrapped) by SendStatus when the
+	// peer does not support the rangesync protocol (the stream could not be
+	// negotiated, p2p.IncompatibleStreamError). The reconciler does not
+	// probe such a peer again while it stays connected.
+	ErrProtocolUnsupported = errors.New("rangesync: protocol not supported by peer")
 )
 
 // PeerScorer receives the outcome of the sessions with each peer. The

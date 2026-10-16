@@ -1665,6 +1665,35 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   the fetch limiter (1000 chunks/s) and `TryUnwrap` is short-lived; a bounded worker pool can be
   added if pss unwrapping proves costly.
 
+- **T1.11 (2026-10-15):** `pkg/rangesync/reconciler` (`reconciler.go`, `metrics.go`). One loop
+  goroutine: a full round at `Start` and every `RoundInterval` (60 s), a probing round on each
+  topology change (only peers without a completed exchange are re-sent `Status`). Probes run
+  concurrently, at most 16 at a time. Eligibility = same `Mapping` and `rangesync.NewScope(local,
+  remote)` ok (no second copy of the `SessionRoot` rule). Initiate iff our overlay is lower and
+  roots or summaries differ (different roots always count as different; Phase 4 compares the
+  session-root summary). One session per peer at a time. `ErrSessionLimit` → retried next round,
+  not scored. `rangesync` gains `LocalStatus()` (exported) and `ErrProtocolUnsupported`, which
+  `SendStatus` wraps when `NewStream` returns `p2p.IncompatibleStreamError`; such a peer is not
+  probed again while connected and never holds the guard.
+- **T1.11 contract additions:** `Reconciler.Wants(peer, ids)`, for `rangesync.Options.Wants`
+  (responder-side wants), fetched asynchronously with the same catch-up accounting. Without it a
+  higher-overlay node would never fetch from lower peers. `Start` panics on a nil Service. `Start`'s ctx is
+  not retained; `Close` stops everything.
+- **T1.11 score/rate:** score +1 per `Fail`, −1 per `ScoreDecayInterval` since the last `Fail`
+  (`Score` is the value after decay at `Now()`), `Succeed` is a no-op. "Deprioritized" = run last
+  (stable sort); Phase 4 may tighten. `SyncRate` uses `pkg/rate` (real clock; `Options.Now` drives
+  only the guard and decay), counting `stored` after each catch-up `Fetch` returns. Because the
+  count arrives only at the end, `SyncRate` is at least `StartupGuardRate` (1.0) while a catch-up
+  fetch is in flight. Guard: released when a round sees every supported connected peer exchanged
+  (ours sent, theirs received), at least one of them eligible, and no session's `Reconcile`
+  pending. Otherwise it holds until `StartupGuardTimeout`, including when there are no neighbors.
+  `Metrics()` exposes the reconciler's own `sync_rate`, `sessions_total{result}` and
+  `peer_failures_total`.
+- **T1.11 tests:** no `-race` on this host (no gcc); ran `-count=3 -cpu=1,2,4`. Race-relevant
+  for CI `-race`: `TestClose`, `TestStartupGuardEmptyReserve`, `TestSyncRateLargeCatchUp`,
+  `TestResponderWantsFetched`, `TestPeerJoinLeave`. Ordering by score is tested on
+  `orderCandidates` directly (session launch order is goroutine-scheduled).
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in

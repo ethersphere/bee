@@ -6,15 +6,23 @@ package reconciler
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rate"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// loggerName is the name of the reconciler's logger.
+const loggerName = "rangesync-reconciler"
 
 const (
 	// CatchUpMinDiff is the smallest resolved difference (number of wants) of
@@ -28,16 +36,21 @@ const (
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
 	// StartupGuardRate is the sentinel SyncRate reports while the start-up
-	// guard holds.
+	// guard holds, and while a catch-up fetch is in flight but no chunk was
+	// counted in the window yet.
 	StartupGuardRate = 1.0
 
 	// ScoreThreshold is the failure score above which a peer is
-	// deprioritized: its sessions run after those of every peer at or below
-	// the threshold.
+	// deprioritized. In Phase 1 deprioritized means "run last": a round runs
+	// the sessions of peers above the threshold after those of every other
+	// peer. Phase 4 may tighten this (skip or delay such peers).
 	ScoreThreshold = 3
 	// ScoreDecayInterval is how often a peer's failure score drops by one;
 	// a success does not reset it.
 	ScoreDecayInterval = 10 * time.Minute
+
+	// maxConcurrentProbes bounds the concurrent SendStatus calls of a round.
+	maxConcurrentProbes = 16
 )
 
 // Service is the part of *rangesync.Service the reconciler uses, narrow so
@@ -45,11 +58,16 @@ const (
 type Service interface {
 	// LocalStatus returns this node's current Status.
 	LocalStatus() (rangesync.Status, error)
+	// SendStatus sends this node's Status to peer. An error wrapping
+	// rangesync.ErrProtocolUnsupported means the peer does not speak
+	// rangesync; the reconciler does not probe it again while connected.
 	SendStatus(ctx context.Context, peer swarm.Address) error
 	LastStatus(peer swarm.Address) (rangesync.Status, bool)
 	Reconcile(ctx context.Context, peer swarm.Address) ([]storer.ChunkID, error)
 	Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error)
 }
+
+var _ Service = (*rangesync.Service)(nil)
 
 // Topology is the part of topology.Driver the reconciler uses.
 type Topology interface {
@@ -61,6 +79,8 @@ type Topology interface {
 // defaults.
 type Options struct {
 	// Now returns the current time; time.Now if nil. Tests set a fake clock.
+	// It drives the start-up guard and the score decay; the rate window
+	// (pkg/rate) uses the real clock.
 	Now func() time.Time
 	// RoundInterval overrides RoundInterval.
 	RoundInterval time.Duration
@@ -68,11 +88,49 @@ type Options struct {
 	StartupGuardTimeout time.Duration
 }
 
+// peerState is what the reconciler keeps for a connected peer.
+type peerState struct {
+	unsupported bool // SendStatus reported ErrProtocolUnsupported
+	sent        bool // our Status reached the peer
+	running     bool // a session with the peer is running
+}
+
+// score is a peer's failure score at time at.
+type score struct {
+	value int
+	at    time.Time
+}
+
 // Reconciler follows the topology, exchanges Status with the connected peers
 // and runs Reconcile then Fetch with every eligible peer whose digest differs
 // and whose overlay is higher than this node's. It owns the per-peer failure
 // score (rangesync.PeerScorer) and reports the catch-up rate (storer.Syncer).
-type Reconciler struct{}
+type Reconciler struct {
+	overlay       swarm.Address
+	topo          Topology
+	svc           Service
+	logger        log.Logger
+	now           func() time.Time
+	roundInterval time.Duration
+	guardTimeout  time.Duration
+	rate          *rate.Rate
+	metrics       metrics
+
+	mu               sync.Mutex
+	peers            map[string]*peerState
+	scores           map[string]score
+	guardArmed       bool // a round completed the exchange with every neighbor
+	pendingReconcile int  // sessions whose Reconcile has not returned
+	catchUpFetches   int  // catch-up fetches in flight
+	startedAt        time.Time
+
+	started       atomic.Bool
+	guardReleased atomic.Bool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	closeOnce     sync.Once
+}
 
 var (
 	_ rangesync.PeerScorer = (*Reconciler)(nil)
@@ -83,53 +141,417 @@ var (
 // work until Start. svc may be set after New with SetService, because the
 // rangesync.Service takes the Reconciler as its PeerScorer.
 func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o Options) *Reconciler {
-	panic("not implemented")
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.RoundInterval <= 0 {
+		o.RoundInterval = RoundInterval
+	}
+	if o.StartupGuardTimeout <= 0 {
+		o.StartupGuardTimeout = StartupGuardTimeout
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &Reconciler{
+		overlay:       overlay,
+		topo:          topo,
+		svc:           svc,
+		logger:        logger.WithName(loggerName).Register(),
+		now:           o.Now,
+		roundInterval: o.RoundInterval,
+		guardTimeout:  o.StartupGuardTimeout,
+		rate:          rate.New(SyncRateWindow),
+		peers:         make(map[string]*peerState),
+		scores:        make(map[string]score),
+		ctx:           ctx,
+		cancel:        cancel,
+	}
+	r.metrics = newMetrics(r.SyncRate)
+	return r
 }
 
 // SetService sets the Service when it was nil at New. It must be called
 // before Start.
 func (r *Reconciler) SetService(svc Service) {
-	panic("not implemented")
+	r.svc = svc
 }
 
 // Start subscribes to the topology and starts the round loop. It returns
 // immediately and is safe to call once, from the storer's reserve-worker
-// start-up; later calls are no-ops.
-func (r *Reconciler) Start(ctx context.Context) {
-	panic("not implemented")
+// start-up; later calls are no-ops. It panics when the Service is nil (a
+// wiring bug). ctx is not retained: Close stops the loop.
+func (r *Reconciler) Start(_ context.Context) {
+	if r.svc == nil {
+		panic("reconciler: Start without a Service")
+	}
+	if !r.started.CompareAndSwap(false, true) {
+		return
+	}
+	r.mu.Lock()
+	r.startedAt = r.now()
+	r.mu.Unlock()
+	if r.ctx.Err() != nil { // closed before start
+		return
+	}
+	changes, unsubscribe := r.topo.SubscribeTopologyChange()
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		defer unsubscribe()
+		r.loop(changes)
+	}()
+}
+
+// loop runs a full round at start and every round interval, and a probing
+// round on every topology change, until Close.
+func (r *Reconciler) loop(changes <-chan struct{}) {
+	ticker := time.NewTicker(r.roundInterval)
+	defer ticker.Stop()
+	r.round(true)
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-ticker.C:
+			r.round(true)
+		case <-changes:
+			r.round(false)
+		}
+	}
+}
+
+// round refreshes the peer set from the topology, sends Status to the peers
+// (all of them when full, else those without a completed exchange) and
+// starts a session with every peer this node initiates with.
+func (r *Reconciler) round(full bool) {
+	local, err := r.svc.LocalStatus()
+	if err != nil {
+		r.logger.Debug("round skipped", "error", err)
+		return
+	}
+
+	var connected []swarm.Address
+	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		connected = append(connected, addr)
+		return false, false, nil
+	}, topology.Select{})
+
+	r.mu.Lock()
+	present := make(map[string]bool, len(connected))
+	var probe []swarm.Address
+	for _, p := range connected {
+		k := p.ByteString()
+		present[k] = true
+		st, ok := r.peers[k]
+		if !ok {
+			st = &peerState{}
+			r.peers[k] = st
+		}
+		if st.unsupported {
+			continue
+		}
+		if _, have := r.svc.LastStatus(p); full || !st.sent || !have {
+			probe = append(probe, p)
+		}
+	}
+	for k := range r.peers {
+		if !present[k] {
+			delete(r.peers, k)
+		}
+	}
+	r.mu.Unlock()
+
+	r.probe(probe)
+	if r.ctx.Err() != nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	exchanged, eligible := true, 0
+	var candidates []swarm.Address
+	for _, p := range connected {
+		st, ok := r.peers[p.ByteString()]
+		if !ok || st.unsupported {
+			continue
+		}
+		remote, have := r.svc.LastStatus(p)
+		if !st.sent || !have {
+			exchanged = false
+			continue
+		}
+		if !isEligible(local, remote) {
+			continue
+		}
+		eligible++
+		if st.running || !r.initiates(p) || sameDigest(local, remote) {
+			continue
+		}
+		candidates = append(candidates, p)
+	}
+	for _, p := range r.orderCandidatesLocked(candidates) {
+		r.peers[p.ByteString()].running = true
+		r.pendingReconcile++
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			r.session(p)
+		}()
+	}
+	if exchanged && eligible > 0 {
+		r.guardArmed = true
+		r.checkGuardLocked()
+	}
+}
+
+// probe sends Status to peers, at most maxConcurrentProbes at once, and
+// records the outcome.
+func (r *Reconciler) probe(peers []swarm.Address) {
+	sem := make(chan struct{}, maxConcurrentProbes)
+	var wg sync.WaitGroup
+	for _, p := range peers {
+		select {
+		case sem <- struct{}{}:
+		case <-r.ctx.Done():
+			wg.Wait()
+			return
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			err := r.svc.SendStatus(r.ctx, p)
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			st, ok := r.peers[p.ByteString()]
+			if !ok {
+				return // left meanwhile
+			}
+			switch {
+			case err == nil:
+				st.sent = true
+			case errors.Is(err, rangesync.ErrProtocolUnsupported):
+				st.unsupported = true
+			default:
+				st.sent = false
+				r.logger.Debug("send status", "peer_address", p, "error", err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// isEligible reports whether this node and a peer with status remote run
+// sessions: same Mapping and a valid session scope (rangesync.NewScope,
+// which applies rangesync.SessionRoot).
+func isEligible(local, remote rangesync.Status) bool {
+	if local.Mapping != remote.Mapping {
+		return false
+	}
+	_, err := rangesync.NewScope(local, remote)
+	return err == nil
+}
+
+// sameDigest reports whether the two statuses summarize the same elements.
+// Statuses with different roots are compared as different: their summaries
+// cover different ranges (Phase 4 compares summaries of the session root).
+func sameDigest(local, remote rangesync.Status) bool {
+	return local.Root.Equal(remote.Root) && local.Summary == remote.Summary
+}
+
+// initiates reports whether this node starts sessions with peer: the peer
+// with the lower overlay initiates (§8.2).
+func (r *Reconciler) initiates(peer swarm.Address) bool {
+	return r.overlay.Compare(peer) < 0
+}
+
+// session runs Reconcile then Fetch with peer.
+func (r *Reconciler) session(peer swarm.Address) {
+	wants, err := r.svc.Reconcile(r.ctx, peer)
+
+	r.mu.Lock()
+	r.pendingReconcile--
+	catchUp := err == nil && len(wants) >= CatchUpMinDiff
+	if catchUp {
+		r.catchUpFetches++
+	}
+	r.checkGuardLocked()
+	r.mu.Unlock()
+
+	defer func() {
+		r.mu.Lock()
+		if st, ok := r.peers[peer.ByteString()]; ok {
+			st.running = false
+		}
+		r.mu.Unlock()
+	}()
+
+	switch {
+	case errors.Is(err, rangesync.ErrSessionLimit):
+		r.metrics.Sessions.WithLabelValues("session_limit").Inc()
+		return // retry next round, not scored
+	case err != nil:
+		r.metrics.Sessions.WithLabelValues("error").Inc()
+		r.logger.Debug("reconcile", "peer_address", peer, "error", err)
+		return
+	}
+	r.metrics.Sessions.WithLabelValues("ok").Inc()
+	r.fetch(peer, wants, catchUp)
+}
+
+// fetch fetches ids from peer and counts the stored chunks towards SyncRate
+// when catchUp. The caller incremented catchUpFetches for a catch-up fetch.
+func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
+	if catchUp {
+		defer func() {
+			r.mu.Lock()
+			r.catchUpFetches--
+			r.mu.Unlock()
+		}()
+	}
+	if len(ids) == 0 {
+		return
+	}
+	stored, err := r.svc.Fetch(r.ctx, peer, ids)
+	if catchUp && stored > 0 {
+		r.rate.Add(stored)
+	}
+	if err != nil {
+		r.logger.Debug("fetch", "peer_address", peer, "error", err)
+	}
+}
+
+// Wants fetches the IDs a peer listed in a session this node served and this
+// node does not hold (rangesync.Options.Wants). The fetch counts towards
+// SyncRate like an initiated session of the same size. It returns at once;
+// it is a no-op before Start and after Close.
+func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
+	if !r.started.Load() || len(ids) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx.Err() != nil {
+		return
+	}
+	catchUp := len(ids) >= CatchUpMinDiff
+	if catchUp {
+		r.catchUpFetches++
+	}
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.fetch(peer, ids, catchUp)
+	}()
+}
+
+// checkGuardLocked releases the start-up guard once a round completed the
+// exchange with every neighbor and every session it started has resolved its
+// difference (any catch-up it triggered is fetching).
+func (r *Reconciler) checkGuardLocked() {
+	if r.guardArmed && r.pendingReconcile == 0 {
+		r.guardReleased.Store(true)
+	}
 }
 
 // SyncRate returns the rate, in chunks per second over SyncRateWindow, of
 // chunks fetched by sessions that resolved at least CatchUpMinDiff wants.
 // Until the first Status exchange with every eligible connected peer has
 // completed and any catch-up it triggered has started, or until
-// StartupGuardTimeout after Start, it returns StartupGuardRate.
+// StartupGuardTimeout after Start, it returns StartupGuardRate. With no
+// eligible neighbor the guard holds until the timeout. While a catch-up
+// fetch is in flight it is at least StartupGuardRate.
 func (r *Reconciler) SyncRate() float64 {
-	panic("not implemented")
+	if !r.started.Load() {
+		return StartupGuardRate
+	}
+	r.mu.Lock()
+	inFlight := r.catchUpFetches > 0
+	guard := !r.guardReleased.Load() && r.now().Sub(r.startedAt) < r.guardTimeout
+	r.mu.Unlock()
+	rt := r.rate.Rate()
+	if (guard || inFlight) && rt < StartupGuardRate {
+		return StartupGuardRate
+	}
+	return rt
 }
 
-// Fail implements rangesync.PeerScorer: it raises the failure score of peer.
+// Fail implements rangesync.PeerScorer: it raises the failure score of peer
+// by one.
 func (r *Reconciler) Fail(peer swarm.Address, reason error) {
-	panic("not implemented")
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.now()
+	r.scores[peer.ByteString()] = score{value: r.scoreLocked(peer, now) + 1, at: now}
+	r.metrics.Failures.Inc()
+	r.logger.Debug("peer failed", "peer_address", peer, "reason", reason)
 }
 
-// Succeed implements rangesync.PeerScorer.
-func (r *Reconciler) Succeed(peer swarm.Address) {
-	panic("not implemented")
-}
+// Succeed implements rangesync.PeerScorer. A success does not lower the
+// score; only time does.
+func (r *Reconciler) Succeed(swarm.Address) {}
 
-// Score returns the current failure score of peer.
+// Score returns the failure score of peer at Now(), after decay: the score
+// drops by one every ScoreDecayInterval since the last Fail, down to zero.
 func (r *Reconciler) Score(peer swarm.Address) int {
-	panic("not implemented")
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.scoreLocked(peer, r.now())
 }
 
-// Metrics returns the reconciler's collectors (including sync_rate).
+func (r *Reconciler) scoreLocked(peer swarm.Address, now time.Time) int {
+	s, ok := r.scores[peer.ByteString()]
+	if !ok {
+		return 0
+	}
+	v := s.value - int(now.Sub(s.at)/ScoreDecayInterval)
+	if v <= 0 {
+		delete(r.scores, peer.ByteString())
+		return 0
+	}
+	return v
+}
+
+// orderCandidates returns peers with those above ScoreThreshold moved last,
+// keeping the order otherwise.
+func (r *Reconciler) orderCandidates(peers []swarm.Address) []swarm.Address {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.orderCandidatesLocked(peers)
+}
+
+func (r *Reconciler) orderCandidatesLocked(peers []swarm.Address) []swarm.Address {
+	now := r.now()
+	out := slices.Clone(peers)
+	slices.SortStableFunc(out, func(a, b swarm.Address) int {
+		ah := r.scoreLocked(a, now) > ScoreThreshold
+		bh := r.scoreLocked(b, now) > ScoreThreshold
+		switch {
+		case ah == bh:
+			return 0
+		case ah:
+			return 1
+		default:
+			return -1
+		}
+	})
+	return out
+}
+
+// Metrics returns the reconciler's collectors. Its sync_rate gauge is this
+// reconciler's own SyncRate, not the node's combined rate.
 func (r *Reconciler) Metrics() []prometheus.Collector {
-	panic("not implemented")
+	return r.metrics.collectors()
 }
 
-// Close unsubscribes from the topology, stops the round loop and waits for
-// running sessions to end.
+// Close unsubscribes from the topology, stops the round loop, cancels
+// running sessions and waits for them to end. It is safe to call more than
+// once.
 func (r *Reconciler) Close() error {
-	panic("not implemented")
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		r.cancel()
+		r.mu.Unlock()
+		r.wg.Wait()
+	})
+	return nil
 }

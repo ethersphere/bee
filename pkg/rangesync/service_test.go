@@ -87,6 +87,8 @@ type nodeOpts struct {
 	outside func(swarm.Address) bool
 	// fetchTimeout is Options.FetchTimeout.
 	fetchTimeout time.Duration
+	// streamErr is the recorder's stream error; nil: none.
+	streamErr func(swarm.Address, string, string, string) error
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -110,7 +112,11 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 		scorer: newRecordingScorer(),
 		wants:  make(map[string][]storer.ChunkID),
 	}
-	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithBaseAddr(n.addr)))
+	recOpts := []streamtest.Option{streamtest.WithBaseAddr(n.addr)}
+	if o.streamErr != nil {
+		recOpts = append(recOpts, streamtest.WithStreamError(o.streamErr))
+	}
+	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(recOpts...))
 	n.svc = rangesync.New(n.rec, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:       n.scorer,
 		Wants:        n.addWants,
@@ -277,6 +283,19 @@ func TestStatusNotReady(t *testing.T) {
 	// a is not started: it has no index yet
 	if err := a.svc.SendStatus(context.Background(), b.addr); !errors.Is(err, fingerprint.ErrBusy) {
 		t.Fatalf("got %v, want %v", err, fingerprint.ErrBusy)
+	}
+}
+
+func TestStatusProtocolUnsupported(t *testing.T) {
+	t.Parallel()
+
+	a := newTestNodeOpts(t, nodeOpts{streamErr: func(swarm.Address, string, string, string) error {
+		return p2p.NewIncompatibleStreamError(errors.New("protocols not supported"))
+	}})
+	a.start(t)
+	err := a.svc.SendStatus(context.Background(), swarm.RandAddress(t))
+	if !errors.Is(err, rangesync.ErrProtocolUnsupported) {
+		t.Fatalf("got %v, want %v", err, rangesync.ErrProtocolUnsupported)
 	}
 }
 
