@@ -39,3 +39,5 @@ ordinary test; nobody extends or debugs it until TF.
 _(tasks append here: `- Tn.m: Func in path/file.go — what to assert`)_
 - T1.9: handleStatus in pkg/rangesync/status.go — any bytes: no panic, Status recorded only if ParseStatus accepts, else reset + Fail
 - T1.9: handleReconcile / readMessage (strictMessage) in pkg/rangesync/reconcile.go, stream.go — any byte stream: no panic, oversize/undecodable → ErrInvalidMessage + reset, slots released
+- T1.10: handleFetch / parseWant in pkg/rangesync/fetch.go — any byte stream: no panic, oversize/undecodable/empty/>250/invalid or duplicate ID → ErrInvalidMessage + reset, stream slot released
+- T1.10: Service.fetch / deliver (Delivery reader) in pkg/rangesync/fetch.go — any Delivery stream: no panic, only requested valid chunks stored, every claim ended on return, violations → ErrInvalidMessage + disconnect

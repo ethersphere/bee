@@ -7,7 +7,6 @@ package rangesync_test
 import (
 	"context"
 	"errors"
-	"io"
 	"sync/atomic"
 	"testing"
 
@@ -22,7 +21,7 @@ import (
 // newService returns a service over an empty mock reserve.
 func newService(t *testing.T, streamer p2p.StreamerDisconnecter) *rangesync.Service {
 	t.Helper()
-	s := rangesync.New(streamer, mockstorer.NewReserve(mockstorer.WithAddrIndex()), swarm.RandAddress(t), log.Noop, rangesync.Options{})
+	s := rangesync.New(streamer, mockstorer.NewReserve(mockstorer.WithAddrIndex()), swarm.RandAddress(t), nil, nil, nil, log.Noop, rangesync.Options{})
 	t.Cleanup(func() {
 		if err := s.Close(); err != nil {
 			t.Error(err)
@@ -80,54 +79,6 @@ func TestProtocol(t *testing.T) {
 	}
 	if spec.DisconnectIn == nil || spec.DisconnectOut == nil {
 		t.Error("missing disconnect hooks")
-	}
-}
-
-func TestHandlersNotImplemented(t *testing.T) {
-	t.Parallel()
-
-	for _, name := range []string{rangesync.FetchStreamName} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			server := newService(t, streamtest.NewRecorderDisconnecter(streamtest.New()))
-			var resets atomic.Int32
-			recordReset := func(h p2p.HandlerFunc) p2p.HandlerFunc {
-				return func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
-					return h(ctx, p, &resetRecordingStream{Stream: s, resets: &resets})
-				}
-			}
-			recorder := streamtest.New(
-				streamtest.WithProtocols(server.Protocol()),
-				streamtest.WithMiddlewares(recordReset),
-			)
-			peer := swarm.RandAddress(t)
-
-			stream, err := recorder.NewStream(context.Background(), peer, nil, rangesync.ProtocolName, rangesync.ProtocolVersion, name)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			records, err := recorder.Records(peer, rangesync.ProtocolName, rangesync.ProtocolVersion, name)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(records) != 1 {
-				t.Fatalf("got %d records, want 1", len(records))
-			}
-			if err := records[0].Err(); !errors.Is(err, rangesync.ErrNotImplemented) {
-				t.Fatalf("handler error: got %v, want %v", err, rangesync.ErrNotImplemented)
-			}
-
-			if got := resets.Load(); got != 1 {
-				t.Fatalf("handler reset the stream %d times, want 1", got)
-			}
-			// the stream is gone for the requester (streamtest maps Reset to a
-			// full close, so this alone cannot tell Reset from Close)
-			if _, err := stream.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
-				t.Fatalf("read: got %v, want %v", err, io.EOF)
-			}
-		})
 	}
 }
 

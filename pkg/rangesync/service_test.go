@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -75,6 +76,32 @@ type testNode struct {
 
 func newTestNode(tb testing.TB, chunks ...swarm.Chunk) *testNode {
 	tb.Helper()
+	return newTestNodeOpts(tb, nodeOpts{}, chunks...)
+}
+
+// nodeOpts configures the fetch side of a testNode.
+type nodeOpts struct {
+	// validStamp validates delivered stamps; nil accepts every stamp.
+	validStamp postage.ValidStampFn
+	// outside reports addresses outside the storage radius; nil: none.
+	outside func(swarm.Address) bool
+}
+
+// radiusStore is a mock reserve whose storage radius check is outside.
+type radiusStore struct {
+	*mockstorer.ReserveStore
+	outside func(swarm.Address) bool
+}
+
+func (s radiusStore) IsWithinStorageRadius(addr swarm.Address) bool {
+	return s.outside == nil || !s.outside(addr)
+}
+
+func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode {
+	tb.Helper()
+	if o.validStamp == nil {
+		o.validStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+	}
 	n := &testNode{
 		addr:   swarm.RandAddress(tb),
 		store:  mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(chunks...)),
@@ -82,7 +109,7 @@ func newTestNode(tb testing.TB, chunks ...swarm.Chunk) *testNode {
 		wants:  make(map[string][]storer.ChunkID),
 	}
 	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithBaseAddr(n.addr)))
-	n.svc = rangesync.New(n.rec, n.store, n.addr, log.Noop, rangesync.Options{
+	n.svc = rangesync.New(n.rec, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:   n.scorer,
 		Wants:    n.addWants,
 		LeafBits: serviceLeafBits,
@@ -790,7 +817,7 @@ func TestStart(t *testing.T) {
 	t.Parallel()
 
 	store := mockstorer.NewReserve() // no address index
-	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, swarm.RandAddress(t), log.Noop, rangesync.Options{})
+	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, swarm.RandAddress(t), nil, nil, nil, log.Noop, rangesync.Options{})
 	if err := svc.Start(); !errors.Is(err, storer.ErrAddrIndexDisabled) {
 		t.Fatalf("got %v, want %v", err, storer.ErrAddrIndexDisabled)
 	}

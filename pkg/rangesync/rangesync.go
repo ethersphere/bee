@@ -10,10 +10,16 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,8 +42,6 @@ const (
 	// and the holder delivers them.
 	FetchStreamName = "fetch"
 )
-
-var errNotImplemented = errors.New("rangesync: not implemented")
 
 var (
 	// ErrNoStatus is returned by Reconcile when no Status of the peer was
@@ -69,13 +73,20 @@ type noopScorer struct{}
 func (noopScorer) Fail(swarm.Address, error) {}
 func (noopScorer) Succeed(swarm.Address)     {}
 
-// Store is the part of the storer that the rangesync service reads: the
-// address index (storer.ReserveAddrStore, proposal §5.4) and the reserve
-// radius. *storer.DB implements it.
+// Store is the part of the storer that the rangesync service uses: the
+// address index (storer.ReserveAddrStore, proposal §5.4), the reserve radius
+// and the reserve putter. *storer.DB implements it.
 type Store interface {
 	IndexerStore
 	// ReserveHasID reports whether (addr, stampHash) is in the reserve.
 	ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error)
+	// ReserveGetByID returns the chunk of (addr, stampHash) in the reserve,
+	// or an error wrapping storage.ErrNotFound.
+	ReserveGetByID(ctx context.Context, addr swarm.Address, stampHash []byte) (swarm.Chunk, error)
+	// ReservePutter returns the putter that stores fetched chunks.
+	ReservePutter() storage.Putter
+	// IsWithinStorageRadius reports whether addr is in the neighborhood.
+	IsWithinStorageRadius(addr swarm.Address) bool
 	// SetReserveObserver registers the single observer of the reserve.
 	SetReserveObserver(o storer.ReserveObserver) error
 }
@@ -95,6 +106,9 @@ type Options struct {
 	LeafBits uint8
 	// Indexer configures the Indexer that keeps the index current.
 	Indexer IndexerOptions
+	// FetchRate is the node-wide limit of chunks requested per second by
+	// Fetch. Zero means DefaultFetchRate.
+	FetchRate int
 }
 
 var _ io.Closer = (*Service)(nil)
@@ -111,6 +125,14 @@ type Service struct {
 	scorer   PeerScorer
 	wants    func(peer swarm.Address, wants []storer.ChunkID)
 
+	unwrap      func(swarm.Chunk)
+	gsocHandler func(*soc.SOC)
+	validStamp  postage.ValidStampFn
+
+	wantSet         *wantset.Set
+	fetchLimiter    *ratelimit.Limiter // node-wide, requester side
+	deliveryLimiter *ratelimit.Limiter // per peer, holder side
+
 	index   *fingerprint.Index
 	indexer *Indexer
 	local   *local
@@ -120,6 +142,7 @@ type Service struct {
 
 	statusStreams    *peerStreamLimiter
 	reconcileStreams *peerStreamLimiter
+	fetchStreams     *peerStreamLimiter
 	peerSessions     *peerStreamLimiter // MaxConcurrentSessionsPerPeer
 	sessions         chan struct{}      // MaxConcurrentSessions tokens
 
@@ -131,10 +154,34 @@ type Service struct {
 
 // New returns a new rangesync Service of the node overlay, which opens
 // streams and disconnects peers through streamer and reads the reserve
-// through store. It starts nothing; see Start.
-func New(streamer p2p.StreamerDisconnecter, store Store, overlay swarm.Address, logger log.Logger, o Options) *Service {
+// through store. Fetched chunks are validated as pullsync validates them,
+// with the same unwrap, gsocHandler and validStamp that pullsync.New gets:
+// nil unwrap and gsocHandler do nothing, and a nil validStamp rejects every
+// delivery. It starts nothing; see Start.
+func New(
+	streamer p2p.StreamerDisconnecter,
+	store Store,
+	overlay swarm.Address,
+	unwrap func(swarm.Chunk),
+	gsocHandler func(*soc.SOC),
+	validStamp postage.ValidStampFn,
+	logger log.Logger,
+	o Options,
+) *Service {
 	if o.Scorer == nil {
 		o.Scorer = noopScorer{}
+	}
+	if o.FetchRate <= 0 {
+		o.FetchRate = DefaultFetchRate
+	}
+	if unwrap == nil {
+		unwrap = func(swarm.Chunk) {}
+	}
+	if gsocHandler == nil {
+		gsocHandler = func(*soc.SOC) {}
+	}
+	if validStamp == nil {
+		validStamp = func(swarm.Chunk) (swarm.Chunk, error) { return nil, errNoStampValidator }
 	}
 	index := fingerprint.NewIndex(fingerprint.IndexOptions{
 		LeafBits:           o.LeafBits,
@@ -148,12 +195,19 @@ func New(streamer p2p.StreamerDisconnecter, store Store, overlay swarm.Address, 
 		metrics:          newMetrics(),
 		scorer:           o.Scorer,
 		wants:            o.Wants,
+		unwrap:           unwrap,
+		gsocHandler:      gsocHandler,
+		validStamp:       validStamp,
+		wantSet:          wantset.New(ClaimDeadline),
+		fetchLimiter:     ratelimit.New(time.Second/time.Duration(o.FetchRate), MaxWantIDs),
+		deliveryLimiter:  ratelimit.New(handleRateLimit, MaxWantIDs),
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
 		local:            &local{index: index, store: store},
 		statuses:         make(map[string]Status),
 		statusStreams:    newPeerStreamLimiter(maxPeerStatusStreams),
 		reconcileStreams: newPeerStreamLimiter(maxPeerReconcileStreams),
+		fetchStreams:     newPeerStreamLimiter(maxPeerFetchStreams),
 		peerSessions:     newPeerStreamLimiter(MaxConcurrentSessionsPerPeer),
 		sessions:         make(chan struct{}, MaxConcurrentSessions),
 		ctx:              ctx,
@@ -201,13 +255,15 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// disconnected forgets the peer's status and stream slots.
+// disconnected forgets the peer's status, stream slots and delivery limit.
 func (s *Service) disconnected(peer p2p.Peer) error {
 	s.statusMu.Lock()
 	delete(s.statuses, peer.Address.ByteString())
 	s.statusMu.Unlock()
 	s.statusStreams.clear(peer.Address)
 	s.reconcileStreams.clear(peer.Address)
+	s.fetchStreams.clear(peer.Address)
+	s.deliveryLimiter.Clear(peer.Address.ByteString())
 	s.peerSessions.clear(peer.Address)
 	return nil
 }
@@ -217,20 +273,15 @@ func (s *Service) Metrics() []prometheus.Collector {
 	return append(s.metrics.collectors(), s.index.Metrics()...)
 }
 
-// Close ends the running sessions, stops the Indexer and closes the index.
+// Close ends the running sessions, stops the Indexer, closes the index and
+// the want set (later fetches request nothing).
 // The Indexer stays registered with the reserve: commits after Close are
 // still applied to the index.
 func (s *Service) Close() error {
 	var err error
 	s.closeOnce.Do(func() {
 		s.cancel()
-		err = errors.Join(s.indexer.Close(), s.index.Close())
+		err = errors.Join(s.indexer.Close(), s.index.Close(), s.wantSet.Close())
 	})
 	return err
-}
-
-// handleFetch serves the fetch stream.
-func (s *Service) handleFetch(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
-	_ = stream.Reset()
-	return errNotImplemented
 }

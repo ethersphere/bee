@@ -1620,6 +1620,37 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   pullsync: `streamlimit.go` `clear` on disconnect lets a reconnecting peer's new streams
   overlap handlers of the old connection still running, briefly exceeding the per-peer limit.
 
+- **T1.10 API (2026-10-15):** `New(streamer, store, overlay, unwrap, gsocHandler, validStamp,
+  logger, o)`: the three are positional, in pullsync's order (nil unwrap/gsocHandler are
+  no-ops, a nil validStamp rejects every delivery). `Fetch(ctx, peer, []storer.ChunkID)
+  (stored int, err error)` takes `Reconcile`'s output directly (batch IDs ignored). `Store`
+  gains `ReserveGetByID`, `ReservePutter`, `IsWithinStorageRadius` (all on `*storer.DB`).
+  `Options.FetchRate` (0 → `DefaultFetchRate`). The `Service` owns the node-wide want set
+  (`wantset.New(ClaimDeadline)`), closed by `Close`. `MaxWantIDs = 250` in `constants.go`.
+- **T1.10 stream shape:** one `Want` per fetch stream; the holder writes a `Delivery` per ID it
+  holds (unknown IDs skipped, no marker) and closes; the requester reads to EOF. More than 250
+  IDs → several streams, sequentially, claiming right before each `Want`. The requester's
+  filter order is radius → `ReserveHasID` → `Claim` (cheapest first, no claim to undo).
+  Handler limits: 4 concurrent fetch streams per peer (stream-limit disconnect as T1.9), per-peer
+  `ratelimit` of 250 chunks/s (burst 250) waited for once per `Want`, cleared on disconnect;
+  `Want` reader limit 32 KiB, `Delivery` reader limit 32 + `SocMaxChunkSize` + 113 + 64 bytes.
+- **T1.10 penalties (deviation from pullsync, which only joins errors):** an unsolicited or
+  duplicate delivery, an undecodable delivery/stamp, a non-32-byte address and a chunk that is
+  neither a valid CAC nor a valid SOC are violations (reset, disconnect, `PeerScorer.Fail`):
+  an honest holder only serves reserve chunks it was asked for. A stamp rejected by
+  `validStamp` is not penalized (the batch may be unknown/expired locally), only released and
+  counted (`fetch_rejected_total`). Malformed `Want` (empty, > 250, invalid or duplicate ID,
+  undecodable, oversized) is a violation on the holder side.
+- **T1.10 cross-protocol duplicates:** checked with `ReserveHasID` right before `Put`; a
+  present chunk is counted, its claim `Done`, and `Put` is skipped (not called twice).
+  `ErrOverwriteNewerChunk` → `Done`, not fatal. Other `Put`/store errors are returned, not scored.
+- **T1.10 tests/harness:** streamtest's `record.Write` deadlocks when a writer runs > 16 writes
+  ahead of its reader, so `TestFetchManyWants` lets the holder hold only 2 of 260 IDs. Race-
+  relevant for CI `-race`: `TestFetchHandlerStreamLimit`, `TestFetchViolations`,
+  `TestFetchCrossProtocolDuplicate` (run here with `-count=3 -cpu=1,2,4`). Removed
+  `TestHandlersNotImplemented` and `errNotImplemented` (no stub left). Re-implemented, not
+  imported: pullsync's delivery validation and its handler rate (pkg/pullsync untouched).
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in

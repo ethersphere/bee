@@ -57,7 +57,7 @@ func TestLocalIndexWiring(t *testing.T) {
 	)
 	overlay := swarm.RandAddress(t)
 	store := mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithRadius(radius))
-	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, overlay, log.Noop, rangesync.Options{LeafBits: leafBits})
+	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, overlay, nil, nil, nil, log.Noop, rangesync.Options{LeafBits: leafBits})
 	t.Cleanup(func() {
 		if err := svc.Close(); err != nil {
 			t.Error(err)

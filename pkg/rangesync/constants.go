@@ -56,6 +56,9 @@ const (
 	// it.
 	MaxPendingReplies = 16
 
+	// MaxWantIDs is the largest number of IDs in one Want.
+	MaxWantIDs = 250
+
 	// MaxConcurrentSessions is the largest number of reconcile sessions a node
 	// serves at once; sessions over the cap are answered with Busy.
 	MaxConcurrentSessions = 16
