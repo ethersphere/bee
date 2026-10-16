@@ -109,6 +109,10 @@ type Options struct {
 	// FetchRate is the node-wide limit of chunks requested per second by
 	// Fetch. Zero means DefaultFetchRate.
 	FetchRate int
+	// FetchTimeout bounds one Want, from opening its stream to the last
+	// Delivery. Zero means ClaimDeadline / 2, so that a stalled holder
+	// releases the claims before they expire.
+	FetchTimeout time.Duration
 }
 
 var _ io.Closer = (*Service)(nil)
@@ -128,6 +132,8 @@ type Service struct {
 	unwrap      func(swarm.Chunk)
 	gsocHandler func(*soc.SOC)
 	validStamp  postage.ValidStampFn
+
+	fetchTimeout time.Duration
 
 	wantSet         *wantset.Set
 	fetchLimiter    *ratelimit.Limiter // node-wide, requester side
@@ -171,6 +177,9 @@ func New(
 	if o.Scorer == nil {
 		o.Scorer = noopScorer{}
 	}
+	if o.FetchTimeout <= 0 {
+		o.FetchTimeout = ClaimDeadline / 2
+	}
 	if o.FetchRate <= 0 {
 		o.FetchRate = DefaultFetchRate
 	}
@@ -198,6 +207,7 @@ func New(
 		unwrap:           unwrap,
 		gsocHandler:      gsocHandler,
 		validStamp:       validStamp,
+		fetchTimeout:     o.FetchTimeout,
 		wantSet:          wantset.New(ClaimDeadline),
 		fetchLimiter:     ratelimit.New(time.Second/time.Duration(o.FetchRate), MaxWantIDs),
 		deliveryLimiter:  ratelimit.New(handleRateLimit, MaxWantIDs),

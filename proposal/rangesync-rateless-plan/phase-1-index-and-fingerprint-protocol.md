@@ -1651,6 +1651,20 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `TestHandlersNotImplemented` and `errNotImplemented` (no stub left). Re-implemented, not
   imported: pullsync's delivery validation and its handler rate (pkg/pullsync untouched).
 
+- **T1.10 fix round 1 (2026-10-15):** (M) each `Want` is bounded by `Options.FetchTimeout`
+  (default `ClaimDeadline / 2` = 15 s, so a stalled holder's claims are released before they
+  expire); a holder that has not finished by then is a violation (reset, release, disconnect,
+  `Fail`), test `TestFetchStalledHolder`. (M) `Fetch` filters a batch first (radius,
+  `ReserveHasID`), waits on the node-wide limiter for that many tokens, and only then claims, so
+  the wait cannot outlast a claim; IDs that then lose the claim waste their tokens (accepted).
+  (L) The holder's per-peer limiter is charged once per chunk actually delivered; unknown IDs
+  cost one address-index lookup each, bounded by 250 per `Want` and 4 streams per peer. (L)
+  `Fetch` runs under the caller's ctx and the service's ctx: `Close` ends it with
+  `context.Canceled`, not scored (`TestFetchClose`, race-relevant for CI). (L) `go s.unwrap(chunk)`
+  per delivered CAC is unbounded, as in `pullsync.Sync`: kept for parity; the rate is bounded by
+  the fetch limiter (1000 chunks/s) and `TryUnwrap` is short-lived; a bounded worker pool can be
+  added if pss unwrapping proves costly.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in

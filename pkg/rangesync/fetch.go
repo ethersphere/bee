@@ -60,7 +60,8 @@ var errNoStampValidator = errors.New("rangesync: no stamp validator")
 // remains no stream is opened. The claims of an ID end with Done when it was
 // stored (or a newer stamp is held) and with Release otherwise, on every
 // return. The node-wide fetch rate (Options.FetchRate) is waited for before
-// each Want.
+// the IDs of each Want are claimed. A holder that has not finished within
+// Options.FetchTimeout of the Want is a violation. Close ends a running Fetch.
 //
 // Deliveries are validated as pullsync.Sync validates them. A delivery that
 // was not requested (or delivered twice), does not decode or is neither a
@@ -71,16 +72,29 @@ var errNoStampValidator = errors.New("rangesync: no stamp validator")
 // an error. A chunk that is in the reserve when it would be stored is counted
 // as a cross protocol duplicate and not stored again.
 func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (stored int, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(s.ctx, cancel) // Close ends the fetch
+	defer stop()
+
 	for len(ids) > 0 {
-		batch, rest, err := s.claimWants(peer, ids)
+		var cands []fingerprint.ID
+		cands, ids, err = s.wantCandidates(ids)
 		if err != nil {
 			return stored, err
 		}
-		ids = rest
-		if len(batch) == 0 {
+		if len(cands) == 0 {
 			continue
 		}
-		n, err := s.fetch(ctx, peer, batch)
+		// wait before claiming, so that the wait cannot outlast the claims
+		if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
+			return stored, fmt.Errorf("fetch limiter: %w", err)
+		}
+		claimed := s.claim(peer, cands)
+		if len(claimed) == 0 {
+			continue
+		}
+		n, err := s.fetch(ctx, peer, claimed)
 		stored += n
 		if err != nil {
 			return stored, err
@@ -89,13 +103,12 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 	return stored, nil
 }
 
-// claimWants claims at most MaxWantIDs of ids from the start of ids for
-// peer, skipping those outside the storage radius, those the reserve holds
-// and those not granted, and returns the claimed IDs and the IDs not looked
-// at yet. On error no claim is kept.
-func (s *Service) claimWants(peer swarm.Address, ids []storer.ChunkID) (claimed map[fingerprint.ID]struct{}, rest []storer.ChunkID, err error) {
-	claimed = make(map[fingerprint.ID]struct{})
-	for len(ids) > 0 && len(claimed) < MaxWantIDs {
+// wantCandidates returns at most MaxWantIDs distinct IDs from the start of
+// ids that are within the storage radius and not in the reserve, and the IDs
+// not looked at yet.
+func (s *Service) wantCandidates(ids []storer.ChunkID) (cands []fingerprint.ID, rest []storer.ChunkID, err error) {
+	seen := make(map[fingerprint.ID]struct{})
+	for len(ids) > 0 && len(cands) < MaxWantIDs {
 		c := ids[0]
 		ids = ids[1:]
 		if !s.store.IsWithinStorageRadius(c.Address) {
@@ -104,7 +117,6 @@ func (s *Service) claimWants(peer swarm.Address, ids []storer.ChunkID) (claimed 
 		}
 		has, err := s.store.ReserveHasID(c.Address, c.StampHash)
 		if err != nil {
-			s.releaseAll(peer, claimed)
 			return nil, nil, fmt.Errorf("reserve has id: %w", err)
 		}
 		if has {
@@ -112,16 +124,26 @@ func (s *Service) claimWants(peer swarm.Address, ids []storer.ChunkID) (claimed 
 			continue
 		}
 		id := fingerprint.NewID(c.Address, c.StampHash)
-		if _, ok := claimed[id]; ok {
+		if _, ok := seen[id]; ok {
 			continue
 		}
+		seen[id] = struct{}{}
+		cands = append(cands, id)
+	}
+	return cands, ids, nil
+}
+
+// claim claims cands for peer and returns the granted IDs.
+func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID) map[fingerprint.ID]struct{} {
+	claimed := make(map[fingerprint.ID]struct{}, len(cands))
+	for _, id := range cands {
 		if r := s.wantSet.Claim(id, peer); r != wantset.Granted {
 			s.metrics.FetchSkipped.WithLabelValues(r.String()).Inc()
 			continue
 		}
 		claimed[id] = struct{}{}
 	}
-	return claimed, ids, nil
+	return claimed
 }
 
 // releaseAll releases the claims of peer on ids.
@@ -138,8 +160,15 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 	// claimed holds the IDs not delivered yet
 	defer s.releaseAll(peer, claimed)
 
-	if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(claimed)); err != nil {
-		return 0, fmt.Errorf("fetch limiter: %w", err)
+	// a holder that stalls must not keep the claims past ClaimDeadline
+	parent := ctx
+	ctx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
+	defer cancel()
+	stalled := func(err error) error {
+		if parent.Err() == nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return s.initiatorViolation(peer, invalid("no deliveries within %s", s.fetchTimeout))
+		}
+		return err
 	}
 
 	want := &pb.Want{IDs: make([]*pb.ID, 0, len(claimed))}
@@ -161,7 +190,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 
 	w, r := protobuf.NewWriter(stream), newReader(stream, maxDeliveryBytes)
 	if err := w.WriteMsgWithContext(ctx, want); err != nil {
-		return 0, fmt.Errorf("write want: %w", err)
+		return 0, stalled(fmt.Errorf("write want: %w", err))
 	}
 
 	for len(claimed) > 0 {
@@ -174,7 +203,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 			if errors.Is(err, ErrInvalidMessage) {
 				return stored, s.initiatorViolation(peer, fmt.Errorf("delivery: %w", err))
 			}
-			return stored, fmt.Errorf("read delivery: %w", err)
+			return stored, stalled(fmt.Errorf("read delivery: %w", err))
 		}
 		ok, err := s.deliver(ctx, peer, claimed, &d)
 		if errors.Is(err, ErrInvalidMessage) {
@@ -195,7 +224,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 	case err == nil || errors.Is(err, ErrInvalidMessage):
 		return stored, s.initiatorViolation(peer, invalid("unsolicited delivery"))
 	default:
-		return stored, fmt.Errorf("read delivery: %w", err)
+		return stored, stalled(fmt.Errorf("read delivery: %w", err))
 	}
 }
 
@@ -292,11 +321,6 @@ func (s *Service) handleFetch(ctx context.Context, p p2p.Peer, stream p2p.Stream
 		return s.violation(peer, stream, err)
 	}
 
-	if _, err := s.deliveryLimiter.Wait(ctx, peer.ByteString(), len(ids)); err != nil {
-		_ = stream.Reset()
-		return fmt.Errorf("delivery limiter: %w", err)
-	}
-
 	for _, id := range ids {
 		ch, err := s.store.ReserveGetByID(ctx, id.Address(), id.StampHash())
 		if errors.Is(err, storage.ErrNotFound) {
@@ -305,6 +329,11 @@ func (s *Service) handleFetch(ctx context.Context, p p2p.Peer, stream p2p.Stream
 		if err != nil {
 			_ = stream.Reset()
 			return fmt.Errorf("reserve get by id: %w", err)
+		}
+		// charged per delivered chunk: unknown IDs cost one index lookup
+		if _, err := s.deliveryLimiter.Wait(ctx, peer.ByteString(), 1); err != nil {
+			_ = stream.Reset()
+			return fmt.Errorf("delivery limiter: %w", err)
 		}
 		stamp, err := ch.Stamp().MarshalBinary()
 		if err != nil {

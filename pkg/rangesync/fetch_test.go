@@ -482,3 +482,60 @@ func TestFetchHandlerStreamLimit(t *testing.T) {
 		t.Fatalf("got %d disconnects, want 1", disconnects)
 	}
 }
+
+func TestFetchStalledHolder(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(1)
+	a := newTestNodeOpts(t, nodeOpts{fetchTimeout: 100 * time.Millisecond})
+	b := newTestNode(t)
+	stall := make(chan struct{})
+	t.Cleanup(func() { close(stall) })
+	fakeHolder(a, b, func(*pb.Want, protobuf.Writer) { <-stall })
+
+	ids := idsOf(t, chs...)
+	_, err := a.svc.Fetch(context.Background(), b.addr, ids)
+	if !errors.Is(err, rangesync.ErrInvalidMessage) {
+		t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+	}
+	if !a.rec.IsDisconnected(b.addr) {
+		t.Fatal("peer not disconnected")
+	}
+	assertFailed(t, a.scorer, b.addr)
+	assertNoClaims(t, a, ids...)
+}
+
+func TestFetchClose(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(1)
+	a := newTestNode(t)
+	b := newTestNode(t)
+	stall := make(chan struct{})
+	t.Cleanup(func() { close(stall) })
+	wanted := make(chan struct{})
+	fakeHolder(a, b, func(*pb.Want, protobuf.Writer) {
+		close(wanted)
+		<-stall
+	})
+
+	ids := idsOf(t, chs...)
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.svc.Fetch(context.Background(), b.addr, ids)
+		done <- err
+	}()
+	<-wanted
+	if err := a.svc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v, want %v", err, context.Canceled)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("fetch not ended by Close")
+	}
+	assertNotScored(t, a, b.addr)
+}

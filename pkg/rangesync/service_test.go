@@ -85,6 +85,8 @@ type nodeOpts struct {
 	validStamp postage.ValidStampFn
 	// outside reports addresses outside the storage radius; nil: none.
 	outside func(swarm.Address) bool
+	// fetchTimeout is Options.FetchTimeout.
+	fetchTimeout time.Duration
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -110,9 +112,10 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	}
 	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithBaseAddr(n.addr)))
 	n.svc = rangesync.New(n.rec, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
-		Scorer:   n.scorer,
-		Wants:    n.addWants,
-		LeafBits: serviceLeafBits,
+		Scorer:       n.scorer,
+		Wants:        n.addWants,
+		LeafBits:     serviceLeafBits,
+		FetchTimeout: o.fetchTimeout,
 	})
 	tb.Cleanup(func() {
 		if err := n.svc.Close(); err != nil {
