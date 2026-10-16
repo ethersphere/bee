@@ -432,6 +432,64 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     ends the session) rather than mapping to exhausted, since the scan's partial symbols are
     unusable. `TestLocalSymbolsExhausted`: a level-1 range over ScanLimit, window past its cache.
 
+- **T2.4 (implementation, 2026-10-16).**
+  - *Inputs.* `Config` gains `Status`/`PeerStatus` (both Statuses, for `cap(R)` and the mapping
+    check), `Mapper` (nil = `FloatMapper`) and `Hints`. Symbol streams are used only when both
+    Mappings are non-zero and equal `Mapper.ID()`; otherwise the session keeps the Phase-1 form
+    and an incoming `Symbols` is a violation (or wraps `ErrMappingMismatch` when both Mappings are
+    set and differ: Reconcile already refuses such peers, so it is not scored). `Reconcile` and the
+    responder build the `Config` in `Service.sessionConfig`. `DecisionInput` gains `Cap` (0 = no
+    symbols) and `Hint`; `DecisionSymbols` sits between `DecisionStripe` and `DecisionSplit`;
+    d̂ (`DecisionInput.Estimate`) also drives the stripe test (the hint is ≤ a cache, far below
+    `LargeDiff`, so this changes nothing).
+  - *`cap(R)` as a per-peer minimum.* `Capacity = min(peer(local), peer(remote))`, a peer's value
+    being unlimited if it holds ≤ `ScanLimit` in R, else 4096 / 512 / 32 for its root / level-1 /
+    any range ≤ LeafBits below its root (0 deeper). It equals the task's table wherever that applies
+    and is more precise elsewhere (e.g. R = root of one peer, level-1 of the other → 512; root of
+    both with both small → unlimited instead of 4096). `CapUnlimited = MaxUint64`.
+  - *Batch size.* `FirstBatch(d) = max(MinBatch, ⌈1.6·d⌉ + 2)` in integers (`(16d+9)/10 + 2`, d
+    clamped so it cannot overflow). New `MaxBatchSymbols = 8192` (720 KiB at `MaxSymbolSize`, so a
+    batch always fits one Message): a first batch above it is not chosen (split / items instead),
+    and a `More` is served at most 8192 symbols at a time (the peer asks again). Batches are
+    deferred whole, like splits.
+  - *Snapshot (M1, T2.2 review).* Each side's stream (served and local) copies its cached prefix
+    `[0, cacheCap)` (`Local.Symbols(R, 0, cap)`, cap from the own Status: 4096/512/32) when the
+    stream starts. Symbols past the prefix come from a new `Local.Symbols(R, 0, end)` call (the T2.3
+    scan path) and are used only if its first symbols equal everything taken so far; otherwise the
+    stream ends there (served side: `Exhausted`; local side: the decoder gives up), and R is split or
+    its items exchanged. So churn never mixes two sets in one decoder (no `ErrCorrupt`/non-`Done`
+    for honest streams); the cost of churn is a split. We keep the symbols taken (≤ the symbols
+    actually exchanged past the prefix) instead of the ≤ `ScanLimit` ID list, because an ID list of
+    every bucket-range stream of a message (up to 1024 × 4096 IDs) would be ~256 MB, while the
+    prefixes are ≤ 2.8 KB per bucket range. `TestSessionSymbolsSnapshot` (churn on either side
+    between batches; a mutation that skips the prefix comparison makes it decode corrupt).
+  - *Stream state and validation.* A served stream marks R unanswered when a batch is emitted, so
+    the peer's answer (Items without Reply = its only-local IDs, a split after `Exhausted`, or Items
+    with Reply after corruption / at the leaf) reuses the T1.8 answer rules and frees the snapshot.
+    `More` is valid only for a served stream whose last batch is unanswered and not `Exhausted`, with
+    `UpTo > sent`; `UpTo` is clamped to `cap(R)` (rejecting `UpTo > cap(R)`, the budget and the scan
+    cap are T2.5). A first `Symbols` (Start 0) must answer an unanswered Fingerprint; later batches
+    must answer a `More` this side sent, at `Start = Received()`, within its `UpTo`; an empty batch
+    only with `Exhausted`. The decoded answer is always sent, even with no IDs (one empty page),
+    which closes the peer's stream. `wants` = the decoder's `onlyRemote`, without a `HasID` check.
+  - *Not decoded.* `More{UpTo: min(4 × received, cap(R))}`; `Exhausted`, a local stream that ended,
+    or `UpTo ≤ received` → split if splittable, else `Items{R, Reply}`; the symbols are discarded.
+  - *Corruption.* `ErrCorrupt` → `Items{R, Reply: true}` (the T1.8 exchange; no element is lost,
+    `TestSessionSymbolsCorrupt`, and a mutation that drops the fallback loses them). Counted in
+    `Session.Stats().DecodeCorruptions`, added to the new `decode_corruption_total` counter when the
+    session ends (`TestReconcileDecodeCorruption`, over streamtest).
+  - *Hints.* `hintCache` on the `Service`: `golang-lru/v2` (already a dependency), `HintCacheSize =
+    4096` (peer, range) entries, set to `Recovered()` on every decoded stream. Only the decoding side
+    records; the deciding side of the next session reads it, so it helps once both peers have
+    initiated with each other.
+  - *Metrics.* `parts_sent`/`parts_received` already had the `symbols`/`more` labels (T1.13
+    `partType`); no change needed.
+  - *Integration bounds.* `TestProtocolConverges` keeps the Meyer bounds plus an allowance for symbol
+    streams: equal counts give d̂ = 1, so a stream grows 4 → 4096 in 5 Mores (+10 messages, +8 for
+    level-1) and an exhausted root plus 16 level-1 streams waste ≤ 12,288 symbols. Measured: diff 1k
+    14 messages (Meyer 11), 367 KB (Meyer 653 KB); diff 4k 22 messages, 1.42 MB (Meyer 0.87 MB).
+    The literal worked examples are T2.6's.
+
 ## Follow-ups
 _(sessions append here)_
 - **T2.4 (from T2.3).** `Local.Symbols`' scan (`scanIDs` → `ReserveIterateAddr`) takes no context
@@ -493,3 +551,18 @@ _(sessions append here)_
   `count(r)` crossing `ScanLimit`), and cache and scan results can reflect different element sets.
   T2.4's served and local streams must each be taken from one snapshot (cached prefix copied, or
   the scanned ID list kept) and never combine separate `Symbols` calls.
+- **(T2.4) Symbol-stream limits are T2.5's.** T2.4 clamps `More.UpTo` to `cap(R)` and serves at
+  most `MaxBatchSymbols` per batch, but does not enforce `SessionSymbolBudget` (sent or received),
+  `MaxScansPerMessage`, nor reject `UpTo > cap(R)`; the decoder's memory is bounded only by the
+  `More`s this side sends (≤ 4× per round up to `cap(R)`; unlimited ranges have no cap yet).
+- **(T2.4) Low estimates cost round trips.** With equal counts (d̂ = 1, stale stamps, paired
+  differences) the root stream needs up to 5 `More`s; hints only help the side that decoded last
+  time. T2.6 should measure whether a larger growth factor or a responder-side hint (record the
+  size of the peer's `Items` answer on the serving side) pays off.
+- **(T2.4) Scan without context (from T2.3), still open.** The snapshot re-reads the scan path per
+  batch past the cached prefix, so a slow scan blocks `Handle`; session-lifetime cancellation of
+  `Local.Symbols` would need a context in `Local` (T4.3 session budget).
+- **(T2.4) `local.Symbols` vs `cacheCapacity`.** The prefix length comes from the node's `Status`
+  root, which can be stale if the Index root moves mid-session; the Index then returns a shorter
+  window and the stream just ends earlier (`Exhausted`). Fine for correctness; T3.4 (root change)
+  should keep it in mind.
