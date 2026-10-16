@@ -28,3 +28,9 @@ func (b *Bee) ShutdownClosersByName() map[string]io.Closer {
 	}
 	return m
 }
+
+var (
+	NewCombinedSyncer = newCombinedSyncer
+	ResolveSyncMode   = resolveSyncMode
+	ErrNoSyncProtocol = errNoSyncProtocol
+)

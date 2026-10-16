@@ -1703,6 +1703,32 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   code change: `Start`'s ctx is ignored (`Close` is the only stop), and `scores` entries are
   pruned only when read after full decay (bounded by the peers that ever failed).
 
+- **T1.12 (2026-10-15):** flags `--rangesync-enable` (false) and `--puller-enable` (true) →
+  `node.Options.RangesyncEnable`/`PullerEnable` (plumbed in `start.go`, the only `node.Options`
+  builder). The mode is decided by `resolveSyncMode(full, boot, rangesync, puller)` in
+  `pkg/node/syncer.go`; light/ultra-light/boot nodes ignore rangesync (Warning log, no address
+  index, no protocol) and never run the puller, as before. Full node with both off →
+  `errNoSyncProtocol`. Rangesync on: storer opened with `ReserveAddrIndex: true`; the reconciler
+  is built with a nil Service right after `pullsync.New`, then `rangesync.New` (Scorer =
+  reconciler, Wants = `Reconciler.Wants`), `SetService`, `Service.Start()`; the protocol is added
+  after pullsync's. `combinedSyncer` (puller and/or reconciler; `Start` all, `SyncRate` sum)
+  replaces `pullerService` in `StartReserveWorker`, `SetSync`, both `isFullySynced` and the debug
+  log; rangesync + reconciler metrics registered; closers `rangesync reconciler` and `rangesync`
+  added to `shutdownClosers`. `PullsyncRate` kept; the combined-rate comment is at `SetSync`
+  (node.go), not on the generated pb / api field.
+- **T1.12 deviations:** (1) node-level tests replaced by `TestResolveSyncMode` on the factored
+  decision function plus `TestCombinedSyncer*` (building a `NewBee` in a unit test is
+  impractical); the wiring itself is covered by `make build`/vet/lint only. (2) A
+  `Service.Start()` error is fatal at start-up (returns an error) instead of "disabled, logged"
+  (T1.6 → T1.9 entry): with `ReserveAddrIndex: true` it can only be a wiring bug. (3) Outside the
+  declared scope, per the T1.5 → T1.12 entry: `cmd/bee/cmd/db.go` passes `ReserveAddrIndexKeep:
+  true` for `info`, `export reserve`, `export pinning`, `import pinning`; and `start.go` plumbs the
+  flags. (4) The reconciler is constructed next to `pullsync.New`, not inside the later
+  full-node block, because `rangesync.New` needs it as Scorer (both are full-node only).
+- **T1.12 tests:** no `-race` here; ran `-count=3 -cpu=1,2,4`. No race-relevant tests added
+  (the combined syncer holds no state). Ground-rule suites (pullsync, puller, storer, rangesync)
+  pass unchanged.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in

@@ -55,6 +55,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/salud"
@@ -111,6 +113,8 @@ type Bee struct {
 	pullerCloser             io.Closer
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
+	rangesyncCloser          io.Closer
+	reconcilerCloser         io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
 	transactionMonitorCloser io.Closer
@@ -148,6 +152,8 @@ type Options struct {
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
 	BootnodeMode                  bool
+	RangesyncEnable               bool
+	PullerEnable                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
 	AutoTLSCAEndpoint             string
@@ -312,6 +318,14 @@ func NewBee(
 	shallowReceiptTolerance := maxAllowedDoubling - o.ReserveCapacityDoubling
 
 	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
+
+	syncMode, err := resolveSyncMode(o.FullNodeMode, o.BootnodeMode, o.RangesyncEnable, o.PullerEnable)
+	if err != nil {
+		return nil, err
+	}
+	if syncMode.RangesyncIgnored {
+		logger.Warning("rangesync is only available on full nodes; ignoring --rangesync-enable")
+	}
 
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
@@ -876,6 +890,7 @@ func NewBee(
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
 		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
+		lo.ReserveAddrIndex = syncMode.Rangesync
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -1184,6 +1199,24 @@ func NewBee(
 	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
+	var (
+		rangesyncService *rangesync.Service
+		reconcilerSvc    *reconciler.Reconciler
+	)
+	if syncMode.Rangesync {
+		reconcilerSvc = reconciler.New(swarmAddress, kad, nil, logger, reconciler.Options{})
+		b.reconcilerCloser = reconcilerSvc
+		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesync.Options{
+			Scorer: reconcilerSvc,
+			Wants:  reconcilerSvc.Wants,
+		})
+		b.rangesyncCloser = rangesyncService
+		reconcilerSvc.SetService(rangesyncService)
+		if err := rangesyncService.Start(); err != nil {
+			return nil, fmt.Errorf("rangesync: %w", err)
+		}
+	}
+
 	retrieveProtocolSpec := retrieval.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
@@ -1209,6 +1242,11 @@ func NewBee(
 	}
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
+	}
+	if rangesyncService != nil {
+		if err = p2ps.AddProtocol(rangesyncService.Protocol()); err != nil {
+			return nil, fmt.Errorf("rangesync protocol: %w", err)
+		}
 	}
 
 	go func() {
@@ -1274,12 +1312,23 @@ func NewBee(
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
-		b.pullerCloser = pullerService
+		var syncers []storer.Syncer
+		if syncMode.Puller {
+			pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
+			b.pullerCloser = pullerService
+			syncers = append(syncers, pullerService)
+		}
+		if reconcilerSvc != nil {
+			syncers = append(syncers, reconcilerSvc)
+		}
+		syncer := newCombinedSyncer(syncers...)
 
 		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
-		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, nil)
-		nodeStatus.SetSync(pullerService)
+		localStore.StartReserveWorker(ctx, syncer, waitNetworkRFunc, nil)
+		// The status protocol and API report the combined rate of all
+		// enabled drivers in the PullsyncRate field (name kept for wire and
+		// API compatibility).
+		nodeStatus.SetSync(syncer)
 
 		// measure full sync duration
 		detector.OnStabilized = func(t time.Time, totalCount int) {
@@ -1287,7 +1336,7 @@ func NewBee(
 
 			reserveThreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
+				return syncer.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
 			}
 
 			syncCheckTicker := time.NewTicker(2 * time.Second)
@@ -1299,7 +1348,7 @@ func NewBee(
 						return
 					case <-syncCheckTicker.C:
 						synced := isFullySynced()
-						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", syncer.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
 							logger.Info("full sync done", "duration", fullSyncTime)
@@ -1327,7 +1376,7 @@ func NewBee(
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSize() >= reserveThreshold && syncer.SyncRate() == 0 && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
@@ -1403,6 +1452,11 @@ func NewBee(
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)
+		}
+
+		if rangesyncService != nil {
+			apiService.MustRegisterMetrics(rangesyncService.Metrics()...)
+			apiService.MustRegisterMetrics(reconcilerSvc.Metrics()...)
 		}
 
 		if agent != nil {
@@ -1481,6 +1535,8 @@ func (b *Bee) shutdownClosers() []namedCloser {
 		{b.gsocCloser, "gsoc"},
 		{b.pusherCloser, "pusher"},
 		{b.pullerCloser, "puller"},
+		{b.reconcilerCloser, "rangesync reconciler"},
+		{b.rangesyncCloser, "rangesync"},
 		{b.accountingCloser, "accounting"},
 		{b.pullSyncCloser, "pull sync"},
 		{b.pushSyncCloser, "push sync"},
