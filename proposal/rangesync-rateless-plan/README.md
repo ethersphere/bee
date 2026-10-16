@@ -141,7 +141,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T1.8 Pure session decision logic (fingerprints + items) and session-root relation
 - [x] T1.9 `status` and `reconcile` stream handlers + validation
 - [x] T1.10 `fetch` stream + delivery validation
-- [ ] T1.11 Minimal reconciler (topology subscription, timer-driven sessions, `SyncRate`)
+- [x] T1.11 Minimal reconciler (topology subscription, timer-driven sessions, `SyncRate`)
 - [ ] T1.12 Node wiring: flags, combined syncer, metrics registration
 - [ ] T1.13 Integration, coexistence and adversarial tests, metrics
 
