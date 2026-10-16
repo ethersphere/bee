@@ -143,7 +143,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T1.10 `fetch` stream + delivery validation
 - [x] T1.11 Minimal reconciler (topology subscription, timer-driven sessions, `SyncRate`)
 - [x] T1.12 Node wiring: flags, combined syncer, metrics registration
-- [ ] T1.13 Integration, coexistence and adversarial tests, metrics
+- [x] T1.13 Integration, coexistence and adversarial tests, metrics
 
 **Phase 2**
 - [ ] T2.0 Spike: CertainSync vs Rateless IBLT (open question 4)
