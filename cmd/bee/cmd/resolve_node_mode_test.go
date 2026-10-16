@@ -736,6 +736,17 @@ func TestResolveNodeModeWarnings(t *testing.T) {
 			absent: []string{"pseudosettle allowance"},
 		},
 		{
+			name:   "full with swap explicitly disabled reports it at info",
+			args:   []string{"--node-mode=full", "--swap-enable=false", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want:   []string{`"level"="info"`, `"msg"="option implied by node-mode is explicitly disabled" "node_mode"="full" "option"="swap-enable"`},
+			absent: []string{`"level"="warning"`},
+		},
+		{
+			name:   "full with implied options unset does not report them",
+			args:   []string{"--node-mode=full", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			absent: []string{"explicitly disabled"},
+		},
+		{
 			name: "full bootnode with storage incentives enabled",
 			args: []string{"--node-mode=full", "--bootnode-mode", "--storage-incentives-enable", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
 			want: []string{"storage-incentives-enable has no effect on a bootnode"},

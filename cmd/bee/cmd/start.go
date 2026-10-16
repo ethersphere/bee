@@ -513,8 +513,9 @@ func (c *command) resolveExplicitNodeMode(logger log.Logger, raw string) (node.N
 }
 
 // enableImpliedOption turns on an option implied by the node mode unless the
-// operator set it explicitly. An explicit false is honored and reported, since
-// it degrades the node relative to what the mode normally provides.
+// operator set it explicitly. An explicit false is honored and reported at Info:
+// it is a deliberate choice (the legacy migration may suggest it), not a
+// problem for the operator to act on.
 func (c *command) enableImpliedOption(logger log.Logger, mode node.NodeMode, key string) {
 	if !c.config.IsSet(key) {
 		logger.Debug("enabling option implied by node-mode", "node_mode", mode, "option", key)
@@ -522,7 +523,7 @@ func (c *command) enableImpliedOption(logger log.Logger, mode node.NodeMode, key
 		return
 	}
 	if !c.config.GetBool(key) {
-		logger.Warning("option implied by node-mode is explicitly disabled", "node_mode", mode, "option", key)
+		logger.Info("option implied by node-mode is explicitly disabled", "node_mode", mode, "option", key)
 	}
 }
 
