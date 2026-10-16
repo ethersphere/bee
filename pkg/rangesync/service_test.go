@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -904,6 +905,16 @@ func TestReconcileInitiatorSessionLimit(t *testing.T) {
 		for range 2 {
 			if _, err := a.svc.Reconcile(context.Background(), b.addr); err != nil {
 				t.Fatal(err)
+			}
+			// the initiator returns once it has read the last message; the
+			// responder's handler releases its slot only after that, so
+			// wait for it before the next session (else b answers Busy)
+			deadline := time.Now().Add(5 * time.Second)
+			for a.svc.SessionsInUse() != 0 || b.svc.SessionsInUse() != 0 {
+				if time.Now().After(deadline) {
+					t.Fatal("session slots not released")
+				}
+				runtime.Gosched()
 			}
 		}
 	})

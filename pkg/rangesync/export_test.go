@@ -46,3 +46,8 @@ func (s *Service) CrossProtocolDuplicates() float64 {
 	_ = s.metrics.CrossProtocolDuplicates.Write(&m)
 	return m.GetCounter().GetValue()
 }
+
+// SessionsInUse returns the number of node-wide session tokens held.
+func (s *Service) SessionsInUse() int {
+	return len(s.sessions)
+}
