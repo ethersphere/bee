@@ -489,6 +489,14 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     level-1) and an exhausted root plus 16 level-1 streams waste ≤ 12,288 symbols. Measured: diff 1k
     14 messages (Meyer 11), 367 KB (Meyer 653 KB); diff 4k 22 messages, 1.42 MB (Meyer 0.87 MB).
     The literal worked examples are T2.6's.
+  - *Review fixes.* (1) The stream snapshot takes at least symbol 0 when it starts, also for ranges
+    without a cache (openings below the leaf depth). The review's "scan-path streams mix sets" was
+    checked and does not reproduce: `window` keeps every symbol taken and compares each later
+    window with all of them, so the first window fixes the set either way (the new
+    scan-path churn cases pass with and without the change); the change only moves the snapshot
+    to the decision. (2) A `Symbols{Start: 0}` for a range this side serves symbols for (crossed
+    streams) is a violation. (3) The decoder's `cap(R)` is clamped to `SessionSymbolBudget`. (4) A
+    `More` past `MaxBatchSymbols` is served in parts, one extra round trip each.
 
 ## Follow-ups
 _(sessions append here)_
@@ -566,3 +574,8 @@ _(sessions append here)_
   root, which can be stale if the Index root moves mid-session; the Index then returns a shorter
   window and the stream just ends earlier (`Exhausted`). Fine for correctness; T3.4 (root change)
   should keep it in mind.
+- **(T2.4 review) Peer-claimed `Symbols.Count` is unchecked — T2.5 must bound it.** A peer claiming
+  ≤ `ScanLimit` makes `cap(R)` unlimited, and every `More` past the cached prefix rescans `[0, end)`
+  (quadratic in the stream length). T2.4 clamps the decoder's `cap(R)` to `SessionSymbolBudget`;
+  T2.5 should also validate `Count` against the peer's Fingerprint count / `itemLimit` and enforce
+  the budget across all streams of a session.

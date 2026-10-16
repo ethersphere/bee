@@ -264,10 +264,14 @@ func TestSessionSymbolsSnapshot(t *testing.T) {
 		name string
 		// churn changes the initiator (true) or the responder (false), if set
 		churn, initiator bool
+		// deep opens a range below the leaf depth: no cached prefix
+		deep bool
 	}{
 		{name: "no churn"},
 		{name: "responder churn", churn: true},
 		{name: "initiator churn", churn: true, initiator: true},
+		{name: "scan-path range, responder churn", churn: true, deep: true},
+		{name: "scan-path range, initiator churn", churn: true, initiator: true, deep: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -275,9 +279,13 @@ func TestSessionSymbolsSnapshot(t *testing.T) {
 			// a bucket-depth range: a cached prefix of 32 symbols, the scan
 			// path past it
 			r := rangeOf("01101100")
-			scope := rangesync.Scope{Root: rangeOf(""), LeafDepth: 12}
+			leafBits := uint8(12)
+			if tc.deep {
+				r, leafBits = rangeOf("0110110011"), 8 // 2 bits below the leaf depth
+			}
+			scope := rangesync.Scope{Root: rangeOf(""), LeafDepth: leafBits}
 			la, lb, a2b, b2a := convergenceSets(rng, r, scope, 500, 20, 20, false)
-			a, b, first := symbolsPair(t, status(rangeOf(""), 12), la, lb, r)
+			a, b, first := symbolsPair(t, status(rangeOf(""), leafBits), la, lb, r)
 			changed := la
 			if !tc.churn || !tc.initiator {
 				changed = lb
@@ -295,7 +303,7 @@ func TestSessionSymbolsSnapshot(t *testing.T) {
 			if c := a.Stats().DecodeCorruptions + b.Stats().DecodeCorruptions; c != 0 {
 				t.Fatalf("%d corrupt decodes", c)
 			}
-			if kinds.count("A:more") < 2 {
+			if kinds.count("A:more") < 2 && !tc.deep || kinds.count("A:more") == 0 {
 				t.Fatalf("stream did not pass its cached prefix: %v", kinds.msgs)
 			}
 			switch {
@@ -432,6 +440,7 @@ func TestSessionSymbolsValidation(t *testing.T) {
 		{"more for no stream", func() *rangesync.Session { return initiator(symbolsCfg) }, []*pb.Message{msg(morePart(root, 16))}, false},
 		{"more twice", serving, []*pb.Message{msg(morePart(root, 16), morePart(root, 64))}, false},
 		{"more not past the stream", serving, []*pb.Message{msg(morePart(root, 4))}, false},
+		{"symbols crossing this side's symbols", serving, []*pb.Message{msg(batch(root, 0, 4, false))}, false},
 		{"more after the stream was answered", serving, []*pb.Message{msg(itemsPart(rangesync.Items{Range: root}), morePart(root, 16))}, false},
 		{"symbols in the opening", func() *rangesync.Session {
 			return rangesync.NewResponder(rangesync.Config{Scope: scope, Local: local, Status: st, PeerStatus: st})

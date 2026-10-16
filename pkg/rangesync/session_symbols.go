@@ -97,7 +97,12 @@ type symStream struct {
 // newSymStream starts the stream of the local elements in r with a copy of
 // its cached prefix.
 func (s *Session) newSymStream(r fingerprint.Range) (*symStream, error) {
-	syms, exhausted, err := s.cfg.Local.Symbols(r, 0, cacheCapacity(s.cfg.Status, r))
+	// At least symbol 0, to which every element maps, so that a stream
+	// served by the scan path (no cache, below the leaf depth) is fixed when
+	// it starts, not at its first window. (window compares every later
+	// window with all symbols taken so far, so a change is detected either
+	// way.)
+	syms, exhausted, err := s.cfg.Local.Symbols(r, 0, max(cacheCapacity(s.cfg.Status, r), 1))
 	if err != nil {
 		return nil, fmt.Errorf("local symbols of %s: %w", r, err)
 	}
@@ -151,6 +156,8 @@ func (sv *served) emit(s *Session, b *builder) (bool, error) {
 	if !sv.pending() {
 		return true, nil
 	}
+	// A request past MaxBatchSymbols is cut short; the peer asks again, at
+	// the cost of one more round trip.
 	n := min(sv.upTo-sv.sent, MaxBatchSymbols)
 	if !b.fits(1, symbolPartWireBytes+int(n)*fingerprint.MaxSymbolSize) {
 		return false, nil
@@ -285,7 +292,9 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 	dc := s.decoding[key]
 	switch {
 	case dc == nil:
-		if _, ok := s.unanswered[key]; !ok || sy.Start != 0 {
+		// a range this side streams symbols for is unanswered too, but only
+		// a Fingerprint of this side can be answered by a symbol stream
+		if _, ok := s.unanswered[key]; !ok || sy.Start != 0 || s.served[key] != nil {
 			return nil, invalid("unsolicited symbols for %s", r)
 		}
 		delete(s.unanswered, key)
@@ -300,7 +309,9 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 		dc = &decoding{
 			dec: fingerprint.NewDecoder(s.mapper, r),
 			st:  st,
-			cap: Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, sy.Count),
+			// sy.Count is the peer's claim; until T2.5 validates it, the
+			// session budget bounds a claimed unlimited stream
+			cap: min(Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, sy.Count), SessionSymbolBudget),
 		}
 		s.decoding[key] = dc
 	case dc.upTo == 0 || sy.Start != dc.dec.Received():
