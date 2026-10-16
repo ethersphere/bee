@@ -48,7 +48,11 @@ Rules every session follows:
 - **No new `go.mod` dependencies.** `golang.org/x/crypto` (sha3/SHAKE128, keccak) and
   `github.com/btcsuite/btcd/btcec/v2` are already present. The Rateless IBLT is implemented
   in-tree (§5.4).
-- Every parser/decoder of untrusted input gets a `*_fuzz_test.go` (AGENTS.md rule).
+- **Fuzzing is deferred (since 2026-10-15).** Remaining tasks write no `*_fuzz_test.go` files and
+  run neither `make fuzz` nor `make fuzz-regression`. For this plan that overrides the AGENTS.md
+  fuzz rule. A task that adds a parser, decoder or validator of peer input instead appends one line
+  to [followup-fuzzing.md](followup-fuzzing.md) (task TF). Fuzz targets that already exist stay;
+  `go test` runs their seed corpus as ordinary tests.
 - Only touch what the task names. Anything else goes under "Follow-ups" in the phase file.
 - Constants live in `pkg/rangesync/constants.go` (protocol) and
   `pkg/rangesync/fingerprint/constants.go` (index); see the table below.
@@ -178,6 +182,9 @@ the implementer (otherwise every task conflicts on this list).
 - [ ] T6.2 Toggle-safety and upgrade/downgrade tests
 - [ ] T6.3 Testnet runbook, dashboards, comparison runs
 - [ ] T6.4 Acceptance criteria + exit report (input for the phase-out proposal)
+
+**Follow-up (deferred)**
+- [ ] TF Fuzz targets for every `rangesync` peer-input decoder added since 2026-10-15 ([followup-fuzzing.md](followup-fuzzing.md))
 
 ## Shared constants (§6.3, §8.2, §8.4)
 

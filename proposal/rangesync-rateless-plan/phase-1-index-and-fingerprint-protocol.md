@@ -378,8 +378,9 @@ requester-side fetch limiter (1000 chunks/s, configurable).
 - Metric `cross_protocol_duplicates_total`: chunk already present when `Put` is called.
 
 **Tests:** happy path; unsolicited chunk; invalid stamp; unknown ID (no delivery, claim
-released); `ReserveHasID` true right before `Want` → not requested; out-of-radius ID → not requested; fuzz the handler with
-malformed `Want`.
+released); `ReserveHasID` true right before `Want` → not requested; out-of-radius ID → not requested; malformed `Want` (empty,
+oversized, invalid IDs) as table tests. The fetch handler's fuzz target is deferred to TF
+([followup-fuzzing.md](followup-fuzzing.md)).
 
 **Size:** M.
 
@@ -473,8 +474,9 @@ Unit tests for the combined syncer.
   with one node running both protocols against a `pullsync`-only peer and a `rangesync`-only peer
   converges.
 - Adversarial (§13): ranges outside root, non-partitioning children, oversized messages,
-  endless `Items` paging, `Symbols`/`More` sent to a Phase-1 node. Fuzz targets modelled on
-  `pkg/pullsync/client_fuzz_test.go` and `handler_fuzz_test.go` (copied patterns, new files).
+  endless `Items` paging, `Symbols`/`More` sent to a Phase-1 node, as table tests over
+  `streamtest`. The client/handler fuzz targets (modelled on `pkg/pullsync/client_fuzz_test.go`
+  and `handler_fuzz_test.go`) are deferred to TF ([followup-fuzzing.md](followup-fuzzing.md)).
 
 **Size:** M.
 

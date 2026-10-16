@@ -92,7 +92,9 @@ Add the group adapter for symbol arrays so they fit T1.3's generic Fenwick tree.
 updates go through the Index's `Mapper` (T2.1). Caches are only valid for the node's **own** root and level-1 ranges; a narrower session root
 (edge peer) must use Fenwick/scan.
 
-**Tests:** extend T1.6's consistency fuzz: after random Put/replace/evict, all three caches
+**Tests:** a seeded randomized consistency test (the shape of T1.6's `FuzzIndex`, but a plain
+`Test` with fixed seeds; extending `FuzzIndex` itself is deferred to TF): after random
+Put/replace/evict, all three caches
 equal a rebuild and equal `Encode` over the brute-force set, for every range and every
 `[start, end)` slice; rebuild during concurrent writes. Memory at B = 4096 ≈ 11.5 + 0.7 +
 0.36 MB (§5.3).
@@ -157,8 +159,9 @@ corruption path falls back without losing elements.
 range); `MaxScansPerMessage = 64` ranges per message may use the scan path; per-peer session
 rate limit. Violations reset the stream and penalise the peer (same mechanism as T1.9).
 
-**Tests:** adversarial cases added to the T1.13 fuzzers: `More` past cap, past budget,
-`More` for an unknown range, a message requesting > 64 scan-path ranges, endless `More`.
+**Tests:** adversarial table tests: `More` past cap, past budget, `More` for an unknown range,
+a message requesting > 64 scan-path ranges, endless `More`. Adding them as fuzz seeds is
+deferred to TF ([followup-fuzzing.md](followup-fuzzing.md)).
 
 **Size:** S–M.
 
@@ -195,7 +198,8 @@ the new type and its ID constant. The mapper is chosen through a `Mapper` field 
 field. **No node flag** is added: changing the default mapper is a network-wide switch (peers with
 different IDs don't sync), so exposing it is part of a later rollout plan, not this task.
 
-**Tests:** the same linearity / decode-cost / codec suite as T2.1, run with `IntegerMapper`; the
+**Tests:** the same linearity / decode-cost / codec suite as T2.1 (its fuzz targets excepted; TF),
+run with `IntegerMapper`; the
 symbols-per-difference distribution matches `FloatMapper` within noise; vectors in `testdata/`.
 
 **Size:** M.

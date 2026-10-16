@@ -39,6 +39,7 @@ There are **no PRs**. Work lands on a stack of local phase branches (§3).
 | P10 | Host quirks found in step 0 (pass them to every implementer and verifier): `make format` rewrites ~60 unrelated files (gofumpt/gci drift; `$(go list -m)` expands empty), so check only the task's files and revert the rest; there is no `make vet` target, so run `go vet` on the touched packages; `make lint` needs `GOTOOLCHAIN=go1.26.1` (golangci-lint built with go1.26.1 vs host go1.27); no C compiler, so `-race` can't run here: substitute `-count=N -cpu=1,2,4` and flag race-relevant tests for CI. | Noted |
 | P8 | Decide whether Phase 5 runs before Phase 6 (D11). The schedule fits it in without lengthening the critical path. | **Open** |
 | P11 | Serial execution (2026-10-15): one subagent at a time, `STATE.md`, serial order (§4, §5). | Done |
+| P12 | Fuzzing deferred (2026-10-15): remaining tasks write no fuzz targets; decoders are listed in `followup-fuzzing.md` for task TF. | Done |
 | P9 | `proposal/pullsync-rangesync-proposal.md` (the earlier, non-rateless proposal) is untracked. Commit it as history or leave it out. | **Open** |
 
 ## 3. Branches
@@ -170,14 +171,16 @@ Implementers and reviewers use the default model.
    - **Verifier** checks, in the task's worktree, against `rangesync/phase-<N>`:
      1. `make format` leaves no diff; `make build`, `make lint`, `make vet` pass.
      2. `go test` (with `-race` where the task involves concurrency) passes for every touched
-        package; `make fuzz-regression` for every fuzz target touched.
+        package (existing fuzz seeds run as part of `go test`; no `make fuzz` /
+        `make fuzz-regression`, see README "Ground rules").
      3. Tasks touching `pkg/storer` or `pkg/node`:
         `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` passes (ground rule).
      4. `git diff --stat rangesync/phase-<N>...` touches only what the task names; nothing in
         `pkg/pullsync` or `pkg/puller`; no `go.mod` change.
      5. Every test the task's **Tests** paragraph asks for exists and runs (it maps each item to a
         test function and lists any that are missing).
-     6. Every new decoder of peer input has a `*_fuzz_test.go`.
+     6. No new `*_fuzz_test.go` was written, and every new parser/decoder of peer input is listed in
+        `followup-fuzzing.md` (task TF).
      7. The phase file's Decisions log / Follow-ups have the entries the task asks for.
    - **Reviewer** reads the task, the proposal sections it cites, the ground rules and the diff;
      reports correctness bugs, deviations from the proposal, and missing edge cases, by severity.
@@ -289,7 +292,8 @@ of them.
 | 27 | T6.3 | 6 | Runbook and dashboards; the testnet runs are human wall-clock. **G7** |
 | 28 | T6.4 | 6 | Exit report |
 
-T2.7 (optional) runs only on request. T2.8 waits for an arm64 environment.
+T2.7 (optional) runs only on request. T2.8 waits for an arm64 environment. TF (fuzzing,
+[followup-fuzzing.md](followup-fuzzing.md)) is deferred and isn't in this order.
 
 Landing a lower-phase task after a higher-phase one (for example T1.9 after T2.1) is the normal
 restack of §3.
