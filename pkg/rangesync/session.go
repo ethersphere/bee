@@ -54,6 +54,11 @@ type Local interface {
 	IterateIDs(r fingerprint.Range, after *fingerprint.ID, fn func(fingerprint.ID) (stop bool, err error)) error
 	// HasID reports whether the local reserve holds the element id.
 	HasID(id fingerprint.ID) (bool, error)
+	// Symbols returns the coded symbols [start, end) of the stream of the
+	// local elements in r, as fingerprint.Index.Symbols with the address
+	// index as its scan path. exhausted is true when no symbols past the
+	// returned ones are available. The symbols are copies the caller owns.
+	Symbols(r fingerprint.Range, start, end uint64) (syms []fingerprint.CodedSymbol, exhausted bool, err error)
 }
 
 // Striper takes over ranges whose estimated difference is too large to

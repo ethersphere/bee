@@ -169,3 +169,92 @@ func TestLocalIndexWiring(t *testing.T) {
 		}
 	}
 }
+
+// bruteSymbols returns the coded symbols [start, end) of the IDs of set in r.
+func bruteSymbols(set map[fingerprint.ID]struct{}, r fingerprint.Range, start, end uint64) []fingerprint.CodedSymbol {
+	syms := make([]fingerprint.CodedSymbol, end-start)
+	for id := range set {
+		if r.ContainsID(id) {
+			fingerprint.Encode(fingerprint.NewFloatMapper(), syms, start, id, 1)
+		}
+	}
+	return syms
+}
+
+// TestLocalSymbols checks Local.Symbols over the mock reserve: for the root,
+// a level-1 range, a bucket and a range below leaf depth, windows inside the
+// caches and past them (the ReserveIterateAddr scan path) equal a
+// brute-force Encode of the set.
+func TestLocalSymbols(t *testing.T) {
+	t.Parallel()
+
+	const (
+		leafBits = 6
+		radius   = 2
+	)
+	overlay := swarm.RandAddress(t)
+	store := mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithRadius(radius))
+	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, overlay, nil, nil, nil, log.Noop, rangesync.Options{LeafBits: leafBits})
+	t.Cleanup(func() {
+		if err := svc.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	root := fingerprint.NewRange(overlay, radius)
+
+	set := make(map[fingerprint.ID]struct{})
+	put := func() {
+		t.Helper()
+		addr := swarm.RandAddress(t).Bytes()
+		addr[0] = addr[0]&0x3f | overlay.Bytes()[0]&0xc0
+		ch := swarm.NewChunk(swarm.NewAddress(addr), []byte{1}).WithStamp(postagetesting.MustNewStamp())
+		if err := store.ReservePutter().Put(context.Background(), ch); err != nil {
+			t.Fatal(err)
+		}
+		c := chunkIDOf(t, ch)
+		set[fingerprint.NewID(c.Address, c.StampHash)] = struct{}{}
+	}
+	for range 300 {
+		put()
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "index", func() bool {
+		st, err := svc.LocalStatus()
+		return err == nil && st.Root.Equal(root)
+	})
+	for range 200 {
+		put()
+	}
+	waitFor(t, "commits", func() bool {
+		s, err := svc.Local().Summary(root)
+		return err == nil && s.Count == uint64(len(set))
+	})
+
+	local := svc.Local()
+	ranges := map[string]fingerprint.Range{
+		"root":    root,
+		"level-1": root.Children(fingerprint.FanoutBits)[3],
+		"bucket":  root.Children(leafBits)[17],
+		"small":   root.Children(leafBits + 2)[70],
+	}
+	windows := [][2]uint64{{0, 0}, {0, 1}, {0, 32}, {5, 31}, {0, 512}, {100, 600}, {0, 4096}, {4000, 5000}}
+	for name, r := range ranges {
+		for _, w := range windows {
+			got, exhausted, err := local.Symbols(r, w[0], w[1])
+			if err != nil {
+				t.Fatalf("%s %v: %v", name, w, err)
+			}
+			if exhausted {
+				t.Fatalf("%s %v: exhausted with the scan path", name, w)
+			}
+			if want := bruteSymbols(set, r, w[0], w[1]); !slices.Equal(got, want) {
+				t.Fatalf("%s %v: symbols differ from a brute-force encode", name, w)
+			}
+		}
+	}
+	if _, _, err := local.Symbols(root, 2, 1); err == nil {
+		t.Fatal("inverted window: want error")
+	}
+}

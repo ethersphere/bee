@@ -416,6 +416,18 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     *`Indices` allocation does not matter* (mallocgc absent from the top of both profiles): keep
     the interface, no `AppendIndices`.
 
+- **T2.3 (implementation, 2026-10-16).**
+  - *Interface.* `Symbols(r, start, end) (syms, exhausted, err)` is added to `Local` (session.go),
+    not to `Summarizer`: `*fingerprint.Index` keeps satisfying `Summarizer`, and only the
+    storer-backed `local` adapter (local.go) can supply the scan path. Index errors are returned
+    wrapped (`index symbols: %w`), as `Summary`.
+  - *Scan path.* `local.scanIDs` = one `ReserveIterateAddr(r.Prefix, r.Bits, nil, …)` call mapping
+    `ChunkID` → `fingerprint.NewID`; fn's error stops the iteration and is returned; never stops
+    early otherwise. No context: the existing adapter (`scan`, `IterateIDs`) takes none.
+  - *Tests.* `TestLocalSymbols` (mock reserve, 500 ids): root / level-1 / bucket / below-leaf
+    range × windows inside and past each cache, all equal to a brute-force `Encode`; a mutation
+    (scan yields nothing) fails it. `fakeLocal.Symbols` brute-encodes for session tests.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T2.0) Mapping grinding, not covered by either paper or §9 *[ours]*.** Rateless IBLT has no

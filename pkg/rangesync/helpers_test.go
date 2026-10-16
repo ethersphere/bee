@@ -96,6 +96,20 @@ func (l *fakeLocal) HasID(id fingerprint.ID) (bool, error) {
 	return ok, nil
 }
 
+func (l *fakeLocal) Symbols(r fingerprint.Range, start, end uint64) ([]fingerprint.CodedSymbol, bool, error) {
+	if l.err != nil {
+		return nil, false, l.err
+	}
+	if end < start {
+		return nil, false, fingerprint.ErrInvalidBatch
+	}
+	syms := make([]fingerprint.CodedSymbol, end-start)
+	for _, id := range l.in(r) {
+		fingerprint.Encode(fingerprint.NewFloatMapper(), syms, start, id, 1)
+	}
+	return syms, false, nil
+}
+
 // in returns the IDs of l in r.
 func (l *fakeLocal) in(r fingerprint.Range) []fingerprint.ID {
 	var out []fingerprint.ID
