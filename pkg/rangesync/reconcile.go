@@ -96,7 +96,8 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	if err := w.WriteMsgWithContext(ctx, open); err != nil {
 		return nil, fmt.Errorf("write opening: %w", err)
 	}
-	ids, _, err := s.converse(ctx, sess, nil, r, w)
+	s.metrics.reconcileMessage(dirOut, open)
+	ids, handled, err := s.converse(ctx, sess, nil, r, w)
 	switch {
 	case errors.Is(err, ErrPeerBusy):
 		return nil, err
@@ -105,6 +106,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	case err != nil:
 		return nil, err
 	}
+	s.metrics.sessionDone(handled, len(ids))
 	s.scorer.Succeed(peer)
 	return toChunkIDs(ids), nil
 }
@@ -159,6 +161,7 @@ func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r
 				}
 				return nil, handled, fmt.Errorf("read: %w", err)
 			}
+			s.metrics.reconcileMessage(dirIn, in)
 		}
 		out, ids, err := sess.Handle(in)
 		if err != nil {
@@ -171,6 +174,7 @@ func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r
 		if err := w.WriteMsgWithContext(ctx, out); err != nil {
 			return nil, handled + 1, fmt.Errorf("write: %w", err)
 		}
+		s.metrics.reconcileMessage(dirOut, out)
 		sentEmpty = len(out.Parts) == 0
 		in = nil
 	}
@@ -208,6 +212,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		_ = stream.Reset()
 		return fmt.Errorf("read opening: %w", err)
 	}
+	s.metrics.reconcileMessage(dirIn, open)
 	if err := openingScope.CheckMessage(open); err != nil {
 		return s.violation(peer, stream, fmt.Errorf("opening: %w", err))
 	}
@@ -215,10 +220,12 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 	busy := func(reason string) error {
 		s.metrics.Busy.Inc()
 		s.logger.Debug("reconcile session busy", "peer_address", peer, "reason", reason)
-		if err := w.WriteMsgWithContext(ctx, &pb.Message{Busy: true}); err != nil {
+		m := &pb.Message{Busy: true}
+		if err := w.WriteMsgWithContext(ctx, m); err != nil {
 			_ = stream.Reset()
 			return fmt.Errorf("write busy: %w", err)
 		}
+		s.metrics.reconcileMessage(dirOut, m)
 		return stream.FullClose()
 	}
 
@@ -273,6 +280,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		_ = stream.Reset()
 		return err
 	}
+	s.metrics.sessionDone(handled, len(wants))
 	if s.wants != nil && len(wants) > 0 {
 		s.wants(peer, toChunkIDs(wants))
 	}

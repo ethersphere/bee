@@ -6,6 +6,7 @@ package rangesync
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -30,7 +31,35 @@ type metrics struct {
 	// CrossProtocolDuplicates counts fetched chunks that were in the
 	// reserve already when they would be stored.
 	CrossProtocolDuplicates prometheus.Counter
+	// SessionRounds observes the number of Messages this side handled in
+	// each completed reconcile session.
+	SessionRounds prometheus.Histogram
+	// PairwiseDiff observes, per completed reconcile session, the number of
+	// IDs the peer listed that this node does not hold (its side of n_Δ;
+	// the two sides of a session together give n_Δ).
+	PairwiseDiff prometheus.Histogram
+	// PartsSent and PartsReceived count the parts of reconcile Messages, by
+	// type.
+	PartsSent     *prometheus.CounterVec
+	PartsReceived *prometheus.CounterVec
+	// BytesMetadata counts the wire bytes of Status, reconcile and Want
+	// messages, by direction.
+	BytesMetadata *prometheus.CounterVec
+	// BytesChunks counts the wire bytes of Delivery messages, by direction.
+	BytesChunks *prometheus.CounterVec
 }
+
+// Label values of the parts and bytes metrics.
+const (
+	dirIn  = "in"
+	dirOut = "out"
+
+	partFingerprint = "fingerprint"
+	partItems       = "items"
+	partSymbols     = "symbols"
+	partMore        = "more"
+	partUnknown     = "unknown"
+)
 
 func newMetrics() metrics {
 	const subsystem = "rangesync"
@@ -84,9 +113,98 @@ func newMetrics() metrics {
 			Name:      "cross_protocol_duplicates_total",
 			Help:      "Fetched chunks already in the reserve when they would be stored.",
 		}),
+		SessionRounds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "session_rounds",
+			Help:      "Messages handled by this side per completed reconcile session.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		}),
+		PairwiseDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pairwise_diff",
+			Help:      "IDs listed by the peer and missing locally per completed reconcile session.",
+			Buckets:   append([]float64{0}, prometheus.ExponentialBuckets(1, 4, 10)...),
+		}),
+		PartsSent: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "parts_sent",
+			Help:      "Parts of reconcile messages sent, by type.",
+		}, []string{"type"}),
+		PartsReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "parts_received",
+			Help:      "Parts of reconcile messages received, by type.",
+		}, []string{"type"}),
+		BytesMetadata: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "bytes_metadata",
+			Help:      "Wire bytes of status, reconcile and want messages, by direction.",
+		}, []string{"dir"}),
+		BytesChunks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "bytes_chunks",
+			Help:      "Wire bytes of chunk deliveries, by direction.",
+		}, []string{"dir"}),
 	}
 }
 
 func (mt metrics) collectors() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(mt)
+}
+
+// wireSize returns the size of m on the wire: its encoding and the varint
+// length prefix.
+func wireSize(m interface{ Size() int }) int {
+	n := m.Size()
+	return n + uvarintLen(uint64(n))
+}
+
+func uvarintLen(x uint64) int {
+	n := 1
+	for ; x >= 0x80; x >>= 7 {
+		n++
+	}
+	return n
+}
+
+// partType returns the parts metric label of p.
+func partType(p *pb.Part) string {
+	switch p.GetKind().(type) {
+	case *pb.Part_FP:
+		return partFingerprint
+	case *pb.Part_Items:
+		return partItems
+	case *pb.Part_Symbols:
+		return partSymbols
+	case *pb.Part_More:
+		return partMore
+	default:
+		return partUnknown
+	}
+}
+
+// reconcileMessage counts the parts and bytes of a reconcile Message sent
+// (dir dirOut) or received (dirIn).
+func (mt metrics) reconcileMessage(dir string, msg *pb.Message) {
+	parts := mt.PartsReceived
+	if dir == dirOut {
+		parts = mt.PartsSent
+	}
+	for _, p := range msg.GetParts() {
+		parts.WithLabelValues(partType(p)).Inc()
+	}
+	mt.BytesMetadata.WithLabelValues(dir).Add(float64(wireSize(msg)))
+}
+
+// sessionDone observes a completed session: the Messages handled and the
+// IDs the peer listed that this node lacks.
+func (mt metrics) sessionDone(handled, wants int) {
+	mt.SessionRounds.Observe(float64(handled))
+	mt.PairwiseDiff.Observe(float64(wants))
 }

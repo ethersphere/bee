@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	ggio "github.com/gogo/protobuf/io"
 )
 
 // serviceLeafBits is the index leaf depth of the services in these tests.
@@ -227,15 +228,18 @@ func reconcileMessages(t *testing.T, a *testNode, b swarm.Address) (sent, receiv
 		t.Fatal(err)
 	}
 	read := func(data []byte) []*pb.Message {
-		ms, err := protobuf.ReadMessages(bytes.NewReader(data), func() protobuf.Message { return new(pb.Message) })
-		if err != nil {
-			t.Fatal(err)
+		// up to MaxMessageBytes: protobuf.ReadMessages has a smaller limit
+		r := ggio.NewDelimitedReader(bytes.NewReader(data), rangesync.MaxMessageBytes)
+		var out []*pb.Message
+		for {
+			m := new(pb.Message)
+			if err := r.ReadMsg(m); errors.Is(err, io.EOF) {
+				return out
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, m)
 		}
-		out := make([]*pb.Message, len(ms))
-		for i, m := range ms {
-			out[i] = m.(*pb.Message)
-		}
-		return out
 	}
 	for _, r := range records {
 		sent = append(sent, read(r.In())...)
@@ -787,6 +791,8 @@ func TestReconcileInvalidFromResponder(t *testing.T) {
 		{"oversize", binary.AppendUvarint(nil, rangesync.MaxMessageBytes+1)},
 		{"busy with parts", mustMarshalDelimited(t, &pb.Message{Busy: true, Parts: msg(fpPart(rangeOf("0"), fingerprint.Summary{})).Parts})},
 		{"unsolicited fingerprint", mustMarshalDelimited(t, msg(fpPart(rangeOf("0101"), fingerprint.Summary{Count: 1, Digest: [32]byte{1}})))},
+		{"symbols to a Phase-1 node", mustMarshalDelimited(t, msg(symbolsPart(rangeOf(""))))},
+		{"more to a Phase-1 node", mustMarshalDelimited(t, msg(morePart(rangeOf(""))))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

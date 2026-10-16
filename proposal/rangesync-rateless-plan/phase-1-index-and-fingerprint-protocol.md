@@ -1734,6 +1734,60 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   false and light node with rangesync. (M) One `rangesyncCloser` closes the reconciler, then the
   service (`Shutdown` runs `shutdownClosers` concurrently, so two entries could close the service
   under a running round); the separate reconciler closer is gone (`TestRangesyncCloserOrder`).
+- **T1.13 (2026-10-15) metrics:** added in `pkg/rangesync/metrics.go` (bee_rangesync_*):
+  `session_rounds` (histogram, Messages handled by this side per completed session, buckets
+  1..2048), `pairwise_diff` (histogram, buckets 0,1,4..4^9), `parts_sent{type}` /
+  `parts_received{type}` (`fingerprint|items|symbols|more|unknown`), `bytes_metadata{dir}` (Status,
+  reconcile Messages incl. Busy, Want; wire size = encoding + varint prefix), `bytes_chunks{dir}`
+  (Delivery wire size). They ride `Service.Metrics()` (`PrometheusCollectorsFromFields`), which
+  T1.12 registers; no node change. Already present and unchanged: `sessions_total{result}`,
+  `sync_rate` (reconciler), `index_rebuild_seconds`/`index_apply_seconds`/`index_memory_bytes`
+  (fingerprint), `cross_protocol_duplicates_total` (T1.10). Received parts/bytes are counted only
+  for Messages that decoded (a violation is counted in `invalid_message_total`).
+- **T1.13 decision (`pairwise_diff`):** each side observes the IDs the peer listed that it lacks
+  (its half of n_Δ); neither side alone knows the other half in Phase 1 (an Exchange listing does
+  not learn which of its IDs the peer lacked). n_Δ per session = the sum of the two sides'
+  observations; Phase 2's decoder knows both halves and may switch to a one-sided full n_Δ.
+- **T1.13 tests:** `integration_test.go` `TestProtocolConverges` (two services over streamtest,
+  `serviceLeafBits` 8, 4096 common): diffs 0, 1, 20, hidden (B holds restamped copies of A's 10
+  chunks: equal counts at every level), 1k, 4k, 100%. Each side gets exactly the IDs it lacks;
+  for 0/1/20/hidden the wants are fetched (valid CACs) and both reserves hold the union, and a
+  second session returns no wants. Metrics are checked against the wire (parts, rounds,
+  pairwise_diff, bytes_metadata{out}, bytes_chunks). Meyer bound (`computeMeyerBounds`): 2 msgs per
+  split level + 3 + item paging; bytes = (1 + 16·#diff ranges above leaf)·FP + IDs in differing
+  leaves·ID + page/message headers. Measured (msgs/bound, bytes/bound): 0: 2/9, 45/297;
+  1: 6/9, 2788/4467; 20: 6/9, 34808/59985; hidden: 6/9, 20991/34053; 1k: 6/11, 367828/650185;
+  4k: 6/11, 593461/871849; 100%: 3/9, 286975/329817. All cases run in < 1 s, so nothing is
+  skipped under `-short`. `reconcileMessages` now decodes with the `MaxMessageBytes` limit
+  (`protobuf.ReadMessages` failed on large messages with "short buffer").
+- **T1.13 adversarial (`adversarial_test.go`, + 2 rows in `TestReconcileInvalidFromResponder`):**
+  Symbols/More in the opening and mid-session, Symbols/More from a responder, a range or Items
+  outside the session root, a range below the depth bound, a split of a range not sent, an
+  incomplete split, children of two levels, > MaxParts parts, an oversized Message mid-session:
+  each resets, disconnects, is scored once, leaves no wants. An opening outside the root is answered
+  Busy, unscored (`TestReconcileOpeningOutsideRoot`).
+- **T1.13 finding (not fixed, for review): endless `Items` paging is not capped per session.**
+  `TestReconcileEndlessItemsPaging` documents it: a peer paging 64 × 1024 valid ascending IDs is
+  answered with empty Messages page after page and all 65 536 IDs reach `Options.Wants`; only
+  `sessionTimeout` (10 min) ends it, and the wants accumulate in memory in `converse` meanwhile.
+  A page that does not continue the stream is a violation (covered). A fix is a protocol decision
+  (e.g. cap the IDs a peer lists per session by its Status count, clamped by the maximum reserve
+  capacity, or by a constant) and was not taken in a test task; Phase 2/T2.5 or a follow-up
+  should decide.
+- **T1.13 coexistence deviation:** `coexistence_test.go` `TestCoexistence` is the most faithful
+  unit-level version: dual node D (one mock reserve with addr index, a `pullsync.Syncer` and a
+  `rangesync.Service`, one recorder carrying P's pullsync and R's rangesync protocols), a
+  pullsync-only P and a rangesync-only R. D pulls from P via `pullsync.Sync`; the pulled chunks
+  reach D's index through the reserve observer; the D–R session does not want the chunk shared
+  by P and R (got via pullsync), R learns P's chunks through D, and after the fetches D and R hold
+  the union with equal roots, 0 cross-protocol duplicates. Gap: P does not pull from D (the mock's
+  `SubscribeBin` serves a fixed list, not the live reserve), and the puller/combinedSyncer loop
+  is not driven (no topology/kademlia harness at this level); those belong to the T6 network
+  acceptance tests. `go test ./pkg/pullsync/... ./pkg/puller/...` unchanged and green.
+- **T1.13 runs:** no `-race` (no gcc); `./pkg/rangesync/...` `-count=3 -cpu=1,2,4` green. Flag
+  for CI `-race`: `TestCoexistence` (pullsync and rangesync over one mock reserve) and
+  `TestProtocolConverges` (indexer commits during fetch). Fuzzing deferred: the client/handler
+  targets are already listed in `followup-fuzzing.md` (T1.13 row); no new decoder was added.
 
 ## Follow-ups
 _(sessions append here)_

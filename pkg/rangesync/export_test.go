@@ -51,3 +51,43 @@ func (s *Service) CrossProtocolDuplicates() float64 {
 func (s *Service) SessionsInUse() int {
 	return len(s.sessions)
 }
+
+func counterValue(c interface{ Write(*dto.Metric) error }) float64 {
+	var m dto.Metric
+	_ = c.Write(&m)
+	return m.GetCounter().GetValue()
+}
+
+// MetadataBytes returns the bytes_metadata counter of dir ("in" or "out").
+func (s *Service) MetadataBytes(dir string) float64 {
+	return counterValue(s.metrics.BytesMetadata.WithLabelValues(dir))
+}
+
+// ChunkBytes returns the bytes_chunks counter of dir ("in" or "out").
+func (s *Service) ChunkBytes(dir string) float64 {
+	return counterValue(s.metrics.BytesChunks.WithLabelValues(dir))
+}
+
+// Parts returns the parts_sent (sent) or parts_received counter of typ.
+func (s *Service) Parts(sent bool, typ string) float64 {
+	if sent {
+		return counterValue(s.metrics.PartsSent.WithLabelValues(typ))
+	}
+	return counterValue(s.metrics.PartsReceived.WithLabelValues(typ))
+}
+
+func histogramValue(h interface{ Write(*dto.Metric) error }) (count uint64, sum float64) {
+	var m dto.Metric
+	_ = h.Write(&m)
+	return m.GetHistogram().GetSampleCount(), m.GetHistogram().GetSampleSum()
+}
+
+// SessionRounds returns the sample count and sum of session_rounds.
+func (s *Service) SessionRounds() (count uint64, sum float64) {
+	return histogramValue(s.metrics.SessionRounds)
+}
+
+// PairwiseDiff returns the sample count and sum of pairwise_diff.
+func (s *Service) PairwiseDiff() (count uint64, sum float64) {
+	return histogramValue(s.metrics.PairwiseDiff)
+}

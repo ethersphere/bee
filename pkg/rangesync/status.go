@@ -62,9 +62,11 @@ func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error
 			_ = stream.FullClose()
 		}
 	}()
-	if err := protobuf.NewWriter(stream).WriteMsgWithContext(ctx, EncodeStatus(st)); err != nil {
+	m := EncodeStatus(st)
+	if err := protobuf.NewWriter(stream).WriteMsgWithContext(ctx, m); err != nil {
 		return fmt.Errorf("write status: %w", err)
 	}
+	s.metrics.BytesMetadata.WithLabelValues(dirOut).Add(float64(wireSize(m)))
 	return nil
 }
 
@@ -99,6 +101,7 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		_ = stream.Reset()
 		return fmt.Errorf("read status: %w", err)
 	}
+	s.metrics.BytesMetadata.WithLabelValues(dirIn).Add(float64(wireSize(&m)))
 	st, err := ParseStatus(&m)
 	if err != nil {
 		return s.violation(p.Address, stream, err)

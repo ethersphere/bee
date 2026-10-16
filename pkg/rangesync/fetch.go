@@ -192,6 +192,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 	if err := w.WriteMsgWithContext(ctx, want); err != nil {
 		return 0, stalled(fmt.Errorf("write want: %w", err))
 	}
+	s.metrics.BytesMetadata.WithLabelValues(dirOut).Add(float64(wireSize(want)))
 
 	for len(claimed) > 0 {
 		var d pb.Delivery
@@ -205,6 +206,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 			}
 			return stored, stalled(fmt.Errorf("read delivery: %w", err))
 		}
+		s.metrics.BytesChunks.WithLabelValues(dirIn).Add(float64(wireSize(&d)))
 		ok, err := s.deliver(ctx, peer, claimed, &d)
 		if errors.Is(err, ErrInvalidMessage) {
 			return stored, s.initiatorViolation(peer, err)
@@ -316,6 +318,7 @@ func (s *Service) handleFetch(ctx context.Context, p p2p.Peer, stream p2p.Stream
 		_ = stream.Reset()
 		return fmt.Errorf("read want: %w", err)
 	}
+	s.metrics.BytesMetadata.WithLabelValues(dirIn).Add(float64(wireSize(&want)))
 	ids, err := parseWant(&want)
 	if err != nil {
 		return s.violation(peer, stream, err)
@@ -345,6 +348,7 @@ func (s *Service) handleFetch(ctx context.Context, p p2p.Peer, stream p2p.Stream
 			_ = stream.Reset()
 			return fmt.Errorf("write delivery: %w", err)
 		}
+		s.metrics.BytesChunks.WithLabelValues(dirOut).Add(float64(wireSize(d)))
 	}
 	return stream.FullClose()
 }
