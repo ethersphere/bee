@@ -102,9 +102,10 @@ func (s Scope) CheckRange(r fingerprint.Range) error {
 
 // CheckMessage checks the parts of a reconcile Message that need no session
 // state: at most MaxParts parts and MaxMessageBytes encoded bytes; every part
-// is a Fingerprint or an Items part (Phase 1 rejects Symbols and More, and a
-// part with no kind); every part decodes strictly (ParseFingerprint,
-// ParseItems) and its range passes CheckRange. Busy and AuditRound are not
+// is a Fingerprint, Items, Symbols or More part (a part with no kind is
+// rejected); every part decodes strictly (ParseFingerprint, ParseItems,
+// ParseSymbols, ParseMore) and its range passes CheckRange. The symbol data
+// of a Symbols part needs the session's Mapper and is checked by Handle. Busy and AuditRound are not
 // checked. Errors wrap ErrInvalidMessage. Session.Handle runs it on every
 // message before the checks that depend on the session state.
 func (s Scope) CheckMessage(m *pb.Message) error {
@@ -118,6 +119,22 @@ type part struct {
 	r       fingerprint.Range
 	summary fingerprint.Summary
 	items   *Items
+	symbols *Symbols
+	more    *More
+}
+
+// kind names the part type for errors.
+func (p part) kind() string {
+	switch {
+	case p.items != nil:
+		return "items"
+	case p.symbols != nil:
+		return "symbols"
+	case p.more != nil:
+		return "more"
+	default:
+		return "fingerprint"
+	}
 }
 
 // parseMessage runs the checks of CheckMessage and returns the decoded parts.
@@ -146,6 +163,18 @@ func (s Scope) parseMessage(m *pb.Message) ([]part, error) {
 				return nil, fmt.Errorf("part %d: %w", i, err)
 			}
 			parts[i] = part{r: it.Range, items: &it}
+		case *pb.Part_Symbols:
+			sy, err := ParseSymbols(k.Symbols)
+			if err != nil {
+				return nil, fmt.Errorf("part %d: %w", i, err)
+			}
+			parts[i] = part{r: sy.Range, symbols: &sy}
+		case *pb.Part_More:
+			mo, err := ParseMore(k.More)
+			if err != nil {
+				return nil, fmt.Errorf("part %d: %w", i, err)
+			}
+			parts[i] = part{r: mo.Range, more: &mo}
 		case nil:
 			return nil, invalid("part %d has no kind", i)
 		default:

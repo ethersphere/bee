@@ -708,7 +708,9 @@ func TestSessionLimits(t *testing.T) {
 
 // TestSessionConverges drives two sessions over in-memory sets against each
 // other and checks that each side's wants are exactly what the other holds
-// and it lacks, inside the opened ranges.
+// and it lacks, inside the opened ranges. Each case runs in the Phase-1 form
+// (no Statuses: splits and item exchanges) and with symbol streams, whose
+// windows end at the caches of the Index for ranges over ScanLimit.
 func TestSessionConverges(t *testing.T) {
 	t.Parallel()
 
@@ -751,49 +753,81 @@ func TestSessionConverges(t *testing.T) {
 			common: 40000, onlyA: 5, onlyB: 5, longStreams: true,
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			rng := newRand(uint64(len(tc.name)))
-			scope := mustScope(t, tc.local, tc.remote)
-			gen := tc.local.Root
-			if tc.gen != nil {
-				gen = *tc.gen
+		for _, symbols := range []bool{false, true} {
+			name := tc.name + "/phase1"
+			if symbols {
+				name = tc.name + "/symbols"
 			}
-			open := tc.open
-			if open == nil {
-				open = []fingerprint.Range{scope.Root}
-			}
-			la, lb, a2b, b2a := convergenceSets(rng, gen, scope, tc.common, tc.onlyA, tc.onlyB, tc.paired)
-			inOpen := func(ids []fingerprint.ID) []fingerprint.ID {
-				var out []fingerprint.ID
-				for _, id := range ids {
-					for _, r := range open {
-						if r.ContainsID(id) {
-							out = append(out, id)
-							break
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				rng := newRand(uint64(len(tc.name)))
+				scope := mustScope(t, tc.local, tc.remote)
+				gen := tc.local.Root
+				if tc.gen != nil {
+					gen = *tc.gen
+				}
+				open := tc.open
+				if open == nil {
+					open = []fingerprint.Range{scope.Root}
+				}
+				la, lb, a2b, b2a := convergenceSets(rng, gen, scope, tc.common, tc.onlyA, tc.onlyB, tc.paired)
+				inOpen := func(ids []fingerprint.ID) []fingerprint.ID {
+					var out []fingerprint.ID
+					for _, id := range ids {
+						for _, r := range open {
+							if r.ContainsID(id) {
+								out = append(out, id)
+								break
+							}
+						}
+					}
+					return out
+				}
+				if tc.paired {
+					if sa, _ := la.Summary(scope.Root); sa.Count != func() uint64 { s, _ := lb.Summary(scope.Root); return s.Count }() {
+						t.Fatal("paired sets have different counts")
+					}
+				}
+
+				cfgA := rangesync.Config{Scope: scope, Local: la, Open: tc.open}
+				cfgB := rangesync.Config{Scope: mustScope(t, tc.remote, tc.local), Local: lb}
+				if symbols {
+					cfgA.Status, cfgA.PeerStatus = tc.local, tc.remote
+					cfgB.Status, cfgB.PeerStatus = tc.remote, tc.local
+					la.status, lb.status = &cfgA.Status, &cfgB.Status
+				}
+				a, first, err := rangesync.NewInitiator(cfgA)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b := rangesync.NewResponder(cfgB)
+				symbolParts := 0
+				countSymbols := func(_ bool, m *pb.Message) {
+					for _, p := range m.GetParts() {
+						if p.GetSymbols() != nil {
+							symbolParts++
 						}
 					}
 				}
-				return out
-			}
-			if tc.paired {
-				if sa, _ := la.Summary(scope.Root); sa.Count != func() uint64 { s, _ := lb.Summary(scope.Root); return s.Count }() {
-					t.Fatal("paired sets have different counts")
+				wantsA, wantsB, messages := drive(t, a, first, b, pageChecker(t, new(int)), spanChecker(t, tc.longStreams && !symbols), countSymbols)
+				assertSet(t, wantsA, inOpen(a2b))
+				assertSet(t, wantsB, inOpen(b2a))
+				if tc.onlyA+tc.onlyB == 0 && messages != 2 {
+					t.Fatalf("equal sets took %d messages, want 2", messages)
 				}
-			}
-
-			a, first, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Open: tc.open})
-			if err != nil {
-				t.Fatal(err)
-			}
-			b := rangesync.NewResponder(rangesync.Config{Scope: mustScope(t, tc.remote, tc.local), Local: lb})
-			wantsA, wantsB, messages := drive(t, a, first, b, pageChecker(t, new(int)), spanChecker(t, tc.longStreams))
-			assertSet(t, wantsA, inOpen(a2b))
-			assertSet(t, wantsB, inOpen(b2a))
-			if tc.onlyA+tc.onlyB == 0 && messages != 2 {
-				t.Fatalf("equal sets took %d messages, want 2", messages)
-			}
-		})
+				bothHold := tc.common > 0 || tc.onlyA > 0 && tc.onlyB > 0
+				if symbols && bothHold && tc.onlyA+tc.onlyB > 0 && symbolParts == 0 {
+					t.Fatal("no symbol stream")
+				}
+				if !symbols && symbolParts != 0 {
+					t.Fatalf("%d symbol parts without Statuses", symbolParts)
+				}
+				if c := a.Stats().DecodeCorruptions + b.Stats().DecodeCorruptions; c != 0 {
+					t.Fatalf("%d corrupt decodes of honest streams", c)
+				}
+				t.Logf("%d messages, %d symbol parts, stats %+v / %+v", messages, symbolParts, a.Stats(), b.Stats())
+			})
+		}
 	}
 }
 

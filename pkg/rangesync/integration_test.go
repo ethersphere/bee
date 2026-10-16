@@ -123,7 +123,7 @@ func restamped(chs []swarm.Chunk) []swarm.Chunk {
 // streamtest for differences of 0, 1, 20, 1k, 4k and 100% (an empty side)
 // and a hidden difference (equal counts at every level), checks that each
 // side learns exactly the IDs it lacks, that message and byte counts stay
-// within the Meyer bounds, and that the metrics match the wire. For the
+// within the Meyer bounds plus an allowance for symbol streams, and that the metrics match the wire. For the
 // small differences the wants are fetched and both reserves end with the
 // union; a second session then finds the sets equal.
 func TestProtocolConverges(t *testing.T) {
@@ -185,6 +185,14 @@ func TestProtocolConverges(t *testing.T) {
 
 			// cost within the Meyer bounds
 			bound := computeMeyerBounds(fpIDs(t, setA), fpIDs(t, setB), serviceLeafBits)
+			// Symbol streams (Phase 2) can cost more than the Meyer bound
+			// when the count estimate is low (equal counts give d̂ = 1): each
+			// More is one extra round trip, 5 from MinBatch to RootSymbols
+			// and 4 to Level1Symbols, and a stream that is exhausted before
+			// it decodes wastes its symbols (the root and the 16 level-1
+			// streams at most). T2.6 asserts the worked examples literally.
+			bound.messages += 2 * (5 + 4)
+			bound.bytes += (fingerprint.RootSymbols + 16*fingerprint.Level1Symbols) * fingerprint.MaxSymbolSize
 			messages := len(sent) + len(received)
 			bytes := 0
 			for _, m := range append(append([]*pb.Message{}, sent...), received...) {

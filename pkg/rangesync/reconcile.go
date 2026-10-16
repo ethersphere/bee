@@ -73,7 +73,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 		return nil, err
 	}
 	defer release()
-	sess, open, err := NewInitiator(Config{Scope: scope, Local: s.local, PeerCount: remote.Summary.Count})
+	sess, open, err := NewInitiator(s.sessionConfig(peer, scope, st, remote))
 	if err != nil {
 		return nil, fmt.Errorf("open session: %w", err)
 	}
@@ -98,6 +98,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	}
 	s.metrics.reconcileMessage(dirOut, open)
 	ids, handled, err := s.converse(ctx, sess, nil, r, w)
+	s.metrics.sessionStats(sess.Stats())
 	switch {
 	case errors.Is(err, ErrPeerBusy):
 		return nil, err
@@ -109,6 +110,19 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	s.metrics.sessionDone(handled, len(ids))
 	s.scorer.Succeed(peer)
 	return toChunkIDs(ids), nil
+}
+
+// sessionConfig returns the Config of a session with peer in scope, where
+// local is this node's Status and remote the peer's.
+func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote Status) Config {
+	return Config{
+		Scope:      scope,
+		Local:      s.local,
+		PeerCount:  remote.Summary.Count,
+		Status:     local,
+		PeerStatus: remote,
+		Hints:      s.hints.peer(peer),
+	}
 }
 
 // acquireSession takes a node-wide session token and the session slot of
@@ -268,8 +282,9 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		return busy("opening outside the scope")
 	}
 
-	sess := NewResponder(Config{Scope: scope, Local: s.local, PeerCount: remote.Summary.Count})
+	sess := NewResponder(s.sessionConfig(peer, scope, st, remote))
 	wants, handled, err := s.converse(ctx, sess, open, r, w)
+	s.metrics.sessionStats(sess.Stats())
 	switch {
 	case handled == 0 && errors.Is(err, fingerprint.ErrBusy):
 		// the opening asks about a range that is being rebuilt

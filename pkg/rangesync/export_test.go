@@ -5,8 +5,10 @@
 package rangesync
 
 import (
-	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	dto "github.com/prometheus/client_model/go"
+
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 )
 
 // PendingReplies reports the state kept for answers to the peer's Reply
@@ -14,6 +16,15 @@ import (
 // and all pending intervals.
 func (s *Session) PendingReplies() (withExclusion, excludedIDs, intervals int) {
 	return s.pendingReplies()
+}
+
+// CacheCapacity returns the length of the cached prefix of the stream of r
+// for a peer with Status st.
+func CacheCapacity(st Status, r fingerprint.Range) uint64 { return cacheCapacity(st, r) }
+
+// DecodeCorruptions returns the value of the decode_corruption_total metric.
+func (s *Service) DecodeCorruptions() float64 {
+	return counterValue(s.metrics.DecodeCorruption)
 }
 
 const MaxPeerReconcileStreams = maxPeerReconcileStreams

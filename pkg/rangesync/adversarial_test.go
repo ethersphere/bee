@@ -36,7 +36,7 @@ func statusWithRoot(root fingerprint.Range) *pb.Status {
 }
 
 // TestReconcileAdversarial feeds a Phase-1 responder protocol violations over
-// streamtest (proposal §6.4, §13): parts of Phase 2, ranges outside the
+// streamtest (proposal §6.4, §13): unsolicited Symbols and More, ranges outside the
 // session root or below its depth bound, children that do not partition a
 // range the server sent, and oversized messages. Each one resets the stream,
 // disconnects the peer and is scored once; no wants come out of the session.
@@ -284,5 +284,64 @@ func TestReconcileEndlessItemsPaging(t *testing.T) {
 				t.Fatalf("got %d wants, want %d", got, len(ids))
 			}
 		})
+	}
+}
+
+// TestReconcileDecodeCorruption answers a responder's split with a symbol
+// stream that decodes to an ID outside its range. The responder falls back
+// to an exact item exchange with Reply for that range and counts the
+// corruption in decode_corruption_total.
+func TestReconcileDecodeCorruption(t *testing.T) {
+	t.Parallel()
+
+	whole, child := rangeOf(""), rangeOf("0000")
+	chunks := stampedChunks(t, 300)
+	b := newTestNode(t, chunks...)
+	b.start(t)
+	p := newRawPeer(t, b)
+	if err := p.sendStatus(t, statusWithRoot(whole)); err != nil {
+		t.Fatal(err)
+	}
+	s := p.open(t, rangesync.ReconcileStreamName)
+	w, read := protobuf.NewWriter(s), func() *pb.Message {
+		t.Helper()
+		var m pb.Message
+		if err := protobuf.NewReader(s).ReadMsg(&m); err != nil {
+			t.Fatal(err)
+		}
+		return &m
+	}
+	// a count far past the root cache: the server splits
+	if err := w.WriteMsg(msg(fpPart(whole, fingerprint.Summary{Count: 1 << 20, Digest: [32]byte{1}}))); err != nil {
+		t.Fatal(err)
+	}
+	if fps, _ := partsOf(t, read()); len(fps) != 1<<fingerprint.FanoutBits {
+		t.Fatalf("server answered with %d fingerprints, want a split", len(fps))
+	}
+
+	// the server's own symbols plus one ID of another child: the difference
+	// is that ID alone, a pure symbol outside the range
+	m := fingerprint.NewFloatMapper()
+	syms := make([]fingerprint.CodedSymbol, rangesync.MinBatch)
+	n := uint64(1)
+	for _, id := range fpIDs(t, chunks) {
+		if child.ContainsID(id) {
+			fingerprint.Encode(m, syms, 0, id, 1)
+			n++
+		}
+	}
+	fingerprint.Encode(m, syms, 0, randID(newRand(3), rangeOf("1111")), 1)
+	sy := rangesync.Symbols{Range: child, Count: n, Data: fingerprint.AppendSymbolData(nil, m, n, 0, syms)}
+	if err := w.WriteMsg(msg(&pb.Part{Kind: &pb.Part_Symbols{Symbols: rangesync.EncodeSymbols(sy)}})); err != nil {
+		t.Fatal(err)
+	}
+	_, items := partsOf(t, read())
+	if len(items) == 0 || !items[0].Range.Equal(child) || !items[0].Reply {
+		t.Fatalf("server answered with %v, want items with reply for %s", items, child)
+	}
+	_ = s.Reset()
+	_ = p.records(t, rangesync.ReconcileStreamName)
+	if got := b.svc.DecodeCorruptions(); got != 1 {
+		t.Fatalf("decode_corruption_total %v, want 1", got)
 	}
 }

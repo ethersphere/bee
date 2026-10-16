@@ -92,18 +92,32 @@ type Config struct {
 	// the IDs the peer may list in one range (see MaxPeerItems). Zero means
 	// unknown: only the cR of the range and MaxPeerItems bound it.
 	PeerCount uint64
+	// Status is this node's Status and PeerStatus the peer's last Status.
+	// They give the capacity of the ranges' symbol streams (Capacity). The
+	// session uses symbol streams only when both Mappings are non-zero and
+	// equal to Mapper's ID (Reconcile checks it before opening; Handle checks
+	// it again before decoding); otherwise it reconciles in the Phase-1 form
+	// (splits and item exchanges) and Symbols parts from the peer are a
+	// violation, or an error wrapping ErrMappingMismatch when the Mappings
+	// differ.
+	Status, PeerStatus Status
+	// Mapper maps elements to coded symbols; nil means
+	// fingerprint.FloatMapper.
+	Mapper fingerprint.Mapper
+	// Hints, if not nil, keeps the size of the last decoded difference per
+	// range of this peer (hint(R)).
+	Hints Hints
 }
 
 // Decision is the outcome of the per-range decision rule (proposal §6.3) for
 // one Fingerprint received from the peer.
 //
-// The numeric values are not stable: Phase 2 inserts a symbol decision and
-// renumbers the ones after it. Never send, store, log or use a Decision as a
+// The numeric values are not stable: later phases may insert decisions and
+// renumber the ones after them. Never send, store, log or use a Decision as a
 // metric label by its integer value.
 type Decision int
 
-// Decisions in the order Decide tests them. The Phase-2 symbol stream ("fits
-// in symbols") is decided after DecisionStripe and before DecisionSplit.
+// Decisions in the order Decide tests them.
 const (
 	// DecisionEqual: both summaries are equal and the range is reconciled;
 	// nothing is emitted.
@@ -119,6 +133,10 @@ const (
 	// max(|cL − cR|, 1) exceeds LargeDiff; the range is offered to the
 	// Striper and split if it is declined or there is none.
 	DecisionStripe
+	// DecisionSymbols: the first batch of FirstBatch(d̂) symbols, with d̂ =
+	// max(|cL − cR|, Hint, 1), fits in the range's capacity (Cap) and in
+	// MaxBatchSymbols; Symbols{R, 0 … n0} is emitted.
+	DecisionSymbols
 	// DecisionSplit: the range is splittable (R.Bits +
 	// fingerprint.FanoutBits <= LeafDepth); the Fingerprints of its
 	// 1<<fingerprint.FanoutBits children (R.Children(fingerprint.FanoutBits))
@@ -132,9 +150,7 @@ const (
 	DecisionExchangeItems
 )
 
-// DecisionInput holds the inputs of the decision rule for one range. Phase 2
-// adds the inputs of the symbol decision (both peers' capacities for the
-// range and the size of the last decoded difference).
+// DecisionInput holds the inputs of the decision rule for one range.
 type DecisionInput struct {
 	// Scope is the session scope.
 	Scope Scope
@@ -145,12 +161,23 @@ type DecisionInput struct {
 	Local, Remote fingerprint.Summary
 	// Initiator reports whether this node opened the session.
 	Initiator bool
+	// Cap is the range's capacity (Capacity), 0 when symbol streams are not
+	// used.
+	Cap uint64
+	// Hint is the size of the last decoded difference of the range with
+	// this peer, 0 if none.
+	Hint uint64
 }
 
-// Decide applies the per-range decision rule of proposal §6.3, in its Phase-1
-// form, to in. It is a pure function. The order is: DecisionEqual,
-// DecisionSendItems, DecisionRequestItems, DecisionStripe, (Phase 2: the
-// symbol stream,) DecisionSplit, DecisionExchangeItems.
+// Estimate returns d̂ = max(|cL − cR|, Hint, 1) of in (proposal §6.3).
+func (in DecisionInput) Estimate() uint64 {
+	return max(estimate(in.Local.Count, in.Remote.Count), in.Hint)
+}
+
+// Decide applies the per-range decision rule of proposal §6.3 to in. It is a
+// pure function. The order is: DecisionEqual, DecisionSendItems,
+// DecisionRequestItems, DecisionStripe, DecisionSymbols, DecisionSplit,
+// DecisionExchangeItems.
 func Decide(in DecisionInput) Decision {
 	if in.Local == in.Remote {
 		return DecisionEqual
@@ -162,18 +189,21 @@ func Decide(in DecisionInput) Decision {
 		return DecisionRequestItems
 	}
 	splittable := int(in.Range.Bits)+fingerprint.FanoutBits <= int(in.Scope.LeafDepth)
-	if splittable && in.Initiator && estimate(in.Local.Count, in.Remote.Count) > LargeDiff {
+	d := in.Estimate()
+	if splittable && in.Initiator && d > LargeDiff {
 		return DecisionStripe
 	}
-	// Phase 2: the symbol stream is decided here.
+	if n0 := FirstBatch(d); in.Cap > 0 && n0 <= in.Cap && n0 <= MaxBatchSymbols {
+		return DecisionSymbols
+	}
 	if splittable {
 		return DecisionSplit
 	}
 	return DecisionExchangeItems
 }
 
-// estimate returns the Phase-1 estimate of the difference between two
-// counts: max(|a − b|, 1).
+// estimate returns the count estimate of the difference between two counts:
+// max(|a − b|, 1).
 func estimate(a, b uint64) uint64 {
 	if a < b {
 		a, b = b, a
@@ -242,6 +272,14 @@ type Session struct {
 	answers map[fingerprint.RangeKey]*answer
 	// tasks is the work to emit, in order.
 	tasks []task
+
+	mapper  fingerprint.Mapper
+	symbols bool // symbol streams are used
+	// served holds this side's symbol streams by range, until answered.
+	served map[fingerprint.RangeKey]*served
+	// decoding holds the decoders of the peer's symbol streams by range.
+	decoding map[fingerprint.RangeKey]*decoding
+	stats    SessionStats
 }
 
 // inStream is the state of one of the peer's Items streams.
@@ -254,7 +292,15 @@ type inStream struct {
 }
 
 func newSession(cfg Config, initiator bool) *Session {
+	m := cfg.Mapper
+	if m == nil {
+		m = fingerprint.NewFloatMapper()
+	}
 	return &Session{
+		mapper:     m,
+		symbols:    cfg.Status.Mapping != 0 && cfg.Status.Mapping == m.ID() && cfg.PeerStatus.Mapping == m.ID(),
+		served:     make(map[fingerprint.RangeKey]*served),
+		decoding:   make(map[fingerprint.RangeKey]*decoding),
 		cfg:        cfg,
 		initiator:  initiator,
 		unanswered: make(map[fingerprint.RangeKey]struct{}),
@@ -333,7 +379,17 @@ func NewResponder(cfg Config) *Session {
 // also rejects a larger in as a violation, since the state kept for the
 // peer's Reply pages while a Message is handled is bounded by its size.
 //
-// Each Fingerprint part is answered by the decision rule (Decide). Each Items
+// Each Fingerprint part is answered by the decision rule (Decide). A Symbols
+// part is fed to the decoder of its range (see Config.Status for when
+// symbol streams are used): once decoded, the IDs only the peer holds are
+// added to wants and the IDs only this node holds are sent as Items without
+// Reply; while not decoded a More is sent, until the stream is Exhausted or
+// reaches the range's Capacity, when the range is split (or its items
+// exchanged with Reply at the leaf depth); a corrupt stream falls back to an
+// item exchange with Reply (Stats counts it). Each side's stream is taken
+// from one snapshot of its elements: its cached prefix is copied when it
+// starts, and later symbols are used only while their first symbols equal
+// it; a stream whose elements changed ends there (Exhausted). Each Items
 // part adds the listed IDs that Local does not hold to wants; with Reply set
 // it is answered with the local IDs in the interval the page covers that the
 // page does not list (see Items), as Items pages without Reply.
@@ -371,6 +427,15 @@ func NewResponder(cfg Config) *Session {
 //   - the peer's stream that answers this side's Reply pages for a range
 //     ends (a page without More) only after this side sent its last Reply
 //     page for that range;
+//   - a Symbols part with Start 0 starts the peer's symbol stream for its
+//     range, which answers a range this side sent a Fingerprint for and the
+//     peer has not answered yet; a later batch must continue the stream
+//     (Start equals the symbols received) and answer this side's More, up
+//     to its UpTo; the data must parse (fingerprint.ParseSymbolData) and a
+//     batch without symbols must be Exhausted;
+//   - a More part continues this side's symbol stream for its range, whose
+//     last batch was not Exhausted and is not answered yet, past the
+//     symbols sent;
 //   - the peer sends an empty Message only when none of its Items streams
 //     has More set, except a stream that answers this side's Reply stream
 //     for a range whose last page this side has not sent yet: the peer is
@@ -439,12 +504,25 @@ func (s *Session) handle(in *pb.Message) (*pb.Message, []fingerprint.ID, error) 
 	// children seen so far as a bit mask.
 	splits := make(map[fingerprint.RangeKey]uint64)
 	for _, p := range parts {
-		if p.items != nil {
+		switch {
+		case p.items != nil:
 			w, err := s.handleItems(*p.items)
 			if err != nil {
 				return nil, nil, err
 			}
 			wants = append(wants, w...)
+			continue
+		case p.symbols != nil:
+			w, err := s.handleSymbols(*p.symbols)
+			if err != nil {
+				return nil, nil, err
+			}
+			wants = append(wants, w...)
+			continue
+		case p.more != nil:
+			if err := s.handleMore(*p.more); err != nil {
+				return nil, nil, err
+			}
 			continue
 		}
 		if !opening {
@@ -477,8 +555,8 @@ func checkOpening(parts []part) error {
 	}
 	ranges := make([]fingerprint.Range, len(parts))
 	for i, p := range parts {
-		if p.items != nil {
-			return invalid("items in the opening")
+		if p.items != nil || p.symbols != nil || p.more != nil {
+			return invalid("%s in the opening", p.kind())
 		}
 		ranges[i] = p.r
 	}
@@ -506,6 +584,7 @@ func (s *Session) checkChild(r fingerprint.Range, splits map[fingerprint.RangeKe
 			return invalid("split of %s, which is not an unanswered range", parent)
 		}
 		delete(s.unanswered, key)
+		s.closeServed(key)
 	}
 	bit := uint64(1) << parent.ChildIndex(r.Prefix, fingerprint.FanoutBits)
 	if mask&bit != 0 {
@@ -522,7 +601,14 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 		return fmt.Errorf("local summary of %s: %w", r, err)
 	}
 	s.peerCounts[r.Key()] = remote.Count
-	switch Decide(DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}) {
+	in := DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}
+	if s.symbols {
+		in.Cap = Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, remote.Count)
+		if s.cfg.Hints != nil {
+			in.Hint = s.cfg.Hints.Hint(r)
+		}
+	}
+	switch Decide(in) {
 	case DecisionEqual:
 	case DecisionSendItems:
 		s.addListing(r, false, false)
@@ -533,6 +619,8 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 			break
 		}
 		s.tasks = append(s.tasks, &split{r: r})
+	case DecisionSymbols:
+		return s.startServing(r, local.Count, FirstBatch(in.Estimate()), in.Cap)
 	case DecisionSplit:
 		s.tasks = append(s.tasks, &split{r: r})
 	case DecisionExchangeItems:
@@ -562,6 +650,7 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 		st = &inStream{reply: it.Reply}
 		if _, ok := s.unanswered[key]; ok {
 			delete(s.unanswered, key)
+			s.closeServed(key)
 		} else if s.replies[key] != nil && !it.Reply {
 			st.answersReply = true
 		} else {

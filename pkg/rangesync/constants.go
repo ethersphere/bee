@@ -44,6 +44,13 @@ const (
 	// SessionSymbolBudget is the largest number of coded symbols a responder
 	// sends in one session; past it every range is answered as exhausted.
 	SessionSymbolBudget = 16384
+	// MaxBatchSymbols is the largest number of coded symbols in one Symbols
+	// part: 8192 × fingerprint.MaxSymbolSize is 720 KiB, so a batch always
+	// fits in a Message.
+	MaxBatchSymbols = 8192
+	// HintCacheSize is the number of (peer, range) entries of the decoded
+	// difference sizes a node keeps for the symbol estimate hint(R).
+	HintCacheSize = 4096
 	// MaxScansPerMessage is the largest number of ranges in one Message whose
 	// symbols are produced by scanning the address index.
 	MaxScansPerMessage = 64

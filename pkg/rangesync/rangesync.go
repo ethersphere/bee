@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -22,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -148,6 +149,8 @@ type Service struct {
 	indexer *Indexer
 	local   *local
 
+	hints *hintCache // hint(R) of the symbol estimate
+
 	statusMu sync.Mutex
 	statuses map[string]Status // last Status received, by peer
 
@@ -219,6 +222,7 @@ func New(
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
 		local:            &local{index: index, store: store},
+		hints:            newHintCache(HintCacheSize),
 		statuses:         make(map[string]Status),
 		statusStreams:    newPeerStreamLimiter(maxPeerStatusStreams),
 		reconcileStreams: newPeerStreamLimiter(maxPeerReconcileStreams),

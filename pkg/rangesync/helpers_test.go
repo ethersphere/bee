@@ -28,6 +28,17 @@ type fakeLocal struct {
 	summary func(r fingerprint.Range) (fingerprint.Summary, error)
 	// exhausted is returned by Symbols.
 	exhausted bool
+	// status, if set, makes Symbols serve the windows the Index serves for
+	// that Status: a stream of a range holding more than ScanLimit elements
+	// ends at its cache (rangesync.CacheCapacity).
+	status *rangesync.Status
+	// symbolLimit, if not zero, ends every stream at that many symbols.
+	symbolLimit uint64
+	// extra are encoded into every symbol window, whatever its range, but
+	// are not elements of l (a corrupt stream).
+	extra []fingerprint.ID
+	// symbolCalls counts the Symbols calls.
+	symbolCalls int
 	// err, if set, is returned by every method.
 	err error
 
@@ -105,11 +116,25 @@ func (l *fakeLocal) Symbols(r fingerprint.Range, start, end uint64) ([]fingerpri
 	if end < start {
 		return nil, false, fingerprint.ErrInvalidBatch
 	}
+	l.symbolCalls++
+	in := l.in(r)
+	exhausted := l.exhausted
+	limit := uint64(rangesync.CapUnlimited)
+	if l.status != nil && len(in) > fingerprint.ScanLimit {
+		limit = rangesync.CacheCapacity(*l.status, r)
+	}
+	if l.symbolLimit != 0 {
+		limit = min(limit, l.symbolLimit)
+	}
+	if end >= limit {
+		end, exhausted = limit, true
+	}
+	start = min(start, end)
 	syms := make([]fingerprint.CodedSymbol, end-start)
-	for _, id := range l.in(r) {
+	for _, id := range append(in, l.extra...) {
 		fingerprint.Encode(fingerprint.NewFloatMapper(), syms, start, id, 1)
 	}
-	return syms, l.exhausted, nil
+	return syms, exhausted, nil
 }
 
 // in returns the IDs of l in r.
@@ -225,7 +250,8 @@ func drive(t *testing.T, a *rangesync.Session, open *pb.Message, b *rangesync.Se
 	}
 }
 
-// parts splits the parts of m by kind.
+// partsOf returns the Fingerprint ranges and the Items pages of m; Symbols
+// and More parts are skipped.
 func partsOf(t *testing.T, m *pb.Message) (fps []fingerprint.Range, items []rangesync.Items) {
 	t.Helper()
 	for _, p := range m.GetParts() {
@@ -242,6 +268,7 @@ func partsOf(t *testing.T, m *pb.Message) (fps []fingerprint.Range, items []rang
 				t.Fatal(err)
 			}
 			items = append(items, it)
+		case p.GetSymbols() != nil, p.GetMore() != nil:
 		default:
 			t.Fatalf("unexpected part %v", p)
 		}

@@ -5,9 +5,10 @@
 package rangesync
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // metrics are the protocol metrics of the rangesync service.
@@ -38,6 +39,9 @@ type metrics struct {
 	// IDs the peer listed that this node does not hold (its side of n_Δ;
 	// the two sides of a session together give n_Δ).
 	PairwiseDiff prometheus.Histogram
+	// DecodeCorruption counts the peer's symbol streams the decoder found
+	// corrupt; their ranges fall back to an exact item exchange.
+	DecodeCorruption prometheus.Counter
 	// PartsSent and PartsReceived count the parts of reconcile Messages, by
 	// type.
 	PartsSent     *prometheus.CounterVec
@@ -127,6 +131,12 @@ func newMetrics() metrics {
 			Help:      "IDs listed by the peer and missing locally per completed reconcile session (this side's half of the session difference).",
 			Buckets:   append([]float64{0}, prometheus.ExponentialBuckets(1, 4, 10)...),
 		}),
+		DecodeCorruption: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "decode_corruption_total",
+			Help:      "Symbol streams of peers that decoded corrupt and fell back to an item exchange.",
+		}),
 		PartsSent: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -200,6 +210,11 @@ func (mt metrics) reconcileMessage(dir string, msg *pb.Message) {
 		parts.WithLabelValues(partType(p)).Inc()
 	}
 	mt.BytesMetadata.WithLabelValues(dir).Add(float64(wireSize(msg)))
+}
+
+// sessionStats counts the symbol-stream outcomes of a session.
+func (mt metrics) sessionStats(st SessionStats) {
+	mt.DecodeCorruption.Add(float64(st.DecodeCorruptions))
 }
 
 // sessionDone observes a completed session: the Messages handled and the

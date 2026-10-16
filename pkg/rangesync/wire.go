@@ -204,6 +204,52 @@ func ParseItems(p *pb.Items) (Items, error) {
 	return it, nil
 }
 
+// Symbols is the decoded form of a pb.Symbols part: coded symbols [Start,
+// Start+n) of the sender's stream for Range (proposal §6.2). Data is the
+// encoded symbols, parsed by the session with fingerprint.ParseSymbolData,
+// which needs the session's Mapper and Count. Exhausted reports that the
+// sender cannot produce symbols past this batch.
+type Symbols struct {
+	Range     fingerprint.Range
+	Count     uint64
+	Start     uint64
+	Data      []byte
+	Exhausted bool
+}
+
+// More is the decoded form of a pb.More part: a request to continue the
+// receiver's symbol stream for Range up to (excluding) UpTo.
+type More struct {
+	Range fingerprint.Range
+	UpTo  uint64
+}
+
+// ParseSymbols decodes a Symbols part: p and its range must not be nil and
+// the range must pass ParseRange. Data is checked by the session.
+func ParseSymbols(p *pb.Symbols) (Symbols, error) {
+	if p == nil {
+		return Symbols{}, invalid("missing symbols")
+	}
+	r, err := ParseRange(p.Range)
+	if err != nil {
+		return Symbols{}, fmt.Errorf("symbols: %w", err)
+	}
+	return Symbols{Range: r, Count: p.Count, Start: p.Start, Data: p.Data, Exhausted: p.Exhausted}, nil
+}
+
+// ParseMore decodes a More part: p and its range must not be nil and the
+// range must pass ParseRange.
+func ParseMore(p *pb.More) (More, error) {
+	if p == nil {
+		return More{}, invalid("missing more")
+	}
+	r, err := ParseRange(p.Range)
+	if err != nil {
+		return More{}, fmt.Errorf("more: %w", err)
+	}
+	return More{Range: r, UpTo: p.UpTo}, nil
+}
+
 // ParseStatus decodes a Status received from a peer: p.Root must not be nil
 // and decodes by ParseRange; p.Digest must be empty when p.Count is 0 and
 // exactly 32 bytes otherwise; Root.Bits + LeafBits must be at most
@@ -262,6 +308,16 @@ func EncodeItems(it Items) *pb.Items {
 		p.After = bytes.Clone(it.After[:])
 	}
 	return p
+}
+
+// EncodeSymbols returns the wire form of the batch sy.
+func EncodeSymbols(sy Symbols) *pb.Symbols {
+	return &pb.Symbols{Range: EncodeRange(sy.Range), Count: sy.Count, Start: sy.Start, Data: sy.Data, Exhausted: sy.Exhausted}
+}
+
+// EncodeMore returns the wire form of the request mo.
+func EncodeMore(mo More) *pb.More {
+	return &pb.More{Range: EncodeRange(mo.Range), UpTo: mo.UpTo}
 }
 
 // EncodeStatus returns the wire form of st, with the digest omitted when
