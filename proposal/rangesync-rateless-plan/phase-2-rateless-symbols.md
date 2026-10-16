@@ -579,3 +579,4 @@ _(sessions append here)_
   (quadratic in the stream length). T2.4 clamps the decoder's `cap(R)` to `SessionSymbolBudget`;
   T2.5 should also validate `Count` against the peer's Fingerprint count / `itemLimit` and enforce
   the budget across all streams of a session.
+- **(T2.4 re-review, Low) No test guards churn between `decide` and the first emit.** The scan-path churn tests pass with or without the symbol-0 snapshot (b72b11cf); a test that changes the set between `decide`'s Summary and the first window would. Add with T2.5 or T2.6.
