@@ -328,6 +328,17 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 		sess.grant()
 	}
 
+	// a broker that forwards what it should have refused is avoided for good:
+	// blocklisted for the longest period there is, which is forever
+	sess.forged = func(err error) {
+		if s.blocklister == nil {
+			return
+		}
+		if berr := s.blocklister.Blocklist(req.Broker, 0, err.Error()); berr != nil {
+			s.logger.Debug("blocklist broker failed", "broker", req.Broker, "error", berr)
+		}
+	}
+
 	go sess.readLoop(stream, r, req.Spec)
 
 	return sess, nil
@@ -360,6 +371,7 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader, spec CohortSpec
 			// a broker that forwards a chunk not valid for the spec, or by an
 			// owner the roster does not admit, is misbehaving: the stream is ended
 			readErr = fmt.Errorf("%w: %w", errInvalidDelivery, err)
+			s.forged(readErr)
 			return
 		}
 		if !ok {
@@ -462,6 +474,7 @@ type session struct {
 	challenge   []byte
 	spec        CohortSpec
 	identity    []byte
+	forged      func(error) // called on a delivery the broker should have refused
 	mtx         sync.Mutex
 	pos         Position
 	granted     chan struct{}
