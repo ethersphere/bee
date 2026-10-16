@@ -103,6 +103,11 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		s.metrics.MappingMismatch.Inc()
 		s.logger.Debug("peer status mapping differs", "peer_address", p.Address, "mapping", st.Mapping)
 	}
+	// This can race with the disconnected hook and leave the Status of a
+	// peer that just disconnected. That is accepted: the entry is one small
+	// value per peer address, it is replaced by the peer's next Status or
+	// deleted on its next disconnect, and a Reconcile using it fails at
+	// NewStream because the peer is not connected.
 	s.statusMu.Lock()
 	s.statuses[p.Address.ByteString()] = st
 	s.statusMu.Unlock()

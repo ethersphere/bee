@@ -68,6 +68,11 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	if err != nil {
 		return nil, fmt.Errorf("session scope: %w", err)
 	}
+	release, err := s.acquireSession(peer)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	sess, open, err := NewInitiator(Config{Scope: scope, Local: s.local})
 	if err != nil {
 		return nil, fmt.Errorf("open session: %w", err)
@@ -102,6 +107,26 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	}
 	s.scorer.Succeed(peer)
 	return toChunkIDs(ids), nil
+}
+
+// acquireSession takes a node-wide session token and the session slot of
+// peer for an outgoing session. Both caps are shared with the incoming
+// sessions. It returns ErrSessionLimit when either is taken.
+func (s *Service) acquireSession(peer swarm.Address) (release func(), err error) {
+	select {
+	case s.sessions <- struct{}{}:
+	default:
+		return nil, fmt.Errorf("%w: node", ErrSessionLimit)
+	}
+	releasePeer, ok := s.peerSessions.acquire(peer)
+	if !ok {
+		<-s.sessions
+		return nil, fmt.Errorf("%w: peer", ErrSessionLimit)
+	}
+	return func() {
+		releasePeer()
+		<-s.sessions
+	}, nil
 }
 
 // initiatorViolation disconnects peer for the violation err and reports it
@@ -225,6 +250,10 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 	}
 	scope, err := NewScope(st, remote)
 	if err != nil {
+		// Not scored: the two Statuses come from different times and one
+		// may be stale (the roots moved apart), so a scope that cannot be
+		// built is not proof that the peer broke the protocol. The peer's
+		// Status itself was validated when it was received.
 		_ = stream.Reset()
 		return fmt.Errorf("session scope: %w", err)
 	}

@@ -47,6 +47,10 @@ var (
 	// Mapping that differs from this node's: the peer is not eligible for
 	// sessions. The reconcile handler resets the stream with it.
 	ErrMappingMismatch = errors.New("rangesync: mapping mismatch")
+	// ErrSessionLimit is returned by Reconcile, without opening a stream,
+	// when this node already runs MaxConcurrentSessions sessions or one
+	// with the peer (incoming or outgoing).
+	ErrSessionLimit = errors.New("rangesync: session limit")
 )
 
 // PeerScorer receives the outcome of the sessions with each peer. The

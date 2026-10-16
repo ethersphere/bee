@@ -798,3 +798,64 @@ func TestStart(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestReconcileInitiatorSessionLimit checks that the session caps also bound
+// outgoing sessions: Reconcile fails with ErrSessionLimit without a stream.
+func TestReconcileInitiatorSessionLimit(t *testing.T) {
+	t.Parallel()
+
+	assertLimit := func(t *testing.T, a, b *testNode) {
+		t.Helper()
+		_, err := a.svc.Reconcile(context.Background(), b.addr)
+		if !errors.Is(err, rangesync.ErrSessionLimit) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrSessionLimit)
+		}
+		if fails, succeeds := a.scorer.get(b.addr); len(fails) != 0 || succeeds != 0 {
+			t.Fatalf("scorer: %v fails, %d succeeds", fails, succeeds)
+		}
+	}
+
+	t.Run("peer session running", func(t *testing.T) {
+		t.Parallel()
+		a := newTestNode(t, stampedChunks(t, 20)...)
+		b := newTestNode(t, stampedChunks(t, 20)...)
+		a.start(t)
+		b.start(t)
+		connect(t, a, b)
+		// a raw peer with b's address holds an incoming session on a
+		p := &rawPeer{addr: b.addr, rec: streamtest.New(streamtest.WithBaseAddr(b.addr), streamtest.WithProtocols(a.svc.Protocol()))}
+		openSession(t, p)
+		assertLimit(t, a, b)
+	})
+
+	t.Run("node-wide cap", func(t *testing.T) {
+		t.Parallel()
+		a := newTestNode(t, stampedChunks(t, 20)...)
+		b := newTestNode(t, stampedChunks(t, 20)...)
+		a.start(t)
+		b.start(t)
+		connect(t, a, b)
+		for range rangesync.MaxConcurrentSessions {
+			p := newRawPeer(t, a)
+			if err := p.sendStatus(t, peerStatus(fingerprint.DefaultMapperID)); err != nil {
+				t.Fatal(err)
+			}
+			openSession(t, p)
+		}
+		assertLimit(t, a, b)
+	})
+
+	t.Run("slot released after session", func(t *testing.T) {
+		t.Parallel()
+		a := newTestNode(t, stampedChunks(t, 20)...)
+		b := newTestNode(t, stampedChunks(t, 20)...)
+		a.start(t)
+		b.start(t)
+		connect(t, a, b)
+		for range 2 {
+			if _, err := a.svc.Reconcile(context.Background(), b.addr); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}

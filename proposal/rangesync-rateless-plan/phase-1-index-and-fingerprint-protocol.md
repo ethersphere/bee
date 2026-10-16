@@ -1611,6 +1611,15 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   test), not extended. Race-relevant for CI `-race`: `TestReconcileBusy`,
   `TestReconcileStreamLimit`, `TestReconcileSmallDiff` (run here with `-count=3 -cpu=1,2,4`).
 
+- **T1.9 fix round 1 (2026-10-15):** `Reconcile` now takes the same node-wide token and
+  per-peer slot as incoming sessions and returns `ErrSessionLimit` without opening a stream
+  (test `TestReconcileInitiatorSessionLimit`, race-relevant for CI). Accepted risks, with
+  comments in the code: `handleStatus` can record a Status right after the `disconnected` hook
+  (harmless, overwritten or deleted later, Reconcile fails at NewStream); a responder
+  `NewScope` failure is not scored (one Status may be stale). Accepted risk copied from
+  pullsync: `streamlimit.go` `clear` on disconnect lets a reconnecting peer's new streams
+  overlap handlers of the old connection still running, briefly exceeding the per-peer limit.
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in
