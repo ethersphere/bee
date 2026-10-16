@@ -26,6 +26,8 @@ type fakeLocal struct {
 
 	// summary, if set, overrides Summary.
 	summary func(r fingerprint.Range) (fingerprint.Summary, error)
+	// exhausted is returned by Symbols.
+	exhausted bool
 	// err, if set, is returned by every method.
 	err error
 
@@ -107,7 +109,7 @@ func (l *fakeLocal) Symbols(r fingerprint.Range, start, end uint64) ([]fingerpri
 	for _, id := range l.in(r) {
 		fingerprint.Encode(fingerprint.NewFloatMapper(), syms, start, id, 1)
 	}
-	return syms, false, nil
+	return syms, l.exhausted, nil
 }
 
 // in returns the IDs of l in r.

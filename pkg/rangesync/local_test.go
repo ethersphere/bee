@@ -258,3 +258,51 @@ func TestLocalSymbols(t *testing.T) {
 		t.Fatal("inverted window: want error")
 	}
 }
+
+// TestLocalSymbolsExhausted checks that a level-1 range holding more than
+// ScanLimit elements serves only its cache, with exhausted true, for a
+// window past it.
+func TestLocalSymbolsExhausted(t *testing.T) {
+	t.Parallel()
+
+	const radius = 2
+	overlay := swarm.RandAddress(t)
+	store := mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithRadius(radius))
+	svc := rangesync.New(streamtest.NewRecorderDisconnecter(streamtest.New()), store, overlay, nil, nil, nil, log.Noop, rangesync.Options{LeafBits: 6})
+	t.Cleanup(func() {
+		if err := svc.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	root := fingerprint.NewRange(overlay, radius)
+	r := root.Children(fingerprint.FanoutBits)[0] // bits radius..radius+4 zero
+	set := make(map[fingerprint.ID]struct{})
+	for range fingerprint.ScanLimit + 100 {
+		addr := swarm.RandAddress(t).Bytes()
+		addr[0] = addr[0]&0x03 | overlay.Bytes()[0]&0xc0
+		ch := swarm.NewChunk(swarm.NewAddress(addr), []byte{1}).WithStamp(postagetesting.MustNewStamp())
+		if err := store.ReservePutter().Put(context.Background(), ch); err != nil {
+			t.Fatal(err)
+		}
+		c := chunkIDOf(t, ch)
+		set[fingerprint.NewID(c.Address, c.StampHash)] = struct{}{}
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "index", func() bool {
+		s, err := svc.Local().Summary(root)
+		return err == nil && s.Count == uint64(len(set))
+	})
+
+	got, exhausted, err := svc.Local().Symbols(r, 500, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exhausted {
+		t.Fatal("want exhausted")
+	}
+	if want := bruteSymbols(set, r, 500, fingerprint.Level1Symbols); !slices.Equal(got, want) {
+		t.Fatalf("got %d symbols, want the %d of the cache window", len(got), len(want))
+	}
+}

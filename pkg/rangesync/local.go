@@ -81,10 +81,23 @@ func (l *local) Symbols(r fingerprint.Range, start, end uint64) ([]fingerprint.C
 	return syms, exhausted, nil
 }
 
+// maxScanIDs bounds a Symbols scan. The index checks count(r) ≤ ScanLimit
+// before the scan, which runs unlocked, so concurrent puts can grow r; the
+// bound keeps the cost of a scan within twice that.
+const maxScanIDs = 2 * fingerprint.ScanLimit
+
+// errScanLimit is returned by a Symbols scan of more than maxScanIDs IDs.
+var errScanLimit = errors.New("rangesync: symbols scan over limit")
+
 // scanIDs calls fn with the IDs of the address index in r until fn returns
-// an error, which scanIDs returns.
+// an error, which scanIDs returns, or until it yielded maxScanIDs IDs, when
+// it returns errScanLimit.
 func (l *local) scanIDs(r fingerprint.Range, fn func(fingerprint.ID) error) error {
+	n := 0
 	return l.store.ReserveIterateAddr(r.Prefix, r.Bits, nil, func(c storer.ChunkID) (bool, error) {
+		if n++; n > maxScanIDs {
+			return true, errScanLimit
+		}
 		return false, fn(fingerprint.NewID(c.Address, c.StampHash))
 	})
 }

@@ -58,6 +58,7 @@ type Local interface {
 	// local elements in r, as fingerprint.Index.Symbols with the address
 	// index as its scan path. exhausted is true when no symbols past the
 	// returned ones are available. The symbols are copies the caller owns.
+	// A scan that outgrows its bound under concurrent puts ends with an error.
 	Symbols(r fingerprint.Range, start, end uint64) (syms []fingerprint.CodedSymbol, exhausted bool, err error)
 }
 

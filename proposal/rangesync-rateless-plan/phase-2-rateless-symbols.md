@@ -427,9 +427,15 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
   - *Tests.* `TestLocalSymbols` (mock reserve, 500 ids): root / level-1 / bucket / below-leaf
     range × windows inside and past each cache, all equal to a brute-force `Encode`; a mutation
     (scan yields nothing) fails it. `fakeLocal.Symbols` brute-encodes for session tests.
+  - *Scan cap (review).* The `count ≤ ScanLimit` check precedes the unlocked scan, so concurrent
+    puts can grow r: `scanIDs` stops after `2·ScanLimit` IDs with `errScanLimit` (returned wrapped,
+    ends the session) rather than mapping to exhausted, since the scan's partial symbols are
+    unusable. `TestLocalSymbolsExhausted`: a level-1 range over ScanLimit, window past its cache.
 
 ## Follow-ups
 _(sessions append here)_
+- **T2.4 (from T2.3).** `Local.Symbols`' scan (`scanIDs` → `ReserveIterateAddr`) takes no context
+  and cannot be canceled; consider session-lifetime cancellation when the stream state snapshots.
 - **(T2.0) Mapping grinding, not covered by either paper or §9 *[ours]*.** Rateless IBLT has no
   worst-case guarantee, so an uploader could grind `stampHash` (e.g. via the stamp timestamp) for
   two ids x, y that map to exactly the same indices within a cached prefix. The chance that two
