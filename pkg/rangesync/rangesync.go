@@ -7,10 +7,16 @@ package rangesync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -33,21 +39,136 @@ const (
 
 var errNotImplemented = errors.New("rangesync: not implemented")
 
+var (
+	// ErrNoStatus is returned by Reconcile when no Status of the peer was
+	// received yet.
+	ErrNoStatus = errors.New("rangesync: no status from peer")
+	// ErrMappingMismatch is returned by Reconcile when the peer's Status has a
+	// Mapping that differs from this node's: the peer is not eligible for
+	// sessions. The reconcile handler resets the stream with it.
+	ErrMappingMismatch = errors.New("rangesync: mapping mismatch")
+)
+
+// PeerScorer receives the outcome of the sessions with each peer. The
+// reconciler implements it and keeps the single per-peer failure score.
+type PeerScorer interface {
+	// Fail reports that peer broke the protocol; reason wraps
+	// ErrInvalidMessage. The peer was disconnected.
+	Fail(peer swarm.Address, reason error)
+	// Succeed reports that a session with peer completed.
+	Succeed(peer swarm.Address)
+}
+
+// noopScorer is the default PeerScorer.
+type noopScorer struct{}
+
+func (noopScorer) Fail(swarm.Address, error) {}
+func (noopScorer) Succeed(swarm.Address)     {}
+
+// Store is the part of the storer that the rangesync service reads: the
+// address index (storer.ReserveAddrStore, proposal §5.4) and the reserve
+// radius. *storer.DB implements it.
+type Store interface {
+	IndexerStore
+	// ReserveHasID reports whether (addr, stampHash) is in the reserve.
+	ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error)
+	// SetReserveObserver registers the single observer of the reserve.
+	SetReserveObserver(o storer.ReserveObserver) error
+}
+
+var _ Store = (*storer.DB)(nil)
+
+// Options configures a Service.
+type Options struct {
+	// Scorer receives the outcome of sessions. Nil means no scoring.
+	Scorer PeerScorer
+	// Wants, if not nil, receives the IDs that the peer of a session this
+	// node served listed and this node does not hold, once the session
+	// completed. The batch IDs are not known and are nil.
+	Wants func(peer swarm.Address, wants []storer.ChunkID)
+	// LeafBits is the leaf depth of the fingerprint index below its root.
+	// Zero means fingerprint.LeafBits; other values are for tests.
+	LeafBits uint8
+	// Indexer configures the Indexer that keeps the index current.
+	Indexer IndexerOptions
+}
+
 var _ io.Closer = (*Service)(nil)
 
 // Service is the rangesync protocol service. It serves the status, reconcile
-// and fetch streams and opens them towards peers.
+// and fetch streams and opens them towards peers. It owns the fingerprint
+// index of the node's neighborhood and the Indexer that keeps it current with
+// the reserve.
 type Service struct {
-	streamer p2p.Streamer
+	streamer p2p.StreamerDisconnecter
+	store    Store
 	logger   log.Logger
+	metrics  metrics
+	scorer   PeerScorer
+	wants    func(peer swarm.Address, wants []storer.ChunkID)
+
+	index   *fingerprint.Index
+	indexer *Indexer
+	local   *local
+
+	statusMu sync.Mutex
+	statuses map[string]Status // last Status received, by peer
+
+	statusStreams    *peerStreamLimiter
+	reconcileStreams *peerStreamLimiter
+	peerSessions     *peerStreamLimiter // MaxConcurrentSessionsPerPeer
+	sessions         chan struct{}      // MaxConcurrentSessions tokens
+
+	// ctx is canceled by Close, ending the running sessions.
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
-// New returns a new rangesync Service that opens streams through streamer.
-func New(streamer p2p.Streamer, logger log.Logger) *Service {
-	return &Service{
-		streamer: streamer,
-		logger:   logger.WithName(loggerName).Register(),
+// New returns a new rangesync Service of the node overlay, which opens
+// streams and disconnects peers through streamer and reads the reserve
+// through store. It starts nothing; see Start.
+func New(streamer p2p.StreamerDisconnecter, store Store, overlay swarm.Address, logger log.Logger, o Options) *Service {
+	if o.Scorer == nil {
+		o.Scorer = noopScorer{}
 	}
+	index := fingerprint.NewIndex(fingerprint.IndexOptions{
+		LeafBits:           o.LeafBits,
+		RootChangeDebounce: StatusMinInterval,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Service{
+		streamer:         streamer,
+		store:            store,
+		logger:           logger.WithName(loggerName).Register(),
+		metrics:          newMetrics(),
+		scorer:           o.Scorer,
+		wants:            o.Wants,
+		index:            index,
+		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
+		local:            &local{index: index, store: store},
+		statuses:         make(map[string]Status),
+		statusStreams:    newPeerStreamLimiter(maxPeerStatusStreams),
+		reconcileStreams: newPeerStreamLimiter(maxPeerReconcileStreams),
+		peerSessions:     newPeerStreamLimiter(MaxConcurrentSessionsPerPeer),
+		sessions:         make(chan struct{}, MaxConcurrentSessions),
+		ctx:              ctx,
+		cancel:           cancel,
+	}
+}
+
+// Start registers the Indexer as the reserve observer and, if that
+// succeeded, starts it: the Indexer waits for ReserveAddrIndexReady and
+// builds the index. It returns the registration error (for example
+// storer.ErrAddrIndexDisabled), in which case rangesync must not be run.
+// Until the index is built, sessions are answered with Busy and SendStatus
+// fails.
+func (s *Service) Start() error {
+	if err := s.store.SetReserveObserver(s.indexer); err != nil {
+		return fmt.Errorf("register reserve observer: %w", err)
+	}
+	s.indexer.Start()
+	return nil
 }
 
 // Protocol returns the p2p protocol specification of rangesync: protocol
@@ -71,26 +192,37 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 				Handler: s.handleFetch,
 			},
 		},
+		DisconnectIn:  s.disconnected,
+		DisconnectOut: s.disconnected,
 	}
 }
 
-// Close stops the service.
-func (s *Service) Close() error {
+// disconnected forgets the peer's status and stream slots.
+func (s *Service) disconnected(peer p2p.Peer) error {
+	s.statusMu.Lock()
+	delete(s.statuses, peer.Address.ByteString())
+	s.statusMu.Unlock()
+	s.statusStreams.clear(peer.Address)
+	s.reconcileStreams.clear(peer.Address)
+	s.peerSessions.clear(peer.Address)
 	return nil
 }
 
-// handleStatus serves the status stream. Until it is implemented, every
-// handler resets the stream and returns errNotImplemented.
-func (s *Service) handleStatus(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
-	_ = stream.Reset()
-	return errNotImplemented
+// Metrics returns the metrics of the service and its index.
+func (s *Service) Metrics() []prometheus.Collector {
+	return append(s.metrics.collectors(), s.index.Metrics()...)
 }
 
-// handleReconcile serves the reconcile stream. A non-zero Message.AuditRound
-// (salted session) is ignored until salted sessions are implemented.
-func (s *Service) handleReconcile(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
-	_ = stream.Reset()
-	return errNotImplemented
+// Close ends the running sessions, stops the Indexer and closes the index.
+// The Indexer stays registered with the reserve: commits after Close are
+// still applied to the index.
+func (s *Service) Close() error {
+	var err error
+	s.closeOnce.Do(func() {
+		s.cancel()
+		err = errors.Join(s.indexer.Close(), s.index.Close())
+	})
+	return err
 }
 
 // handleFetch serves the fetch stream.

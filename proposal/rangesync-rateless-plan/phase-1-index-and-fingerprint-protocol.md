@@ -1594,6 +1594,23 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
   `reserve.WithAddrIndexFillHook`, passed through an unexported `storer.Options` field set from
   `export_test.go`.
 
+- **T1.9 (2026-10-15):** status and reconcile handlers in `status.go`/`reconcile.go`, shared
+  stream helpers in `stream.go`, `streamlimit.go` copied from `pkg/pullsync`. §6.4 violations
+  (undecodable, oversize, invalid range / non-partition) reset the stream, are reported to
+  `PeerScorer.Fail` and disconnect the peer: the responder returns `p2p.NewDisconnectError`
+  (the p2p layer disconnects, no blocklist), the initiator calls `streamer.Disconnect` directly.
+  Busy (`Message{Busy: true}` then FullClose) for: node cap (16, token channel), per-peer cap
+  (1), `ReserveAddrIndexReady()` false, index not built, opening range rebuilding (ErrBusy on
+  the first Handle), no Status of the peer, opening outside the scope derived from the two
+  Statuses (stale status, not a violation). Mapping mismatch resets without disconnect. A
+  non-zero AuditRound is ignored (Phase 5). Below-leaf summaries scan `ReserveIterateAddr`
+  (`local.go`). `Start` = `SetReserveObserver` then `Indexer.Start` (which waits for
+  `ReserveAddrIndexReady` and rebuilds), per T1.6. Sessions are bounded by a 10 min timeout and
+  canceled by `Close`. Index wiring test runs over `pkg/storer/mock` (`TestLocalIndexWiring`).
+  Per G4 no background-fill machinery. Existing `service_fuzz_test.go` kept (passes as a plain
+  test), not extended. Race-relevant for CI `-race`: `TestReconcileBusy`,
+  `TestReconcileStreamLimit`, `TestReconcileSmallDiff` (run here with `-count=3 -cpu=1,2,4`).
+
 ## Follow-ups
 _(sessions append here)_
 - **T1.1:** the `Want` limit (≤ 250 IDs, §6.2) and the per-peer delivery limit are not in

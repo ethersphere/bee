@@ -15,8 +15,21 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
+
+// newService returns a service over an empty mock reserve.
+func newService(t *testing.T, streamer p2p.StreamerDisconnecter) *rangesync.Service {
+	t.Helper()
+	s := rangesync.New(streamer, mockstorer.NewReserve(mockstorer.WithAddrIndex()), swarm.RandAddress(t), log.Noop, rangesync.Options{})
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return s
+}
 
 var streamNames = []string{
 	rangesync.StatusStreamName,
@@ -38,12 +51,7 @@ func (s *resetRecordingStream) Reset() error {
 func TestProtocol(t *testing.T) {
 	t.Parallel()
 
-	s := rangesync.New(streamtest.New(), log.Noop)
-	t.Cleanup(func() {
-		if err := s.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	s := newService(t, streamtest.NewRecorderDisconnecter(streamtest.New()))
 
 	spec := s.Protocol()
 	if spec.Name != "rangesync" {
@@ -67,19 +75,22 @@ func TestProtocol(t *testing.T) {
 			t.Errorf("stream %q: no handler", ss.Name)
 		}
 	}
-	if spec.ConnectIn != nil || spec.ConnectOut != nil || spec.DisconnectIn != nil || spec.DisconnectOut != nil {
-		t.Error("unexpected connect/disconnect hooks")
+	if spec.ConnectIn != nil || spec.ConnectOut != nil {
+		t.Error("unexpected connect hooks")
+	}
+	if spec.DisconnectIn == nil || spec.DisconnectOut == nil {
+		t.Error("missing disconnect hooks")
 	}
 }
 
 func TestHandlersNotImplemented(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range streamNames {
+	for _, name := range []string{rangesync.FetchStreamName} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			server := rangesync.New(streamtest.New(), log.Noop)
+			server := newService(t, streamtest.NewRecorderDisconnecter(streamtest.New()))
 			var resets atomic.Int32
 			recordReset := func(h p2p.HandlerFunc) p2p.HandlerFunc {
 				return func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
@@ -123,7 +134,7 @@ func TestHandlersNotImplemented(t *testing.T) {
 func TestUnknownStream(t *testing.T) {
 	t.Parallel()
 
-	server := rangesync.New(streamtest.New(), log.Noop)
+	server := newService(t, streamtest.NewRecorderDisconnecter(streamtest.New()))
 	recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
 	_, err := recorder.NewStream(context.Background(), swarm.RandAddress(t), nil, rangesync.ProtocolName, rangesync.ProtocolVersion, "pullsync")

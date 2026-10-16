@@ -434,12 +434,12 @@ func within(t *testing.T, d time.Duration, fn func()) {
 	}
 }
 
-func waitFor(t *testing.T, what string, cond func() bool) {
-	t.Helper()
+func waitFor(tb testing.TB, what string, cond func() bool) {
+	tb.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
+			tb.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(time.Millisecond)
 	}

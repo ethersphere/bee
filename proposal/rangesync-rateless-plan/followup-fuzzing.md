@@ -37,3 +37,5 @@ ordinary test; nobody extends or debugs it until TF.
 ## Log: decoders added while fuzzing is deferred
 
 _(tasks append here: `- Tn.m: Func in path/file.go — what to assert`)_
+- T1.9: handleStatus in pkg/rangesync/status.go — any bytes: no panic, Status recorded only if ParseStatus accepts, else reset + Fail
+- T1.9: handleReconcile / readMessage (strictMessage) in pkg/rangesync/reconcile.go, stream.go — any byte stream: no panic, oversize/undecodable → ErrInvalidMessage + reset, slots released
