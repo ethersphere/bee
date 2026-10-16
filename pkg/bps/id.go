@@ -38,8 +38,9 @@ const (
 	KindUnspecified Kind = iota
 	KindData             // an update of the stream's session feed
 	// KindAuth is the empty chunk at index 0 of the session's AUTH feed: it authenticates
-	// a pending stream, is a heartbeat on a publisher stream, and is never delivered.
-	// A spectator never authenticates in place: a grantee rejoins as pending.
+	// a pending stream, or upgrades in place a spectator stream on which a roster naming
+	// its identity was delivered; it is a heartbeat on a publisher stream, and is never
+	// delivered.
 	KindAuth
 	// KindEOS is the empty chunk at index 0 of the admin's EOS feed: the channel is ended.
 	KindEOS

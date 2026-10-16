@@ -1058,9 +1058,12 @@ paths:
       description: |
         WebSocket. The node joins the BPS cohort `{topic, FEED_TOPIC, owner}` (SWIP-74, with
         the multi-publisher mode of SWIP-87) at `broker` declaring `identity` — the owner by
-        default, or an address on the owner's latest roster (a seat). A seat connects after
-        it has seen itself on a roster; the node waits for the broker's roster naming it
-        and closes the socket with 4002 if the broker's first frame is anything else.
+        default, or an address the owner's roster names or will name (a seat). A seat's
+        stream receives from the start, like a subscriber's; once a roster naming the seat
+        has reached it, the server sends `{"type":"granted"}` and the seat may send its
+        AUTH, which upgrades the stream in place. A seat that sends anything before the
+        grant is closed with 4002. A seat whose address a later roster drops finds the
+        socket closed after that roster (4003).
 
         1. Server sends `{"type":"challenge","challenge":"<hex>","broker":"<hex>","dataTopic":"<hex>","authTopic":"<hex>"}`,
            and to the owner also `"rosterTopic"` and `"eosTopic"`.
@@ -1072,18 +1075,21 @@ paths:
            `identity` for kind 1 (DATA) and 2 (AUTH) and by `owner` for kind 4 (ROSTER) and 3
            (EOS), which only the owner may send. The first frame must be the AUTH — the empty
            chunk at index 0 of `authTopic`, which authenticates the stream — and must arrive
-           within 30 seconds; sent again later it is a heartbeat. DATA frames are updates of
+           within 25 seconds — of the connection for the owner, of the grant for a seat;
+           sent again later it is a heartbeat. DATA frames are updates of
            `dataTopic`. A ROSTER carries a `Roster` protobuf naming every address that may
            publish besides the owner, full state at each index; an EOS — the empty chunk at
-           index 0 of `eosTopic` — ends the channel. Indexes must not be reused across
+           index 0 of `eosTopic` — ends the channel. An owner that has a roster MUST publish
+           it again, at its next roster index, right after its AUTH: the broker may hold
+           none, after an inactivity reclaim or a restart. Indexes must not be reused across
            sessions; frames below the broker's cursor are dropped silently.
-        3. Server sends what the other publishers publish, and the owner's rosters, as binary
-           frames in the subscribe endpoint's format.
+        3. Server sends what the other publishers publish, and the owner's rosters — to
+           the owner too — as binary frames in the subscribe endpoint's format.
 
         Close codes: 4001 invalid soc (an AUTH or EOS at another index or with a payload
         included), 4002 invalid message (wrong frame type, any frame before the AUTH, unknown
-        kind, a ROSTER or EOS from a seat, a roster that does not decode, a seat the broker
-        does not hold rostered, auth timeout), 4003 broker stream closed, 4004 end of stream.
+        kind, a ROSTER or EOS from a seat, a roster that does not decode, a frame from a seat
+        before its grant, auth timeout), 4003 broker stream closed, 4004 end of stream.
       tags:
         - BPS
       parameters:
@@ -1110,7 +1116,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: false
-          description: The address the stream publishes as. Defaults to the owner; any other must be on the owner's latest roster.
+          description: The address the stream publishes as. Defaults to the owner; any other may publish once the owner's roster names it.
       responses:
         "200":
           description: Establishes a WebSocket subscription for publishing broadcasts

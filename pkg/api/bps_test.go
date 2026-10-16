@@ -694,6 +694,7 @@ func TestBPSPublishRoster(t *testing.T) {
 func TestBPSPublishSeat(t *testing.T) {
 	t.Parallel()
 	f := newBPSFixture(t)
+	f.sess.granted = make(chan struct{})
 	key, _ := crypto.GenerateSecp256k1Key()
 	seatSigner := crypto.NewDefaultSigner(key)
 	seatAddr, _ := seatSigner.EthereumAddress()
@@ -701,23 +702,29 @@ func TestBPSPublishSeat(t *testing.T) {
 
 	conn := f.dialAs(t, "publish", seat)
 	var m struct {
+		Type        string `json:"type"`
 		Challenge   string `json:"challenge"`
 		RosterTopic string `json:"rosterTopic"`
 	}
 	if err := conn.ReadJSON(&m); err != nil {
 		t.Fatal(err)
 	}
-	if m.RosterTopic != "" {
-		t.Fatal("a seat is not given the roster topic")
+	if m.Type != "challenge" || m.RosterTopic != "" {
+		t.Fatalf("unexpected challenge message %+v", m)
 	}
 	f.bps.mu.Lock()
 	req := f.bps.req
 	f.bps.mu.Unlock()
-	if !bytes.Equal(req.Identity, seat) || len(req.Position.Roster) != 1 || !bytes.Equal(req.Position.Roster[0], seat) {
+	if !bytes.Equal(req.Identity, seat) {
 		t.Fatalf("unexpected join request %+v", req)
 	}
-	challenge := f.sess.challenge
 
+	// granted once a roster naming the seat has reached the stream
+	close(f.sess.granted)
+	if err := conn.ReadJSON(&m); err != nil || m.Type != "granted" {
+		t.Fatalf("want granted, got %+v %v", m, err)
+	}
+	challenge := f.sess.challenge
 	auth := f.signedSOC(t, seatSigner, bps.KindAuth, challenge, 0, nil)
 	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
 		t.Fatal(err)
@@ -738,12 +745,20 @@ func TestBPSPublishSeat(t *testing.T) {
 	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }
 
-func TestBPSPublishSeatNotRostered(t *testing.T) {
+func TestBPSPublishSeatNotGranted(t *testing.T) {
 	t.Parallel()
 	f := newBPSFixture(t)
 	f.sess.granted = make(chan struct{})
 	conn := f.dialAs(t, "publish", f.identity)
-	// the broker's first frame is not the roster naming the seat
-	f.sess.msgs <- bps.Message{Kind: bps.KindRoster, Owner: f.owner, Index: 0}
+	_ = readChallenge(t, f, conn)
+	// a seat listens until it is granted, and may send nothing before
+	f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: []byte("soc"), Challenge: f.sess.challenge}
+	if typ, _, err := conn.ReadMessage(); err != nil || typ != websocket.BinaryMessage {
+		t.Fatalf("want a delivery, got %d %v", typ, err)
+	}
+	auth := f.signedSOC(t, f.signer, bps.KindAuth, f.sess.challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+		t.Fatal(err)
+	}
 	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }

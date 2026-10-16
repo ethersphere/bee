@@ -38,10 +38,11 @@ const (
 	bpsDeliveryHeader = 1 + common.AddressLength + bps.ChallengeSize + 8
 )
 
-// bpsAuthTimeout bounds how long a publisher may take to send its AUTH. It is
-// counted from before the join, so that it runs out before the broker's auth
-// deadline does and the broker never blocklists this node for a slow dApp.
-var bpsAuthTimeout = 30 * time.Second
+// bpsAuthTimeout bounds how long a publisher may take to send its AUTH. For the
+// owner it is counted from before the join and is shorter than the broker's
+// auth deadline, so that the broker never blocklists this node for a slow
+// dApp; for a seat it is counted from the grant.
+var bpsAuthTimeout = 25 * time.Second
 
 var errBPSBrokerGone = errors.New("broker stream closed")
 
@@ -51,6 +52,12 @@ type bpsRequest struct {
 	broker   swarm.Address
 	identity []byte
 	cursor   uint64
+}
+
+// bpsGrantedMessage tells a seat's dApp that a roster naming its identity has
+// reached the stream: it may now send its AUTH.
+type bpsGrantedMessage struct {
+	Type string `json:"type"`
 }
 
 type bpsChallengeMessage struct {
@@ -379,19 +386,14 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 	defer authTimer.Stop()
 
 	// the publisher declares its identity — the owner's, or a seat the owner's
-	// roster names — and authenticates with its AUTH. A seat joins as one that
-	// knows it is rostered, and may authenticate once the broker's first frame
-	// is the roster naming it.
+	// roster names — and authenticates with its AUTH: the owner at once, a
+	// seat once a roster naming it has reached the stream, which upgrades it
+	// in place
 	owner := bytes.Equal(req.identity, req.owner.Bytes())
-	var pos bps.Position
-	if !owner {
-		pos.Roster = [][]byte{req.identity}
-	}
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
 		Broker:   req.broker,
 		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
 		Identity: req.identity,
-		Position: pos,
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
@@ -400,32 +402,12 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 	}
 	defer sess.Close()
 
-	// a seat waits for its cue; any other first delivery means the broker does
-	// not hold it rostered, and the stream is a spectator's
-	var pending []bps.Message
-	select {
-	case <-sess.Granted():
-	case msg, ok := <-sess.Messages():
-		select {
-		case <-sess.Granted():
-			pending = append(pending, msg)
-		default:
-			if !ok {
-				s.bpsSessionEnded(conn, sess)
-				return
-			}
-			s.bpsClose(conn, bpsCloseInvalidMessage, "identity not rostered")
-			return
-		}
-	case <-authTimer.C:
-		s.bpsClose(conn, bpsCloseInvalidMessage, "auth timeout")
-		return
-	case <-sess.Done():
-		s.bpsSessionEnded(conn, sess)
-		return
-	case <-s.quit:
-		_ = s.bpsWrite(conn, websocket.CloseMessage, []byte{})
-		return
+	// a seat listens until it is granted; its auth deadline starts then
+	granted := owner
+	var grantedC <-chan struct{}
+	if !owner {
+		authTimer.Stop()
+		grantedC = sess.Granted()
 	}
 
 	challenge := sess.Challenge()
@@ -468,19 +450,25 @@ func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.
 		logger.Debug("write challenge failed", "error", err)
 		return
 	}
-	// a publisher stream receives what the others publish: the seat's cue first
-	for _, m := range pending {
-		if err := s.bpsWrite(conn, websocket.BinaryMessage, bpsDeliveryFrame(m)); err != nil {
-			return
-		}
-	}
 
 	frames, gone := bpsReadFrames(conn, quit)
 	authenticated := false
 
 	for {
 		select {
+		case <-grantedC:
+			grantedC, granted = nil, true
+			authTimer.Reset(bpsAuthTimeout)
+			if err := s.bpsWriteJSON(conn, bpsGrantedMessage{Type: "granted"}); err != nil {
+				logger.Debug("write granted failed", "error", err)
+				return
+			}
 		case f := <-frames:
+			// a seat sends nothing before a roster names it
+			if !granted {
+				s.bpsClose(conn, bpsCloseInvalidMessage, "not granted")
+				return
+			}
 			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge, authenticated)
 			if code != 0 {
 				s.bpsClose(conn, code, reason)
