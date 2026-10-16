@@ -34,3 +34,18 @@ var (
 	ResolveSyncMode   = resolveSyncMode
 	ErrNoSyncProtocol = errNoSyncProtocol
 )
+
+var SyncWiring = syncWiring
+
+func NewRangesyncCloser(reconciler, service io.Closer) io.Closer {
+	return rangesyncCloser{reconciler: reconciler, service: service}
+}
+
+func ResolveSyncWiring(full, boot, rs, pull bool) (addrIndex, registerRangesync, buildPuller bool, err error) {
+	m, err := resolveSyncMode(full, boot, rs, pull)
+	if err != nil {
+		return false, false, false, err
+	}
+	a, r, p := syncWiring(m)
+	return a, r, p, nil
+}

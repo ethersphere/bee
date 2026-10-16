@@ -1728,6 +1728,12 @@ _(sessions append here — T1.0 snapshot finding; T1.2 LtHash vs ECMH; T1.5 fill
 - **T1.12 tests:** no `-race` here; ran `-count=3 -cpu=1,2,4`. No race-relevant tests added
   (the combined syncer holds no state). Ground-rule suites (pullsync, puller, storer, rangesync)
   pass unchanged.
+- **T1.12 fix round 1 (2026-10-15):** (M) `syncWiring(mode) (addrIndex, registerRangesync,
+  buildPuller)` now drives `lo.ReserveAddrIndex`, the rangesync construction/`AddProtocol` guard
+  and the puller construction in `NewBee`; `TestSyncWiring` covers defaults, rangesync-only, both
+  false and light node with rangesync. (M) One `rangesyncCloser` closes the reconciler, then the
+  service (`Shutdown` runs `shutdownClosers` concurrently, so two entries could close the service
+  under a running round); the separate reconciler closer is gone (`TestRangesyncCloserOrder`).
 
 ## Follow-ups
 _(sessions append here)_

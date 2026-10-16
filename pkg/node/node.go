@@ -114,7 +114,6 @@ type Bee struct {
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	rangesyncCloser          io.Closer
-	reconcilerCloser         io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
 	transactionMonitorCloser io.Closer
@@ -323,6 +322,7 @@ func NewBee(
 	if err != nil {
 		return nil, err
 	}
+	addrIndex, registerRangesync, buildPuller := syncWiring(syncMode)
 	if syncMode.RangesyncIgnored {
 		logger.Warning("rangesync is only available on full nodes; ignoring --rangesync-enable")
 	}
@@ -890,7 +890,7 @@ func NewBee(
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
 		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
-		lo.ReserveAddrIndex = syncMode.Rangesync
+		lo.ReserveAddrIndex = addrIndex
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -1203,14 +1203,13 @@ func NewBee(
 		rangesyncService *rangesync.Service
 		reconcilerSvc    *reconciler.Reconciler
 	)
-	if syncMode.Rangesync {
+	if registerRangesync {
 		reconcilerSvc = reconciler.New(swarmAddress, kad, nil, logger, reconciler.Options{})
-		b.reconcilerCloser = reconcilerSvc
 		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesync.Options{
 			Scorer: reconcilerSvc,
 			Wants:  reconcilerSvc.Wants,
 		})
-		b.rangesyncCloser = rangesyncService
+		b.rangesyncCloser = rangesyncCloser{reconciler: reconcilerSvc, service: rangesyncService}
 		reconcilerSvc.SetService(rangesyncService)
 		if err := rangesyncService.Start(); err != nil {
 			return nil, fmt.Errorf("rangesync: %w", err)
@@ -1243,7 +1242,7 @@ func NewBee(
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
-	if rangesyncService != nil {
+	if registerRangesync {
 		if err = p2ps.AddProtocol(rangesyncService.Protocol()); err != nil {
 			return nil, fmt.Errorf("rangesync protocol: %w", err)
 		}
@@ -1313,7 +1312,7 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		var syncers []storer.Syncer
-		if syncMode.Puller {
+		if buildPuller {
 			pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 			b.pullerCloser = pullerService
 			syncers = append(syncers, pullerService)
@@ -1535,7 +1534,6 @@ func (b *Bee) shutdownClosers() []namedCloser {
 		{b.gsocCloser, "gsoc"},
 		{b.pusherCloser, "pusher"},
 		{b.pullerCloser, "puller"},
-		{b.reconcilerCloser, "rangesync reconciler"},
 		{b.rangesyncCloser, "rangesync"},
 		{b.accountingCloser, "accounting"},
 		{b.pullSyncCloser, "pull sync"},

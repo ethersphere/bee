@@ -88,3 +88,50 @@ func TestResolveSyncMode(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncWiring(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                        string
+		full, rs, pull              bool
+		addrIndex, register, puller bool
+		wantErr                     error
+	}{
+		{name: "defaults", full: true, pull: true, puller: true},
+		{name: "rangesync only", full: true, rs: true, addrIndex: true, register: true},
+		{name: "both false", full: true, wantErr: node.ErrNoSyncProtocol},
+		{name: "light node with rangesync", rs: true, pull: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			a, r, p, err := node.ResolveSyncWiring(tc.full, false, tc.rs, tc.pull)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got err %v, want %v", err, tc.wantErr)
+			}
+			if a != tc.addrIndex || r != tc.register || p != tc.puller {
+				t.Fatalf("got addrIndex=%v register=%v puller=%v, want %v %v %v", a, r, p, tc.addrIndex, tc.register, tc.puller)
+			}
+		})
+	}
+}
+
+type orderCloser struct {
+	name  string
+	order *[]string
+}
+
+func (c orderCloser) Close() error { *c.order = append(*c.order, c.name); return nil }
+
+func TestRangesyncCloserOrder(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	c := node.NewRangesyncCloser(orderCloser{"reconciler", &order}, orderCloser{"service", &order})
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(order) != 2 || order[0] != "reconciler" || order[1] != "service" {
+		t.Fatalf("close order %v, want [reconciler service]", order)
+	}
+}

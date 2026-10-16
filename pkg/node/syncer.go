@@ -7,6 +7,7 @@ package node
 import (
 	"context"
 	"errors"
+	"io"
 
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -77,4 +78,23 @@ func (c *combinedSyncer) Start(ctx context.Context) {
 	for _, s := range c.syncers {
 		s.Start(ctx)
 	}
+}
+
+// syncWiring returns what NewBee applies for mode: whether the storer opens
+// the reserve address index, whether the rangesync service (with its
+// reconciler and protocol) is built and registered, and whether the puller
+// is built.
+func syncWiring(mode syncMode) (addrIndex, registerRangesync, buildPuller bool) {
+	return mode.Rangesync, mode.Rangesync, mode.Puller
+}
+
+// rangesyncCloser closes the reconciler before the rangesync service, so
+// that no reconciler round calls a closed service.
+type rangesyncCloser struct {
+	reconciler io.Closer
+	service    io.Closer
+}
+
+func (c rangesyncCloser) Close() error {
+	return errors.Join(c.reconciler.Close(), c.service.Close())
 }
