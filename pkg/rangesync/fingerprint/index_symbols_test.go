@@ -473,3 +473,59 @@ func BenchmarkIndexSymbols(b *testing.B) {
 		})
 	}
 }
+
+// TestIndexSymbolsBelowLeaf covers a level-1 range below leaf depth
+// (leafBits < FanoutBits), whose scan bound is its bucket's count, and a
+// window starting at or past the cache with no scan path.
+func TestIndexSymbolsBelowLeaf(t *testing.T) {
+	t.Parallel()
+
+	r := rand.New(rand.NewPCG(59, 59))
+	root := randomRange(r, 2)
+	ix := newIndex(2) // 4 buckets, each holding 4 level-1 ranges
+	l1 := root.Child(fingerprint.FanoutBits, 0)
+	bucket := root.Child(2, 0)
+	m := make(model)
+	// Fill bucket 0 past ScanLimit, but only outside l1, so l1 is sparse.
+	for len(m) < fingerprint.ScanLimit+10 {
+		id := randomIDIn(r, bucket)
+		if !l1.ContainsID(id) {
+			m[id] = struct{}{}
+		}
+	}
+	inL1 := randomIDIn(r, l1)
+	m[inL1] = struct{}{}
+	if err := ix.Rebuild(root, sliceIterate(m.ids())); err != nil {
+		t.Fatal(err)
+	}
+	var calls int
+	scan := modelScan(m, &calls)
+	// The whole level-1 cache: exhausted, since the bucket bound rules out
+	// the scan path.
+	got, exhausted, err := ix.Symbols(l1, 0, fingerprint.Level1Symbols, scan)
+	if err != nil || !exhausted || calls != 0 || !equalSymbols(got, encodeModel(m, l1, 0, fingerprint.Level1Symbols)) {
+		t.Fatalf("level-1 cache: exhausted %v, %d scans, err %v", exhausted, calls, err)
+	}
+	// Past it: the bucket count (> ScanLimit) bounds the sparse l1, so
+	// exhausted (conservative) although l1 holds one element.
+	got, exhausted, err = ix.Symbols(l1, 500, 600, scan)
+	if err != nil || !exhausted || calls != 0 || !equalSymbols(got, encodeModel(m, l1, 500, fingerprint.Level1Symbols)) {
+		t.Fatalf("level-1 past cache: %d symbols, exhausted %v, %d scans, err %v", len(got), exhausted, calls, err)
+	}
+	// In a small bucket the level-1 range is scanned past its cache.
+	l1b := root.Child(fingerprint.FanoutBits, 4) // in bucket 1, empty
+	if _, exhausted, err := ix.Symbols(l1b, 500, 600, scan); err != nil || exhausted || calls != 1 {
+		t.Fatalf("small bucket: exhausted %v, %d scans, err %v", exhausted, calls, err)
+	}
+	// start at or past the cache, no scan: no symbols, exhausted.
+	for _, start := range []uint64{fingerprint.Level1Symbols, fingerprint.Level1Symbols + 7} {
+		got, exhausted, err := ix.Symbols(l1, start, start+10, nil)
+		if err != nil || !exhausted || len(got) != 0 {
+			t.Fatalf("start %d: %d symbols, exhausted %v, err %v", start, len(got), exhausted, err)
+		}
+	}
+	got, exhausted, err = ix.Symbols(root, fingerprint.RootSymbols, fingerprint.RootSymbols+1, nil)
+	if err != nil || !exhausted || len(got) != 0 {
+		t.Fatalf("root past cache: %d symbols, exhausted %v, err %v", len(got), exhausted, err)
+	}
+}

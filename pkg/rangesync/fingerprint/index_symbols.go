@@ -100,6 +100,14 @@ func level1(root Range, addr swarm.Address) int {
 // stay one fixed set across batches (see Decoder) is the session's to
 // snapshot. The caller bounds end − start (the session symbol budget).
 //
+// The serving source can change between calls for the same r: a window
+// inside a cache is read from it, a window past it is scanned, and a commit
+// can move count(r) across ScanLimit. Cache and scan results may reflect
+// different element sets (the scan reads the address index at its own time,
+// not the caches' state). So a session must snapshot the whole stream it
+// serves before its first batch, never combine batches of separate calls
+// (T2.4).
+//
 // scan, called without any index lock held, must call fn for every element
 // of r (elements outside r are ignored) and return the first error fn
 // returns; its error is returned wrapped. It is the caller's iteration of the
@@ -132,7 +140,11 @@ func (ix *Index) Symbols(r Range, start, end uint64, scan func(r Range, fn func(
 		limit = BucketSymbols
 	}
 	lo, n, aligned := root.BucketSpan(r, ix.leafBits)
-	if !aligned { // below leaf depth: bound by the count of its bucket
+	if !aligned {
+		// Below leaf depth the index has no count of r itself; the bound is
+		// the count of the whole containing bucket. This is conservative: a
+		// sparse sub-range of a bucket holding more than ScanLimit elements
+		// is exhausted although a scan of it would be small.
 		lo, n = root.ChildIndex(r.Prefix, ix.leafBits), 1
 	}
 	from, to := min(start, limit), min(end, limit)

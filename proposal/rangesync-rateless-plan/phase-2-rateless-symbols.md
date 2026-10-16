@@ -463,7 +463,15 @@ _(sessions append here)_
 - **(T2.1) Decoder memory per recovered id.** Each recovered id keeps its `IndexIterator`
   (~48 B boxed), a ~112-B entry and a map key so later batches can remove it; with `SessionSymbolBudget` this is
   bounded (≤ 2 × 16384 ids), but T4.3's session memory budget should count it.
-- **(T2.2) Rebuild is over the 10–20 s target on this host.** ≈ 15 µs/element single-threaded
-  (≈ 64 s at 4.2M), dominated by the pre-existing SHAKE `Expand` (T1.6). Parallelising the
-  expansion (workers fed from the iterate callback, adds under `nextMu`) is not done in T2.2;
-  measure on the reference host first (T2.6) and add it if still needed.
+- **(T2.2) Rebuild is over the 10–20 s target on this host — due before T4.3 / phase-4 exit.**
+  ≈ 15 µs/element single-threaded (≈ 64 s at 4.2M), dominated by the pre-existing SHAKE `Expand`
+  (T1.6). On a first start (no live slab) `Symbols` and `Summary` return `ErrBusy` for the whole
+  rebuild, so this is the node's sync-unavailable window. *Acceptance:* a by-bucket parallel build
+  (expansion workers fed from the iterate callback) and/or batched `addNext` (one `nextMu`
+  section per batch of elements), with rebuild ≤ 20 s at 4.2M elements on the reference host
+  (T2.6), the T2.2 consistency and concurrent-rebuild tests unchanged and passing.
+- **(T2.2 review) T2.4 must snapshot the stream before its first batch.** `Index.Symbols` may serve
+  the same r from a cache on one call and the scan path on the next (window past the cache, or
+  `count(r)` crossing `ScanLimit`), and cache and scan results can reflect different element sets.
+  T2.4's served and local streams must each be taken from one snapshot (cached prefix copied, or
+  the scanned ID list kept) and never combine separate `Symbols` calls.
