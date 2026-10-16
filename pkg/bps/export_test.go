@@ -15,3 +15,7 @@ var (
 	ErrNotPublisher    = errNotPublisher
 	ErrInvalidDelivery = errInvalidDelivery
 )
+
+var (
+	ErrChannelEnded = errChannelEnded
+)
