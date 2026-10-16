@@ -382,6 +382,40 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     boxed iterator); `Encode` to 4096 1.4 µs; decode d=1000 in one batch 2.5 ms, 1.7 MB; parse of
     4096 symbols 0.14 ms, 1 alloc.
 
+- **T2.2 (implementation, 2026-10-16).**
+  - *Snapshot (M1).* `Index.Symbols` returns freshly copied symbols the caller owns, never aliased
+    to the live caches; holding one fixed set across the batches of a stream (Decoder
+    precondition) is T2.4's stream state, not the Index's.
+  - *API.* `Symbols(r, start, end, scan func(r Range, fn func(ID) error) error) (syms, exhausted,
+    err)`: the scan iterate callback is a parameter (nil = no scan path), so `fingerprint` stays
+    storer-free; T2.3 passes a `ReserveIterateAddr`-backed one. It is called without any Index
+    lock and is not synchronized with the caches. New `IndexOptions.Mapper` (nil = `FloatMapper`)
+    and `Index.Mapper()`; every cache index comes from it (each element's indices below 4096 are
+    drawn once, then XORed into all three caches).
+  - *Source selection.* As §4.3.5, with the cap of r = 4096 (own root) / 512 (own level-1) / 32
+    (≤ LeafBits below the root) / 0 (below leaf): `end ≤ cap` → cache; else scan if `scan != nil`
+    and `count(r) ≤ ScanLimit` (below leaf depth the containing bucket's count is the bound); else
+    symbols `[min(start,cap), min(end,cap))` with `exhausted = true`. `exhausted` is also true for
+    a cache window ending exactly at the cap when the scan path is unavailable. `end < start` →
+    `ErrInvalidBatch`; `ErrBusy`/`ErrOutsideRoot` as `Summary`. The caller bounds `end − start`.
+  - *Level-1 cache is independent of LeafBits* (a level-1 range may be below leaf depth in tests);
+    Rebuild now also requires `root.Bits + FanoutBits ≤ MaxBits`.
+  - *Tests.* `TestIndexSymbolsConsistency` (seeds 1–3, LeafBits 2–6, random put/replace/evict incl.
+    out-of-root ids): every range at every level, the 16 level-1 ranges and below-leaf ranges, vs a
+    rebuilt index and `Encode` over the brute-force set. "Every `[start, end)` slice" is every
+    slice whose ends are boundary points {0,1,2,31,32,33,511,512,513,4095,4096} ≤ cap plus 8
+    random slices per range (exhaustive pairs are 8M per root), and a window past the cap with
+    and without scan. A mutation (dropping the root-cache update) fails it.
+    `TestIndexSymbolsRebuildConcurrent` (≥ 20 commits overlapping a rebuild iteration).
+    `TestIndexSymbolsMemory`: 11,534,336 + 720,896 + 360,448 B at B = 4096 (88-B symbols);
+    `index_memory_bytes` includes them (AC-R1).
+  - *Costs (this host, 4 cores, noisy).* `BenchmarkIndexApply` 8.6–14 µs → 21–22 µs, 0 → 1 alloc
+    (48 B, the boxed `IndexIterator`); profile: SHAKE `Expand` ~43 %, symbol XORs + checksum +
+    mapping ~25 %. Rebuild 15.3 µs/element (≈ 64 s at 4.2M here, single-threaded; `Expand` is
+    55 %, the T2.2 share ~22 %). `Symbols`: root 4096 0.12 ms, level-1 17 µs, bucket run 2.7 µs.
+    *`Indices` allocation does not matter* (mallocgc absent from the top of both profiles): keep
+    the interface, no `AppendIndices`.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T2.0) Mapping grinding, not covered by either paper or §9 *[ours]*.** Rateless IBLT has no
@@ -429,3 +463,7 @@ _(sessions append here)_
 - **(T2.1) Decoder memory per recovered id.** Each recovered id keeps its `IndexIterator`
   (~48 B boxed), a ~112-B entry and a map key so later batches can remove it; with `SessionSymbolBudget` this is
   bounded (≤ 2 × 16384 ids), but T4.3's session memory budget should count it.
+- **(T2.2) Rebuild is over the 10–20 s target on this host.** ≈ 15 µs/element single-threaded
+  (≈ 64 s at 4.2M), dominated by the pre-existing SHAKE `Expand` (T1.6). Parallelising the
+  expansion (workers fed from the iterate callback, adds under `nextMu`) is not done in T2.2;
+  measure on the reference host first (T2.6) and add it if still needed.

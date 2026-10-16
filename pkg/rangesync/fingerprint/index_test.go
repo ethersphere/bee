@@ -799,6 +799,8 @@ func TestIndexMemory(t *testing.T) {
 		buckets = 1 << fingerprint.LeafBits
 		counts  = buckets * 4                      // 16 KB
 		hashes  = buckets * fingerprint.LtHashSize // 8 MB
+		// The symbol caches: bucket Fenwick, level-1 and root (§5.3).
+		symbols = (buckets*fingerprint.BucketSymbols + 1<<fingerprint.FanoutBits*fingerprint.Level1Symbols + fingerprint.RootSymbols) * 88
 	)
 	if counts != 16<<10 || hashes != 8<<20 {
 		t.Fatalf("budget %d + %d", counts, hashes)
@@ -815,11 +817,11 @@ func TestIndexMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if during != counts+hashes {
-		t.Fatalf("memory during the first rebuild %v, want %d", during, counts+hashes)
+	if during != counts+hashes+symbols {
+		t.Fatalf("memory during the first rebuild %v, want %d", during, counts+hashes+symbols)
 	}
-	if got := fingerprint.IndexMemoryBytes(ix); got != counts+hashes {
-		t.Fatalf("memory %v, want %d", got, counts+hashes)
+	if got := fingerprint.IndexMemoryBytes(ix); got != counts+hashes+symbols {
+		t.Fatalf("memory %v, want %d", got, counts+hashes+symbols)
 	}
 	err = ix.Rebuild(fingerprint.Range{}, func(fn func(fingerprint.ID) error) error {
 		during = fingerprint.IndexMemoryBytes(ix)
@@ -828,11 +830,11 @@ func TestIndexMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if during != 2*(counts+hashes) {
-		t.Fatalf("memory during a rebuild %v, want %d", during, 2*(counts+hashes))
+	if during != 2*(counts+hashes+symbols) {
+		t.Fatalf("memory during a rebuild %v, want %d", during, 2*(counts+hashes+symbols))
 	}
-	if got := fingerprint.IndexMemoryBytes(ix); got != counts+hashes {
-		t.Fatalf("memory after the rebuild %v, want %d", got, counts+hashes)
+	if got := fingerprint.IndexMemoryBytes(ix); got != counts+hashes+symbols {
+		t.Fatalf("memory after the rebuild %v, want %d", got, counts+hashes+symbols)
 	}
 }
 

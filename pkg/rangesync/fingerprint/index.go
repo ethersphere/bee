@@ -11,8 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Errors returned by the Index.
@@ -47,6 +48,9 @@ type IndexOptions struct {
 	// Zero signals every change at once (tests); production passes the status
 	// gossip debounce.
 	RootChangeDebounce time.Duration
+	// Mapper spreads elements over the coded symbols of the symbol caches.
+	// Nil means FloatMapper; peers must use mappers with equal IDs.
+	Mapper Mapper
 }
 
 // Index keeps the summaries (count and LtHash) of the elements under a root
@@ -54,7 +58,10 @@ type IndexOptions struct {
 // above leaf depth takes O(LeafBits) group operations (proposal §5.2). The
 // buckets are the 1<<LeafBits sub-ranges LeafBits bits below the root (bits
 // root.Bits … root.Bits+LeafBits−1 of the address, Range.BucketSpan and
-// Range.ChildIndex). Phase 2 adds the coded-symbol caches to the same slabs.
+// Range.ChildIndex). The same slabs hold the coded-symbol caches (Symbols): a
+// Fenwick tree of the first BucketSymbols symbols of every bucket, and the
+// first Level1Symbols symbols of each level-1 range and RootSymbols of the
+// root, all built through the Index's Mapper.
 //
 // The index is kept current from the reserve's committed deltas (Commit,
 // Apply) and rebuilt from one snapshot of the address index when the root
@@ -113,8 +120,10 @@ type IndexOptions struct {
 // A slab holds one Fenwick tree per summary component, through unexported
 // Group adapters: counts as uint32 modulo 2^32 (4 B per bucket, 16 KB at
 // B = 4096) and LtHash through a defined type whose Add and Sub are AddHash
-// and SubHash (2 KB per bucket, 8 MB at B = 4096), proposal §5.3. While a
-// Rebuild runs, the slab being built doubles that.
+// and SubHash (2 KB per bucket, 8 MB at B = 4096), proposal §5.3. The
+// symbol caches add 2.8 KB per bucket (bucketSymbols, 11.5 MB at B = 4096),
+// 0.7 MB of level-1 and 0.36 MB of root symbols. While a Rebuild runs, the
+// slab being built doubles that.
 //
 // # Rebuild
 //
@@ -149,6 +158,7 @@ type IndexOptions struct {
 // All methods are safe for concurrent use.
 type Index struct {
 	leafBits uint8
+	mapper   Mapper
 	debounce time.Duration
 	metrics  metrics
 
@@ -179,22 +189,30 @@ type Index struct {
 	afterConvert func()
 }
 
-// slab is a complete index of one root: Fenwick trees over its buckets.
+// slab is a complete index of one root: Fenwick trees over its buckets and
+// the symbol caches of the root and its level-1 ranges.
 type slab struct {
-	root   Range
-	counts *Fenwick[countNode, *countNode]
-	hashes *Fenwick[ltHashNode, *ltHashNode]
+	root       Range
+	counts     *Fenwick[countNode, *countNode]
+	hashes     *Fenwick[ltHashNode, *ltHashNode]
+	bucketSyms *Fenwick[bucketSymbols, *bucketSymbols]
+	level1Syms *level1Symbols
+	rootSyms   *rootSymbols
 }
 
-// add adds (sign > 0) or subtracts the element with LtHash h to bucket b.
-func (s *slab) add(b int, h *ltHashNode, sign int) {
+// add adds (sign > 0) or subtracts the expanded element e to bucket b and
+// level-1 range l. e.sym.Count carries the same sign.
+func (s *slab) add(b, l int, e *sums, sign int) {
 	if sign > 0 {
 		s.counts.Add(b, &countOne)
-		s.hashes.Add(b, h)
-		return
+		s.hashes.Add(b, &e.hash)
+	} else {
+		s.counts.Sub(b, &countOne)
+		s.hashes.Sub(b, &e.hash)
 	}
-	s.counts.Sub(b, &countOne)
-	s.hashes.Sub(b, h)
+	s.bucketSyms.Update(b, e.addBucket)
+	e.addTo(s.level1Syms[l][:])
+	e.addTo(s.rootSyms[:])
 }
 
 // countOne is the count delta of one element. It is only read.
@@ -203,31 +221,53 @@ var countOne = countNode(1)
 // buildSlab is the slab of a running rebuild: plain per-bucket sums until
 // converted is set, then the converted Fenwick trees (rebuild step 5).
 type buildSlab struct {
-	root      Range
-	counts    []countNode
-	hashes    []ltHashNode
-	converted *slab
+	root       Range
+	counts     []countNode
+	hashes     []ltHashNode
+	bucketSyms []bucketSymbols
+	level1Syms *level1Symbols
+	rootSyms   *rootSymbols
+	converted  *slab
 }
 
-// add adds (sign > 0) or subtracts the element with LtHash h to bucket b:
-// to the plain sums before the conversion, to the trees after it.
-func (s *buildSlab) add(b int, h *ltHashNode, sign int) {
+// newBuildSlab returns the empty build slab of root with 1<<leafBits buckets.
+func newBuildSlab(root Range, leafBits uint8) *buildSlab {
+	buckets := 1 << leafBits
+	return &buildSlab{
+		root:       root,
+		counts:     make([]countNode, buckets),
+		hashes:     make([]ltHashNode, buckets),
+		bucketSyms: make([]bucketSymbols, buckets),
+		level1Syms: new(level1Symbols),
+		rootSyms:   new(rootSymbols),
+	}
+}
+
+// add adds (sign > 0) or subtracts the expanded element e to bucket b and
+// level-1 range l: to the plain sums before the conversion, to the trees
+// after it.
+func (s *buildSlab) add(b, l int, e *sums, sign int) {
 	if s.converted != nil {
-		s.converted.add(b, h, sign)
+		s.converted.add(b, l, e, sign)
 		return
 	}
 	if sign > 0 {
 		s.counts[b]++
-		s.hashes[b].Add(h)
-		return
+		s.hashes[b].Add(&e.hash)
+	} else {
+		s.counts[b]--
+		s.hashes[b].Sub(&e.hash)
 	}
-	s.counts[b]--
-	s.hashes[b].Sub(h)
+	e.addBucket(&s.bucketSyms[b])
+	e.addTo(s.level1Syms[l][:])
+	e.addTo(s.rootSyms[:])
 }
 
-// slabBytes is the memory of one slab of 1<<leafBits buckets.
+// slabBytes is the memory of one slab of 1<<leafBits buckets: the summary
+// trees, the bucket symbol tree and the level-1 and root symbol caches
+// (proposal §5.3).
 func slabBytes(leafBits uint8) int {
-	return (1 << leafBits) * (countSize + LtHashSize)
+	return (1<<leafBits)*(countSize+LtHashSize+bucketSymbolsSize) + level1SymbolsSize + rootSymbolsSize
 }
 
 // countSize is the size of a countNode.
@@ -244,11 +284,22 @@ func NewIndex(o IndexOptions) *Index {
 	if leafBits > maxIndexLeafBits {
 		panic(fmt.Sprintf("fingerprint: index leaf bits %d over %d", leafBits, maxIndexLeafBits))
 	}
+	mapper := o.Mapper
+	if mapper == nil {
+		mapper = FloatMapper{}
+	}
 	return &Index{
 		leafBits: leafBits,
+		mapper:   mapper,
 		debounce: o.RootChangeDebounce,
 		metrics:  newMetrics(),
 	}
+}
+
+// Mapper returns the Mapper of the symbol caches, whose ID is sent as
+// Status.Mapping.
+func (ix *Index) Mapper() Mapper {
+	return ix.mapper
 }
 
 // LeafBits returns the depth of the buckets below the root, sent as
@@ -283,12 +334,14 @@ func (ix *Index) Commit(run func() (adds, removes []ID, err error)) error {
 	return nil
 }
 
-// element is one expanded element of a delta and its buckets in the live
-// slab and in the slab of a running rebuild (-1: not in that slab).
+// element is one expanded element of a delta and its buckets and level-1
+// ranges in the live slab and in the slab of a running rebuild (bucket -1:
+// not in that slab).
 type element struct {
 	sums             *sums
 	sign             int
 	liveBkt, nextBkt int
+	liveL1, nextL1   int
 }
 
 // maxStackDelta is the delta size for which apply needs no heap allocation
@@ -321,11 +374,11 @@ func (ix *Index) apply(adds, removes []ID) {
 		for _, id := range d.ids {
 			e := element{sign: d.sign, liveBkt: -1, nextBkt: -1}
 			if live != nil && live.root.ContainsID(id) {
-				e.liveBkt = ix.bucket(live.root, id)
+				e.liveBkt, e.liveL1 = ix.bucket(live.root, id), level1(live.root, swarm.NewAddress(id[:swarm.HashSize]))
 				inLive = true
 			}
 			if next != nil && next.root.ContainsID(id) {
-				e.nextBkt = ix.bucket(next.root, id)
+				e.nextBkt, e.nextL1 = ix.bucket(next.root, id), level1(next.root, swarm.NewAddress(id[:swarm.HashSize]))
 				inNext = true
 			}
 			if e.liveBkt < 0 && e.nextBkt < 0 {
@@ -333,7 +386,7 @@ func (ix *Index) apply(adds, removes []ID) {
 				continue
 			}
 			e.sums = getSums()
-			e.sums.hash = ltHashNode(Expand(nil, id))
+			ix.expand(e.sums, id, d.sign)
 			elems = append(elems, e)
 		}
 	}
@@ -359,7 +412,7 @@ func (ix *Index) applyLive(live *slab, elems []element) {
 	defer ix.slabMu.Unlock()
 	for _, e := range elems {
 		if e.liveBkt >= 0 {
-			live.add(e.liveBkt, &e.sums.hash, e.sign)
+			live.add(e.liveBkt, e.liveL1, e.sums, e.sign)
 		}
 	}
 }
@@ -371,16 +424,16 @@ func (ix *Index) applyNext(next *buildSlab, elems []element) {
 	defer ix.nextMu.Unlock()
 	for _, e := range elems {
 		if e.nextBkt >= 0 {
-			next.add(e.nextBkt, &e.sums.hash, e.sign)
+			next.add(e.nextBkt, e.nextL1, e.sums, e.sign)
 		}
 	}
 }
 
-// addNext adds one element of the rebuild's snapshot to its slab.
-func (ix *Index) addNext(next *buildSlab, b int, h *ltHashNode) {
+// addNext adds one expanded element of the rebuild's snapshot to its slab.
+func (ix *Index) addNext(next *buildSlab, b, l int, e *sums) {
 	ix.nextMu.Lock()
 	defer ix.nextMu.Unlock()
-	next.add(b, h, 1)
+	next.add(b, l, e, 1)
 }
 
 // bucket returns the bucket of root that holds id.
@@ -501,16 +554,12 @@ func (ix *Index) RootSummary() (Range, Summary, error) {
 // caller stops when fn returns an error, for example on shutdown.
 func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err error) {
 	root = NewRange(root.Prefix, root.Bits)
-	if int(root.Bits)+int(ix.leafBits) > MaxBits {
+	if int(root.Bits)+int(max(ix.leafBits, FanoutBits)) > MaxBits {
 		return fmt.Errorf("fingerprint: rebuild root %s too deep for %d leaf bits", root, ix.leafBits)
 	}
 	start := time.Now()
 	buckets := 1 << ix.leafBits
-	next := &buildSlab{
-		root:   root,
-		counts: make([]countNode, buckets),
-		hashes: make([]ltHashNode, buckets),
-	}
+	next := newBuildSlab(root, ix.leafBits)
 
 	// Step 1: install the new slab and open the snapshot under mu.
 	ix.mu.Lock()
@@ -553,8 +602,8 @@ func (ix *Index) Rebuild(root Range, iterate func(fn func(ID) error) error) (err
 			outside++
 			return nil
 		}
-		sm.hash = ltHashNode(Expand(nil, id))
-		ix.addNext(next, ix.bucket(root, id), &sm.hash)
+		ix.expand(sm, id, 1)
+		ix.addNext(next, ix.bucket(root, id), level1(root, swarm.NewAddress(id[:swarm.HashSize])), sm)
 		return nil
 	})
 	ix.metrics.OutsideRoot.Add(float64(outside))
@@ -594,11 +643,15 @@ func (ix *Index) convert(next *buildSlab) *slab {
 	ix.nextMu.Lock()
 	defer ix.nextMu.Unlock()
 	converted := &slab{
-		root:   next.root,
-		counts: NewFenwickFromBuckets[countNode, *countNode](next.counts),
-		hashes: NewFenwickFromBuckets[ltHashNode, *ltHashNode](next.hashes),
+		root:       next.root,
+		counts:     NewFenwickFromBuckets[countNode, *countNode](next.counts),
+		hashes:     NewFenwickFromBuckets[ltHashNode, *ltHashNode](next.hashes),
+		bucketSyms: NewFenwickFromBuckets[bucketSymbols, *bucketSymbols](next.bucketSyms),
+		level1Syms: next.level1Syms,
+		rootSyms:   next.rootSyms,
 	}
-	next.counts, next.hashes = nil, nil
+	next.counts, next.hashes, next.bucketSyms = nil, nil, nil
+	next.level1Syms, next.rootSyms = nil, nil
 	next.converted = converted
 	return converted
 }
@@ -695,13 +748,25 @@ func (ix *Index) Close() error {
 
 // sums is a scratch count and LtHash, for expansions and query results,
 // which would otherwise escape to the heap through the generic Fenwick
-// calls.
+// calls. An expanded element (expand) also holds its signed coded symbol and
+// its symbol indices below RootSymbols.
 type sums struct {
 	count countNode
 	hash  ltHashNode
+	sym   CodedSymbol
+	idx   []uint64
+	// addBucket adds sym at idx to a bucket symbol node; it is bound once
+	// per pooled sums so that Fenwick.Update does not allocate a closure.
+	addBucket func(*bucketSymbols)
 }
 
-var sumsPool = sync.Pool{New: func() any { return new(sums) }}
+func newSums() any {
+	sm := new(sums)
+	sm.addBucket = func(n *bucketSymbols) { sm.addTo(n[:]) }
+	return sm
+}
+
+var sumsPool = sync.Pool{New: newSums}
 
 func getSums() *sums { return sumsPool.Get().(*sums) }
 
