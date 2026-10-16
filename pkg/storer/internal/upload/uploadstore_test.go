@@ -1070,6 +1070,60 @@ func TestIterate(t *testing.T) {
 	})
 }
 
+func TestIteratePendingPanicsWhenStoredBytesAreCorrupt(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	var tag upload.TagItem
+	var err error
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	var putter internal.PutterCloserWithReference
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed creating putter: %v", err)
+	}
+
+	chunk := chunktest.GenerateTestRandomChunk()
+	if err = put(t, ts, putter, chunk); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Close(s.IndexStore(), swarm.ZeroAddress)
+	})
+	if err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	torn := swarm.NewChunk(chunk.Address(), []byte("not a chunk"))
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return s.ChunkStore().Replace(context.Background(), torn, false)
+	})
+	if err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for corrupt chunk read")
+		}
+	}()
+	_ = upload.IteratePending(context.Background(), ts, func(swarm.Chunk) (bool, error) {
+		t.Fatal("corrupt chunk was delivered")
+		return false, nil
+	})
+}
+
 func TestDeleteTag(t *testing.T) {
 	t.Parallel()
 

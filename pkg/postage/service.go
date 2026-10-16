@@ -27,7 +27,10 @@ const (
 	// batch is usable.
 	blockThreshold = 10
 
-	devBatchDepth = 17
+	// DevBatchDepth fits one 10GiB upload. A chunk holds 4096 data bytes,
+	// so 10GiB is 2621440 leaf chunks plus the tree above them.
+	// Depth 21 holds 2097152 chunks, which is short. Depth 22 holds 4194304.
+	DevBatchDepth = 22
 )
 
 const (
@@ -72,7 +75,7 @@ type service struct {
 func DevBatchID() []byte {
 	id := make([]byte, 32)
 	for i := range id {
-		id[i] = 0x01
+		id[i] = 0x10
 	}
 	return id
 }
@@ -128,17 +131,24 @@ func SeedDevBatch(store Storer, svc Service, owner []byte) error {
 			Value:       value,
 			Start:       0,
 			Owner:       append([]byte(nil), owner...),
-			Depth:       devBatchDepth,
+			Depth:       DevBatchDepth,
 			BucketDepth: BucketDepth,
 			Immutable:   false,
 		}); err != nil {
 			return fmt.Errorf("dev postage: save batch: %w", err)
 		}
+	} else if batch, err := store.Get(batchID); err != nil {
+		return fmt.Errorf("dev postage: get batch: %w", err)
+	} else if batch.Depth < DevBatchDepth {
+		if err := store.Update(batch, value, DevBatchDepth); err != nil {
+			return fmt.Errorf("dev postage: raise batch depth: %w", err)
+		}
 	}
 
-	if err := svc.Add(NewStampIssuer("dev", string(owner), batchID, value, devBatchDepth, BucketDepth, 0, false)); err != nil {
+	if err := svc.Add(NewStampIssuer("dev", string(owner), batchID, value, DevBatchDepth, BucketDepth, 0, false)); err != nil {
 		return fmt.Errorf("dev postage: add issuer: %w", err)
 	}
+	svc.HandleDepthIncrease(batchID, DevBatchDepth)
 	return nil
 }
 

@@ -99,15 +99,15 @@ func New(
 func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 	defer close(s.chunksWorkerQuitC)
 
-	sub, unsubscribe := startupStabilizer.Subscribe()
-	defer unsubscribe()
+	// sub, unsubscribe := startupStabilizer.Subscribe()
+	// defer unsubscribe()
 
-	select {
-	case <-sub:
-		s.logger.Debug("node warmup check completed")
-	case <-s.quit:
-		return
-	}
+	// select {
+	// case <-sub:
+	// 	s.logger.Debug("node warmup check completed")
+	// case <-s.quit:
+	// 	return
+	// }
 
 	var (
 		ctx, cancel = context.WithCancel(context.Background())
@@ -251,6 +251,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 }
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
+	panic("pushDeferred")
 	loggerV1 := logger.V(1).Build()
 
 	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
@@ -265,7 +266,6 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		)
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
-
 	switch err = nil; {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk

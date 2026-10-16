@@ -408,6 +408,7 @@ func NewPutter(s storage.IndexStore, tagID uint64) (internal.PutterCloserWithRef
 // - add chunk to the chunkstore till it is synced
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swarm.Chunk) error {
+	panic("uploadputter put")
 	if _, err := storage.IdentityAddress(chunk); err != nil {
 		panic(fmt.Errorf("upload put: invalid chunk %s: %w", chunk.Address(), err))
 	}
@@ -446,6 +447,7 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 		chunkstamp.Store(st.IndexStore(), uploadScope, chunk),
 	)
 }
+
 
 // Close provides the CloseWithReference interface where the session can be associated
 // with a swarm reference. This can be useful while keeping track of uploads through
@@ -729,6 +731,9 @@ func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
 			return true, err
+		}
+		if _, err := storage.IdentityAddress(chunk); err != nil {
+			panic(fmt.Errorf("upload read: invalid chunk %s len %d: %w", pi.Address, len(chunk.Data()), err))
 		}
 
 		stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), uploadScope, chunk.Address(), pi.BatchID)

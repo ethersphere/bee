@@ -939,7 +939,7 @@ func NewBee(
 		if err := postage.SeedDevBatch(batchStore, post, overlayEthAddress.Bytes()); err != nil {
 			return nil, fmt.Errorf("dev postage: %w", err)
 		}
-		logger.Warning("dev postage enabled; this batch was not paid for", "batch_id", hex.EncodeToString(postage.DevBatchID()))
+		logger.Warning("dev postage enabled; this batch was not paid for", "batch_id", hex.EncodeToString(postage.DevBatchID()), "depth", postage.DevBatchDepth)
 	}
 
 	if batchSvc != nil && chainEnabled {

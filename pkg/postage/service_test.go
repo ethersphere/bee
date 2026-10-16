@@ -502,6 +502,19 @@ func TestSeedDevBatch(t *testing.T) {
 	defer ps.Close()
 
 	owner := bytes.Repeat([]byte{0xab}, 20)
+	shallow := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	if err := batchStore.Save(&postage.Batch{
+		ID:          postage.DevBatchID(),
+		Value:       shallow,
+		Owner:       owner,
+		Depth:       17,
+		BucketDepth: postage.BucketDepth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.Add(postage.NewStampIssuer("dev", string(owner), postage.DevBatchID(), shallow, 17, postage.BucketDepth, 0, false)); err != nil {
+		t.Fatal(err)
+	}
 	if err := postage.SeedDevBatch(batchStore, ps, owner); err != nil {
 		t.Fatal(err)
 	}
@@ -519,8 +532,18 @@ func TestSeedDevBatch(t *testing.T) {
 	if got := batchStore.GetChainState().Block; got != 1000 {
 		t.Fatalf("chain block: got %d, want 1000", got)
 	}
+	batch, err := batchStore.Get(postage.DevBatchID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.Depth != postage.DevBatchDepth {
+		t.Fatalf("batch depth: got %d, want %d", batch.Depth, postage.DevBatchDepth)
+	}
 	if _, _, err := ps.GetStampIssuer(postage.DevBatchID()); err != nil {
 		t.Fatalf("stamp issuer: %v", err)
+	}
+	if ps.StampIssuers()[0].Depth() != postage.DevBatchDepth {
+		t.Fatalf("issuer depth: got %d, want %d", ps.StampIssuers()[0].Depth(), postage.DevBatchDepth)
 	}
 	if got := len(ps.StampIssuers()); got != 1 {
 		t.Fatalf("issuers: got %d, want 1", got)
