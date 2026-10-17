@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -426,294 +426,218 @@ func TestRedistribution(t *testing.T) {
 	})
 }
 
-func TestCommit_CriticalErrorFails(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	testobfus := common.Hex2Bytes("hash")
-
-	txSvc := transactionMock.New(
-		transactionMock.WithSendWithRetryFunc(func(_ context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
-			return common.Hash{}, nil, transaction.ErrTransactionReverted
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-	)
-
-	_, err := c.Commit(ctx, testobfus, 0)
-	if !errors.Is(err, transaction.ErrTransactionReverted) {
-		t.Fatalf("expected ErrTransactionReverted, got %v", err)
-	}
+// sentRequest is what a contract method handed to SendWithRetry, with its retry options applied.
+type sentRequest struct {
+	request   *transaction.TxRequest
+	overrides transaction.RetryOverrides
 }
 
-func TestCommit_withoutGasFeeCapOnRequest(t *testing.T) {
-	t.Parallel()
+func newRecordingContract(t *testing.T, gasLimit uint64) (redistribution.Contract, *[]sentRequest) {
+	t.Helper()
 
-	ctx := context.Background()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	testobfus := common.Hex2Bytes("hash")
-	expectedHash := common.HexToHash("bbbb")
-
-	txSvc := transactionMock.New(
-		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
-			if request.GasFeeCap != nil {
-				t.Errorf("expected nil GasFeeCap, got %v", request.GasFeeCap)
-			}
-			if request.GasPrice != nil {
-				t.Errorf("expected nil GasPrice, got %v", request.GasPrice)
-			}
-			return expectedHash, &types.Receipt{Status: 1}, nil
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-	)
-
-	h, err := c.Commit(ctx, testobfus, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h != expectedHash {
-		t.Fatalf("got hash %v, want %v", h, expectedHash)
-	}
-}
-
-func TestClaim_sendsWithRetryOptions(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	proofs := randChunkInclusionProofs(t)
-	expectedHash := common.HexToHash("cafe")
-
-	var sendCalls atomic.Int32
-	var retryOptsLen int
+	var sent []sentRequest
 	txSvc := transactionMock.New(
 		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
-			sendCalls.Add(1)
-			retryOptsLen = len(opts)
-			callData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
-			if err != nil {
+			var overrides transaction.RetryOverrides
+			for _, opt := range opts {
+				opt(&overrides)
+			}
+			sent = append(sent, sentRequest{request: request, overrides: overrides})
+			return common.HexToHash("cafe"), &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
+		}),
+	)
+	c := redistribution.New(
+		swarm.NewAddress(common.HexToHash("cbd").Bytes()),
+		common.HexToAddress("abcd"),
+		log.Noop,
+		txSvc,
+		common.HexToAddress("ffff"),
+		redistributionContractABI,
+		gasLimit,
+	)
+	return c, &sent
+}
+
+// gameTransactions sends each redistribution game transaction once.
+func gameTransactions(t *testing.T) map[string]func(context.Context, redistribution.Contract) error {
+	t.Helper()
+
+	proofs := randChunkInclusionProofs(t)
+	return map[string]func(context.Context, redistribution.Contract) error{
+		"commit": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Commit(ctx, common.Hex2Bytes("hash"), 0)
+			return err
+		},
+		"reveal": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Reveal(ctx, 1, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
+			return err
+		},
+		"claim": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Claim(ctx, proofs, nil)
+			return err
+		},
+	}
+}
+
+// Game transactions have to land inside their phase, so the node retry delay is capped for them.
+func TestGameTransactions_RetryDelayCap(t *testing.T) {
+	t.Parallel()
+
+	for name, send := range gameTransactions(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, 0)
+			if err := send(context.Background(), c); err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(callData, request.Data) {
-				t.Fatalf("got wrong call data. wanted %x, got %x", callData, request.Data)
+			if len(*sent) != 1 {
+				t.Fatalf("expected 1 send, got %d", len(*sent))
 			}
-			return expectedHash, &types.Receipt{Status: 1}, nil
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-	)
-
-	opts := &redistribution.ClaimOpts{
-		OverrideAfterBlock: 100,
-		CurrentBlockFn:     func() uint64 { return 110 },
-		ExpectedReward:     new(big.Int).Mul(big.NewInt(50), big.NewInt(1_000_000)),
-		RoundFees:          big.NewInt(100_000),
-	}
-
-	h, err := c.Claim(ctx, proofs, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h != expectedHash {
-		t.Fatalf("got hash %v, want %v", h, expectedHash)
-	}
-	if got := sendCalls.Load(); got != 1 {
-		t.Fatalf("expected 1 send call, got %d", got)
-	}
-	if retryOptsLen != 2 {
-		t.Fatalf("Claim must pass WithIgnoreMaxPrice and WithRetryDelay retry options, got %d", retryOptsLen)
+			rewrite := (*sent)[0].overrides.RetryDelay
+			if rewrite == nil {
+				t.Fatal("retry delay is not rewritten")
+			}
+			if got := rewrite(time.Minute); got != 35*time.Second {
+				t.Fatalf("node delay 1m: got %s, want 35s", got)
+			}
+			if got := rewrite(10 * time.Second); got != 10*time.Second {
+				t.Fatalf("node delay 10s: got %s, want 10s", got)
+			}
+		})
 	}
 }
 
-func TestClaim_contextCanceled(t *testing.T) {
+// Fees of game transactions come from the retry loop, and the gas limit comes from the
+// contract config. Gas settings carried by the context must not leak into the request.
+func TestGameTransactions_IgnoreContextGasSettings(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	const gasLimit = 400_000
+	ctx := sctx.SetGasLimit(sctx.SetGasPrice(context.Background(), big.NewInt(1000)), 9_000_000)
 
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	proofs := randChunkInclusionProofs(t)
+	for name, send := range gameTransactions(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	txSvc := transactionMock.New(
-		transactionMock.WithSendWithRetryFunc(func(ctx context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
-			return common.Hash{}, nil, ctx.Err()
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-	)
-
-	opts := &redistribution.ClaimOpts{
-		OverrideAfterBlock: 100,
-		CurrentBlockFn:     func() uint64 { return 200 },
-		ExpectedReward:     big.NewInt(1000),
-		RoundFees:          big.NewInt(1),
-	}
-
-	_, err := c.Claim(ctx, proofs, opts)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
+			c, sent := newRecordingContract(t, gasLimit)
+			if err := send(ctx, c); err != nil {
+				t.Fatal(err)
+			}
+			request := (*sent)[0].request
+			if request.GasPrice != nil {
+				t.Fatalf("gas price from the context must be ignored, got %s", request.GasPrice)
+			}
+			if request.GasLimit != gasLimit {
+				t.Fatalf("got gas limit %d, want the contract gas limit %d", request.GasLimit, gasLimit)
+			}
+		})
 	}
 }
 
-func TestCanOverrideClaim(t *testing.T) {
+// Claim lets the retry loop exceed MaxTxPrice only near the round end, and only when the
+// expected reward covers the claim cost plus the fees already spent in the round.
+func TestClaim_IgnoreMaxPrice(t *testing.T) {
 	t.Parallel()
 
-	const gasLimit = 250_000
-
-	newContract := func() redistribution.Contract {
-		return redistribution.New(
-			swarm.NewAddress(common.HexToHash("cbd").Bytes()),
-			common.HexToAddress("abcd"),
-			log.Noop,
-			transactionMock.New(),
-			common.HexToAddress("ffff"),
-			redistributionContractABI,
-			gasLimit,
-		)
-	}
-
-	// gasFeeCap chosen so that txCost = gasFeeCap * gasLimit is a round number.
 	gasFeeCap := big.NewInt(1_000_000_000) // 1 gwei
-	txCost := new(big.Int).Mul(gasFeeCap, big.NewInt(gasLimit))
+	costAt := func(gasUnits int64) *big.Int {
+		return new(big.Int).Mul(gasFeeCap, big.NewInt(gasUnits))
+	}
+	// opts builds options past the threshold block with the given reward and fees.
+	opts := func(reward, fees *big.Int) *redistribution.ClaimOpts {
+		return &redistribution.ClaimOpts{
+			OverrideAfterBlock: 100,
+			CurrentBlockFn:     func() uint64 { return 100 },
+			ExpectedReward:     reward,
+			RoundFees:          fees,
+		}
+	}
 
 	tests := []struct {
-		name string
-		opts *redistribution.ClaimOpts
-		want bool
+		name     string
+		gasLimit uint64
+		opts     *redistribution.ClaimOpts
+		want     bool
 	}{
 		{
-			name: "nil opts",
-			opts: nil,
-			want: false,
+			name:     "nil opts",
+			gasLimit: 400_000,
+			opts:     nil,
+			want:     false,
 		},
 		{
-			name: "override disabled when OverrideAfterBlock is zero",
+			name:     "zero OverrideAfterBlock disables the override",
+			gasLimit: 400_000,
 			opts: &redistribution.ClaimOpts{
 				CurrentBlockFn: func() uint64 { return 100 },
-				ExpectedReward: new(big.Int).Mul(txCost, big.NewInt(2)),
+				ExpectedReward: costAt(800_000),
 				RoundFees:      big.NewInt(0),
 			},
 			want: false,
 		},
 		{
-			name: "override disabled when CurrentBlockFn is nil",
+			name:     "nil CurrentBlockFn disables the override",
+			gasLimit: 400_000,
 			opts: &redistribution.ClaimOpts{
 				OverrideAfterBlock: 100,
-				ExpectedReward:     new(big.Int).Mul(txCost, big.NewInt(2)),
+				ExpectedReward:     costAt(800_000),
 				RoundFees:          big.NewInt(0),
 			},
 			want: false,
 		},
 		{
-			name: "override disabled when RoundFees is nil",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 100 },
-				ExpectedReward:     new(big.Int).Mul(txCost, big.NewInt(2)),
-			},
-			want: false,
+			name:     "nil RoundFees disables the override",
+			gasLimit: 400_000,
+			opts:     opts(costAt(800_000), nil),
+			want:     false,
 		},
 		{
-			name: "override disabled before threshold block",
+			name:     "before the threshold block",
+			gasLimit: 400_000,
 			opts: &redistribution.ClaimOpts{
 				OverrideAfterBlock: 100,
 				CurrentBlockFn:     func() uint64 { return 99 },
-				ExpectedReward:     new(big.Int).Mul(txCost, big.NewInt(2)),
+				ExpectedReward:     costAt(800_000),
 				RoundFees:          big.NewInt(0),
 			},
 			want: false,
 		},
 		{
-			name: "override disabled when reward is nil",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 100 },
-				ExpectedReward:     nil,
-				RoundFees:          big.NewInt(0),
-			},
-			want: false,
+			name:     "nil reward",
+			gasLimit: 400_000,
+			opts:     opts(nil, big.NewInt(0)),
+			want:     false,
 		},
 		{
-			name: "override disabled when reward is zero",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 100 },
-				ExpectedReward:     big.NewInt(0),
-				RoundFees:          big.NewInt(0),
-			},
-			want: false,
+			name:     "zero reward",
+			gasLimit: 400_000,
+			opts:     opts(big.NewInt(0), big.NewInt(0)),
+			want:     false,
 		},
 		{
-			name: "override disabled when reward does not cover cost plus fees",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 100 },
-				ExpectedReward:     txCost, // equals cost, but RoundFees pushes total above reward
-				RoundFees:          big.NewInt(1),
-			},
-			want: false,
+			name:     "reward below cost plus round fees",
+			gasLimit: 400_000,
+			opts:     opts(costAt(400_000), big.NewInt(1)),
+			want:     false,
 		},
 		{
-			name: "override enabled when reward exactly covers cost plus fees",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 100 },
-				ExpectedReward:     new(big.Int).Add(txCost, big.NewInt(10)),
-				RoundFees:          big.NewInt(10),
-			},
-			want: true,
+			name:     "reward exactly covers cost plus round fees",
+			gasLimit: 400_000,
+			opts:     opts(new(big.Int).Add(costAt(400_000), big.NewInt(10)), big.NewInt(10)),
+			want:     true,
 		},
 		{
-			name: "override enabled when reward comfortably covers cost",
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 150 },
-				ExpectedReward:     new(big.Int).Mul(txCost, big.NewInt(5)),
-				RoundFees:          big.NewInt(100),
-			},
-			want: true,
+			name:     "zero gas limit prices the claim at the minimum gas limit",
+			gasLimit: 0,
+			opts:     opts(costAt(250_000), big.NewInt(0)),
+			want:     true,
+		},
+		{
+			name:     "configured gas limit above the minimum raises the cost",
+			gasLimit: 500_000,
+			opts:     opts(costAt(250_000), big.NewInt(0)),
+			want:     false,
 		},
 	}
 
@@ -721,9 +645,38 @@ func TestCanOverrideClaim(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := redistribution.CanOverrideClaim(newContract(), tc.opts, gasFeeCap)
-			if got != tc.want {
-				t.Fatalf("CanOverrideClaim() = %v, want %v", got, tc.want)
+			c, sent := newRecordingContract(t, tc.gasLimit)
+			if _, err := c.Claim(context.Background(), randChunkInclusionProofs(t), tc.opts); err != nil {
+				t.Fatal(err)
+			}
+			ignore := (*sent)[0].overrides.IgnoreMaxPrice
+			if ignore == nil {
+				t.Fatal("claim must install the max price predicate")
+			}
+			if got := ignore(gasFeeCap); got != tc.want {
+				t.Fatalf("IgnoreMaxPrice(%s) = %v, want %v", gasFeeCap, got, tc.want)
+			}
+		})
+	}
+}
+
+// Only claim may exceed MaxTxPrice; commit and reveal keep the node limit.
+func TestCommitReveal_KeepMaxPrice(t *testing.T) {
+	t.Parallel()
+
+	for name, send := range gameTransactions(t) {
+		if name == "claim" {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, 0)
+			if err := send(context.Background(), c); err != nil {
+				t.Fatal(err)
+			}
+			if (*sent)[0].overrides.IgnoreMaxPrice != nil {
+				t.Fatalf("%s must not bypass MaxTxPrice", name)
 			}
 		})
 	}

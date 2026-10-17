@@ -434,6 +434,99 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
+// A winning node claims with the round settings: the override threshold 10 blocks before the
+// round end, the expected reward from the postage contract, and the fees spent in the round.
+func TestAgentClaimOptions(t *testing.T) {
+	t.Parallel()
+
+	const txFee = int64(7)
+
+	tests := []struct {
+		name       string
+		reward     *big.Int
+		rewardErr  error
+		wantReward *big.Int
+	}{
+		{
+			name:       "expected reward is passed to claim",
+			reward:     big.NewInt(777),
+			wantReward: big.NewInt(777),
+		},
+		{
+			name:      "reward lookup error disables the override",
+			rewardErr: errors.New("rpc unavailable"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				_, contract := runWinningAgent(t, nil,
+					withPostageOptions(contractMock.WithExpectedRewardFunc(func(context.Context) (*big.Int, error) {
+						return tc.reward, tc.rewardErr
+					})),
+					withTransactionOptions(transactionmock.WithTransactionFeeFunc(func(context.Context, common.Hash) (*big.Int, error) {
+						return big.NewInt(txFee), nil
+					})),
+				)
+
+				claims := contract.getClaims()
+				if len(claims) == 0 {
+					t.Fatal("expected a claim")
+				}
+				claim := claims[0]
+				round := claim.block / winningAgentBlocksPerRound
+				if want := (round+1)*winningAgentBlocksPerRound - 10; claim.opts.OverrideAfterBlock != want {
+					t.Fatalf("got OverrideAfterBlock %d, want %d for round %d", claim.opts.OverrideAfterBlock, want, round)
+				}
+				if claim.opts.RoundFees == nil || claim.opts.RoundFees.Cmp(big.NewInt(2*txFee)) != 0 {
+					t.Fatalf("got RoundFees %v, want commit and reveal fees %d", claim.opts.RoundFees, 2*txFee)
+				}
+				switch {
+				case tc.wantReward == nil && claim.opts.ExpectedReward != nil:
+					t.Fatalf("got ExpectedReward %s, want nil", claim.opts.ExpectedReward)
+				case tc.wantReward != nil && (claim.opts.ExpectedReward == nil || claim.opts.ExpectedReward.Cmp(tc.wantReward) != 0):
+					t.Fatalf("got ExpectedReward %v, want %s", claim.opts.ExpectedReward, tc.wantReward)
+				}
+			})
+		})
+	}
+}
+
+const winningAgentBlocksPerRound = uint64(9)
+
+// runWinningAgent runs an agent that wins every round until the chain mock stops.
+func runWinningAgent(t *testing.T, claimErr error, opts ...serviceOption) (*storageincentives.Agent, *mockContract) {
+	t.Helper()
+
+	const radius = uint8(8)
+	wait := make(chan struct{}, 1)
+	backend := &mockchainBackend{
+		limit:         12 * winningAgentBlocksPerRound,
+		limitCallback: func() { wait <- struct{}{} },
+		incrementBy:   1,
+		block:         winningAgentBlocksPerRound,
+		balance:       big.NewInt(4_000_000_000),
+	}
+	contract := &mockContract{
+		t:              t,
+		expectedRadius: radius,
+		salt:           testutil.RandBytes(t, swarm.HashSize),
+		winner:         true,
+		claimErr:       claimErr,
+	}
+	agent, err := createService(t, swarm.RandAddress(t), backend, contract, winningAgentBlocksPerRound, 3, radius, 0, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, agent)
+
+	<-wait
+	synctest.Wait()
+	return agent, contract
+}
+
 func waitUntilStatus(t *testing.T, agent *storageincentives.Agent, pred func(*storageincentives.Status) bool) {
 	t.Helper()
 
@@ -459,13 +552,20 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+	opts ...serviceOption,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
-	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
-		return nil
-	}),
-	)
+	var deps serviceDeps
+	for _, opt := range opts {
+		opt(&deps)
+	}
+
+	postageContract := contractMock.New(append([]contractMock.Option{
+		contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+			return nil
+		}),
+	}, deps.postageOpts...)...)
 	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context, uint64) (bool, error) {
 		return false, nil
 	}))
@@ -490,10 +590,25 @@ func createService(
 		statestore.NewStateStore(),
 		&postage.NoOpBatchStore{},
 		erc20mock.New(),
-		transactionmock.New(),
+		transactionmock.New(deps.txOpts...),
 		&mockHealth{},
 		log.Noop,
 	)
+}
+
+type serviceDeps struct {
+	postageOpts []contractMock.Option
+	txOpts      []transactionmock.Option
+}
+
+type serviceOption func(*serviceDeps)
+
+func withPostageOptions(opts ...contractMock.Option) serviceOption {
+	return func(d *serviceDeps) { d.postageOpts = append(d.postageOpts, opts...) }
+}
+
+func withTransactionOptions(opts ...transactionmock.Option) serviceOption {
+	return func(d *serviceDeps) { d.txOpts = append(d.txOpts, opts...) }
 }
 
 type mockchainBackend struct {
@@ -568,6 +683,16 @@ type mockContract struct {
 	isPlayingCount  int
 	beforeIsPlaying func()
 	beforeCommit    func()
+	salt            []byte
+	winner          bool
+	claimErr        error
+	claims          []claimRecord
+}
+
+// claimRecord is what the agent handed to Claim, with the block reported at that moment.
+type claimRecord struct {
+	opts  redistribution.ClaimOpts
+	block uint64
 }
 
 // getCalls returns a snapshot of the calls list
@@ -599,7 +724,7 @@ func (m *mockContract) playingCount() int {
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
-	return nil, nil
+	return m.salt, nil
 }
 
 func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {
@@ -619,14 +744,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, isWinnerCall)
-	return false, nil
+	return m.winner, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs, *redistribution.ClaimOpts) (common.Hash, error) {
+func (m *mockContract) Claim(_ context.Context, _ redistribution.ChunkInclusionProofs, opts *redistribution.ClaimOpts) (common.Hash, error) {
+	var record claimRecord
+	if opts != nil {
+		record = claimRecord{opts: *opts, block: opts.CurrentBlockFn()}
+	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return common.Hash{}, nil
+	m.claims = append(m.claims, record)
+	return common.Hash{}, m.claimErr
+}
+
+func (m *mockContract) getClaims() []claimRecord {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return append([]claimRecord(nil), m.claims...)
 }
 
 func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {

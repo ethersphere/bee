@@ -6,6 +6,7 @@ package storageincentives
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -295,39 +296,66 @@ func TestReward(t *testing.T) {
 	}
 }
 
-// TestRoundFee check if fees increments when called multiple times
+// TestRoundFee checks that fees add up per round and in the node total, and survive a restart.
 func TestRoundFee(t *testing.T) {
 	t.Parallel()
-	const round = 1
-	firstFee := big.NewInt(10)
-	state := createRedistribution(t, nil, []transactionmock.Option{
-		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-			return firstFee, nil
-		}),
-	})
-	ctx := context.Background()
-	state.AddRoundFee(ctx, round, common.Hash{})
-	gotFirstResult, err := state.Status()
-	if err != nil {
-		t.Fatal("failed to get status")
-	}
-	if gotFirstResult.Fees.Cmp(firstFee) != 0 {
-		t.Fatalf("expected fee %d got %d", firstFee, gotFirstResult.Fees)
-	}
-	secondFee := big.NewInt(15)
-	state.txService = transactionmock.New([]transactionmock.Option{
-		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-			return secondFee, nil
-		}),
-	}...)
 
-	state.AddRoundFee(ctx, round, common.Hash{})
-	gotSecondResult, err := state.Status()
+	var (
+		hashA   = common.HexToHash("a")
+		hashB   = common.HexToHash("b")
+		hashC   = common.HexToHash("c")
+		unknown = common.HexToHash("d")
+		fees    = map[common.Hash]int64{hashA: 10, hashB: 15, hashC: 7}
+	)
+	txService := transactionmock.New(
+		transactionmock.WithTransactionFeeFunc(func(_ context.Context, txHash common.Hash) (*big.Int, error) {
+			fee, ok := fees[txHash]
+			if !ok {
+				return nil, errors.New("fee unavailable")
+			}
+			return big.NewInt(fee), nil
+		}),
+	)
+	store := mock.NewStateStore()
+	newState := func() *RedistributionState {
+		t.Helper()
+		state, err := NewRedistributionState(testutil.NewLogger(t), common.Address{}, store, erc20mock.New(), txService)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+
+	assertRoundFees := func(t *testing.T, state *RedistributionState, round uint64, want int64) {
+		t.Helper()
+		if got := state.RoundFees(round); got.Cmp(big.NewInt(want)) != 0 {
+			t.Fatalf("round %d: got fees %s, want %d", round, got, want)
+		}
+	}
+
+	ctx := context.Background()
+	state := newState()
+	state.AddRoundFee(ctx, 1, hashA)
+	state.AddRoundFee(ctx, 1, hashB)
+	state.AddRoundFee(ctx, 2, hashC)
+	state.AddRoundFee(ctx, 1, unknown)
+
+	assertRoundFees(t, state, 1, 25)
+	assertRoundFees(t, state, 2, 7)
+	assertRoundFees(t, state, 3, 0)
+
+	status, err := state.Status()
 	if err != nil {
-		t.Fatal("failed to get status")
+		t.Fatal(err)
 	}
-	expectedResult := secondFee.Add(secondFee, firstFee)
-	if gotSecondResult.Fees.Cmp(expectedResult) != 0 {
-		t.Fatalf("expected fee %d got %d", expectedResult, gotSecondResult.Fees)
+	if status.Fees.Cmp(big.NewInt(32)) != 0 {
+		t.Fatalf("got total fees %s, want 32", status.Fees)
 	}
+
+	state.RoundFees(1).SetInt64(1000)
+	assertRoundFees(t, state, 1, 25)
+
+	restarted := newState()
+	assertRoundFees(t, restarted, 1, 25)
+	assertRoundFees(t, restarted, 2, 7)
 }
