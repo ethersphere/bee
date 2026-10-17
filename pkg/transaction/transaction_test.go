@@ -1225,6 +1225,104 @@ func TestTransactionResend(t *testing.T) {
 	}
 }
 
+// A resend rebroadcasts the stored transaction as is. Higher suggested fees are capped at the
+// stored ones, so the hash still matches; lower fees would change the hash and are refused.
+func TestTransactionResendCapsFees(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                       string
+		suggestedFee, suggestedTip int64
+		wantErr                    string
+	}{
+		{name: "higher suggestion resends the stored fees", suggestedFee: 3000, suggestedTip: 300},
+		{name: "equal suggestion resends the stored fees", suggestedFee: 2000, suggestedTip: 100},
+		{name: "lower suggestion changes the hash", suggestedFee: 1500, suggestedTip: 50, wantErr: "transaction hash changed"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chainID := big.NewInt(5)
+			sender := common.HexToAddress("0xddff")
+			recipient := common.HexToAddress("0xbbbddd")
+			stored := transaction.StoredTransaction{
+				Nonce:     10,
+				To:        &recipient,
+				Data:      []byte{1, 2, 3, 4},
+				GasLimit:  100000,
+				GasTipCap: big.NewInt(100),
+				GasFeeCap: big.NewInt(2000),
+				Value:     big.NewInt(0),
+			}
+			original := types.NewTx(&types.DynamicFeeTx{
+				Nonce:     stored.Nonce,
+				ChainID:   chainID,
+				To:        stored.To,
+				Value:     stored.Value,
+				Gas:       stored.GasLimit,
+				GasTipCap: stored.GasTipCap,
+				GasFeeCap: stored.GasFeeCap,
+				Data:      stored.Data,
+			})
+
+			store := storemock.NewStateStore()
+			testutil.CleanupCloser(t, store)
+			if err := store.Put(transaction.StoredTransactionKey(original.Hash()), stored); err != nil {
+				t.Fatal(err)
+			}
+
+			var sent *types.Transaction
+			svc, err := transaction.NewService(log.Noop, sender,
+				backendmock.New(
+					backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
+						sent = tx
+						return nil
+					}),
+					backendmock.WithSuggestedFeeAndTipFunc(func(context.Context, *big.Int, int) (*big.Int, *big.Int, error) {
+						return big.NewInt(tc.suggestedFee), big.NewInt(tc.suggestedTip), nil
+					}),
+				),
+				signermock.New(
+					signermock.WithSignTxFunc(func(tx *types.Transaction, _ *big.Int) (*types.Transaction, error) {
+						return tx, nil
+					}),
+					signermock.WithEthereumAddressFunc(func() (common.Address, error) {
+						return sender, nil
+					}),
+				),
+				store,
+				chainID,
+				monitormock.New(),
+				0,
+				transaction.TransactionsRetryConfig{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testutil.CleanupCloser(t, svc)
+
+			err = svc.ResendTransaction(context.Background(), original.Hash())
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("got error %v, want %q", err, tc.wantErr)
+				}
+				if sent != nil {
+					t.Fatal("a changed transaction must not be sent")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sent == nil || sent.Hash() != original.Hash() {
+				t.Fatal("the stored transaction must be resent unchanged")
+			}
+		})
+	}
+}
+
 func TestTransactionCancel(t *testing.T) {
 	t.Parallel()
 

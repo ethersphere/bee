@@ -32,6 +32,9 @@ type metrics struct {
 	ErrClaim          prometheus.Counter
 	ErrWinner         prometheus.Counter
 	ErrCheckIsPlaying prometheus.Counter
+
+	// cost control metrics
+	SkippedExpensivePhase prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -143,6 +146,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "is_playing_errors",
 			Help:      "total neighborhood selected errors while processing",
+		}),
+		SkippedExpensivePhase: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "skipped_expensive_phase",
+			Help:      "Count of phases skipped because estimated tx cost exceeded configured limit.",
 		}),
 	}
 }

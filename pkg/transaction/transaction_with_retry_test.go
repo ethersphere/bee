@@ -1420,6 +1420,218 @@ func TestSendWithRetry_FeePriority(t *testing.T) {
 	}
 }
 
+// The IgnoreMaxPrice predicate decides per attempt whether a fee cap above MaxTxPrice may be sent.
+func TestSendWithRetry_IgnoreMaxPrice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		maxTxPrice  int64
+		allowUpTo   int64 // the predicate allows fee caps up to this value
+		wantErr     error
+		wantSent    []int64
+		wantAsked   []int64
+		sessionKept bool
+	}{
+		{
+			name:       "below the limit the predicate is not asked",
+			maxTxPrice: 100_000_000,
+			allowUpTo:  0,
+			wantSent:   []int64{2200},
+		},
+		{
+			name:       "allowed fee cap above the limit is sent",
+			maxTxPrice: 2199,
+			allowUpTo:  100_000_000,
+			wantSent:   []int64{2200},
+			wantAsked:  []int64{2200},
+		},
+		{
+			name:       "refused fee cap is not sent",
+			maxTxPrice: 2199,
+			allowUpTo:  0,
+			wantErr:    transaction.ErrTxMaxPriceExceeded,
+			wantAsked:  []int64{2200},
+		},
+		{
+			name:        "every escalation is asked again",
+			maxTxPrice:  2199,
+			allowUpTo:   2530,
+			wantErr:     transaction.ErrTxMaxPriceExceeded,
+			wantSent:    []int64{2200, 2530},
+			wantAsked:   []int64{2200, 2530, 2909},
+			sessionKept: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newRetryTestSetup()
+			store := newRetryStore(t)
+
+			cfg := s.retryConfig()
+			cfg.MaxTxPrice = big.NewInt(tc.maxTxPrice)
+
+			var txs broadcastLog
+			doneC := make(chan struct{}, 1)
+			svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
+				backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
+					if txs.add(tx) == len(tc.wantSent) && tc.wantErr == nil {
+						doneC <- struct{}{}
+					}
+					return nil
+				}),
+				receiptFound(),
+			)
+
+			var asked []int64
+			_, _, err := svc.SendWithRetry(context.Background(), s.request(),
+				transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
+					asked = append(asked, gasFeeCap.Int64())
+					return gasFeeCap.Int64() <= tc.allowUpTo
+				}),
+			)
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			broadcasts := txs.all()
+			if len(tc.wantSent) == 0 {
+				assert.Empty(t, broadcasts)
+			} else {
+				assert.Equal(t, tc.wantSent, feeCaps(broadcasts))
+			}
+			assert.Equal(t, tc.wantAsked, asked, "the predicate gets the fee cap the attempt would use")
+			if tc.sessionKept {
+				s.assertSessionKept(t, svc, store, hashesOf(broadcasts)...)
+			}
+		})
+	}
+}
+
+// RetryDelay must change the wait that actually gates the next attempt.
+// A callback that is stored but whose return value is ignored would still pass a
+// "function was registered" check; the probe sits between the two delays so that
+// ignoring the rewrite, or always using the service delay, fails in both directions.
+func TestSendWithRetry_RetryDelayOverrideIsHonored(t *testing.T) {
+	t.Parallel()
+
+	const (
+		fastDelay  = 50 * time.Millisecond
+		slowDelay  = 800 * time.Millisecond
+		probeAfter = 300 * time.Millisecond
+	)
+
+	t.Run("after broadcast", func(t *testing.T) {
+		t.Parallel()
+		assertRetryDelayOverride(t, retryDelayProbe{
+			fast: fastDelay, slow: slowDelay, probe: probeAfter,
+			countBeforeBroadcast: false,
+		})
+	})
+	t.Run("before broadcast", func(t *testing.T) {
+		t.Parallel()
+		assertRetryDelayOverride(t, retryDelayProbe{
+			fast: fastDelay, slow: slowDelay, probe: probeAfter,
+			countBeforeBroadcast: true,
+		})
+	})
+}
+
+type retryDelayProbe struct {
+	fast, slow, probe    time.Duration
+	countBeforeBroadcast bool
+}
+
+func assertRetryDelayOverride(t *testing.T, p retryDelayProbe) {
+	t.Helper()
+
+	// Shorter rewrite must finish the second attempt before the probe.
+	// If the option is ignored, the service still waits `slow` and we see 1 event.
+	gotIn := countRetryDelayEvents(t, p, p.slow, &p.fast)
+	require.GreaterOrEqual(t, gotIn, int32(2),
+		"override %s on service delay %s: expected a second attempt within %s (got %d); option is not shortening the wait",
+		p.fast, p.slow, p.probe, gotIn)
+
+	// Longer rewrite must still be on the first attempt at the same probe.
+	// If the option is ignored, the service waits `fast` and we already have 2 events.
+	gotIn = countRetryDelayEvents(t, p, p.fast, &p.slow)
+	require.EqualValues(t, 1, gotIn,
+		"override %s on service delay %s: expected only the first attempt within %s (got %d); option is not stretching the wait",
+		p.slow, p.fast, p.probe, gotIn)
+
+	// No option uses the service delay as-is.
+	require.EqualValues(t, 1, countRetryDelayEvents(t, p, p.slow, nil),
+		"without override the service delay %s must not produce a second attempt within %s", p.slow, p.probe)
+	require.GreaterOrEqual(t, countRetryDelayEvents(t, p, p.fast, nil), int32(2),
+		"without override the service delay %s must produce a second attempt within %s", p.fast, p.probe)
+}
+
+func countRetryDelayEvents(t *testing.T, p retryDelayProbe, serviceDelay time.Duration, override *time.Duration) int32 {
+	t.Helper()
+
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
+
+	cfg := s.retryConfig()
+	cfg.AttemptsPerTier = 2
+	cfg.RetryDelay = serviceDelay
+
+	var (
+		events    atomic.Int32
+		seenInput atomic.Int64
+		opts      []backendmock.Option
+	)
+	if p.countBeforeBroadcast {
+		opts = append(opts, backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+			events.Add(1)
+			return nil, errors.New("header unavailable")
+		}))
+	}
+	opts = append(opts, backendmock.WithSendTransactionFunc(func(context.Context, *types.Transaction) error {
+		if !p.countBeforeBroadcast {
+			events.Add(1)
+		}
+		return nil
+	}))
+	svc := s.newService(t, store, cfg, nonceWatchIdle(), opts...)
+
+	var retryOpts []transaction.RetryOption
+	if override != nil {
+		delay := *override
+		retryOpts = append(retryOpts, transaction.WithRetryDelay(func(got time.Duration) time.Duration {
+			seenInput.Store(int64(got))
+			return delay
+		}))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = svc.SendWithRetry(ctx, s.request(), retryOpts...)
+	}()
+
+	time.Sleep(p.probe)
+	n := events.Load()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SendWithRetry did not return after cancel")
+	}
+
+	if override != nil {
+		require.Equal(t, int64(serviceDelay), seenInput.Load(),
+			"WithRetryDelay must be called with the service retry delay")
+	}
+	return n
+}
+
 // failOnNthPutStore wraps a StateStorer and fails the Nth Put call with putErr.
 type failOnNthPutStore struct {
 	storage.StateStorer
