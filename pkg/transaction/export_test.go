@@ -4,37 +4,4 @@
 
 package transaction
 
-import (
-	"context"
-	"math/big"
-
-	"github.com/ethersphere/bee/v2/pkg/log"
-)
-
-var (
-	StoredTransactionKey  = storedTransactionKey
-	RetryStateKey         = retryStateKey
-	PendingTransactionKey = pendingTransactionKey
-	ApplyMempoolBump      = applyMempoolBump
-)
-
-const (
-	FeeTierLow    = feeTierLow
-	FeeTierMarket = feeTierMarket
-)
-
-// SuggestGasFeeForTier exposes suggestGasFeeForTier for tests.
-func SuggestGasFeeForTier(
-	backend Backend,
-	maxTxPrice *big.Int,
-	ctx context.Context,
-	tier int,
-	previousTip, previousFeeCap *big.Int, overrides *RetryOverrides,
-) (gasFeeCap, gasTipCap *big.Int, err error) {
-	svc := &transactionService{
-		logger:     log.Noop,
-		backend:    backend,
-		maxTxPrice: maxTxPrice,
-	}
-	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip, previousFeeCap, overrides)
-}
+var StoredTransactionKey = storedTransactionKey

@@ -174,7 +174,7 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 	return gasFeeCapWithTip, tip, nil
 }
 
-// 1. Only the start tier is overridden, and only upward.
+// 1. Only the start tier is overridden; it may be lower or higher than the node start tier.
 // 2. The start tier cannot be higher than the end tier.
 // 3. The end tier stays under the node operator's control.
 func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier, error) {
