@@ -70,19 +70,6 @@ func applyRetryOptions(opts []RetryOption) *RetryOverrides {
 	return &o
 }
 
-// TransactionRetryState is persisted so transactions with retry can resume after a node restart.
-type TransactionRetryState struct {
-	Nonce         uint64          `json:"nonce"`
-	NonceAssigned bool            `json:"nonce_assigned"`
-	LastTxHash    common.Hash     `json:"last_tx_hash"`
-	AllTxHashes   []common.Hash   `json:"all_tx_hashes"`
-	GasLimit      uint64          `json:"gas_limit"`
-	To            *common.Address `json:"to,omitempty"`
-	Data          []byte          `json:"data,omitempty"`
-	Value         *big.Int        `json:"value,omitempty"`
-	Description   string          `json:"description,omitempty"`
-}
-
 func retryStateKey(nonce uint64) string {
 	return fmt.Sprintf("%s%020d", retryStatePrefix, nonce)
 }
@@ -118,7 +105,8 @@ func (t *transactionService) SendWithRetry(ctx context.Context, request *TxReque
 		t.retryMetrics.RecordRetryComplete(1, err)
 		return common.Hash{}, nil, err
 	}
-	return t.sendWithRetry(ctx, request, nil, nil, nil, nil)
+	overrides := applyRetryOptions(opts)
+	return t.sendWithRetry(ctx, request, nil, nil, nil, nil, overrides)
 }
 
 // applyMempoolBump returns amount increased by mempoolBumpPercent.
@@ -210,7 +198,7 @@ func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier
 // broadcastTx prepares, signs, and sends a transaction.
 // When fixedNonce is nil a new nonce is allocated (first attempt);
 // otherwise the supplied nonce is reused (replacement transaction).
-func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
+func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
 	var nonce uint64
 
 	if fixedNonce != nil {
@@ -347,7 +335,7 @@ func (t *transactionService) sendWithRetry(
 		nonceWatch = &retryNonceWatch{}
 	}
 
-	txHash, receipt, attempts, terminateTxErr := t.retryLoop(ctx, request, rs, nonceWatch, previousTip, previousFeeCap, tiers)
+	txHash, receipt, attempts, terminateTxErr := t.retryLoop(ctx, request, rs, nonceWatch, previousTip, previousFeeCap, tiers, overrides)
 	t.finishRetry(rs, attempts, terminateTxErr, nonceWatch, txHash)
 	return txHash, receipt, terminateTxErr
 }
@@ -356,8 +344,8 @@ func (t *transactionService) sendWithRetry(
 func (t *transactionService) retryLoop(
 	ctx context.Context, request *TxRequest,
 	rs *RetriedTransaction, nonceWatch *retryNonceWatch,
-	previousTip, previousFeeCap *big.Int, tiers []feeTier) (common.Hash, *types.Receipt, int, error) {
-
+	previousTip, previousFeeCap *big.Int, tiers []feeTier,
+	overrides *RetryOverrides) (common.Hash, *types.Receipt, int, error) {
 	var (
 		nonce    *uint64
 		attempts int // track total number of attempts for metrics
@@ -492,17 +480,22 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		}
 	}
 
+	delay := t.txRetryDelay
+	if overrides != nil && overrides.RetryDelay != nil {
+		delay = overrides.RetryDelay(t.txRetryDelay)
+	}
+
 	if nonceWatch.doneC == nil {
 		// Rare case: no successful broadcast yet, nothing to monitor. Wait to avoid spamming attempts.
 		select {
 		case <-ctx.Done():
 			return nil, nil, fmt.Errorf("wait to broadcast: %w", ctx.Err())
-		case <-time.After(t.txRetryDelay):
+		case <-time.After(delay):
 			return nil, nil, broadCastErr
 		}
 	}
 
-	return t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, t.txRetryDelay)
+	return t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, delay)
 }
 
 // waitNonceChanged waits up to the timeout for the monitor to signal that the nonce was mined.

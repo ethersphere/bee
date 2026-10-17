@@ -23,7 +23,7 @@ const (
 
 	minEstimatedGasLimit = 250_000
 
-	// redistributionGameTransactionsRetryDelay caps the retry delay for redistribution game txs.
+	//  caps the retry delay for redistribution game txs.
 	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
 
@@ -58,13 +58,6 @@ type contract struct {
 }
 
 type Option func(*contract)
-
-// WithRetryDelayRewrite sets a function that rewrites the configured SendWithRetry delay.
-func WithRetryDelayRewrite(fn func(time.Duration) time.Duration) Option {
-	return func(c *contract) {
-		c.retryDelayRewrite = fn
-	}
-}
 
 func New(
 	overlay swarm.Address,
