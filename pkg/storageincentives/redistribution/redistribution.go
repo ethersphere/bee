@@ -27,14 +27,12 @@ const (
 	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
 
-// ClaimOpts configures optional claim behaviour: after OverrideAfterBlock (absolute
-// chain block number), if ExpectedReward covers upper-bound claim cost plus
-// RoundFees, the max-tx-cost limit is bypassed for that send attempt.
+// ClaimOpts configures optional claim behaviour. Once the chain head reaches
+// BypassFromBlock, the max-tx-price cap is ignored for this claim and there is
+// no further price limit. Before that, attempts over the cap wait instead of
+// failing the claim. Nil opts keep the cap.
 type ClaimOpts struct {
-	OverrideAfterBlock uint64
-	CurrentBlockFn     func() uint64
-	ExpectedReward     *big.Int
-	RoundFees          *big.Int
+	BypassFromBlock uint64
 }
 
 type Contract interface {
@@ -128,10 +126,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed. When opts is
-// non-nil and the configured max-tx-price would block the broadcast,
-// canOverrideClaim is consulted: if the override block threshold has passed
-// and ExpectedReward covers the estimated cost plus previous round fees,
-// the price cap is bypassed.
+// non-nil, the configured max-tx-price is bypassed from opts.BypassFromBlock.
 func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (txHash common.Hash, err error) {
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
@@ -146,10 +141,9 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 		Description:          "claim win transaction",
 	}
 
-	retryOpts := []transaction.RetryOption{
-		transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
-			return c.canOverrideClaim(opts, gasFeeCap)
-		}),
+	var retryOpts []transaction.RetryOption
+	if opts != nil {
+		retryOpts = append(retryOpts, transaction.WithMaxPriceBypassFromBlock(opts.BypassFromBlock))
 	}
 
 	txHash, err = c.sendAndWait(ctx, request, retryOpts...)
@@ -157,42 +151,6 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
 	return txHash, nil
-}
-
-// canOverrideClaim decides whether the claim transaction should bypass the
-// max-tx-price cap. gasFeeCap is the actual max fee per gas (wei) that the
-// retry loop wants to use — it is provided by suggestGasFeeForTier
-// so there is no redundant estimation.
-func (c *contract) canOverrideClaim(opts *ClaimOpts, gasFeeCap *big.Int) bool {
-	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil || opts.RoundFees == nil {
-		return false
-	}
-
-	if opts.CurrentBlockFn() < opts.OverrideAfterBlock {
-		return false
-	}
-
-	if opts.ExpectedReward == nil || opts.ExpectedReward.Sign() <= 0 {
-		return false
-	}
-
-	gasUnits := c.gasLimit
-	if gasUnits <= 0 {
-		gasUnits = minEstimatedGasLimit
-	}
-
-	txCost := new(big.Int).Mul(gasFeeCap, big.NewInt(int64(gasUnits)))
-	totalSpent := new(big.Int).Add(txCost, opts.RoundFees)
-	if opts.ExpectedReward.Cmp(totalSpent) < 0 {
-		c.logger.Info("claim override: reward does not cover cost",
-			"tx_cost", txCost,
-			"round_fees", opts.RoundFees,
-			"total_spent", totalSpent,
-			"expected_reward", opts.ExpectedReward,
-		)
-		return false
-	}
-	return true
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.

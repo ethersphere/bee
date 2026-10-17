@@ -27,9 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
-var (
-	redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
-)
+var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
 
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
@@ -535,126 +533,36 @@ func TestGameTransactions_IgnoreContextGasSettings(t *testing.T) {
 	}
 }
 
-// Claim lets the retry loop exceed MaxTxPrice only near the round end, and only when the
-// expected reward covers the claim cost plus the fees already spent in the round.
-func TestClaim_IgnoreMaxPrice(t *testing.T) {
+// Claim passes the bypass block to the retry loop only when options are set.
+func TestClaim_MaxPriceBypass(t *testing.T) {
 	t.Parallel()
 
-	gasFeeCap := big.NewInt(1_000_000_000) // 1 gwei
-	costAt := func(gasUnits int64) *big.Int {
-		return new(big.Int).Mul(gasFeeCap, big.NewInt(gasUnits))
-	}
-	// opts builds options past the threshold block with the given reward and fees.
-	opts := func(reward, fees *big.Int) *redistribution.ClaimOpts {
-		return &redistribution.ClaimOpts{
-			OverrideAfterBlock: 100,
-			CurrentBlockFn:     func() uint64 { return 100 },
-			ExpectedReward:     reward,
-			RoundFees:          fees,
-		}
-	}
-
 	tests := []struct {
-		name     string
-		gasLimit uint64
-		opts     *redistribution.ClaimOpts
-		want     bool
+		name string
+		opts *redistribution.ClaimOpts
 	}{
-		{
-			name:     "nil opts",
-			gasLimit: 400_000,
-			opts:     nil,
-			want:     false,
-		},
-		{
-			name:     "zero OverrideAfterBlock disables the override",
-			gasLimit: 400_000,
-			opts: &redistribution.ClaimOpts{
-				CurrentBlockFn: func() uint64 { return 100 },
-				ExpectedReward: costAt(800_000),
-				RoundFees:      big.NewInt(0),
-			},
-			want: false,
-		},
-		{
-			name:     "nil CurrentBlockFn disables the override",
-			gasLimit: 400_000,
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				ExpectedReward:     costAt(800_000),
-				RoundFees:          big.NewInt(0),
-			},
-			want: false,
-		},
-		{
-			name:     "nil RoundFees disables the override",
-			gasLimit: 400_000,
-			opts:     opts(costAt(800_000), nil),
-			want:     false,
-		},
-		{
-			name:     "before the threshold block",
-			gasLimit: 400_000,
-			opts: &redistribution.ClaimOpts{
-				OverrideAfterBlock: 100,
-				CurrentBlockFn:     func() uint64 { return 99 },
-				ExpectedReward:     costAt(800_000),
-				RoundFees:          big.NewInt(0),
-			},
-			want: false,
-		},
-		{
-			name:     "nil reward",
-			gasLimit: 400_000,
-			opts:     opts(nil, big.NewInt(0)),
-			want:     false,
-		},
-		{
-			name:     "zero reward",
-			gasLimit: 400_000,
-			opts:     opts(big.NewInt(0), big.NewInt(0)),
-			want:     false,
-		},
-		{
-			name:     "reward below cost plus round fees",
-			gasLimit: 400_000,
-			opts:     opts(costAt(400_000), big.NewInt(1)),
-			want:     false,
-		},
-		{
-			name:     "reward exactly covers cost plus round fees",
-			gasLimit: 400_000,
-			opts:     opts(new(big.Int).Add(costAt(400_000), big.NewInt(10)), big.NewInt(10)),
-			want:     true,
-		},
-		{
-			name:     "zero gas limit prices the claim at the minimum gas limit",
-			gasLimit: 0,
-			opts:     opts(costAt(250_000), big.NewInt(0)),
-			want:     true,
-		},
-		{
-			name:     "configured gas limit above the minimum raises the cost",
-			gasLimit: 500_000,
-			opts:     opts(costAt(250_000), big.NewInt(0)),
-			want:     false,
-		},
+		{name: "nil opts keep the max price"},
+		{name: "bypass from a block", opts: &redistribution.ClaimOpts{BypassFromBlock: 100}},
+		{name: "bypass from block zero", opts: &redistribution.ClaimOpts{}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, sent := newRecordingContract(t, tc.gasLimit)
+			c, sent := newRecordingContract(t, 0)
 			if _, err := c.Claim(context.Background(), randChunkInclusionProofs(t), tc.opts); err != nil {
 				t.Fatal(err)
 			}
-			ignore := (*sent)[0].overrides.IgnoreMaxPrice
-			if ignore == nil {
-				t.Fatal("claim must install the max price predicate")
+			got := (*sent)[0].overrides.MaxPriceBypassFromBlock
+			if tc.opts == nil {
+				if got != nil {
+					t.Fatalf("nil opts must not bypass the max price, got block %d", *got)
+				}
+				return
 			}
-			if got := ignore(gasFeeCap); got != tc.want {
-				t.Fatalf("IgnoreMaxPrice(%s) = %v, want %v", gasFeeCap, got, tc.want)
+			if got == nil || *got != tc.opts.BypassFromBlock {
+				t.Fatalf("got bypass block %v, want %d", got, tc.opts.BypassFromBlock)
 			}
 		})
 	}
@@ -675,7 +583,7 @@ func TestCommitReveal_KeepMaxPrice(t *testing.T) {
 			if err := send(context.Background(), c); err != nil {
 				t.Fatal(err)
 			}
-			if (*sent)[0].overrides.IgnoreMaxPrice != nil {
+			if (*sent)[0].overrides.MaxPriceBypassFromBlock != nil {
 				t.Fatalf("%s must not bypass MaxTxPrice", name)
 			}
 		})

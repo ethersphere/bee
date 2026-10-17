@@ -45,10 +45,19 @@ const (
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
 
-	// forceClaimBlocksBeforeEnd is how many blocks before round end claim may
-	// bypass max-tx-cost when economics justify it (see redistribution.ClaimOpts).
-	forceClaimBlocksBeforeEnd = 10
+	// DefaultClaimMaxPriceBypassDelayBlocks is how long a claim waits after the
+	// claim_phase starts before it may ignore the configured max tx price.
+	DefaultClaimMaxPriceBypassDelayBlocks = 50
 )
+
+// ClaimMaxPriceBypass is the node setting for the redistribution claim.
+// When Enabled, the claim may ignore the max tx price once DelayBlocks have
+// passed since the start of the claim phase. After that there is no price cap.
+// DelayBlocks is clamped to the claim phase length.
+type ClaimMaxPriceBypass struct {
+	DelayBlocks uint64
+	Enabled     bool
+}
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
@@ -67,6 +76,8 @@ type Agent struct {
 	backend                ChainBackend
 	blocksPerRound         uint64
 	blockTime              time.Duration
+	claimMaxPriceBypass    ClaimMaxPriceBypass
+	claimPhaseStartBlock   atomic.Uint64
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
@@ -100,6 +111,7 @@ func New(overlay swarm.Address,
 	tranService transaction.Service,
 	health Health,
 	logger log.Logger,
+	claimMaxPriceBypass ClaimMaxPriceBypass,
 ) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
@@ -117,6 +129,7 @@ func New(overlay swarm.Address,
 		health:                 health,
 		chainStateGetter:       chainStateGetter,
 	}
+	a.claimMaxPriceBypass = clampClaimMaxPriceBypass(a.logger, blocksPerRound, blocksPerPhase, claimMaxPriceBypass)
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
 	if err != nil {
@@ -130,6 +143,30 @@ func New(overlay swarm.Address,
 	go a.start(a.blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
+}
+
+func (a *Agent) claimOpts() *redistribution.ClaimOpts {
+	if !a.claimMaxPriceBypass.Enabled {
+		return nil
+	}
+	return &redistribution.ClaimOpts{
+		BypassFromBlock: a.claimPhaseStartBlock.Load() + a.claimMaxPriceBypass.DelayBlocks,
+	}
+}
+
+func clampClaimMaxPriceBypass(logger log.Logger, blocksPerRound, blocksPerPhase uint64, bypass ClaimMaxPriceBypass) ClaimMaxPriceBypass {
+	if !bypass.Enabled {
+		return bypass
+	}
+
+	claimPhaseBlocks := blocksPerRound - 2*blocksPerPhase
+	if bypass.DelayBlocks > claimPhaseBlocks {
+		logger.Warning("claim max price bypass delay exceeds the claim phase, clamping",
+			"configured_blocks", bypass.DelayBlocks,
+			"claim_phase_blocks", claimPhaseBlocks)
+		bypass.DelayBlocks = claimPhaseBlocks
+	}
+	return bypass
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
@@ -218,6 +255,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			currentPhase = reveal
 		} else if p >= 2*blocksPerPhase {
 			currentPhase = claim // [76, 151]
+			a.claimPhaseStartBlock.Store(block - p + 2*blocksPerPhase)
 		}
 
 		// write the current phase only once
@@ -329,7 +367,7 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 		a.metrics.ErrReveal.Inc()
 		return err
 	}
-	a.state.AddRoundFee(ctx, round, txHash)
+	a.state.AddFee(ctx, txHash)
 
 	a.state.SetHasRevealed(round)
 
@@ -389,23 +427,10 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
-	reward, err := a.batchExpirer.ExpectedReward(ctx)
-	if err != nil {
-		a.logger.Warning("could not estimate claim reward, override max_tx_cost option will be disabled", "error", err)
-	}
-
-	opts := &redistribution.ClaimOpts{
-		OverrideAfterBlock: (round+1)*a.blocksPerRound - forceClaimBlocksBeforeEnd,
-		CurrentBlockFn:     func() uint64 { return a.state.currentBlock() },
-		ExpectedReward:     reward,
-		RoundFees:          a.state.RoundFees(round),
-	}
-
-	txHash, err := a.contract.Claim(ctx, proofs, opts)
+	txHash, err := a.contract.Claim(ctx, proofs, a.claimOpts())
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			a.logger.Info("claim aborted by context", "round", round, "err", err)
-			a.metrics.SkippedExpensivePhase.Inc()
 			return nil
 		}
 		a.metrics.ErrClaim.Inc()
@@ -421,7 +446,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		}
 	}
 
-	a.state.AddRoundFee(ctx, round, txHash)
+	a.state.AddFee(ctx, txHash)
 
 	return nil
 }
@@ -574,7 +599,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		a.metrics.ErrCommit.Inc()
 		return err
 	}
-	a.state.AddRoundFee(ctx, round, txHash)
+	a.state.AddFee(ctx, txHash)
 
 	a.state.SetCommitKey(round, key)
 

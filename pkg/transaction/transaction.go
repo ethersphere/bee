@@ -42,6 +42,9 @@ var (
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
 	ErrTxMaxPriceExceeded  = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	// ErrTxMaxPriceDeferred is returned by an attempt that exceeds the maximum tx price
+	// before the bypass block set by overrides option.
+	ErrTxMaxPriceDeferred = errors.New("transaction retry: exceeds maximum tx price, bypass not yet allowed")
 	// ErrSignTransaction is returned when signing a transaction fails.
 	ErrSignTransaction      = errors.New("sign transaction")
 	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")

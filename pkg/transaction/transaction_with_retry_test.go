@@ -7,6 +7,7 @@ package transaction_test
 import (
 	"context"
 	"errors"
+	"math"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -1420,96 +1421,136 @@ func TestSendWithRetry_FeePriority(t *testing.T) {
 	}
 }
 
-// The IgnoreMaxPrice predicate decides per attempt whether a fee cap above MaxTxPrice may be sent.
-func TestSendWithRetry_IgnoreMaxPrice(t *testing.T) {
+// headAt returns a header option whose block number grows by one on every call, starting at 1.
+func (s retryTestSetup) headAt(calls *atomic.Uint64) backendmock.Option {
+	return backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+		n := calls.Add(1)
+		return &types.Header{BaseFee: new(big.Int).Set(s.baseFee), Number: new(big.Int).SetUint64(n)}, nil
+	})
+}
+
+// Over MaxTxPrice before the bypass block, attempts send nothing and do not spend the
+// attempts budget. From the bypass block the fee cap is sent above the limit.
+func TestSendWithRetry_MaxPriceBypassDefersBeforeBlock(t *testing.T) {
 	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
 
-	tests := []struct {
-		name        string
-		maxTxPrice  int64
-		allowUpTo   int64 // the predicate allows fee caps up to this value
-		wantErr     error
-		wantSent    []int64
-		wantAsked   []int64
-		sessionKept bool
-	}{
-		{
-			name:       "below the limit the predicate is not asked",
-			maxTxPrice: 100_000_000,
-			allowUpTo:  0,
-			wantSent:   []int64{2200},
-		},
-		{
-			name:       "allowed fee cap above the limit is sent",
-			maxTxPrice: 2199,
-			allowUpTo:  100_000_000,
-			wantSent:   []int64{2200},
-			wantAsked:  []int64{2200},
-		},
-		{
-			name:       "refused fee cap is not sent",
-			maxTxPrice: 2199,
-			allowUpTo:  0,
-			wantErr:    transaction.ErrTxMaxPriceExceeded,
-			wantAsked:  []int64{2200},
-		},
-		{
-			name:        "every escalation is asked again",
-			maxTxPrice:  2199,
-			allowUpTo:   2530,
-			wantErr:     transaction.ErrTxMaxPriceExceeded,
-			wantSent:    []int64{2200, 2530},
-			wantAsked:   []int64{2200, 2530, 2909},
-			sessionKept: true,
-		},
-	}
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = big.NewInt(2199) // below the first fee cap 2200
+	cfg.AttemptsPerTier = 1           // four deferrals would exhaust the budget if they counted
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			s := newRetryTestSetup()
-			store := newRetryStore(t)
+	var (
+		txs   broadcastLog
+		heads atomic.Uint64
+	)
+	doneC := make(chan struct{}, 1)
+	svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
+		s.headAt(&heads),
+		backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
+			txs.add(tx)
+			doneC <- struct{}{}
+			return nil
+		}),
+		receiptFound(),
+	)
 
-			cfg := s.retryConfig()
-			cfg.MaxTxPrice = big.NewInt(tc.maxTxPrice)
+	_, receipt, err := svc.SendWithRetry(context.Background(), s.request(), transaction.WithMaxPriceBypassFromBlock(5))
 
-			var txs broadcastLog
-			doneC := make(chan struct{}, 1)
-			svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
-				backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
-					if txs.add(tx) == len(tc.wantSent) && tc.wantErr == nil {
-						doneC <- struct{}{}
-					}
-					return nil
-				}),
-				receiptFound(),
-			)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.Equal(t, []int64{2200}, feeCaps(txs.all()), "only the attempt at the bypass block is sent")
+	assert.EqualValues(t, 5, heads.Load(), "blocks 1-4 are deferred, block 5 sends")
+}
 
-			var asked []int64
-			_, _, err := svc.SendWithRetry(context.Background(), s.request(),
-				transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
-					asked = append(asked, gasFeeCap.Int64())
-					return gasFeeCap.Int64() <= tc.allowUpTo
-				}),
-			)
+// A deferral after a broadcast keeps waiting on the pending tx. The send at the bypass block
+// reuses its nonce and bumps its fees once, however many attempts were deferred in between.
+func TestSendWithRetry_MaxPriceBypassKeepsPendingTx(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
 
-			if tc.wantErr != nil {
-				require.ErrorIs(t, err, tc.wantErr)
-			} else {
-				require.NoError(t, err)
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = big.NewInt(2200) // the first fee cap fits, the 2530 replacement does not
+	cfg.AttemptsPerTier = 2
+
+	var (
+		txs   broadcastLog
+		heads atomic.Uint64
+	)
+	doneC := make(chan struct{}, 1)
+	svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
+		s.headAt(&heads),
+		backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
+			if txs.add(tx) == 2 {
+				doneC <- struct{}{}
 			}
-			broadcasts := txs.all()
-			if len(tc.wantSent) == 0 {
-				assert.Empty(t, broadcasts)
-			} else {
-				assert.Equal(t, tc.wantSent, feeCaps(broadcasts))
-			}
-			assert.Equal(t, tc.wantAsked, asked, "the predicate gets the fee cap the attempt would use")
-			if tc.sessionKept {
-				s.assertSessionKept(t, svc, store, hashesOf(broadcasts)...)
-			}
-		})
-	}
+			return nil
+		}),
+		receiptFound(),
+	)
+
+	_, receipt, err := svc.SendWithRetry(context.Background(), s.request(), transaction.WithMaxPriceBypassFromBlock(4))
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	broadcasts := txs.all()
+	assert.Equal(t, []int64{2200, 2530}, feeCaps(broadcasts), "one +15% bump over the last sent tx")
+	assertTxDataUnchanged(t, broadcasts)
+	assert.EqualValues(t, 4, heads.Load(), "block 1 sends, blocks 2-3 are deferred, block 4 sends")
+}
+
+// Without the option an attempt over MaxTxPrice still ends the session.
+func TestSendWithRetry_MaxPriceWithoutBypass(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
+
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = big.NewInt(2199)
+
+	var (
+		txs   broadcastLog
+		heads atomic.Uint64
+	)
+	svc := s.newService(t, store, cfg, nonceWatchIdle(), s.headAt(&heads), txs.sendOK())
+
+	_, _, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
+	require.NotErrorIs(t, err, transaction.ErrTxMaxPriceDeferred)
+	assert.Zero(t, txs.count())
+	assert.EqualValues(t, 1, heads.Load())
+}
+
+// Canceling the context ends a session that is waiting for the bypass block.
+func TestSendWithRetry_MaxPriceBypassCanceled(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
+
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = big.NewInt(2199)
+
+	var (
+		txs   broadcastLog
+		heads atomic.Uint64
+	)
+	svc := s.newService(t, store, cfg, nonceWatchIdle(), s.headAt(&heads), txs.sendOK())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for heads.Load() < 3 {
+			time.Sleep(time.Millisecond)
+		}
+		cancel()
+	}()
+
+	_, _, err := svc.SendWithRetry(ctx, s.request(), transaction.WithMaxPriceBypassFromBlock(math.MaxUint64))
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, txs.count())
+	assert.Empty(t, pendingSet(t, svc))
 }
 
 // RetryDelay must change the wait that actually gates the next attempt.

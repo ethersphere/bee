@@ -34,10 +34,10 @@ const defaultAttemptsPerTier = 2
 // RetryOverrides controls per-call behaviour overrides for SendWithRetry.
 // Fields are optional; nil means "use default behaviour".
 type RetryOverrides struct {
-	// IgnoreMaxPrice is called when maxTxPrice would block a broadcast.
-	// It receives the gasFeeCap (max fee per gas, wei) that would be used
-	// for this attempt. If it returns true, the price cap is bypassed.
-	IgnoreMaxPrice func(gasFeeCap *big.Int) bool
+	// MaxPriceBypassFromBlock, if set, lets the fee cap exceed maxTxPrice once
+	// the chain head reaches this block. Before that, an over-cap attempt is
+	// deferred instead of ending the session.
+	MaxPriceBypassFromBlock *uint64
 
 	// RetryDelay, if set, rewrites the configured delay between attempts.
 	RetryDelay func(time.Duration) time.Duration
@@ -46,12 +46,12 @@ type RetryOverrides struct {
 // RetryOption configures per-call overrides for SendWithRetry.
 type RetryOption func(*RetryOverrides)
 
-// WithIgnoreMaxPrice returns a RetryOption that installs a predicate called
-// whenever the configured maxTxPrice would block a broadcast.  The predicate
-// receives the gasFeeCap (max fee per gas, wei) that would be used.  When fn
-// returns true the price cap is bypassed for that attempt.
-func WithIgnoreMaxPrice(fn func(gasFeeCap *big.Int) bool) RetryOption {
-	return func(o *RetryOverrides) { o.IgnoreMaxPrice = fn }
+// WithMaxPriceBypassFromBlock lets the fee cap exceed maxTxPrice once the chain
+// head reaches block. Before that, an attempt over maxTxPrice sends nothing:
+// it waits on the transaction already in the mempool, if any, and does not
+// count toward the attempts budget or advance the fee tier.
+func WithMaxPriceBypassFromBlock(block uint64) RetryOption {
+	return func(o *RetryOverrides) { o.MaxPriceBypassFromBlock = &block }
 }
 
 // WithRetryDelay returns a RetryOption that rewrites the configured retry delay.
@@ -159,16 +159,17 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		}
 	}
 
-	canOverride := func(feeCap *big.Int) bool {
-		return overrides != nil && overrides.IgnoreMaxPrice != nil && overrides.IgnoreMaxPrice(feeCap)
-	}
-
 	if t.maxTxPrice != nil && gasFeeCapWithTip.Cmp(t.maxTxPrice) > 0 {
-		if !canOverride(gasFeeCapWithTip) {
+		if overrides == nil || overrides.MaxPriceBypassFromBlock == nil {
 			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
 		}
 
-		t.logger.Info("max price override: bypassing limit", "escalated_gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice)
+		head := header.Number.Uint64()
+		if header.Number.Uint64() < *overrides.MaxPriceBypassFromBlock {
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s, block %d, bypass from block %d",
+				ErrTxMaxPriceDeferred, gasFeeCapWithTip, t.maxTxPrice, head, *overrides.MaxPriceBypassFromBlock)
+		}
+		t.logger.Info("max price bypass: sending above limit", "gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice, "block", head)
 	}
 
 	return gasFeeCapWithTip, tip, nil
@@ -321,7 +322,8 @@ func (t *transactionService) sendWithRetry(
 	request *TxRequest,
 	rs *RetriedTransaction,
 	nonceWatch *retryNonceWatch, previousTip, previousFeeCap *big.Int,
-	overrides *RetryOverrides) (common.Hash, *types.Receipt, error) {
+	overrides *RetryOverrides,
+) (common.Hash, *types.Receipt, error) {
 	tiers, err := t.tierRangeForRequest(ctx)
 	if err != nil {
 		return common.Hash{}, nil, fmt.Errorf("fee tiers: %w", err)
@@ -345,19 +347,25 @@ func (t *transactionService) retryLoop(
 	ctx context.Context, request *TxRequest,
 	rs *RetriedTransaction, nonceWatch *retryNonceWatch,
 	previousTip, previousFeeCap *big.Int, tiers []feeTier,
-	overrides *RetryOverrides) (common.Hash, *types.Receipt, int, error) {
+	overrides *RetryOverrides,
+) (common.Hash, *types.Receipt, int, error) {
 	var (
 		nonce    *uint64
 		attempts int // track total number of attempts for metrics
 	)
 	for _, tier := range tiers {
-		for k := 0; k < t.attemptsPerTier; k++ {
-			attempts++
+		for k := 0; k < t.attemptsPerTier; {
 			if rs.NonceAssigned {
 				nonce = &rs.Nonce
 			}
 
 			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonce, nonceWatch, overrides)
+			if errors.Is(err, ErrTxMaxPriceDeferred) {
+				t.logger.Debug("retried transaction: attempt deferred until max price bypass", "nonce", rs.Nonce, "tier", tier.String(), "error", err)
+				continue
+			}
+			attempts++
+			k++
 			if err != nil && (isNonRetryable(err) || isNonceTooLow(err)) {
 				return common.Hash{}, nil, attempts, err
 			}
@@ -495,7 +503,11 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		}
 	}
 
-	return t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, delay)
+	signedTx, receipt, err := t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, delay)
+	if errors.Is(broadCastErr, ErrTxMaxPriceDeferred) && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return nil, nil, broadCastErr
+	}
+	return signedTx, receipt, err
 }
 
 // waitNonceChanged waits up to the timeout for the monitor to signal that the nonce was mined.

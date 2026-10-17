@@ -716,6 +716,7 @@ func createRedistributionAgentService(
 		tranService,
 		&mockHealth{},
 		log.Noop,
+		storageincentives.ClaimMaxPriceBypass{},
 	)
 }
 

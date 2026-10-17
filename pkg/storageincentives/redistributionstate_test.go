@@ -296,8 +296,8 @@ func TestReward(t *testing.T) {
 	}
 }
 
-// TestRoundFee checks that fees add up per round and in the node total, and survive a restart.
-func TestRoundFee(t *testing.T) {
+// TestFee checks that transaction fees add up in the node total and survive a restart.
+func TestFee(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -326,23 +326,12 @@ func TestRoundFee(t *testing.T) {
 		return state
 	}
 
-	assertRoundFees := func(t *testing.T, state *RedistributionState, round uint64, want int64) {
-		t.Helper()
-		if got := state.RoundFees(round); got.Cmp(big.NewInt(want)) != 0 {
-			t.Fatalf("round %d: got fees %s, want %d", round, got, want)
-		}
-	}
-
 	ctx := context.Background()
 	state := newState()
-	state.AddRoundFee(ctx, 1, hashA)
-	state.AddRoundFee(ctx, 1, hashB)
-	state.AddRoundFee(ctx, 2, hashC)
-	state.AddRoundFee(ctx, 1, unknown)
-
-	assertRoundFees(t, state, 1, 25)
-	assertRoundFees(t, state, 2, 7)
-	assertRoundFees(t, state, 3, 0)
+	state.AddFee(ctx, hashA)
+	state.AddFee(ctx, hashB)
+	state.AddFee(ctx, hashC)
+	state.AddFee(ctx, unknown)
 
 	status, err := state.Status()
 	if err != nil {
@@ -352,10 +341,12 @@ func TestRoundFee(t *testing.T) {
 		t.Fatalf("got total fees %s, want 32", status.Fees)
 	}
 
-	state.RoundFees(1).SetInt64(1000)
-	assertRoundFees(t, state, 1, 25)
-
 	restarted := newState()
-	assertRoundFees(t, restarted, 1, 25)
-	assertRoundFees(t, restarted, 2, 7)
+	status, err = restarted.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Fees.Cmp(big.NewInt(32)) != 0 {
+		t.Fatalf("after restart got total fees %s, want 32", status.Fees)
+	}
 }

@@ -434,27 +434,35 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
-// A winning node claims with the round settings: the override threshold 10 blocks before the
-// round end, the expected reward from the postage contract, and the fees spent in the round.
-func TestAgentClaimOptions(t *testing.T) {
+// Claim receives no bypass options unless the node setting is enabled. When it is,
+// bypass starts DelayBlocks into the claim phase, and a delay longer than the phase is clamped.
+func TestAgentClaimPriceBypass(t *testing.T) {
 	t.Parallel()
 
-	const txFee = int64(7)
+	const (
+		blocksPerPhase   = uint64(3)
+		claimPhaseBlocks = winningAgentBlocksPerRound - 2*blocksPerPhase
+	)
 
 	tests := []struct {
-		name       string
-		reward     *big.Int
-		rewardErr  error
-		wantReward *big.Int
+		name      string
+		bypass    storageincentives.ClaimMaxPriceBypass
+		wantNil   bool
+		wantDelay uint64
 	}{
 		{
-			name:       "expected reward is passed to claim",
-			reward:     big.NewInt(777),
-			wantReward: big.NewInt(777),
+			name:    "disabled by default",
+			wantNil: true,
 		},
 		{
-			name:      "reward lookup error disables the override",
-			rewardErr: errors.New("rpc unavailable"),
+			name:      "enabled after the configured delay",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: 1},
+			wantDelay: 1,
+		},
+		{
+			name:      "delay above the claim phase is clamped",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: 100},
+			wantDelay: claimPhaseBlocks,
 		},
 	}
 
@@ -462,32 +470,25 @@ func TestAgentClaimOptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
-				_, contract := runWinningAgent(t, nil,
-					withPostageOptions(contractMock.WithExpectedRewardFunc(func(context.Context) (*big.Int, error) {
-						return tc.reward, tc.rewardErr
-					})),
-					withTransactionOptions(transactionmock.WithTransactionFeeFunc(func(context.Context, common.Hash) (*big.Int, error) {
-						return big.NewInt(txFee), nil
-					})),
-				)
+				_, contract := runWinningAgent(t, nil, withClaimPriceBypass(tc.bypass))
 
 				claims := contract.getClaims()
 				if len(claims) == 0 {
 					t.Fatal("expected a claim")
 				}
 				claim := claims[0]
-				round := claim.block / winningAgentBlocksPerRound
-				if want := (round+1)*winningAgentBlocksPerRound - 10; claim.opts.OverrideAfterBlock != want {
-					t.Fatalf("got OverrideAfterBlock %d, want %d for round %d", claim.opts.OverrideAfterBlock, want, round)
+				if tc.wantNil {
+					if claim.hasOpts {
+						t.Fatal("bypass is disabled, claim must not receive options")
+					}
+					return
 				}
-				if claim.opts.RoundFees == nil || claim.opts.RoundFees.Cmp(big.NewInt(2*txFee)) != 0 {
-					t.Fatalf("got RoundFees %v, want commit and reveal fees %d", claim.opts.RoundFees, 2*txFee)
+				if !claim.hasOpts {
+					t.Fatal("bypass is enabled, claim must receive options")
 				}
-				switch {
-				case tc.wantReward == nil && claim.opts.ExpectedReward != nil:
-					t.Fatalf("got ExpectedReward %s, want nil", claim.opts.ExpectedReward)
-				case tc.wantReward != nil && (claim.opts.ExpectedReward == nil || claim.opts.ExpectedReward.Cmp(tc.wantReward) != 0):
-					t.Fatalf("got ExpectedReward %v, want %s", claim.opts.ExpectedReward, tc.wantReward)
+				phaseOffset := 2*blocksPerPhase + tc.wantDelay
+				if got := claim.opts.BypassFromBlock; got < phaseOffset || (got-phaseOffset)%winningAgentBlocksPerRound != 0 {
+					t.Fatalf("got BypassFromBlock %d, want a round start plus %d blocks", got, phaseOffset)
 				}
 			})
 		})
@@ -561,11 +562,9 @@ func createService(
 		opt(&deps)
 	}
 
-	postageContract := contractMock.New(append([]contractMock.Option{
-		contractMock.WithExpiresBatchesFunc(func(context.Context) error {
-			return nil
-		}),
-	}, deps.postageOpts...)...)
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+		return nil
+	}))
 	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context, uint64) (bool, error) {
 		return false, nil
 	}))
@@ -590,25 +589,21 @@ func createService(
 		statestore.NewStateStore(),
 		&postage.NoOpBatchStore{},
 		erc20mock.New(),
-		transactionmock.New(deps.txOpts...),
+		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
+		deps.bypass,
 	)
 }
 
 type serviceDeps struct {
-	postageOpts []contractMock.Option
-	txOpts      []transactionmock.Option
+	bypass storageincentives.ClaimMaxPriceBypass
 }
 
 type serviceOption func(*serviceDeps)
 
-func withPostageOptions(opts ...contractMock.Option) serviceOption {
-	return func(d *serviceDeps) { d.postageOpts = append(d.postageOpts, opts...) }
-}
-
-func withTransactionOptions(opts ...transactionmock.Option) serviceOption {
-	return func(d *serviceDeps) { d.txOpts = append(d.txOpts, opts...) }
+func withClaimPriceBypass(bypass storageincentives.ClaimMaxPriceBypass) serviceOption {
+	return func(d *serviceDeps) { d.bypass = bypass }
 }
 
 type mockchainBackend struct {
@@ -689,10 +684,10 @@ type mockContract struct {
 	claims          []claimRecord
 }
 
-// claimRecord is what the agent handed to Claim, with the block reported at that moment.
+// claimRecord is what the agent handed to Claim.
 type claimRecord struct {
-	opts  redistribution.ClaimOpts
-	block uint64
+	opts    redistribution.ClaimOpts
+	hasOpts bool
 }
 
 // getCalls returns a snapshot of the calls list
@@ -750,7 +745,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 func (m *mockContract) Claim(_ context.Context, _ redistribution.ChunkInclusionProofs, opts *redistribution.ClaimOpts) (common.Hash, error) {
 	var record claimRecord
 	if opts != nil {
-		record = claimRecord{opts: *opts, block: opts.CurrentBlockFn()}
+		record = claimRecord{opts: *opts, hasOpts: true}
 	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

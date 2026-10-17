@@ -61,7 +61,6 @@ type RoundData struct {
 	CommitKey   []byte
 	SampleData  *SampleData
 	HasRevealed bool
-	RoundFees   *big.Int
 }
 
 type SampleData struct {
@@ -185,8 +184,8 @@ func (r *RedistributionState) SetLastSelectedRound(round uint64) {
 	r.save()
 }
 
-// AddRoundFee tracks fees spent in a specific round.
-func (r *RedistributionState) AddRoundFee(ctx context.Context, round uint64, txHash common.Hash) {
+// AddFee adds the fee of a mined redistribution transaction to the node total.
+func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	fee, err := r.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
@@ -195,26 +194,8 @@ func (r *RedistributionState) AddRoundFee(ctx context.Context, round uint64, txH
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	rd := r.status.RoundData[round]
-	if rd.RoundFees == nil {
-		rd.RoundFees = new(big.Int)
-	}
-	rd.RoundFees.Add(rd.RoundFees, fee)
-	r.status.RoundData[round] = rd
 	r.status.Fees.Add(r.status.Fees, fee)
 	r.save()
-}
-
-// RoundFees returns the total fees spent in a given round.
-func (r *RedistributionState) RoundFees(round uint64) *big.Int {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	rd, ok := r.status.RoundData[round]
-	if !ok || rd.RoundFees == nil {
-		return new(big.Int)
-	}
-	return new(big.Int).Set(rd.RoundFees)
 }
 
 // CalculateWinnerReward calculates the reward for the winner
