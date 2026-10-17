@@ -52,10 +52,7 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
-	retryDelayRewrite         func(time.Duration) time.Duration
 }
-
-type Option func(*contract)
 
 func New(
 	overlay swarm.Address,
@@ -65,9 +62,8 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
-	opts ...Option,
 ) Contract {
-	c := &contract{
+	return &contract{
 		overlay:                   overlay,
 		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
@@ -76,14 +72,6 @@ func New(
 		incentivesContractABI:     incentivesContractABI,
 		gasLimit:                  gasLimit,
 	}
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	if c.retryDelayRewrite == nil {
-		c.retryDelayRewrite = capRetryDelay
-	}
-	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
@@ -218,9 +206,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (txHash common.Hash, err error) {
-	if c.retryDelayRewrite != nil {
-		opts = append(opts, transaction.WithRetryDelay(c.retryDelayRewrite))
-	}
+	opts = append(opts, transaction.WithRetryDelay(capRetryDelay))
 
 	defer func() {
 		err = c.txService.UnwrapABIError(
@@ -248,7 +234,6 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 }
 
 // capRetryDelay limits the retry delay for redistribution game transactions
-// to redistributionGameTransactionsRetryDelay.
 func capRetryDelay(d time.Duration) time.Duration {
 	if d > redistributionGameTransactionsRetryDelay {
 		return redistributionGameTransactionsRetryDelay

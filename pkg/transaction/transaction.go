@@ -599,15 +599,6 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	if err != nil {
 		return err
 	}
-	if storedTransaction.GasFeeCap != nil && gasFeeCap.Cmp(storedTransaction.GasFeeCap) > 0 {
-		gasFeeCap = new(big.Int).Set(storedTransaction.GasFeeCap)
-	}
-	if storedTransaction.GasTipCap != nil && gasTipCap.Cmp(storedTransaction.GasTipCap) > 0 {
-		gasTipCap = new(big.Int).Set(storedTransaction.GasTipCap)
-	}
-	if gasTipCap.Cmp(gasFeeCap) > 0 {
-		gasTipCap = new(big.Int).Set(gasFeeCap)
-	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		Nonce:     storedTransaction.Nonce,

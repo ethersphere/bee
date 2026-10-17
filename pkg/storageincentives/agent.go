@@ -75,7 +75,6 @@ type Agent struct {
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
-	blockTime              time.Duration
 	claimMaxPriceBypass    ClaimMaxPriceBypass
 	claimPhaseStartBlock   atomic.Uint64
 	contract               redistribution.Contract
@@ -123,7 +122,6 @@ func New(overlay swarm.Address,
 		store:                  store,
 		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
-		blockTime:              blockTime,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
@@ -140,7 +138,7 @@ func New(overlay swarm.Address,
 	a.metrics.Enabled.Set(1)
 
 	a.wg.Add(1)
-	go a.start(a.blockTime, a.blocksPerRound, blocksPerPhase)
+	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
 }
