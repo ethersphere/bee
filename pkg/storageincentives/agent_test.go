@@ -103,7 +103,10 @@ func TestAgent(t *testing.T) {
 				backend := &mockchainBackend{
 					limit: tc.limit,
 					limitCallback: func() {
-						wait <- struct{}{}
+						select {
+						case wait <- struct{}{}:
+						default:
+						}
 					},
 					incrementBy: tc.incrementBy,
 					block:       tc.blocksPerRound,
@@ -209,7 +212,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -248,7 +254,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -292,7 +301,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -338,7 +350,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -383,7 +398,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -505,7 +523,12 @@ func runWinningAgent(t *testing.T, claimErr error, opts ...serviceOption) (*stor
 	wait := make(chan struct{}, 1)
 	backend := &mockchainBackend{
 		limit:         12 * winningAgentBlocksPerRound,
-		limitCallback: func() { wait <- struct{}{} },
+		limitCallback: func() {
+			select {
+			case wait <- struct{}{}:
+			default:
+			}
+		},
 		incrementBy:   1,
 		block:         winningAgentBlocksPerRound,
 		balance:       big.NewInt(4_000_000_000),
