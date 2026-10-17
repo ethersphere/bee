@@ -587,6 +587,55 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 		"pending tx entry should be cleaned up on success")
 }
 
+// An RPC deadline is not a caller cancellation: the next attempt still runs.
+func TestSendWithRetry_RPCTimeoutThenSuccess(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var broadcasts []capturedBroadcast
+	doneC := make(chan struct{}, 1)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				if len(broadcasts) == 1 {
+					return context.DeadlineExceeded
+				}
+				doneC <- struct{}{}
+				return nil
+			}),
+			receiptFound(),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.NotEqual(t, common.Hash{}, txHash)
+	assert.Equal(t, uint64(1), receipt.Status)
+	require.Len(t, broadcasts, 2, "deadline on one RPC must not stop the retry loop")
+}
+
 // First broadcast OK, receipt not found (timeout), second broadcast with escalated gas → receipt found.
 // Verifies exact fee values, nonce immutability, and tx data immutability.
 func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
@@ -731,6 +780,67 @@ func TestSendWithRetry_PreviousHashConfirmed(t *testing.T) {
 	assert.Equal(t, broadcasts[0].Hash, txHash)
 	assert.Equal(t, broadcasts[0].Hash, receipt.TxHash)
 	assert.Equal(t, int32(1), watchCount.Load(), "nonce is watched once")
+}
+
+// A receipt already cleared the session. A nonce that moved earlier must not start another wait:
+// that wait would look the receipt up again and delete the stored transaction if the lookup misses.
+func TestSendWithRetry_ReceiptSkipsNonceWatch(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	doneC := make(chan struct{})
+	close(doneC)
+
+	var (
+		broadcast common.Hash
+		receipts  atomic.Int32
+	)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcast = tx.Hash()
+				return nil
+			}),
+			backendmock.WithTransactionReceiptFunc(func(_ context.Context, txHash common.Hash) (*types.Receipt, error) {
+				if receipts.Add(1) == 1 && txHash == broadcast {
+					return &types.Receipt{TxHash: txHash, Status: 1}, nil
+				}
+				return nil, ethereum.NotFound
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+	require.NoError(t, svc.Close())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.Equal(t, broadcast, txHash)
+	assert.Equal(t, int32(1), receipts.Load(), "receipt is read once")
+
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(broadcast), &stored))
+	var state transaction.RetriedTransaction
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &state), storage.ErrNotFound)
 }
 
 func TestSendWithRetry_ReplacementHashConfirmed(t *testing.T) {
@@ -1400,6 +1510,68 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return errors.Is(store.Get(retryKey, &v), storage.ErrNotFound)
 	}, 5*time.Second, 10*time.Millisecond, "retry state should be cleaned up after success")
+}
+
+// The nonce was mined before restart. The receipt belongs to an earlier hash, and that stored transaction stays.
+func TestSendWithRetry_ResumeConfirmedKeepsReceipt(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	firstTxHash := common.HexToHash("0xaaaa")
+	secondTxHash := common.HexToHash("0xbbbb")
+	lastTxHash := common.HexToHash("0xdeadbeef")
+	hashes := []common.Hash{firstTxHash, secondTxHash, lastTxHash}
+
+	require.NoError(t, store.Put(transaction.RetryStateKey(s.nonce), transaction.RetriedTransaction{
+		Nonce:         s.nonce,
+		NonceAssigned: true,
+		CurrentHash:   lastTxHash,
+		PrevHashes:    []common.Hash{firstTxHash, secondTxHash},
+	}))
+	for _, hash := range hashes {
+		require.NoError(t, store.Put(transaction.StoredTransactionKey(hash), transaction.StoredTransaction{
+			To:       &s.recipient,
+			Data:     s.txData,
+			GasLimit: s.gasLimit,
+			Value:    s.value,
+			Nonce:    s.nonce,
+		}))
+		require.NoError(t, store.Put(transaction.PendingTransactionKey(hash), struct{}{}))
+	}
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			backendmock.WithNonceAtFunc(func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+				return s.nonce + 1, nil
+			}),
+			backendmock.WithTransactionReceiptFunc(func(_ context.Context, txHash common.Hash) (*types.Receipt, error) {
+				if txHash == firstTxHash {
+					return &types.Receipt{TxHash: txHash, Status: 1}, nil
+				}
+				return nil, ethereum.NotFound
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(nonceWatchIdle()),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(firstTxHash), &stored))
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(secondTxHash), &stored), storage.ErrNotFound)
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored), storage.ErrNotFound)
+	var state transaction.RetriedTransaction
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &state), storage.ErrNotFound)
+	for _, hash := range hashes {
+		assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(hash), &struct{}{}), storage.ErrNotFound)
+	}
 }
 
 // MaxTxPrice cap prevents escalation beyond the configured limit.

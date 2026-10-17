@@ -492,7 +492,7 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	pending := t.filterPendingTransactions(t.ctx, pendingTxs)
+	pending := t.filterPendingTransactions(ctx, pendingTxs)
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
