@@ -1394,7 +1394,6 @@ func TestSendWithRetry_ResumedAndNewSendUseDistinctNonces(t *testing.T) {
 	assert.Equal(t, s.nonce+1, known.nonce(t, txHash))
 }
 
-/*
 // Two sends race for a nonce. The second must see the first as pending even while the first
 // is still being written to disk and the RPC pending nonce lags behind.
 func TestSendWithRetry_ConcurrentSendsUseDistinctNonces(t *testing.T) {
@@ -1430,7 +1429,6 @@ func TestSendWithRetry_ConcurrentSendsUseDistinctNonces(t *testing.T) {
 		[]uint64{known.nonce(t, hashes[0]), known.nonce(t, hashes[1])},
 	)
 }
-*/
 
 // MaxTxPrice below the first fee cap: nothing is sent and nothing is stored.
 func TestSendWithRetry_MaxTxPriceCap(t *testing.T) {
@@ -1555,7 +1553,6 @@ func (s *failOnNthPutStore) Put(key string, i any) error {
 	return s.StateStorer.Put(key, i)
 }
 
-/*
 // slowStoredTxPutStore delays writes of stored transactions, widening the gap between a
 // broadcast and its pending record.
 type slowStoredTxPutStore struct {
@@ -1569,4 +1566,3 @@ func (s *slowStoredTxPutStore) Put(key string, i any) error {
 	}
 	return s.StateStorer.Put(key, i)
 }
-*/
