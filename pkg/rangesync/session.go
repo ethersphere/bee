@@ -279,6 +279,9 @@ type Session struct {
 	// symbolsSent and symbolsReceived count the coded symbols of all
 	// streams of the session, each at most SessionSymbolBudget.
 	symbolsSent, symbolsReceived uint64
+	// startScans counts the symbol streams started by the received Message
+	// that need the scan path, at most MaxScansPerMessage.
+	startScans int
 	// served holds this side's symbol streams by range, until answered.
 	served map[fingerprint.RangeKey]*served
 	// decoding holds the decoders of the peer's symbol streams by range.
@@ -400,8 +403,11 @@ func NewResponder(cfg Config) *Session {
 //
 // This side sends at most SessionSymbolBudget symbols in a session (the
 // batch that reaches it is Exhausted, and no range gets a symbol stream
-// after it) and at most MaxScansPerMessage batches that need the scan path
-// per Message; the others wait for a later Message.
+// once it sent or received that many). Per Message it starts at most
+// MaxScansPerMessage symbol streams that need the scan path (the other
+// ranges take the Fingerprint or items path) and emits at most
+// MaxScansPerMessage batches that need it (the others wait for a later
+// Message).
 //
 // The work of one call is bounded: at most one Summary per received
 // Fingerprint and one per emitted Fingerprint (each at most MaxParts), one
@@ -516,6 +522,7 @@ func (s *Session) handle(in *pb.Message) (*pb.Message, []fingerprint.ID, error) 
 	// splits holds, for each range the peer split in this message, the
 	// children seen so far as a bit mask.
 	splits := make(map[fingerprint.RangeKey]uint64)
+	s.startScans = 0
 	for _, p := range parts {
 		switch {
 		case p.items != nil:
@@ -615,7 +622,12 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 	}
 	s.peerCounts[r.Key()] = remote.Count
 	in := DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}
-	if s.symbols && s.symbolsSent < SessionSymbolBudget {
+	// No symbol stream once the budget is spent either way, nor past
+	// MaxScansPerMessage starts that scan (each reads at least symbol 0):
+	// those ranges take the Fingerprint or items path.
+	scan := cacheCapacity(s.cfg.Status, r) == 0
+	if s.symbols && s.symbolsSent < SessionSymbolBudget && s.symbolsReceived < SessionSymbolBudget &&
+		(!scan || s.startScans < MaxScansPerMessage) {
 		in.Cap = Capacity(s.cfg.Status, s.cfg.PeerStatus, r, local.Count, remote.Count)
 		if s.cfg.Hints != nil {
 			in.Hint = s.cfg.Hints.Hint(r)
@@ -633,6 +645,9 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 		}
 		s.tasks = append(s.tasks, &split{r: r})
 	case DecisionSymbols:
+		if scan {
+			s.startScans++
+		}
 		return s.startServing(r, local.Count, FirstBatch(in.Estimate()), in.Cap)
 	case DecisionSplit:
 		s.tasks = append(s.tasks, &split{r: r})

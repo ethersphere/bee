@@ -254,9 +254,9 @@ func TestSessionSymbolLimits(t *testing.T) {
 }
 
 // TestSessionMaxScansPerMessage opens a session with more scan-path ranges
-// than MaxScansPerMessage: the responder serves at most MaxScansPerMessage
-// of their first batches per Message and defers the others, without a
-// violation.
+// than MaxScansPerMessage: the responder starts at most MaxScansPerMessage
+// scan-path symbol streams per Message, answers the other ranges without
+// symbols, and the session converges without a violation.
 func TestSessionMaxScansPerMessage(t *testing.T) {
 	t.Parallel()
 
@@ -265,33 +265,75 @@ func TestSessionMaxScansPerMessage(t *testing.T) {
 	scope := mustScope(t, st, st)
 	rs := root.Children(7) // 128 ranges 7 bits below the root
 	rng := newRand(26)
-	ids := make([]fingerprint.ID, 0, 2*len(rs))
-	parts := make([]*pb.Part, len(rs))
-	for i, r := range rs {
-		ids = append(ids, randIDs(rng, r, 2)...)
-		parts[i] = fpPart(r, sum(3, byte(i)))
+	common, onlyA := make([]fingerprint.ID, 0, 2*len(rs)), make([]fingerprint.ID, 0, len(rs))
+	for _, r := range rs {
+		common = append(common, randIDs(rng, r, 2)...)
+		onlyA = append(onlyA, randIDs(rng, r, 1)...)
 	}
-	l := newFakeLocal(ids...)
-	l.status = &st
-	s := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: l, Status: st, PeerStatus: st})
-	served := map[fingerprint.RangeKey]bool{}
-	in := msg(parts...)
-	for i := 0; len(served) < len(rs); i++ {
-		if i > 2 {
-			t.Fatalf("%d of %d ranges served after %d messages", len(served), len(rs), i)
+	la, lb := newFakeLocal(slices.Concat(common, onlyA)...), newFakeLocal(common...)
+	la.status, lb.status = &st, &st
+	a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Status: st, PeerStatus: st, Open: rs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: lb, Status: st, PeerStatus: st})
+	first := true
+	_, wantsB, _ := drive(t, a, open, b, func(fromInitiator bool, m *pb.Message) {
+		if fromInitiator || !first {
+			return
 		}
-		out, _, err := s.Handle(wire(t, in))
+		first = false
+		// one scan per stream start and one per first batch
+		if lb.symbolCalls > 2*rangesync.MaxScansPerMessage {
+			t.Errorf("%d scans for the opening, want at most %d", lb.symbolCalls, 2*rangesync.MaxScansPerMessage)
+		}
+		if n := len(servedSymbols(t, m)); n == 0 || n > rangesync.MaxScansPerMessage {
+			t.Errorf("%d scan-path batches, want 1 to %d", n, rangesync.MaxScansPerMessage)
+		}
+	})
+	assertSet(t, wantsB, onlyA)
+}
+
+// TestSessionReceivedBudgetNoSymbols checks that a session that received
+// SessionSymbolBudget symbols answers a Fingerprint without a symbol stream.
+func TestSessionReceivedBudgetNoSymbols(t *testing.T) {
+	t.Parallel()
+
+	root := rangeOf("01")
+	st := status(root, 12)
+	scope := mustScope(t, st, st)
+	kids := root.Children(fingerprint.FanoutBits)
+	grand := kids[2].Children(fingerprint.FanoutBits)
+	rng := newRand(27)
+	ids := make([]fingerprint.ID, 0, 2*len(grand))
+	for _, r := range grand {
+		ids = append(ids, randIDs(rng, r, 2)...)
+	}
+	split := make([]*pb.Part, len(grand))
+	for i, r := range grand {
+		split[i] = fpPart(r, sum(3, byte(i)))
+	}
+	for _, spent := range []bool{false, true} {
+		l := newFakeLocal(ids...)
+		l.status = &st
+		s, _, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: l, Status: st, PeerStatus: st, Open: kids[:3]})
 		if err != nil {
 			t.Fatal(err)
 		}
-		sys := servedSymbols(t, out)
-		if len(sys) > rangesync.MaxScansPerMessage {
-			t.Fatalf("message %d: %d scan-path batches, want at most %d", i, len(sys), rangesync.MaxScansPerMessage)
+		if spent {
+			for i, r := range kids[:2] {
+				if _, _, err := s.Handle(wire(t, msg(limitBatch(uint64(i), r, 5, 0, rangesync.MaxBatchSymbols)))); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
-		for _, sy := range sys {
-			served[sy.Range.Key()] = true
+		out, _, err := s.Handle(wire(t, msg(split...)))
+		if err != nil {
+			t.Fatal(err)
 		}
-		in = msg()
+		if got := len(servedSymbols(t, out)) > 0; got == spent {
+			t.Fatalf("budget spent %v: symbols served %v", spent, got)
+		}
 	}
 }
 

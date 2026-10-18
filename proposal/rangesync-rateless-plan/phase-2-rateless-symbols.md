@@ -504,24 +504,26 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     is saved). An unknown range / exhausted stream was already a violation (T2.4).
   - *Budget.* `SessionSymbolBudget` counts all streams of a session, each direction: sent symbols
     are capped (the batch reaching it is `Exhausted`, possibly empty; `decide` gives no symbol
-    stream once it is spent → split/exchange); received symbols past it are a violation (an honest
+    stream once the sent **or received** count is spent → split/exchange); received symbols past it are a violation (an honest
     peer never sends more), and this side's `More` never asks past the remaining budget.
   - *Peer `Symbols.Count`.* Must be in `[1, itemLimit]` (the `Items` limit), equal in every batch of
     a stream, give `cap(R) > 0`, and the stream must stay within `cap(R)`.
-  - *MaxScansPerMessage* is enforced on the serving side by **deferral**, not as a violation: at
-    most 64 batches that read past the snapshot (`symStream.scans`) per outgoing Message, the rest
-    go out in later Messages. An honest initiator can legitimately send > 64 scan-path Fingerprints
-    in one Message (several splits), so rejecting would score honest peers. The decide-time symbol-0
-    snapshot (T2.4) is not counted; it is one scan of ≤ `ScanLimit` elements per Fingerprint, the
-    same order as its `Summary`, bounded by `MaxParts`.
+  - *MaxScansPerMessage* is enforced on the serving side, never as a violation (an honest
+    initiator can legitimately send > 64 scan-path Fingerprints in one Message, several splits, so
+    rejecting would score honest peers): (a) **stream starts** — `decide` starts at most 64 symbol
+    streams per received Message for uncached ranges (`cacheCapacity == 0`, whose symbol-0
+    snapshot scans); further such Fingerprints get no `Cap` and take the Fingerprint/items path,
+    which honest peers accept; (b) **deferral** — at most 64 batches that read past the snapshot
+    (`symStream.scans`) per outgoing Message, the rest go out in later Messages. (Review fix: the
+    start scans were uncounted, up to `MaxParts` per Message.)
   - *Per-peer session rate.* `ratelimit.Limiter` keyed by peer, `PeerSessionBurst = 4`, one more per
     `PeerSessionInterval = MinRoundInterval / 2`; over it the responder answers `Busy` (not scored),
-    checked after the concurrency slots. Cleared on disconnect like the delivery limiter.
+    checked after every other Busy check (review fix: no token is spent on another Busy). Cleared on disconnect like the delivery limiter.
   - *Tests.* `TestSessionSymbolLimits` (More to/past cap, budget across streams, endless More,
     unknown range, Count lies, first batch past cap, no capacity, received budget),
-    `TestSessionMaxScansPerMessage`, `TestSessionMappingGrinding` (the T2.0 suggestion: ground x, y
+    `TestSessionMaxScansPerMessage`, `TestSessionReceivedBudgetNoSymbols`, `TestSessionMappingGrinding` (the T2.0 suggestion: ground x, y
     with equal first-32 index sets, bucket cache 32 → exhausted → split → children decode),
-    `TestReconcilePeerSessionRate`. Violations are session-level; the reset + score path is T1.9's,
+    `TestReconcilePeerSessionRate`, `TestReconcilePeerSessionRateAfterBusy`. Violations are session-level; the reset + score path is T1.9's,
     shared by every `ErrInvalidMessage`.
 
 ## Follow-ups
@@ -612,5 +614,9 @@ _(sessions append here)_
 - **(T2.5) Churn-before-first-emit test still missing.** `decide` and the first emit run in the same
   `Handle` call, so it needs a `Local` hook that mutates between `Summary` and `Symbols`; not cheap
   enough for T2.5. Carry to T2.6.
-- **(T2.5) Decide-time scans are not under `MaxScansPerMessage`.** See the T2.5 decision; if T2.6
-  measures the symbol-0 scan as significant, make the snapshot lazy for deferred streams.
+- **(T2.5 review) Decide-time scans are now under `MaxScansPerMessage`** (stream starts counted,
+  excess ranges take the Fingerprint/items path); the earlier follow-up is resolved.
+- **(T2.5 review, Low) Session limiter entry can outlive a disconnect.** `ratelimit.Limiter` never
+  prunes idle keys. The `Allow` now runs after the "no status of the peer" Busy (the Status is
+  deleted on disconnect), so only a handler racing `disconnected` between that check and `Allow`
+  recreates an entry (one small entry per such race). Revisit with a pruning limiter if needed.

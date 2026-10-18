@@ -198,12 +198,12 @@ func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r
 //
 // The opening Message is read first (with the MaxMessageBytes limit) and must
 // decode strictly. The session is answered with Busy when this node serves
-// MaxConcurrentSessions sessions or one with the peer already, when the peer
-// opens sessions faster than PeerSessionBurst and PeerSessionInterval allow, while the
+// MaxConcurrentSessions sessions or one with the peer already, while the
 // address index is not ready, while the index is not built or the opening
 // asks about a range being rebuilt, when no Status of the peer was received,
-// and when the opening does not fit the scope derived from the two Statuses
-// (one of them is stale). A peer with a different Mapping gets its stream
+// when the opening does not fit the scope derived from the two Statuses (one
+// of them is stale), and when the peer opens sessions faster than
+// PeerSessionBurst and PeerSessionInterval allow. A peer with a different Mapping gets its stream
 // reset. A violation of the protocol resets the stream, disconnects the peer
 // and is reported to the PeerScorer. A non-zero AuditRound is ignored in
 // Phase 1 (salted sessions are Phase 5): the session runs unsalted.
@@ -255,9 +255,6 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		return busy("peer session limit")
 	}
 	defer releaseSession()
-	if !s.sessionLimiter.Allow(peer.ByteString(), 1) {
-		return busy("peer session rate")
-	}
 	if !s.store.ReserveAddrIndexReady() {
 		return busy("address index not ready")
 	}
@@ -284,6 +281,12 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 	}
 	if err := scope.CheckMessage(open); err != nil {
 		return busy("opening outside the scope")
+	}
+	// Last of the Busy checks, so that no other Busy spends a token. The
+	// peer's Status is gone once it disconnected, so this rarely recreates
+	// the entry disconnected cleared.
+	if !s.sessionLimiter.Allow(peer.ByteString(), 1) {
+		return busy("peer session rate")
 	}
 
 	sess := NewResponder(s.sessionConfig(peer, scope, st, remote))

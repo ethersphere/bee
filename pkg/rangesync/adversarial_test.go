@@ -375,3 +375,39 @@ func TestReconcilePeerSessionRate(t *testing.T) {
 	}
 	assertNotScored(t, b, p.addr)
 }
+
+// TestReconcilePeerSessionRateAfterBusy checks that sessions answered Busy
+// for another reason (no Status of the peer) spend no session rate token.
+func TestReconcilePeerSessionRateAfterBusy(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t, stampedChunks(t, 30)...)
+	b.start(t)
+	p := newRawPeer(t, b)
+	session := func(i int, wantBusy bool) {
+		t.Helper()
+		s := p.open(t, rangesync.ReconcileStreamName)
+		if err := protobuf.NewWriter(s).WriteMsg(msg(fpPart(rangeOf(""), fingerprint.Summary{Count: 1, Digest: [32]byte{1}}))); err != nil {
+			t.Fatal(err)
+		}
+		var answer pb.Message
+		if err := protobuf.NewReader(s).ReadMsg(&answer); err != nil {
+			t.Fatal(err)
+		}
+		if answer.Busy != wantBusy {
+			t.Fatalf("session %d: busy %v, want %v", i, answer.Busy, wantBusy)
+		}
+		_ = s.FullClose()
+		_ = p.records(t, rangesync.ReconcileStreamName) // the handler returned
+	}
+	for i := range rangesync.PeerSessionBurst {
+		session(i, true) // no status yet
+	}
+	if err := p.sendStatus(t, statusWithRoot(rangeOf(""))); err != nil {
+		t.Fatal(err)
+	}
+	for i := range rangesync.PeerSessionBurst {
+		session(i, false)
+	}
+	assertNotScored(t, b, p.addr)
+}
