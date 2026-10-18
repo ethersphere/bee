@@ -152,7 +152,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T2.3 Index `Symbols` API + scan path over `ReserveIterateAddr`
 - [x] T2.4 Session: `Symbols` / `More` parts, capacity, estimate, exhaustion, corruption fallback
 - [x] T2.5 Symbol-stream limits (budget, scans per message, `More` validation)
-- [ ] T2.6 Benchmarks (`BucketSymbols` 16 vs 32), worked-example tests, symbol metrics
+- [x] T2.6 Benchmarks (`BucketSymbols` 16 vs 32), worked-example tests, symbol metrics
 - [ ] T2.7 (optional, before mainnet) Integer `Mapper`
 - [ ] T2.8 (deferred, before mainnet) Cross-architecture determinism vectors
 
