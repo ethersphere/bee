@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
@@ -257,8 +258,8 @@ func (t *transactionService) persistReplaceTx(signedTx *types.Transaction, rs *R
 }
 
 type retryNonceWatch struct {
-	doneC <-chan struct{}
-	errC  <-chan error
+	minedC <-chan struct{} // closed once the nonce is mined; nil until a watch exists
+	errC   <-chan error
 }
 
 // sendWithRetry runs the broadcast loop.
@@ -306,7 +307,7 @@ func (t *transactionService) retryLoop(
 			}
 
 			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonce, nonceWatch)
-			if err != nil && (isNonRetryable(err) || isNonceTooLow(err)) {
+			if err != nil && isNonRetryable(err) {
 				return common.Hash{}, nil, attempts, err
 			}
 
@@ -347,18 +348,18 @@ func (t *transactionService) finishRetry(rs *RetriedTransaction, attempt int, te
 		t.clearRetrySession(rs, txHash)
 	case errors.Is(terminateTxErr, ErrTransactionCancelled):
 		t.clearRetrySession(rs, common.Hash{})
-	case nonceWatch.doneC != nil:
+	case nonceWatch.minedC != nil:
 		t.waitForPendingRetry(rs, nonceWatch)
 	}
 	t.retryMetrics.RecordRetryComplete(attempt, terminateTxErr)
 }
 
 func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatch) {
-	if watch.doneC != nil {
+	if watch.minedC != nil {
 		return
 	}
-	doneC, errC := t.monitor.WatchNonce(nonce)
-	watch.doneC = doneC
+	minedC, errC := t.monitor.WatchNonce(nonce)
+	watch.minedC = minedC
 	watch.errC = errC
 }
 
@@ -368,20 +369,65 @@ func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatc
 //  2. The mempool has not learned that yet and accepts a replacement with hash B.
 //  3. The nonce watch learns that the nonce was mined.
 //  4. A lookup of only the latest hash returns no receipt, so the transaction would be marked cancelled even though it was executed.
-func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *RetriedTransaction) *types.Receipt {
+//
+// When no receipt is found, a lookup error other than ethereum.NotFound is returned: an
+// unavailable RPC must not be mistaken for a transaction that was never mined.
+func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *RetriedTransaction) (*types.Receipt, error) {
+	var lookupErr error
 	hashes := rs.allHashes()
 	for i := len(hashes) - 1; i >= 0; i-- {
-		if ctx.Err() != nil {
-			return nil
-		}
 		callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
-		receipt, _ := t.backend.TransactionReceipt(callCtx, hashes[i])
+		receipt, err := t.backend.TransactionReceipt(callCtx, hashes[i])
 		cancel()
 		if receipt != nil {
-			return receipt
+			return receipt, nil
+		}
+		if err == nil || errors.Is(err, ethereum.NotFound) {
+			continue
+		}
+		// check if the parent context ended, or only this one call timed out
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		lookupErr = fmt.Errorf("receipt %s: %w", hashes[i], err)
+	}
+	if lookupErr != nil {
+		return nil, lookupErr
+	}
+	return nil, ErrReceiptNotFound
+}
+
+// pollReceiptAfterNonceMined looks the session receipt up after its nonce was mined.
+// The RPC node that serves receipts can lag behind the one that reported the nonce, so the
+// session is cancelled only when no transaction of it has a receipt and the nonce was used
+// cancellationDepth blocks ago. RPC errors never cancel the session.
+func (t *transactionService) pollReceiptAfterNonceMined(ctx context.Context, rs *RetriedTransaction) (*types.Receipt, error) {
+	var minedAt uint64
+	for {
+		receipt, err := t.receiptForRetryHashes(ctx, rs)
+		if receipt != nil {
+			return receipt, nil
+		}
+		switch {
+		case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
+			return nil, err
+		case errors.Is(err, ErrReceiptNotFound):
+			if head, err := t.backend.BlockNumber(ctx); err == nil {
+				if minedAt == 0 {
+					minedAt = head
+				} else if head >= minedAt+t.cancellationDepth {
+					return nil, ErrTransactionCancelled
+				}
+			}
+		default:
+			t.logger.Debug("retried transaction: receipt lookup failed", "nonce", rs.Nonce, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(t.receiptPollInterval):
 		}
 	}
-	return nil
 }
 
 // attempt performs a single broadcast+wait cycle: broadcast, persist state, wait for receipt.
@@ -392,13 +438,13 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 	if broadCastErr != nil {
 		switch {
 		case isNonceTooLow(broadCastErr):
-			// Nonce was already used
-			if receipt := t.receiptForRetryHashes(ctx, rs); receipt != nil {
-				// Our transaction was mined between attempts, receipt found by one of known hashes.
+			// The node reports the nonce as already mined. Wait for the receipt now:
+			// a receipt that has not landed yet must not fail the call.
+			receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
+			if receipt != nil {
 				return nil, receipt, nil
 			}
-			// Another tx used same nonce and was mined.
-			return nil, nil, broadCastErr
+			return nil, nil, err
 		case isReplacementUnderpriced(broadCastErr):
 			// Bumped gas fee cap and gas tip cap wasn't enough to make mempool replace transaction
 			t.logger.Debug("retried transaction: replacement underpriced",
@@ -428,7 +474,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		}
 	}
 
-	if nonceWatch.doneC == nil {
+	if nonceWatch.minedC == nil {
 		// Rare case: no successful broadcast yet, nothing to monitor. Wait to avoid spamming attempts.
 		select {
 		case <-ctx.Done():
@@ -447,12 +493,13 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 	defer cancel()
 
 	select {
-	case <-nonceWatch.doneC:
-		if receipt := t.receiptForRetryHashes(waitCtx, rs); receipt != nil {
+	case <-nonceWatch.minedC:
+		// The retry delay no longer applies: a rebroadcast cannot replace a mined nonce.
+		receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
+		if receipt != nil {
 			return nil, receipt, nil
 		}
-		// Another tx used same nonce and was mined.
-		return signedTx, nil, ErrTransactionCancelled
+		return signedTx, nil, fmt.Errorf("wait for receipt: %w", err)
 	case err := <-nonceWatch.errC:
 		return signedTx, nil, fmt.Errorf("nonce watch: %w", err)
 	case <-waitCtx.Done():
@@ -465,15 +512,7 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWatch *retryNonceWatch) {
 	t.wg.Go(func() {
 		select {
-		case <-nonceWatch.doneC:
-			if receipt := t.receiptForRetryHashes(t.ctx, rs); receipt != nil {
-				t.logger.Info("pending retried transaction confirmed", "tx", receipt.TxHash, "nonce", rs.Nonce)
-				t.clearRetrySession(rs, receipt.TxHash)
-			} else {
-				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
-				t.clearRetrySession(rs, common.Hash{})
-			}
-
+		case <-nonceWatch.minedC:
 		case err := <-nonceWatch.errC:
 			if errors.Is(err, ErrTransactionCancelled) {
 				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
@@ -481,7 +520,20 @@ func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWa
 			} else if !errors.Is(err, ErrMonitorClosed) {
 				t.logger.Error(err, "waiting for pending retried transaction failed", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 			}
+			return
 		case <-t.ctx.Done():
+			return
+		}
+
+		receipt, err := t.pollReceiptAfterNonceMined(t.ctx, rs)
+		switch {
+		case receipt != nil:
+			t.logger.Info("pending retried transaction confirmed", "tx", receipt.TxHash, "nonce", rs.Nonce)
+			t.clearRetrySession(rs, receipt.TxHash)
+		case errors.Is(err, ErrTransactionCancelled):
+			// any other error means the node is stopping; the session is resumed after restart.
+			t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
+			t.clearRetrySession(rs, common.Hash{})
 		}
 	})
 }
@@ -597,11 +649,9 @@ func (t *transactionService) resumeRetryTransactions() error {
 	for nonce, rs := range entries {
 		if confirmed > nonce {
 			t.logger.Debug("resume retried transaction: skipping already confirmed transaction", "nonce", nonce)
-			if receipt := t.receiptForRetryHashes(t.ctx, &rs); receipt != nil {
-				t.clearRetrySession(&rs, receipt.TxHash)
-			} else {
-				t.clearRetrySession(&rs, common.Hash{})
-			}
+			minedC := make(chan struct{})
+			close(minedC)
+			t.waitForPendingRetry(&rs, &retryNonceWatch{minedC: minedC})
 			continue
 		}
 

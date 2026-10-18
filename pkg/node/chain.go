@@ -122,6 +122,9 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
+	retryCfg.CancellationDepth = cancellationDepth
+	retryCfg.ReceiptPollInterval = 3 * pollingInterval
+
 	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor, fallbackGasLimit, retryCfg)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction service: %w", err)

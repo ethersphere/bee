@@ -60,8 +60,8 @@ type transactionWatch struct {
 }
 
 type nonceWatch struct {
-	doneC chan struct{}
-	errC  chan error
+	minedC chan struct{}
+	errC   chan error
 }
 
 func NewMonitor(logger log.Logger, backend Backend, sender common.Address, pollingInterval time.Duration, cancellationDepth uint64) Monitor {
@@ -122,17 +122,17 @@ func (tm *transactionMonitor) WatchNonce(nonce uint64) (<-chan struct{}, <-chan 
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
-	doneC := make(chan struct{}, 1)
+	minedC := make(chan struct{})
 	errC := make(chan error, 1)
 	tm.nonceWatches[nonce] = append(tm.nonceWatches[nonce], nonceWatch{
-		doneC: doneC,
-		errC:  errC,
+		minedC: minedC,
+		errC:   errC,
 	})
 
 	tm.triggerWatchAdded()
 
 	loggerV1.Debug("starting to watch nonce", "nonce", nonce)
-	return doneC, errC
+	return minedC, errC
 }
 
 func (tm *transactionMonitor) triggerWatchAdded() {
@@ -331,10 +331,7 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 				continue
 			}
 			for _, watch := range watches {
-				select {
-				case watch.doneC <- struct{}{}:
-				default:
-				}
+				close(watch.minedC)
 			}
 			delete(tm.nonceWatches, nonce)
 		}
