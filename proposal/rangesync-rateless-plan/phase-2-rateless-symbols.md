@@ -620,3 +620,4 @@ _(sessions append here)_
   prunes idle keys. The `Allow` now runs after the "no status of the peer" Busy (the Status is
   deleted on disconnect), so only a handler racing `disconnected` between that check and `Allow`
   recreates an entry (one small entry per such race). Revisit with a pruning limiter if needed.
+- **(T2.5 verify) Flaky `TestIndexSubscribeRootChange/debounced`** (fingerprint, T1.6): failed once with "unexpected signal" under `-count=3 -cpu=1,2,4`, then passed 30 reruns. Timing-sensitive; untouched by T2.5. Fix the wait when next in that package.
