@@ -102,3 +102,24 @@ func (s *Service) SessionRounds() (count uint64, sum float64) {
 func (s *Service) PairwiseDiff() (count uint64, sum float64) {
 	return histogramValue(s.metrics.PairwiseDiff)
 }
+
+// MoreRequests returns the value of the more_requests_total metric.
+func (s *Service) MoreRequests() float64 { return counterValue(s.metrics.MoreRequests) }
+
+// StreamsExhausted returns the streams_exhausted_total counter of level.
+func (s *Service) StreamsExhausted(level string) float64 {
+	return counterValue(s.metrics.StreamsExhausted.WithLabelValues(level))
+}
+
+// SymbolsPerDifference returns the sample count and sum of
+// symbols_per_difference.
+func (s *Service) SymbolsPerDifference() (count uint64, sum float64) {
+	return histogramValue(s.metrics.SymbolsPerDifference)
+}
+
+const (
+	LevelRoot   = levelRoot
+	LevelLevel1 = levelLevel1
+	LevelBucket = levelBucket
+	LevelDeep   = levelDeep
+)

@@ -196,12 +196,13 @@ func TestSessionSymbolsExhausted(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name     string
-		open     fingerprint.Range
-		wantNext string // the initiator's answer to the exhausted stream
+		name      string
+		open      fingerprint.Range
+		wantNext  string // the initiator's answer to the exhausted stream
+		wantLevel int    // the level of the exhausted stream
 	}{
-		{"above the leaf depth: split", rangeOf(""), "A:fp"},
-		{"at the leaf depth: items", rangeOf("011011001100"), "A:items-reply"},
+		{"above the leaf depth: split", rangeOf(""), "A:fp", rangesync.LevelRoot},
+		{"at the leaf depth: items", rangeOf("011011001100"), "A:items-reply", rangesync.LevelBucket},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -216,6 +217,9 @@ func TestSessionSymbolsExhausted(t *testing.T) {
 			assertSet(t, wantsB, b2a)
 			if a.Stats().Exhausted == 0 {
 				t.Fatalf("no exhausted stream: %+v", a.Stats())
+			}
+			if st := a.Stats(); st.ExhaustedByLevel[tc.wantLevel] == 0 {
+				t.Fatalf("no exhausted stream at level %d: %+v", tc.wantLevel, st)
 			}
 			if len(kinds.msgs) < 3 || !slices.Equal(kinds.msgs[1], []string{"B:symbols"}) || !slices.Contains(kinds.msgs[2], tc.wantNext) {
 				t.Fatalf("messages %v, want Symbols answered with %s", kinds.msgs[:min(3, len(kinds.msgs))], tc.wantNext)
@@ -325,6 +329,62 @@ func TestSessionSymbolsSnapshot(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSessionSymbolsChurnBeforeFirstEmit changes the responder's elements
+// between decide (its Summary and the stream's snapshot of symbol 0) and the
+// first window of a scan-path stream, both in the Handle of the opening. The
+// first batch must not mix the two sets: the window differs from the
+// snapshot, so the stream ends Exhausted after the snapshot, the initiator
+// exchanges the range's items, and the session converges with no corrupt
+// decode.
+func TestSessionSymbolsChurnBeforeFirstEmit(t *testing.T) {
+	t.Parallel()
+
+	rng := newRand(17)
+	r := rangeOf("0110110011") // 2 bits below the leaf depth: no cached prefix
+	scope := rangesync.Scope{Root: rangeOf(""), LeafDepth: 8}
+	la, lb, a2b, b2a := convergenceSets(rng, r, scope, 500, 20, 20, false)
+	a, b, first := symbolsPair(t, status(rangeOf(""), 8), la, lb, r)
+	added := randID(rng, r)
+	lb.beforeSymbols = func(call int) {
+		if call == 2 { // the first window, after the snapshot of symbol 0
+			lb.ids = append(lb.ids, added)
+			slices.SortFunc(lb.ids, fingerprint.ID.Compare)
+		}
+	}
+	var firstBatch *rangesync.Symbols
+	inspect := func(fromInitiator bool, m *pb.Message) {
+		for _, p := range m.GetParts() {
+			if p.GetSymbols() == nil || firstBatch != nil {
+				continue
+			}
+			sy, err := rangesync.ParseSymbols(p.GetSymbols())
+			if err != nil {
+				t.Fatal(err)
+			}
+			firstBatch = &sy
+		}
+	}
+	wantsA, wantsB, _ := drive(t, a, first, b, inspect)
+	if firstBatch == nil {
+		t.Fatal("no symbol stream")
+	}
+	syms, err := fingerprint.ParseSymbolData(fingerprint.NewFloatMapper(), firstBatch.Count, firstBatch.Start, firstBatch.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !firstBatch.Exhausted || len(syms) != 1 {
+		t.Fatalf("first batch of %d symbols, exhausted %v; want the 1-symbol snapshot, exhausted", len(syms), firstBatch.Exhausted)
+	}
+	if c := a.Stats().DecodeCorruptions + b.Stats().DecodeCorruptions; c != 0 {
+		t.Fatalf("%d corrupt decodes", c)
+	}
+	if st := a.Stats(); st.ExhaustedByLevel[rangesync.LevelDeep] != 1 {
+		t.Fatalf("stats %+v, want one exhausted deep stream", st)
+	}
+	assertSet(t, wantsA, append(slices.Clone(a2b), added))
+	assertSet(t, wantsB, b2a)
 }
 
 // TestSessionSymbolsHints checks that a decoded difference is recorded and

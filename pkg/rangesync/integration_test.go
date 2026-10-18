@@ -270,6 +270,10 @@ func assertSessionMetrics(t *testing.T, a, b *testNode, sent, received []*pb.Mes
 					c["fingerprint"]++
 				case p.GetItems() != nil:
 					c["items"]++
+				case p.GetMore() != nil:
+					c["more"]++
+				case p.GetSymbols() != nil:
+					c["symbols"]++
 				}
 			}
 		}
@@ -286,6 +290,17 @@ func assertSessionMetrics(t *testing.T, a, b *testNode, sent, received []*pb.Mes
 		if got := b.svc.Parts(false, typ); got != cs[typ] {
 			t.Errorf("b parts_received{%s}: %v, want %v", typ, got, cs[typ])
 		}
+	}
+	if got := a.svc.MoreRequests(); got != cs["more"] {
+		t.Errorf("a more_requests_total: %v, want %v", got, cs["more"])
+	}
+	if got := b.svc.MoreRequests(); got != cr["more"] {
+		t.Errorf("b more_requests_total: %v, want %v", got, cr["more"])
+	}
+	// one observation per stream of b decoded by a with a difference, at
+	// least one symbol per difference
+	if n, sum := a.svc.SymbolsPerDifference(); n > uint64(cr["symbols"]) || sum < float64(n) || cr["symbols"] > 0 && wantsA > 0 && n == 0 {
+		t.Errorf("a symbols_per_difference: %d observations, sum %v, %v symbol parts received", n, sum, cr["symbols"])
 	}
 	if n, sum := a.svc.SessionRounds(); n != 1 || int(sum) != len(received) {
 		t.Errorf("a session_rounds: %d sessions, sum %v, want 1, %d", n, sum, len(received))

@@ -39,6 +39,10 @@ type fakeLocal struct {
 	extra []fingerprint.ID
 	// symbolCalls counts the Symbols calls.
 	symbolCalls int
+	// beforeSymbols, if set, is called with the number of the call (from 1)
+	// at the start of every Symbols call, before the elements are read; it
+	// may change ids.
+	beforeSymbols func(call int)
 	// err, if set, is returned by every method.
 	err error
 
@@ -117,6 +121,9 @@ func (l *fakeLocal) Symbols(r fingerprint.Range, start, end uint64) ([]fingerpri
 		return nil, false, fingerprint.ErrInvalidBatch
 	}
 	l.symbolCalls++
+	if l.beforeSymbols != nil {
+		l.beforeSymbols(l.symbolCalls)
+	}
 	in := l.in(r)
 	exhausted := l.exhausted
 	limit := uint64(rangesync.CapUnlimited)

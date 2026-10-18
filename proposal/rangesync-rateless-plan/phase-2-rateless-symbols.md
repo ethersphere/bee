@@ -525,6 +525,50 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     with equal first-32 index sets, bucket cache 32 → exhausted → split → children decode),
     `TestReconcilePeerSessionRate`, `TestReconcilePeerSessionRateAfterBusy`. Violations are session-level; the reset + score path is T1.9's,
     shared by every `ErrInvalidMessage`.
+- **T2.6 (2026-10-18): measurements (this 4-core host, `-benchtime` as stated); no protocol
+  constant changed — G6 decides.** Benchmarks in `fingerprint/symbols_bench_test.go`,
+  worked examples in `rangesync/worked_examples_test.go`.
+  - *Decoder threshold* (symbols until `Done`, FloatMapper, 200 draws; p50/p90/p99): d=3 5/8/14,
+    d=10 16/24/35, d=25 39/49/68, d=45 68/79/103, d=100 144/160/179, d=250 353/378/396,
+    d=1000 1373/1418/1439. The ratio is ~1.5 at d ≈ 25–45 and falls to 1.37 at d=1000; the
+    proposal's "~62 symbols for 45" (1.38) is optimistic for small d.
+  - *`BucketSymbols` 16 vs 32 (open question 2), B = 4096:* bucket tree 5.5 MiB vs 11 MiB; element
+    update 6.1 vs 6.7 µs (dominated by `Encode`); worst bucket-run read (23 nodes) 2.8 vs 5.5 µs.
+    Fraction of bucket-run streams decoding within 16 / 32 symbols (2000 draws): d=4 0.99/1.00,
+    d=8 0.80/0.99, d=11 0.34/0.98, d=16 0.00/0.87, d=20 0/0.59, d=24 0/0.14. So 16 loses
+    one descent already at d ≈ 8–11 (the §5.3 "~11" is the median, not a safe bound).
+    **Recommendation: keep 32** — 5.5 MiB is the only gain, and below the root/level-1 caches
+    bucket streams only serve ranges the split rule already picked for large local differences.
+  - *Root 4096 / level-1 512:* unchanged; the worked examples and §7.3 (16 × 402 symbols,
+    4 Messages, 527 KB) behave as specified. Final sizing waits on `pairwise_diff` (G6).
+  - *`Index.Apply` (open question 1 follow-through):* populated index (2^18 elements, LeafBits 12)
+    8.3 µs per put, 15.9 µs per put + eviction: ≈ 60–120k puts/s per core, one to two orders above
+    the reserve's put rate; not a bottleneck.
+  - *`Rebuild`:* 2^20 elements 6.6 s (6.3 µs/element, 20 MiB index); **4.2M: 26.5 s** (6.3 µs/element, one allocation per element from `Mapper.Indices`, in-memory IDs: no storer iteration), still over the T2.2 follow-up target of 20 s.
+    `index_memory_bytes` already counts the three T2.2 symbol caches (`slabBytes`), as T6.0 asks.
+  - *Worked examples (§7.10, §7.2, §7.3):* counted as Messages with parts (the closing empty
+    Message excluded, as the proposal does). Example 1: 3 Messages, 453 B (stated ≈ 0.5 KB) ✓.
+    §7.3: 4 Messages, 527 KB ✓. **Deviations, reported not loosened:** (a) Example 2: 68 symbols
+    decode 45 differences in only ~50% of draws (6/10 seeds; 50/100 in a sweep); otherwise one
+    More to 272 → 5 Messages, 22.5 KB. (b) Example 3: 7 Messages (3 + 2 More/Symbols round
+    trips; the proposal's own diagram has 7), not 5; bytes 6.1 KB ✓. (c) §7.2: counts N+1 vs N+2
+    give d̂ = 1, not 3 (proposal arithmetic error), so n0 = 4: 453 B in ~55%, else one More
+    (5 Messages, 1.4 KB); the stated 0.7 KB assumes n0 = 7.
+  - *Low estimates (T2.4 follow-up) and open question 3:* sweep of 100 draws per example.
+    GrowthFactor 2/3/4: Example 2 fail path 11.3/16.8/22.3 KB; Example 3 11/9/7 Messages at
+    ≈ 6.2/≈ 3.9–9.7/6.1 KB. A larger factor saves round trips on hidden differences and costs
+    overshoot on near misses; 4 stays. **The better lever is `BatchFactor`:** 2.0 instead of 1.6
+    makes Example 2 decode in the first batch in 96% of draws (7.0 KB vs a 14 KB mean), with
+    Examples 1/3/§7.2 unchanged. Recommend G6 consider `BatchFactor` 2.0 (a constant, not
+    wire). A responder-side hint (size of the peer's Items answer) only helps sessions after the
+    first; it does not change the d̂ = 1 cases above (the initiator's hint already covers the
+    repeat case), so not added. Streamed batches (Q3): a stop-driven stream overshoots by one
+    RTT at line rate (≈ 1,200 symbols ≈ 100 KB at 1 MB/s and 100 ms) against the ≤ 2 extra
+    round trips measured here; **keep request-driven `More`** (wire frozen at G2 regardless).
+  - *Metrics:* `symbols_per_difference` (histogram, symbols received incl. overshoot ÷ recovered,
+    once per decoded stream with ≥ 1 difference, T6.0 definition), `more_requests_total`
+    (More parts sent), `streams_exhausted_total{level=root|level1|bucket|deep}`; reuse
+    `decode_corruption_total`. Fed from `SessionStats` at session end.
 
 ## Follow-ups
 _(sessions append here)_
@@ -613,7 +657,8 @@ _(sessions append here)_
   handshake. Revisit if Status/session spam is observed (T4.x).
 - **(T2.5) Churn-before-first-emit test still missing.** `decide` and the first emit run in the same
   `Handle` call, so it needs a `Local` hook that mutates between `Summary` and `Symbols`; not cheap
-  enough for T2.5. Carry to T2.6.
+  enough for T2.5. Carry to T2.6. *Done in T2.6:* `TestSessionSymbolsChurnBeforeFirstEmit` (a
+  `fakeLocal.beforeSymbols` hook); it fails with the symbol-0 snapshot of b72b11cf reverted.
 - **(T2.5 review) Decide-time scans are now under `MaxScansPerMessage`** (stream starts counted,
   excess ranges take the Fingerprint/items path); the earlier follow-up is resolved.
 - **(T2.5 review, Low) Session limiter entry can outlive a disconnect.** `ratelimit.Limiter` never
@@ -621,3 +666,13 @@ _(sessions append here)_
   deleted on disconnect), so only a handler racing `disconnected` between that check and `Allow`
   recreates an entry (one small entry per such race). Revisit with a pruning limiter if needed.
 - **(T2.5 verify) Flaky `TestIndexSubscribeRootChange/debounced`** (fingerprint, T1.6): failed once with "unexpected signal" under `-count=3 -cpu=1,2,4`, then passed 30 reruns. Timing-sensitive; untouched by T2.5. Fix the wait when next in that package.
+- **(T2.6) Rebuild at 4.2M is 26.5 s on this host, over the 20 s target (T2.2 follow-up, still
+  open).** Single-threaded, in-memory IDs; with the storer iterator it will be slower. Due with the
+  by-bucket parallel build before T4.3 / phase-4 exit.
+- **(T2.6) `BatchFactor` 2.0 for G6.** Measured in the Decisions log: at d ≈ 45 the first batch
+  decodes ~50% of the time with 1.6 and ~96% with 2.0. A constant change (not wire); G6 decides with
+  `pairwise_diff` data.
+- **(T2.6) Proposal text corrections.** §7.2 states d̂ = 3 for counts N+1/N+2 (it is 1, so n0 = 4
+  and ~0.46 KB); Example 3 has 7 Messages with parts, not the plan's 5; Example 2's "~62 symbols on
+  average" is ~68 (median) with FloatMapper. The literal tests assert the implementation's outcomes
+  next to the proposal's.

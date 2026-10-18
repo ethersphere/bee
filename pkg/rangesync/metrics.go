@@ -42,6 +42,15 @@ type metrics struct {
 	// DecodeCorruption counts the peer's symbol streams the decoder found
 	// corrupt; their ranges fall back to an exact item exchange.
 	DecodeCorruption prometheus.Counter
+	// SymbolsPerDifference observes, per decoded symbol stream with at
+	// least one difference, the symbols received (overshoot included) per
+	// difference recovered.
+	SymbolsPerDifference prometheus.Histogram
+	// MoreRequests counts the More parts sent.
+	MoreRequests prometheus.Counter
+	// StreamsExhausted counts the peer's symbol streams that could not grow
+	// before they decoded, by level of the range.
+	StreamsExhausted *prometheus.CounterVec
 	// PartsSent and PartsReceived count the parts of reconcile Messages, by
 	// type.
 	PartsSent     *prometheus.CounterVec
@@ -137,6 +146,25 @@ func newMetrics() metrics {
 			Name:      "decode_corruption_total",
 			Help:      "Symbol streams of peers that decoded corrupt and fell back to an item exchange.",
 		}),
+		SymbolsPerDifference: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "symbols_per_difference",
+			Help:      "Coded symbols received per difference recovered, per decoded symbol stream with at least one difference.",
+			Buckets:   prometheus.LinearBuckets(1, 0.25, 17),
+		}),
+		MoreRequests: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "more_requests_total",
+			Help:      "More requests sent for the peer's symbol streams.",
+		}),
+		StreamsExhausted: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "streams_exhausted_total",
+			Help:      "Symbol streams of peers that ended before they decoded, by level of the range.",
+		}, []string{"level"}),
 		PartsSent: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -215,6 +243,15 @@ func (mt metrics) reconcileMessage(dir string, msg *pb.Message) {
 // sessionStats counts the symbol-stream outcomes of a session.
 func (mt metrics) sessionStats(st SessionStats) {
 	mt.DecodeCorruption.Add(float64(st.DecodeCorruptions))
+	mt.MoreRequests.Add(float64(st.MoreRequests))
+	for l, n := range st.ExhaustedByLevel {
+		if n > 0 {
+			mt.StreamsExhausted.WithLabelValues(levelNames[l]).Add(float64(n))
+		}
+	}
+	for _, v := range st.SymbolsPerDifference {
+		mt.SymbolsPerDifference.Observe(v)
+	}
 }
 
 // sessionDone observes a completed session: the Messages handled and the

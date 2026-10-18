@@ -210,12 +210,13 @@ type more struct {
 
 func (*more) pending() bool { return true }
 
-func (t *more) emit(_ *Session, b *builder) (bool, error) {
+func (t *more) emit(s *Session, b *builder) (bool, error) {
 	if !b.fits(1, moreWireBytes) {
 		return false, nil
 	}
 	b.add(&pb.Part{Kind: &pb.Part_More{More: EncodeMore(t.mo)}})
 	t.dc.upTo = t.mo.UpTo
+	s.stats.MoreRequests++
 	return true, nil
 }
 
@@ -385,6 +386,9 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 			s.cfg.Hints.SetHint(r, uint64(dc.dec.Recovered()))
 		}
 		s.stats.Decoded++
+		if rec := dc.dec.Recovered(); rec > 0 {
+			s.stats.SymbolsPerDifference = append(s.stats.SymbolsPerDifference, float64(dc.dec.Received())/float64(rec))
+		}
 		s.tasks = append(s.tasks, &idListing{r: r, ids: onlyLocal})
 		return onlyRemote, nil
 	}
@@ -395,6 +399,7 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 		// leaf depth. The received symbols are discarded.
 		delete(s.decoding, key)
 		s.stats.Exhausted++
+		s.stats.ExhaustedByLevel[s.streamLevel(r)]++
 		if s.splittable(r) {
 			s.tasks = append(s.tasks, &split{r: r})
 		} else {
@@ -411,6 +416,34 @@ func (s *Session) splittable(r fingerprint.Range) bool {
 	return int(r.Bits)+fingerprint.FanoutBits <= int(s.cfg.Scope.LeafDepth)
 }
 
+// Stream levels of a range, the label of streams_exhausted_total: the root,
+// a level-1 range, a range at most LeafBits below the root (a bucket cache)
+// and any deeper range (the scan path only).
+const (
+	levelRoot = iota
+	levelLevel1
+	levelBucket
+	levelDeep
+	numLevels
+)
+
+// levelNames are the label values of the stream levels.
+var levelNames = [numLevels]string{"root", "level1", "bucket", "deep"}
+
+// streamLevel returns the stream level of r below this side's root.
+func (s *Session) streamLevel(r fingerprint.Range) int {
+	switch depth := int(r.Bits) - int(s.cfg.Status.Root.Bits); {
+	case depth <= 0:
+		return levelRoot
+	case depth == fingerprint.FanoutBits:
+		return levelLevel1
+	case depth <= int(s.cfg.Status.LeafBits):
+		return levelBucket
+	default:
+		return levelDeep
+	}
+}
+
 // SessionStats counts the symbol-stream outcomes of a session.
 type SessionStats struct {
 	// Decoded counts the peer's symbol streams decoded completely.
@@ -418,6 +451,15 @@ type SessionStats struct {
 	// Exhausted counts the peer's symbol streams that could not grow before
 	// they decoded (the range is split or its items exchanged).
 	Exhausted int
+	// ExhaustedByLevel splits Exhausted by the stream level of the range
+	// (root, level-1, bucket, deep).
+	ExhaustedByLevel [numLevels]int
+	// MoreRequests counts the More parts this side sent.
+	MoreRequests int
+	// SymbolsPerDifference holds, for each of the peer's streams decoded
+	// with at least one difference, the symbols received for it (overshoot
+	// included) divided by the differences recovered.
+	SymbolsPerDifference []float64
 	// DecodeCorruptions counts the peer's symbol streams the decoder found
 	// corrupt (proposal §6.4, §9); their ranges fall back to an item exchange.
 	DecodeCorruptions int
