@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -341,6 +342,10 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
+		if err == nil {
+			// the chunk was not sent, so it must not count as delivered
+			err = fmt.Errorf("pusher: batch %s: %w", hex.EncodeToString(op.Chunk.Stamp().BatchID()), postage.ErrNotFound)
+		}
 		return err
 	}
 

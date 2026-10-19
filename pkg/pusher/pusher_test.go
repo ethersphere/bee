@@ -907,3 +907,34 @@ func TestDirectOutOfDepthResetsAttempts(t *testing.T) {
 		t.Fatalf("round 2, last push: got %v, want %v", err, pusher.ErrCouldNotSync)
 	}
 }
+
+// TestDirectBatchGone tests that a direct chunk whose batch no longer exists
+// fails instead of counting as delivered.
+func TestDirectBatchGone(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		calls.Add(1)
+		return &pushsync.Receipt{Address: chunk.Address()}, nil
+	})
+	bmock := batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
+		return false, nil
+	}))
+
+	storer := &mockStorer{chunks: make(chan swarm.Chunk)}
+	pusherSvc := createPusher(t, storer, pushSyncService, bmock, defaultRetryCount)
+
+	newFeed := make(chan *pusher.Op)
+	pusherSvc.AddFeed(newFeed)
+
+	errC := make(chan error, 1)
+	newFeed <- &pusher.Op{Chunk: testingc.GenerateTestRandomChunk(), Err: errC, Direct: true}
+
+	if err := <-errC; !errors.Is(err, postage.ErrNotFound) {
+		t.Fatalf("got %v, want %v", err, postage.ErrNotFound)
+	}
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("got %d pushes, want 0", got)
+	}
+}
