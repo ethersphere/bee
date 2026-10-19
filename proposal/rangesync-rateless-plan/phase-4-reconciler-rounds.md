@@ -174,6 +174,35 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   pruned otherwise.
 - **(T4.1) The flaky `TestIndexSubscribeRootChange/debounced` is left as is.** T4.1 does not touch
   `pkg/rangesync/fingerprint` and does not rely on the debounce for correctness (see above).
+- **(T4.1 fix) A dropped Status is now reported to the sender.** `SendStatus` and the new
+  `SendStatusWith` return the `FullClose` error. libp2p's `FullClose` returns nil on EOF and an
+  error when the peer reset the stream, so a Status the peer dropped over its rate counts as
+  failed and is retried after `StatusMinInterval`. The earlier entry's "the sender retries" is true
+  from here on. `streamtest`'s `FullClose` does not see resets, so `TestSendStatusPeerReset` wraps
+  the streamer.
+- **(T4.1 fix) The heartbeat goes to every `rangesync` peer, every `StatusMaxInterval`.** This
+  replaces the earlier "heartbeats to eligible neighbors only"; summary-change pushes stay
+  eligible-only. Without it, a Status an ineligible peer lost (quick reconnect) never healed:
+  `exchanged` held the start-up guard until `StartupGuardTimeout`, and the other side resent every
+  round. The alternative, dropping a peer from `exchanged` after N resends, hides the loss instead
+  of healing it. The cost is what the old full rounds cost: one ~100 B Status per peer per 60 s.
+- **(T4.1 fix) Statuses are sent exactly as picked, from ordered snapshots.** `*rangesync.Service`
+  gains `SendStatusWith(ctx, peer, st)`; `SendStatus` is `LocalStatus` plus `SendStatusWith`. The
+  narrow `reconciler.Service` replaces `SendStatus` with `SendStatusWith`; only the test fake
+  implemented it. Rounds and gossip passes take `LocalStatus` and pick under a new `pickMu`, so no
+  pick records an older snapshot than an earlier one. `pickMu` is taken before `r.mu` and never
+  inside it, because `LocalStatus` can wait on Index locks and must not hold up `r.mu` (which
+  `SyncRate` takes).
+- **(T4.1 fix) Sender-side rate cap.** Per peer, a GCRA allows `statusBurst = PeerStatusBurst − 1
+  = 3` Statuses back to back, then one per `PeerStatusInterval`. A first contact or a moved root
+  waits only when three went out just before (for example, several radius changes within
+  seconds). The one-token margin absorbs arrival jitter of up to `PeerStatusInterval`. So an honest
+  sender never trips the receiver's limit, whatever the radius does.
+- **(T4.1 fix) A failed send no longer clears `sent`.** `sent` now means "a Status of ours reached
+  the peer since its entry was added" and is never cleared. A separate `failed` flag schedules the
+  retry. So a failed heartbeat or push no longer skips the peer's sessions or disarms the guard. A
+  send's outcome is recorded only in the `*peerState` it was picked with, so a peer that left and
+  came back mid-send keeps its new entry's state.
 
 ## Follow-ups
 _(sessions append here)_
@@ -208,3 +237,13 @@ _(sessions append here)_
 - **(T4.1) `TestIndexSubscribeRootChange` data race (fingerprint).** Its parallel subtests
   ("immediate" and "debounced") share one `*rand.Rand`. Give each subtest its own when the flaky
   debounced wait gets fixed (phase-2 follow-up).
+- **(T4.1 fix) More tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead.
+  - `pkg/rangesync/reconciler`: `TestRoundOwnsFirstContact` and `TestStatusGossipSnapshotsInOrder`
+    are probabilistic stress tests: with the first-contact race or the snapshot ordering
+    reintroduced, they failed in 3 of 3 and in most runs. Also `TestStatusResultStaysWithItsEntry`,
+    `TestFailedSendKeepsSessions`, `TestStatusGossipWithinPeerRate`.
+  - `pkg/rangesync`: `TestSendStatusPeerReset`, `TestSendStatusWith`.
+- **(T4.1 fix) The sender-side rate can also defer a moved root.** After three quick Statuses, the
+  round that sees a radius change does not send at once, and its sessions meet the same benign
+  refusal as in the moved-root race above. The same T4.3 remedy applies.
