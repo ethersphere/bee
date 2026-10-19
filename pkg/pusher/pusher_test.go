@@ -383,13 +383,15 @@ func TestShallowReceiptExhausted(t *testing.T) {
 				calls.Add(1)
 				return &pushsync.Receipt{Address: chunk.Address()}, pushsync.ErrShallowReceipt
 			})
-			storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
+			svc, storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
 
 			offer(storer, chunk)
 			if got := int(calls.Load()); got != defaultRetryCount {
 				t.Fatalf("round 1: got %d push attempts, want %d", got, defaultRetryCount)
 			}
 			expectNoReport(t, storer)
+			// every shallow receipt but the last is an error; parking is not
+			expectCounters(t, svc, 1, 0, float64(defaultRetryCount-1))
 
 			// offered again while parked: skipped
 			offer(storer, chunk)
@@ -403,6 +405,8 @@ func TestShallowReceiptExhausted(t *testing.T) {
 				t.Fatalf("round 2: got %d push attempts, want %d", got, 2*defaultRetryCount)
 			}
 			expectReport(t, storer, storage.ChunkCouldNotSync)
+			// giving up is
+			expectCounters(t, svc, 1, 1, float64(2*(defaultRetryCount-1)+1))
 		})
 	})
 
@@ -456,7 +460,7 @@ func TestOutOfDepthStoring(t *testing.T) {
 				calls.Add(1)
 				return nil, pushsync.ErrOutOfDepthStoring
 			})
-			storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
+			svc, storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
 
 			// the queue offers the chunk again and again while it is pending
 			for range 3 {
@@ -466,6 +470,7 @@ func TestOutOfDepthStoring(t *testing.T) {
 				t.Fatalf("got %d push attempts before the park delay, want 1", got)
 			}
 			expectNoReport(t, storer)
+			expectCounters(t, svc, 1, 0, 0)
 
 			time.Sleep(pusher.ParkDelay)
 			offer(storer, chunk)
@@ -473,6 +478,7 @@ func TestOutOfDepthStoring(t *testing.T) {
 				t.Fatalf("got %d push attempts after the park delay, want 2", got)
 			}
 			expectReport(t, storer, storage.ChunkCouldNotSync)
+			expectCounters(t, svc, 1, 1, 1)
 		})
 	})
 
@@ -960,17 +966,37 @@ func TestDirectBatchGone(t *testing.T) {
 
 // newParkingPusher starts a pusher over a storer whose push queue the test
 // drives with offer. It must be called inside a synctest bubble.
-func newParkingPusher(t *testing.T, pushSyncService pushsync.PushSyncer, batchExist postage.BatchExist) (*reportingStorer, swarm.Chunk) {
+func newParkingPusher(t *testing.T, pushSyncService pushsync.PushSyncer, batchExist postage.BatchExist) (*pusher.Service, *reportingStorer, swarm.Chunk) {
 	t.Helper()
 
 	storer := &reportingStorer{
 		mockStorer: &mockStorer{chunks: make(chan swarm.Chunk)},
 		reported:   make(chan storage.ChunkState, 8),
 	}
+	return newParkingPusherWith(t, storer, pushSyncService, batchExist), storer, testingc.GenerateTestRandomChunk()
+}
+
+func newParkingPusherWith(t *testing.T, storer pusher.Storer, pushSyncService pushsync.PushSyncer, batchExist postage.BatchExist) *pusher.Service {
+	t.Helper()
+
 	pusherSvc := pusher.New(1, storer, pushSyncService, batchExist, log.Noop, stabilmock.NewSubscriber(true), defaultRetryCount)
 	t.Cleanup(func() { _ = pusherSvc.Close() })
+	return pusherSvc
+}
 
-	return storer, testingc.GenerateTestRandomChunk()
+// expectCounters checks the pusher counters that tell a parked chunk from a
+// lost one.
+func expectCounters(t *testing.T, svc *pusher.Service, parked, couldNotSync, errs float64) {
+	t.Helper()
+	if got := svc.TotalParked(); got != parked {
+		t.Fatalf("total_parked: got %v, want %v", got, parked)
+	}
+	if got := svc.TotalCouldNotSync(); got != couldNotSync {
+		t.Fatalf("total_could_not_sync: got %v, want %v", got, couldNotSync)
+	}
+	if got := svc.TotalErrors(); got != errs {
+		t.Fatalf("total_errors: got %v, want %v", got, errs)
+	}
 }
 
 // offer hands the chunk to the pusher as the upload store iteration does and
@@ -1014,7 +1040,7 @@ func TestParkedChunkSynced(t *testing.T) {
 			}
 			return nil, pushsync.ErrOutOfDepthStoring
 		})
-		storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
+		_, storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
 
 		offer(storer, chunk)
 		expectNoReport(t, storer)
@@ -1042,7 +1068,7 @@ func TestParkedChunkBatchGone(t *testing.T) {
 		batchExist := batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
 			return !batchGone.Load(), nil
 		}))
-		storer, chunk := newParkingPusher(t, pushSyncService, batchExist)
+		_, storer, chunk := newParkingPusher(t, pushSyncService, batchExist)
 
 		offer(storer, chunk)
 		expectNoReport(t, storer)
@@ -1072,7 +1098,7 @@ func TestDeferredOutOfDepthResetsAttempts(t *testing.T) {
 			}
 			return &pushsync.Receipt{Address: chunk.Address()}, pushsync.ErrShallowReceipt
 		})
-		storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
+		_, storer, chunk := newParkingPusher(t, pushSyncService, defaultMockBatchStore)
 
 		offer(storer, chunk)
 		if got := calls.Load(); got != 2 {
@@ -1086,5 +1112,48 @@ func TestDeferredOutOfDepthResetsAttempts(t *testing.T) {
 			t.Fatalf("round 2: got %d push attempts in total, want %d", got, 2+defaultRetryCount)
 		}
 		expectReport(t, storer, storage.ChunkCouldNotSync)
+	})
+}
+
+// failingReportStorer fails the first ChunkCouldNotSync report.
+type failingReportStorer struct {
+	*reportingStorer
+	failed atomic.Bool
+}
+
+func (f *failingReportStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
+	if state == storage.ChunkCouldNotSync && f.failed.CompareAndSwap(false, true) {
+		return errors.New("report failed")
+	}
+	return f.reportingStorer.Report(ctx, chunk, state)
+}
+
+// TestParkedGiveUpReportFails tests that a chunk whose give-up report fails is
+// given up on again when it is retried, not parked for a third round.
+func TestParkedGiveUpReportFails(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+			return nil, pushsync.ErrOutOfDepthStoring
+		})
+		storer := &failingReportStorer{reportingStorer: &reportingStorer{
+			mockStorer: &mockStorer{chunks: make(chan swarm.Chunk)},
+			reported:   make(chan storage.ChunkState, 8),
+		}}
+		svc := newParkingPusherWith(t, storer, pushSyncService, defaultMockBatchStore)
+		chunk := testingc.GenerateTestRandomChunk()
+
+		storer.chunks <- chunk
+		synctest.Wait()
+
+		time.Sleep(pusher.ParkDelay)
+		storer.chunks <- chunk
+		synctest.Wait()
+
+		expectReport(t, storer.reportingStorer, storage.ChunkCouldNotSync)
+		if got := svc.TotalParked(); got != 1 {
+			t.Fatalf("total_parked: got %v, want 1", got)
+		}
 	})
 }

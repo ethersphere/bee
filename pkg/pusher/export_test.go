@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 const ParkDelay = parkDelay
@@ -26,3 +28,13 @@ func (p *Parked) Waiting(idAddress swarm.Address, batchID []byte, now time.Time)
 }
 
 func (p *Parked) Forget(idAddress swarm.Address, batchID []byte) { p.p.forget(idAddress, batchID) }
+
+func counterValue(c prometheus.Counter) float64 {
+	m := &dto.Metric{}
+	_ = c.Write(m)
+	return m.GetCounter().GetValue()
+}
+
+func (s *Service) TotalParked() float64       { return counterValue(s.metrics.TotalParked) }
+func (s *Service) TotalCouldNotSync() float64 { return counterValue(s.metrics.TotalCouldNotSync) }
+func (s *Service) TotalErrors() float64       { return counterValue(s.metrics.TotalErrors) }

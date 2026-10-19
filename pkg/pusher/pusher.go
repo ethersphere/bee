@@ -336,17 +336,23 @@ func (s *Service) parkOrGiveUp(ctx context.Context, logger log.Logger, op *Op, e
 	if s.parked.park(op.identityAddress, batchID, time.Now()) {
 		s.metrics.TotalParked.Inc()
 		logger.Debug("chunk not placed, will retry later", "chunk_address", op.Chunk.Address(), "retry_in", parkDelay, "error", err)
-		return false, err
+		// the chunk waits for its second round, which is not an error yet
+		if op.Span != nil {
+			op.Span.SetAttributes(attribute.Bool("swarm.chunk.parked", true))
+		}
+		return false, nil
 	}
 
-	s.parked.forget(op.identityAddress, batchID)
+	logger.Debug("chunk not placed after its second round, giving up", "chunk_address", op.Chunk.Address(), "error", err)
 	// report CouldNotSync so the chunk isn't marked delivered
 	s.metrics.TotalCouldNotSync.Inc()
 	if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
 		logger.Error(err, "pusher: failed to report sync status")
+		// keep the entry: the retry must give up again, not park once more
 		return true, err
 	}
-	return false, nil
+	s.parked.forget(op.identityAddress, batchID)
+	return false, err
 }
 
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
