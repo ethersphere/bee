@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -30,12 +31,16 @@ const (
 	// again after rangesync.ErrSessionLimit (the peer's session slot is
 	// taken, for example by a round's session).
 	stripeRetryInterval = time.Second
+	// maxStripeReassign bounds the reassignments of one stripe to another
+	// peer after a failure, timeout or withholding without progress.
+	maxStripeReassign = 3
 )
 
 // Stripe transfer results, the values of the stripes_total result label.
 const (
-	stripeDone    = "done"
-	stripeTimeout = "timeout"
+	stripeDone       = "done"
+	stripeReassigned = "reassigned"
+	stripeTimeout    = "timeout"
 )
 
 var (
@@ -44,6 +49,9 @@ var (
 	ErrStripeTimeout = errors.New("reconciler: stripe timeout")
 	// ErrNoStripePeer is the error of a stripe with no assigned peer.
 	ErrNoStripePeer = errors.New("reconciler: no peer for stripe")
+	// ErrStripeWithheld is the error of a stripe whose session completed
+	// but whose peer did not deliver every listed ID.
+	ErrStripeWithheld = errors.New("reconciler: stripe withheld")
 )
 
 // StripeResult is the outcome of the transfer of one stripe.
@@ -83,6 +91,12 @@ type StripeResult struct {
 // see a slow fetch as an idle initiator and end the session, which fails the
 // stripe (a restart lists only what is still missing).
 func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []StripeResult {
+	return r.transferStripes(ctx, stripes, nil)
+}
+
+// transferStripes is TransferStripes; started, if not nil, is called once,
+// when the first wants of any stripe arrive or when the transfer ends.
+func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, started func()) []StripeResult {
 	r.mu.Lock()
 	r.catchUpFetches++
 	r.mu.Unlock()
@@ -91,6 +105,13 @@ func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []St
 		r.catchUpFetches--
 		r.mu.Unlock()
 	}()
+	var startOnce sync.Once
+	start := func() {
+		if started != nil {
+			startOnce.Do(started)
+		}
+	}
+	defer start()
 
 	results := make([]StripeResult, len(stripes))
 	byPeer := make(map[string][]int)
@@ -106,13 +127,14 @@ func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []St
 		}
 		byPeer[k] = append(byPeer[k], i)
 	}
+	locks := newPeerLocks()
 	var wg sync.WaitGroup
 	for _, k := range order {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for _, i := range byPeer[k] {
-				results[i] = r.transferStripe(ctx, stripes[i].Range, stripes[i].Peers[0])
+				results[i] = r.runStripe(ctx, stripes[i], locks, start)
 			}
 		}()
 	}
@@ -120,9 +142,113 @@ func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []St
 	return results
 }
 
+// peerLocks serializes the stripe sessions with each peer (one session per
+// peer) when a reassigned stripe moves to a peer that has stripes of its
+// own.
+type peerLocks struct {
+	mu    sync.Mutex
+	locks map[string]chan struct{}
+}
+
+func newPeerLocks() *peerLocks {
+	return &peerLocks{locks: make(map[string]chan struct{})}
+}
+
+// acquire takes peer's lock; the caller holds at most one at a time.
+func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), error) {
+	l.mu.Lock()
+	c, ok := l.locks[peer.ByteString()]
+	if !ok {
+		c = make(chan struct{}, 1)
+		l.locks[peer.ByteString()] = c
+	}
+	l.mu.Unlock()
+	select {
+	case c <- struct{}{}:
+		return func() { <-c }, nil
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	}
+}
+
+// runStripe transfers st: from its first peer, restarted with the same peer
+// while an attempt that failed stored chunks (progress, for example a stripe
+// longer than the session timeout), else reassigned to the next of its Peers
+// or, when they are exhausted, to the next eligible peer with a Status, at
+// most maxStripeReassign times. A restart re-runs FP(stripe), so it lists
+// only the IDs still missing. A session that completed without every listed
+// ID stored is withholding (ErrStripeWithheld) and is reassigned.
+func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks, started func()) StripeResult {
+	total := StripeResult{Range: st.Range}
+	tried := make(map[string]bool)
+	next := st.Peers
+	peer, ok := r.nextStripePeer(st.Range, &next, tried)
+	for reassigns := 0; ok; {
+		tried[peer.ByteString()] = true
+		release, err := locks.acquire(ctx, peer)
+		if err != nil {
+			total.Err = err
+			break
+		}
+		res := r.transferStripe(ctx, st.Range, peer, started)
+		release()
+		total.Peer = peer
+		total.Listed += res.Listed
+		total.Stored += res.Stored
+		total.Err = res.Err
+		if res.Err == nil && res.Stored < res.Listed {
+			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d: %w", st.Range, peer, res.Stored, res.Listed, ErrStripeWithheld)
+		}
+		switch {
+		case total.Err == nil:
+			r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
+			return total
+		case ctx.Err() != nil:
+			return total
+		case res.Err != nil && res.Stored > 0:
+			continue // progress: restart with the same peer
+		case reassigns == maxStripeReassign:
+			ok = false
+			continue
+		}
+		r.logger.Debug("stripe reassigned", "range", st.Range, "peer_address", peer, "error", total.Err)
+		if peer, ok = r.nextStripePeer(st.Range, &next, tried); ok {
+			reassigns++
+			r.metrics.Stripes.WithLabelValues(stripeReassigned).Inc()
+		}
+	}
+	if errors.Is(total.Err, ErrStripeTimeout) {
+		r.metrics.Stripes.WithLabelValues(stripeTimeout).Inc()
+	}
+	return total
+}
+
+// nextStripePeer returns the next untried peer of *next, consuming it, or,
+// when *next is exhausted, the first untried peer with a Status whose root
+// covers sr (§7.6).
+func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address, tried map[string]bool) (swarm.Address, bool) {
+	for len(*next) > 0 {
+		p := (*next)[0]
+		*next = (*next)[1:]
+		if !tried[p.ByteString()] {
+			return p, true
+		}
+	}
+	if len(tried) == 0 {
+		return swarm.ZeroAddress, false
+	}
+	for _, ps := range r.peerStatuses() {
+		if !tried[ps.Peer.ByteString()] && ps.Status.Root.ContainsRange(sr) {
+			return ps.Peer, true
+		}
+	}
+	return swarm.ZeroAddress, false
+}
+
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
-func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address) StripeResult {
+// It is one attempt of runStripe; started is called with the first wants.
+func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithTimeoutCause(ctx, r.stripeTimeout, ErrStripeTimeout)
 	defer cancel()
@@ -151,6 +277,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	opts := rangesync.ReconcileOptions{
 		Open: []fingerprint.Range{sr},
 		Wants: func(ids []storer.ChunkID) {
+			started()
 			select {
 			case queue <- ids:
 				res.Listed += len(ids)
@@ -180,28 +307,79 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	switch {
 	case errors.Is(context.Cause(ctx), ErrStripeTimeout):
 		res.Err = fmt.Errorf("stripe %s from %s: %w", sr, peer, ErrStripeTimeout)
-		r.metrics.Stripes.WithLabelValues(stripeTimeout).Inc()
 	case fetchErr != nil:
 		res.Err = fetchErr
 	case err != nil:
 		res.Err = fmt.Errorf("reconcile: %w", err)
 	case ctx.Err() != nil:
 		res.Err = ctx.Err()
-	default:
-		r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
 	}
 	return res
 }
 
-// stripe plans and transfers the ranges a session's Striper took over,
-// across the peers with a Status.
-func (r *Reconciler) stripe(ranges []fingerprint.Range) {
-	peers := r.peerStatuses()
+// stripeJob is a range queued for a striped transfer; started, if not nil,
+// is called once when its transfer has its first wants or ends.
+type stripeJob struct {
+	rg      fingerprint.Range
+	started func()
+}
+
+// enqueueStripes registers ranges for a striped transfer by the stripe
+// worker. A range that overlaps a registered (queued or in-flight) range is
+// not registered, so that it is not transferred twice; what it misses
+// shows up again in a later round. It reports whether every range was
+// registered; started, if not nil, is called once for the first registered
+// range, else not at all.
+func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range, started func()) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	all := true
 	for _, rg := range ranges {
-		for _, res := range r.TransferStripes(r.ctx, PlanStripes(rg, peers)) {
-			if res.Err != nil {
-				r.logger.Debug("stripe", "range", res.Range, "peer_address", res.Peer, "error", res.Err)
+		if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool {
+			return o.ContainsRange(rg) || rg.ContainsRange(o)
+		}) {
+			all = false
+			continue
+		}
+		r.stripeRegistry = append(r.stripeRegistry, rg)
+		r.stripeQueue = append(r.stripeQueue, stripeJob{rg: rg, started: started})
+		started = nil
+	}
+	select {
+	case r.stripeWake <- struct{}{}:
+	default:
+	}
+	return all
+}
+
+// stripeWorker plans and transfers the queued ranges, one at a time, across
+// the peers with a Status, until Close.
+func (r *Reconciler) stripeWorker() {
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-r.stripeWake:
+		}
+		for {
+			r.mu.Lock()
+			if len(r.stripeQueue) == 0 || r.ctx.Err() != nil {
+				r.mu.Unlock()
+				break
 			}
+			job := r.stripeQueue[0]
+			r.stripeQueue = r.stripeQueue[1:]
+			r.mu.Unlock()
+
+			for _, res := range r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started) {
+				if res.Err != nil {
+					r.logger.Debug("stripe", "range", res.Range, "peer_address", res.Peer, "error", res.Err)
+				}
+			}
+
+			r.mu.Lock()
+			r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(job.rg) })
+			r.mu.Unlock()
 		}
 	}
 }

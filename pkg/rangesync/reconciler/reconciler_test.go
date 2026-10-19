@@ -71,6 +71,11 @@ type fakeService struct {
 	// wants ReconcileWith passes to opts.Wants into that many batches.
 	fetchDelay  time.Duration
 	wantBatches int
+	// sessionErrAfter, by peer, ends one ReconcileWith with Wants with the
+	// error after its wants were passed; withhold, by peer, makes Fetch
+	// store nothing.
+	sessionErrAfter map[string]error
+	withhold        map[string]bool
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -85,6 +90,9 @@ func newFakeService(local rangesync.Status) *fakeService {
 		fetched:     make(map[string]int),
 		offer:       make(map[string]fingerprint.Range),
 		opens:       make(map[string][][]fingerprint.Range),
+
+		sessionErrAfter: make(map[string]error),
+		withhold:        make(map[string]bool),
 	}
 }
 
@@ -105,6 +113,12 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 		if b := wants[i*len(wants)/n : (i+1)*len(wants)/n]; len(b) > 0 {
 			opts.Wants(b)
 		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.sessionErrAfter[peer.ByteString()]; err != nil {
+		delete(s.sessionErrAfter, peer.ByteString()) // once
+		return nil, err
 	}
 	return nil, ctx.Err()
 }
@@ -182,6 +196,9 @@ func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []store
 	defer s.mu.Unlock()
 	if s.fetchErr != nil {
 		return 0, s.fetchErr
+	}
+	if s.withhold[peer.ByteString()] {
+		return 0, nil
 	}
 	s.fetched[peer.ByteString()] += len(ids)
 	return len(ids), nil

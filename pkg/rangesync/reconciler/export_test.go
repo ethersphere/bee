@@ -5,6 +5,7 @@
 package reconciler
 
 import (
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -33,4 +34,12 @@ func (r *Reconciler) StripesTotal(result string) float64 {
 		panic(err)
 	}
 	return m.GetCounter().GetValue()
+}
+
+// MaxStripeReassign is maxStripeReassign.
+const MaxStripeReassign = maxStripeReassign
+
+// EnqueueStripes registers ranges for the stripe worker.
+func (r *Reconciler) EnqueueStripes(ranges []fingerprint.Range) bool {
+	return r.enqueueStripes(ranges, nil)
 }

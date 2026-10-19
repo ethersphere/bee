@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rate"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -131,6 +132,12 @@ type Reconciler struct {
 	pendingReconcile int // sessions whose Reconcile has not returned
 	catchUpFetches   int // catch-up fetches in flight
 	startedAt        time.Time
+	// stripeRegistry holds the ranges queued for or in a striped transfer;
+	// stripeQueue the queued ones, in order, for the stripe worker that
+	// stripeWake wakes.
+	stripeRegistry []fingerprint.Range
+	stripeQueue    []stripeJob
+	stripeWake     chan struct{}
 
 	started       atomic.Bool
 	guardReleased atomic.Bool
@@ -175,6 +182,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
+		stripeWake:    make(chan struct{}, 1),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -207,7 +215,11 @@ func (r *Reconciler) Start(_ context.Context) {
 		return
 	}
 	changes, unsubscribe := r.topo.SubscribeTopologyChange()
-	r.wg.Add(1)
+	r.wg.Add(2)
+	go func() {
+		defer r.wg.Done()
+		r.stripeWorker()
+	}()
 	go func() {
 		defer r.wg.Done()
 		defer unsubscribe()
@@ -279,6 +291,25 @@ func (r *Reconciler) round(full bool) {
 		return
 	}
 
+	// An empty or far-behind node transfers its root striped (§7.4) instead
+	// of one full listing per peer; its per-peer sessions wait until the
+	// transfer is done.
+	bootstrap := IsBootstrap(local, r.peerStatuses())
+	if bootstrap {
+		r.mu.Lock()
+		r.pendingReconcile++
+		r.mu.Unlock()
+		started := func() {
+			r.mu.Lock()
+			r.pendingReconcile--
+			r.checkGuardLocked()
+			r.mu.Unlock()
+		}
+		if !r.enqueueStripes([]fingerprint.Range{local.Root}, started) {
+			started() // in flight already
+		}
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// A peer that accepts our Status but never sends its own keeps
@@ -310,7 +341,7 @@ func (r *Reconciler) round(full bool) {
 			}
 			continue
 		}
-		if st.running {
+		if st.running || bootstrap {
 			continue
 		}
 		candidates = append(candidates, p)
@@ -424,7 +455,7 @@ func (r *Reconciler) session(peer swarm.Address) {
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
 	r.fetch(peer, wants, catchUp)
 	if ranges := striper.Ranges(); len(ranges) > 0 {
-		r.stripe(ranges)
+		r.enqueueStripes(ranges, nil)
 	}
 }
 
