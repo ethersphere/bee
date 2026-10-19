@@ -254,3 +254,19 @@ func (r *Reconciler) RoundIntervalGauge() float64 {
 
 // PlanStripesFor returns the plan the stripe worker would transfer rg with.
 func (r *Reconciler) PlanStripesFor(rg fingerprint.Range) []Stripe { return r.planStripes(rg) }
+
+// NextStripePeerFallback returns the peer nextStripePeer falls back to for
+// sr once a stripe's own peers are exhausted, with tried already tried.
+func (r *Reconciler) NextStripePeerFallback(sr fingerprint.Range, tried ...swarm.Address) (swarm.Address, bool) {
+	t := make(map[string]bool, len(tried))
+	for _, p := range tried {
+		t[p.ByteString()] = true
+	}
+	return r.nextStripePeer(sr, new([]swarm.Address), t)
+}
+
+// VerifierFor returns the peer VerifyStripes would verify res with.
+func (r *Reconciler) VerifierFor(res StripeResult) (swarm.Address, bool) {
+	all, ready := r.stripePeers()
+	return r.verifier(res, all, ready)
+}

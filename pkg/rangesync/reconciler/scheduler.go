@@ -6,7 +6,6 @@ package reconciler
 
 import (
 	"context"
-	"math/rand/v2"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
@@ -28,8 +27,19 @@ import (
 //     itself (see the T4.3 decisions log for why a round-wide index snapshot
 //     does not exist).
 //   - Interval. After each round the interval halves, down to
-//     MinRoundInterval, when a digest differed, and doubles, up to
-//     MaxRoundInterval, when every digest matched (adaptInterval).
+//     MinRoundInterval, when differences were found, and doubles, up to
+//     MaxRoundInterval, otherwise (adaptInterval). Differences are a
+//     differing digest of a peer with the same root, or a session since the
+//     last round that found some (wants, ranges for stripes, or wants the
+//     peer listed in a session this node served). Digests of peers with
+//     different roots summarize different ranges and are not compared.
+//   - Recheck. A session that waited for a slot starts only if the round's
+//     decision still holds (recheckSession); otherwise it ends without a
+//     backoff.
+//   - Collisions. A session that finds the peer's session slot on this node
+//     taken (the peer runs its own session with this node) ends without a
+//     backoff, and a takeover answered Busy waits for the initiator again:
+//     the initiator is alive.
 //   - Triggers. A round runs on the round timer, on every topology change, and
 //     on a trigger (a changed Status of a peer, a root change of this node, a
 //     moved root delivered to a peer), which is deferred to the minimum round
@@ -37,7 +47,9 @@ import (
 //     with a peer faster than its session rate (rangesync.PeerSessionInterval).
 //   - Cap. The sessions this node opens, round sessions, takeovers, stripe
 //     transfers and verifications alike, take one of MaxInitiatedSessions
-//     slots first and wait for one, first come, first served.
+//     slots first and wait for one, first come, first served. Stripe
+//     transfers and verifications first take one of MaxStripeSessions
+//     stripe slots, so that round sessions always have the other slots.
 const (
 	// MinRoundInterval is the shortest round interval, used while rounds
 	// keep finding differences.
@@ -52,6 +64,12 @@ const (
 	// the sessions peers open with this node share, so that the other half
 	// stays for those.
 	MaxInitiatedSessions = rangesync.MaxConcurrentSessions / 2
+	// MaxStripeSessions bounds the stripe transfers and verifications that
+	// run at once. They hold their slot for a whole stripe session, which
+	// the fetch queue backpressures (up to rangesync's session timeout), so
+	// they take at most half of MaxInitiatedSessions and round sessions keep
+	// the rest.
+	MaxStripeSessions = MaxInitiatedSessions / 2
 
 	// takeoverRounds is the number of round intervals, plus a jitter of up
 	// to one, that the peer with the higher overlay waits for the initiator
@@ -86,10 +104,10 @@ func (r *Reconciler) adaptInterval(differs bool) {
 	r.interval.Store(int64(cur))
 }
 
-// restartTakeover starts the wait of st for its initiator at now, with a new
-// jitter.
-func (st *peerState) restartTakeover(now time.Time) {
-	st.takeoverSince, st.takeoverJitter = now, rand.Float64()
+// restartTakeoverLocked starts the wait of st for its initiator at now, with
+// a new jitter. r.mu must be held.
+func (r *Reconciler) restartTakeoverLocked(st *peerState, now time.Time) {
+	st.takeoverSince, st.takeoverJitter = now, r.jitter()
 }
 
 // takeoverDueLocked reports whether this node takes over the session with
@@ -100,7 +118,7 @@ func (st *peerState) restartTakeover(now time.Time) {
 // interval while the mismatch persists. r.mu must be held.
 func (r *Reconciler) takeoverDueLocked(st *peerState, now time.Time) bool {
 	if st.takeoverSince.IsZero() {
-		st.restartTakeover(now)
+		r.restartTakeoverLocked(st, now)
 		return false
 	}
 	ri := r.currentInterval()
@@ -119,6 +137,17 @@ func (r *Reconciler) acquireSlot(ctx context.Context) (release func(), err error
 	}
 }
 
+// acquireStripeSlot takes one of the MaxStripeSessions stripe slots,
+// waiting for one until ctx ends. release frees it.
+func (r *Reconciler) acquireStripeSlot(ctx context.Context) (release func(), err error) {
+	select {
+	case r.stripeSlots <- struct{}{}:
+		return func() { <-r.stripeSlots }, nil
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	}
+}
+
 // wakeRound triggers a round, deferred to MinRoundInterval after the last.
 func (r *Reconciler) wakeRound() {
 	select {
@@ -130,13 +159,12 @@ func (r *Reconciler) wakeRound() {
 // loop runs a round at start, on the round timer, on every topology change
 // and on a trigger (wakeRound, a changed peer Status on statuses), until
 // Close. A trigger waits until the minimum interval has passed since the last
-// round. The round timer runs on the real clock; triggers follow Options.Now
-// and Options.After.
+// round. Triggers follow Options.Now and Options.After, and so does the round
+// timer unless Options.RoundInterval fixes the interval (roundAfter).
 func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 	last := r.now()
 	r.round()
-	timer := time.NewTimer(r.currentInterval())
-	defer timer.Stop()
+	timer := r.roundAfter(r.currentInterval())
 	var deferred <-chan time.Time // a trigger waiting for the minimum interval
 	trigger := func() {
 		if deferred == nil {
@@ -147,7 +175,7 @@ func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-timer.C:
+		case <-timer:
 		case <-changes:
 		case <-deferred:
 		case <-r.roundWake:
@@ -164,6 +192,6 @@ func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 		}
 		last, deferred = r.now(), nil
 		r.round()
-		timer.Reset(r.currentInterval())
+		timer = r.roundAfter(r.currentInterval())
 	}
 }

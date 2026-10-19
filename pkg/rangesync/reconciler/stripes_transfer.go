@@ -301,12 +301,30 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants.
-// The peer is in Striped throughout (acquireStripe); the wait for its round
-// session to end counts towards the stripe timeout, and so does the wait for
-// a session slot (MaxInitiatedSessions), which each session attempt takes
-// and frees again before a Busy retry.
+// It first takes a stripe slot (MaxStripeSessions) and a session slot
+// (MaxInitiatedSessions), which it holds until the session ends, Busy
+// retries included; the stripe timeout starts once it has both. The peer is
+// in Striped throughout (acquireStripe); the wait for its round session to
+// end counts towards the stripe timeout.
 func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
+	releaseStripeSlot, err := r.acquireStripeSlot(ctx)
+	if err != nil {
+		res.Err = err
+		return res
+	}
+	defer releaseStripeSlot()
+	releaseSlot, err := r.acquireSlot(ctx)
+	if err != nil {
+		res.Err = err
+		return res
+	}
+	slotHeld := true
+	defer func() {
+		if slotHeld {
+			releaseSlot()
+		}
+	}()
 	ctx, cancel := context.WithTimeoutCause(ctx, r.stripeTimeout, ErrStripeTimeout)
 	defer cancel()
 	release, err := r.acquireStripe(ctx, peer)
@@ -352,12 +370,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		},
 	}
 	for {
-		var releaseSlot func()
-		if releaseSlot, err = r.acquireSlot(ctx); err != nil {
-			break
-		}
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
-		releaseSlot()
 		if !isBusy(err) {
 			break
 		}
@@ -371,6 +384,8 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			break
 		}
 	}
+	releaseSlot() // the session ended; its fetch does not use the slot
+	slotHeld = false
 	close(queue)
 	<-fetched
 

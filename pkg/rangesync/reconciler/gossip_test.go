@@ -26,12 +26,20 @@ import (
 // of the fake clock.
 func newGossipHarness(t *testing.T, svc *fakeService, peers ...swarm.Address) *harness {
 	t.Helper()
+	return newGossipHarnessOptions(t, svc, reconciler.Options{}, peers...)
+}
+
+// newGossipHarnessOptions is newGossipHarness with options o, whose Now and
+// After it sets to the harness's fake clock.
+func newGossipHarnessOptions(t *testing.T, svc *fakeService, o reconciler.Options, peers ...swarm.Address) *harness {
+	t.Helper()
 	h := &harness{
 		svc:   svc,
 		topo:  &fakeTopology{peers: peers},
 		clock: &fakeClock{now: time.Unix(1_000_000, 0)},
 	}
-	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{Now: h.clock.Now, After: h.clock.After})
+	o.Now, o.After = h.clock.Now, h.clock.After
+	h.r = reconciler.New(self, h.topo, svc, log.Noop, o)
 	t.Cleanup(func() {
 		if err := h.r.Close(); err != nil {
 			t.Error(err)

@@ -243,7 +243,7 @@ func TestPeerStateSessionBackoff(t *testing.T) {
 		if i == 1 {
 			busy(errors.New("stream reset")) // an error counts like Busy
 		} else {
-			busy(rangesync.ErrPeerSessionLimit)
+			busy(rangesync.ErrPeerBusy)
 		}
 		if !round() {
 			t.Fatalf("Busy %d in a row: no session after a %v backoff", i+2, wait)
@@ -485,8 +485,10 @@ func TestStartupGuardBusyPeer(t *testing.T) {
 
 // TestPeerStateLocalCauseNoBackoff: a session that did not run for a cause
 // on this node (its session cap, its index rebuilding, a stale scope, no
-// Status) is retried by the next round and leaves the peer's Busy streak as
-// it is; the peer's own answers (Busy, its session slot taken) back off.
+// Status), or because the peer runs its own session with this node (the
+// peer's session slot on this node is taken, T4.3), is retried by the next
+// round and leaves the peer's Busy streak as it is; the peer's Busy answers
+// back off.
 func TestPeerStateLocalCauseNoBackoff(t *testing.T) {
 	t.Parallel()
 
@@ -504,17 +506,19 @@ func TestPeerStateLocalCauseNoBackoff(t *testing.T) {
 		rangesync.ErrNoStatus,
 		fmt.Errorf("%w: peer mapping 2", rangesync.ErrMappingMismatch),
 		rangesync.ErrNodeSessionLimit,
+		rangesync.ErrPeerSessionLimit,
+		rangesync.ErrPeerSessionLimit,
 	} {
 		fail(err)
 		if !gatedRound(t, h, higher) {
 			t.Fatalf("no session after %v", err)
 		}
 	}
-	fail(rangesync.ErrPeerSessionLimit)
+	fail(rangesync.ErrPeerBusy)
 	if !gatedRound(t, h, higher) {
 		t.Fatal("no session")
 	}
-	fail(rangesync.ErrPeerSessionLimit)
+	fail(rangesync.ErrPeerBusy)
 	if !gatedRound(t, h, higher) {
 		t.Fatal("first peer answer in a row not retried by the next round")
 	}

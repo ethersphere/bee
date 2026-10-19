@@ -7,6 +7,7 @@ package reconciler
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -91,8 +92,13 @@ type Options struct {
 	After func(d time.Duration) <-chan time.Time
 	// RoundInterval, if set, fixes the round interval: it is both the
 	// minimum and the maximum of the adaptive interval (MinRoundInterval,
-	// MaxRoundInterval). Tests set it.
+	// MaxRoundInterval), and the round timer runs on the real clock
+	// (time.After), so that tests with a frozen fake clock still get timed
+	// rounds. Without it the round timer runs on After.
 	RoundInterval time.Duration
+	// Jitter returns the jitter of a takeover wait, a fraction in [0, 1) of
+	// the round interval; rand.Float64 if nil. Tests fix it.
+	Jitter func() float64
 	// StartupGuardTimeout overrides StartupGuardTimeout.
 	StartupGuardTimeout time.Duration
 	// StripeTimeout overrides StripeTimeout.
@@ -166,13 +172,20 @@ type Reconciler struct {
 	metrics       metrics
 
 	// minInterval and maxInterval bound the adaptive round interval, whose
-	// current value (nanoseconds) is interval. slots holds a token per
-	// running session this node opened (MaxInitiatedSessions). roundWake
-	// triggers a round (wakeRound).
+	// current value (nanoseconds) is interval; roundAfter runs the round
+	// timer and jitter draws takeover jitters. slots holds a token per
+	// running session this node opened (MaxInitiatedSessions), stripeSlots
+	// one per stripe session (MaxStripeSessions). roundWake triggers a round
+	// (wakeRound). foundDiff records that a session found differences since
+	// the last round adapted the interval.
 	minInterval, maxInterval time.Duration
 	interval                 atomic.Int64
+	roundAfter               func(time.Duration) <-chan time.Time
+	jitter                   func() float64
 	slots                    chan struct{}
+	stripeSlots              chan struct{}
 	roundWake                chan struct{}
+	foundDiff                bool
 
 	// pickMu orders the Status snapshot (LocalStatus) of a round or a
 	// gossip pass together with its pick (pickDueLocked), so that a pick
@@ -229,9 +242,12 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.After == nil {
 		o.After = time.After
 	}
-	minInterval, maxInterval := MinRoundInterval, MaxRoundInterval
+	minInterval, maxInterval, roundAfter := MinRoundInterval, MaxRoundInterval, o.After
 	if o.RoundInterval > 0 {
-		minInterval, maxInterval = o.RoundInterval, o.RoundInterval
+		minInterval, maxInterval, roundAfter = o.RoundInterval, o.RoundInterval, time.After
+	}
+	if o.Jitter == nil {
+		o.Jitter = rand.Float64
 	}
 	if o.StartupGuardTimeout <= 0 {
 		o.StartupGuardTimeout = StartupGuardTimeout
@@ -252,7 +268,10 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		rate:          newRateWindow(SyncRateWindow, o.Now),
 		minInterval:   minInterval,
 		maxInterval:   maxInterval,
+		roundAfter:    roundAfter,
+		jitter:        o.Jitter,
 		slots:         make(chan struct{}, MaxInitiatedSessions),
+		stripeSlots:   make(chan struct{}, MaxStripeSessions),
 		roundWake:     make(chan struct{}, 1),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
@@ -465,7 +484,11 @@ func (r *Reconciler) round() {
 			r.fireLocked(st, eventEqualDigest)
 			continue
 		}
-		differs = true
+		// Digests of different roots summarize different ranges: such a
+		// peer's sessions report whether they found differences (foundDiff).
+		if local.Root.Equal(remote.Root) {
+			differs = true
+		}
 		if !r.initiates(p) {
 			if !st.served {
 				r.awaiting[p.ByteString()] = true
@@ -504,12 +527,13 @@ func (r *Reconciler) round() {
 		r.wg.Add(1)
 		go func() {
 			defer r.wg.Done()
-			r.session(p, st, opens[p.ByteString()])
+			r.session(p, st, opens[p.ByteString()], local.Root, now)
 		}()
 	}
 	r.guardArmed = exchanged && eligible > 0 && !unresolved
 	r.checkGuardLocked()
-	r.adaptInterval(differs)
+	r.adaptInterval(differs || r.foundDiff)
+	r.foundDiff = false
 }
 
 // probe sends local to the picked peers, at most maxConcurrentProbes at
@@ -593,20 +617,25 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // session runs Reconcile then Fetch with peer, whose entry st is in
 // Reconciling, then transfers the ranges the session handed to its Striper
 // (d̂ > LargeDiff) as stripes. It waits for a session slot first
-// (MaxInitiatedSessions). open, if not empty, is the session's opening (the
-// old half after a radius decrease). The outcome moves st on: the peer's Busy
-// or an error back to Idle with a backoff, a cause on this node (localCause)
-// back to Idle without one, a completed session to Fetching and, once its
-// wants are fetched, to Idle. A takeover (the peer initiates) that finds the
-// peer's session slot taken on this node found the initiator running a
-// session with this node: it goes back to Idle without a backoff and waits
-// for the initiator again.
-func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range) {
+// (MaxInitiatedSessions), then rechecks the round's decision, made at
+// decided with this node's root root (recheckSession). open, if not empty,
+// is the session's opening (the old half after a radius decrease). The
+// outcome moves st on: the peer's Busy or an error back to Idle with a
+// backoff, a cause on this node (localCause) or a stale decision back to Idle
+// without one, a completed session to Fetching and, once its wants are
+// fetched, to Idle. A session that finds the peer's session slot taken on
+// this node found the peer running its own session with this node: it goes
+// back to Idle without a backoff. A takeover (the peer initiates) that finds
+// so, or is answered Busy, found the initiator alive: it also waits for the
+// initiator again.
+func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range, root fingerprint.Range, decided time.Time) {
 	striper := new(StripeCollector)
 	release, err := r.acquireSlot(r.ctx)
 	var wants []storer.ChunkID
 	if err == nil {
-		wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
+		if err = r.recheckSession(peer, st, root, decided); err == nil {
+			wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
+		}
 		release()
 	}
 	takeover := !r.initiates(peer)
@@ -617,16 +646,21 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	if catchUp {
 		r.catchUpFetches++
 	}
+	if err == nil && (len(wants) > 0 || len(striper.Ranges()) > 0) {
+		r.foundDiff = true
+	}
 	if r.peers[peer.ByteString()] == st { // not left meanwhile
 		switch {
 		case err == nil:
 			if r.fireLocked(st, eventSessionDone) {
 				st.fetching = true
 			}
-		case takeover && errors.Is(err, rangesync.ErrPeerSessionLimit):
+		case errors.Is(err, rangesync.ErrPeerSessionLimit), takeover && errors.Is(err, rangesync.ErrPeerBusy):
 			r.fireLocked(st, eventAborted)
-			st.restartTakeover(r.now())
-		case localCause(err):
+			if takeover {
+				r.restartTakeoverLocked(st, r.now())
+			}
+		case errors.Is(err, errStaleSession), localCause(err):
 			r.fireLocked(st, eventAborted)
 		case isBusy(err):
 			r.fireLocked(st, eventBusy)
@@ -643,6 +677,9 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	r.mu.Unlock()
 
 	switch {
+	case errors.Is(err, errStaleSession):
+		r.metrics.Sessions.WithLabelValues("stale").Inc()
+		return // the next round decides again
 	case errors.Is(err, rangesync.ErrSessionLimit):
 		r.metrics.Sessions.WithLabelValues("session_limit").Inc()
 		return // retried after the backoff, not scored
@@ -665,6 +702,36 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	if ranges := striper.Ranges(); len(ranges) > 0 {
 		r.enqueueStripes(ranges)
 	}
+}
+
+// errStaleSession ends a session whose round decision no longer holds when it
+// gets its slot (recheckSession).
+var errStaleSession = errors.New("reconciler: session decision stale")
+
+// recheckSession reports errStaleSession unless the decision of the round that
+// started the session with peer, made at decided with this node's root root,
+// still holds once the session has its slot: st is the peer's current entry
+// and in Reconciling, this node's root is still root and reached the peer,
+// the peer's Status is known and its digest still differs, and, for a
+// takeover, the initiator ran no session with this node since. The session
+// may have waited minutes for its slot.
+func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, root fingerprint.Range, decided time.Time) error {
+	local, err := r.svc.LocalStatus()
+	if err != nil {
+		return err
+	}
+	remote, have := r.svc.LastStatus(peer)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case r.peers[peer.ByteString()] != st, st.fsm.state != stateReconciling:
+	case !have, !local.Root.Equal(root), !st.reached.Equal(local.Root):
+	case sameDigest(local, remote):
+	case !r.initiates(peer) && st.takeoverSince.After(decided):
+	default:
+		return nil
+	}
+	return errStaleSession
 }
 
 // fetch fetches ids from peer and counts the stored chunks towards SyncRate
@@ -703,6 +770,7 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 		return
 	}
 	r.markServedLocked(peer)
+	r.foundDiff = true
 	catchUp := len(ids) >= CatchUpMinDiff
 	if catchUp {
 		r.catchUpFetches++
@@ -778,7 +846,7 @@ func (r *Reconciler) markServedLocked(peer swarm.Address) {
 	if st, ok := r.peers[peer.ByteString()]; ok {
 		st.served = true
 		if !st.takeoverSince.IsZero() {
-			st.restartTakeover(r.now())
+			r.restartTakeoverLocked(st, r.now())
 		}
 	}
 	delete(r.awaiting, peer.ByteString())
