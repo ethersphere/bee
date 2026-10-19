@@ -70,7 +70,18 @@ type StripeResult struct {
 // and the node-wide fetch limiter of the Service. The stripes of one peer
 // run one after another (one session per peer), those of different peers in
 // parallel. Each stripe is bounded by the stripe timeout. The results are in
-// the order of stripes. The stored chunks count towards SyncRate.
+// the order of stripes. The stored chunks count towards SyncRate, and the
+// whole transfer counts as a catch-up in flight (SyncRate reports at least
+// StartupGuardRate), including its session phases: a stripe exists only for
+// a large difference, so the node is catching up from the first page on.
+//
+// Backpressure: the wants of a stripe are queued in at most stripeQueue
+// Message batches. While the queue is full the session's goroutine blocks in
+// ReconcileOptions.Wants, so the peer waits for the next Message. The peer's
+// session is bounded only by its own session timeout (rangesync's
+// sessionTimeout); a responder that enforced a shorter read deadline would
+// see a slow fetch as an idle initiator and end the session, which fails the
+// stripe (a restart lists only what is still missing).
 func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []StripeResult {
 	r.mu.Lock()
 	r.catchUpFetches++
@@ -140,10 +151,10 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	opts := rangesync.ReconcileOptions{
 		Open: []fingerprint.Range{sr},
 		Wants: func(ids []storer.ChunkID) {
-			res.Listed += len(ids)
 			select {
 			case queue <- ids:
-			case <-ctx.Done():
+				res.Listed += len(ids)
+			case <-ctx.Done(): // dropped: the stripe fails
 			}
 		},
 	}

@@ -302,3 +302,68 @@ func TestSessionStripesLargeRange(t *testing.T) {
 		return len(got) == 2 && got[root.Child(1, 0).String()] && got[root.Child(1, 1).String()]
 	})
 }
+
+// TestTransferStripesBackpressure fetches slower than the session lists:
+// more batches than the queue holds wait in Wants and the stripe completes.
+func TestTransferStripesBackpressure(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(0))
+	svc.wants[higher.ByteString()] = 12
+	svc.wantBatches = 12 // above stripeQueue
+	svc.fetchDelay = 10 * time.Millisecond
+	r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+	if res.Err != nil || res.Listed != 12 || res.Stored != 12 {
+		t.Fatalf("listed %d, stored %d, err %v", res.Listed, res.Stored, res.Err)
+	}
+	if got := r.StripesTotal("done"); got != 1 {
+		t.Fatalf("stripes done %v, want 1", got)
+	}
+}
+
+// TestTransferStripesShutdown cancels a transfer whose fetch never returns:
+// TransferStripes and Close return, and the dropped batches are not listed.
+func TestTransferStripesShutdown(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(0))
+	svc.wants[higher.ByteString()] = 12
+	svc.wantBatches = 12
+	svc.fetchGate = make(chan struct{}) // never opens
+	r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan reconciler.StripeResult)
+	go func() {
+		root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+		done <- r.TransferStripes(ctx, []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case res := <-done:
+		if res.Err == nil || res.Stored != 0 {
+			t.Fatalf("stored %d, err %v", res.Stored, res.Err)
+		}
+		// the first batch is fetched, stripeQueue more are queued, the rest dropped
+		if res.Listed >= 12 {
+			t.Fatalf("listed %d dropped batches", res.Listed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("TransferStripes did not return")
+	}
+	closed := make(chan error)
+	go func() { closed <- r.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	if got := r.StripesTotal("done"); got != 0 {
+		t.Fatalf("stripes done %v, want 0", got)
+	}
+}

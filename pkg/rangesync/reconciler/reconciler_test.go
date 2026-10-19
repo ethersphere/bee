@@ -67,6 +67,10 @@ type fakeService struct {
 	opens map[string][][]fingerprint.Range
 	// fetchErr, if not nil, is returned by Fetch.
 	fetchErr error
+	// fetchDelay delays every Fetch; wantBatches, if above 1, splits the
+	// wants ReconcileWith passes to opts.Wants into that many batches.
+	fetchDelay  time.Duration
+	wantBatches int
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -96,10 +100,13 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 	if err != nil || opts.Wants == nil {
 		return wants, err
 	}
-	if len(wants) > 0 {
-		opts.Wants(wants)
+	n := max(s.wantBatches, 1)
+	for i := range n {
+		if b := wants[i*len(wants)/n : (i+1)*len(wants)/n]; len(b) > 0 {
+			opts.Wants(b)
+		}
 	}
-	return nil, nil
+	return nil, ctx.Err()
 }
 
 // sessionOpens returns the Open of each session with peer.
@@ -155,8 +162,15 @@ func (s *fakeService) Reconcile(ctx context.Context, peer swarm.Address) ([]stor
 
 func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error) {
 	s.mu.Lock()
-	gate := s.fetchGate
+	gate, delay := s.fetchGate, s.fetchDelay
 	s.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
 	if gate != nil {
 		select {
 		case <-gate:
