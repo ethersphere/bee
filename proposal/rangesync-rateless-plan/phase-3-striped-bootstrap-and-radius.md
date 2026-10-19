@@ -119,9 +119,9 @@ against `pairwise_diff` from the simulations (T4.6) and record it.
 ## Decisions log
 _(sessions append here — T3.1 bootstrap threshold and stripe redundancy default; T3.5
 `CatchUpMinDiff`)_
-- **(T3.1) Bootstrap threshold.** `IsBootstrap`: own count < `BootstrapRatio` (0.5) × median count of the peers whose Status root equals our root (upper median; peers with other roots are skipped; no peers or a zero median → not bootstrapping). No absolute floor.
+- **(T3.1) Bootstrap threshold.** `IsBootstrap`: own count < `BootstrapRatio` (0.5) × median count of the peers whose Status root equals our root (upper median; peers with other roots are skipped; no peers or a zero median → not bootstrapping). No absolute floor. Limitation: a bootstrapping node whose root differs from all its neighbors' roots is never detected here and relies on the session's d̂ > LargeDiff trigger (Striper) alone.
 - **(T3.1) Stripe redundancy default.** `StripeRedundancy = 1`; the verification round (T3.3) covers withholding. `PlanStripesRedundancy` takes 2 when needed.
-- **(T3.1) Stripe depth and eligibility.** k counts peers whose root overlaps the striped range; s = ceil(log2 k), deepened to the deepest narrower peer root (cap 16 bits below the range) so each stripe is inside or outside every peer root. Eligible = peer root contains the stripe; an ineligible peer's turn passes to the next eligible peer in rotation. Unassigned stripes come back with no Peers (`Unassigned`). The sub-range variant is `PlanStripes(subRange, peers)`.
+- **(T3.1) Stripe depth and eligibility.** k counts peers whose root overlaps the striped range; s = ceil(log2 k), deepened to the deepest narrower peer root (cap 16 bits below the range) so each stripe is inside or outside every peer root at most 16 bits deeper; a peer root more than 16 bits below the range covers no stripe and is never eligible. `redundancy <= 0` is treated as 1; fewer eligible peers than the redundancy gives a shorter Peers list. Eligible = peer root contains the stripe; an ineligible peer's turn passes to the next eligible peer in rotation. Unassigned stripes come back with no Peers (`Unassigned`). The sub-range variant is `PlanStripes(subRange, peers)`.
 
 ## Follow-ups
 _(sessions append here)_

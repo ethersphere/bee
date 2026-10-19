@@ -49,7 +49,9 @@ type Stripe struct {
 // (§7.4): its count is below BootstrapRatio times the median count of the
 // peers whose root equals its own. Peers with other roots are not compared,
 // as their counts cover other ranges. With no such peer, or a zero median,
-// it returns false.
+// it returns false. A bootstrapping node whose root differs from every
+// neighbor's root is therefore not detected here; it relies on the session's
+// d̂ > LargeDiff branch (rangesync.Striper) alone.
 func IsBootstrap(own rangesync.Status, peers []PeerStatus) bool {
 	var counts []uint64
 	for _, p := range peers {
@@ -78,10 +80,13 @@ func PlanStripes(r fingerprint.Range, peers []PeerStatus) []Stripe {
 // where k is the number of peers whose root overlaps r. Only a peer whose
 // root covers a stripe is eligible for it (§7.6); an ineligible peer's turn
 // passes to the next eligible one. s is the smallest with 2^s >= k, deepened
-// so that every stripe lies either inside or outside each peer root narrower
-// than r (at most maxStripeBits below r). A stripe with no eligible peer is
-// returned with no Peers. PlanStripesRedundancy is a pure function.
+// so that every stripe lies either inside or outside each peer root at most
+// maxStripeBits below r; a peer root deeper than that covers no stripe and the
+// peer is never eligible. A stripe with no eligible peer is returned with no
+// Peers. redundancy <= 0 is treated as 1; with fewer eligible peers than
+// redundancy a stripe gets them all. PlanStripesRedundancy is a pure function.
 func PlanStripesRedundancy(r fingerprint.Range, peers []PeerStatus, redundancy int) []Stripe {
+	redundancy = max(redundancy, 1)
 	r = fingerprint.NewRange(r.Prefix, r.Bits)
 	limit := min(maxStripeBits, fingerprint.MaxBits-int(r.Bits))
 

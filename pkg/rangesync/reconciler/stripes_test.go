@@ -226,3 +226,47 @@ func TestStripeCollector(t *testing.T) {
 		t.Fatalf("ranges %v", got)
 	}
 }
+
+// TestPlanStripesDeepPeer: a peer root more than 16 bits below the range does
+// not deepen the stripes and is never eligible.
+func TestPlanStripesDeepPeer(t *testing.T) {
+	t.Parallel()
+
+	root := stripeRange(0x00, 0)
+	deep := fingerprint.NewRange(swarm.NewAddress([]byte{0x80, 0, 0, 0}), 17)
+	peers := make([]reconciler.PeerStatus, 0, 2)
+	peers = append(peers, peerAt(0, deep, 1))
+	stripes := reconciler.PlanStripes(root, peers)
+	if s := checkPartition(t, root, stripes); s != 0 {
+		t.Fatalf("stripe depth %d, want 0", s)
+	}
+	if len(reconciler.Unassigned(stripes)) != 1 {
+		t.Fatalf("deep peer assigned: %+v", stripes)
+	}
+	// alongside a covering peer, the deep peer is never used
+	peers = append(peers, peerAt(1, root, 1))
+	for _, st := range reconciler.PlanStripesRedundancy(root, peers, 2) {
+		if len(st.Peers) != 1 || !st.Peers[0].Equal(peers[1].Peer) {
+			t.Fatalf("stripe %s peers %v", st.Range, st.Peers)
+		}
+	}
+}
+
+func TestPlanStripesRedundancyBounds(t *testing.T) {
+	t.Parallel()
+
+	root := stripeRange(0x00, 0)
+	peers := []reconciler.PeerStatus{peerAt(0, root, 1), peerAt(1, root, 1)}
+	for _, n := range []int{0, -1} {
+		for _, st := range reconciler.PlanStripesRedundancy(root, peers, n) {
+			if len(st.Peers) != 1 {
+				t.Fatalf("redundancy %d: stripe %s peers %v", n, st.Range, st.Peers)
+			}
+		}
+	}
+	for _, st := range reconciler.PlanStripesRedundancy(root, peers, 5) {
+		if len(st.Peers) != 2 {
+			t.Fatalf("redundancy 5: stripe %s peers %v", st.Range, st.Peers)
+		}
+	}
+}
