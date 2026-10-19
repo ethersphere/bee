@@ -80,8 +80,7 @@ type Topology interface {
 // defaults.
 type Options struct {
 	// Now returns the current time; time.Now if nil. Tests set a fake clock.
-	// It drives the start-up guard and the score decay; the rate window
-	// (pkg/rate) uses the real clock.
+	// It drives the start-up guard, the score decay and the SyncRate window.
 	Now func() time.Time
 	// RoundInterval overrides RoundInterval.
 	RoundInterval time.Duration
@@ -183,7 +182,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		roundInterval: o.RoundInterval,
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
-		rate:          rate.New(SyncRateWindow),
+		rate:          rate.NewWithClock(SyncRateWindow, o.Now),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
@@ -556,13 +555,14 @@ func (r *Reconciler) checkGuardLocked() {
 // differing digest that initiates has run a session with this node), or until
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
 // eligible neighbor the guard holds until the timeout. While a catch-up
-// fetch is in flight it is at least StartupGuardRate.
+// fetch is in flight, or a range is registered for a striped transfer
+// (queued, transferring or being verified), it is at least StartupGuardRate.
 func (r *Reconciler) SyncRate() float64 {
 	if !r.started.Load() {
 		return StartupGuardRate
 	}
 	r.mu.Lock()
-	inFlight := r.catchUpFetches > 0
+	inFlight := r.catchUpFetches > 0 || len(r.stripeRegistry) > 0
 	guard := !r.guardReleased.Load() && r.now().Sub(r.startedAt) < r.guardTimeout
 	r.mu.Unlock()
 	rt := r.rate.Rate()

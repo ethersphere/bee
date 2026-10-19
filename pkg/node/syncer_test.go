@@ -55,6 +55,30 @@ func TestCombinedSyncerSum(t *testing.T) {
 	}
 }
 
+// TestCombinedSyncerBothDrivers: with the puller and the reconciler both
+// enabled, the combined rate is 0 only when both are 0, so the reserve
+// worker lowers the radius only when neither driver is catching up.
+func TestCombinedSyncerBothDrivers(t *testing.T) {
+	t.Parallel()
+
+	puller, reconciler := &mockSyncer{}, &mockSyncer{}
+	s := node.NewCombinedSyncer(puller, reconciler)
+	for _, tc := range []struct {
+		puller, reconciler float64
+		zero               bool
+	}{
+		{0, 0, true},
+		{0.5, 0, false},
+		{0, 1, false},
+		{0.5, 1, false},
+	} {
+		puller.rate, reconciler.rate = tc.puller, tc.reconciler
+		if got := s.SyncRate(); (got == 0) != tc.zero {
+			t.Fatalf("puller %v reconciler %v: got rate %v, want zero=%v", tc.puller, tc.reconciler, got, tc.zero)
+		}
+	}
+}
+
 func TestResolveSyncMode(t *testing.T) {
 	t.Parallel()
 
