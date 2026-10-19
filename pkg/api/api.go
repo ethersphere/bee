@@ -17,10 +17,13 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -211,6 +214,8 @@ type Service struct {
 	batchStore   postage.Storer
 	stamperStore storage.Store
 	pinIntegrity PinIntegrity
+	// pinIntegrityFullScan is set while a check of all pins is running.
+	pinIntegrityFullScan atomic.Bool
 
 	syncStatus func() (bool, error)
 
@@ -589,6 +594,17 @@ func (s *Service) observeUploadSpeed(w http.ResponseWriter, r *http.Request, sta
 	s.metrics.UploadSpeed.WithLabelValues(endpoint, mode).Observe(speed)
 }
 
+// maxGasPriceWei caps the Gas-Price header at 1000 gwei, far above normal
+// prices on the chains bee runs on. Under EIP-1559 everything above the base
+// fee is paid as tip, so the cap keeps a mistyped value from overpaying.
+const maxGasPriceWei = 1_000_000_000_000
+
+// gasPriceOutOfRange reports whether a caller-supplied gas price is negative
+// or above maxGasPriceWei.
+func gasPriceOutOfRange(gasPrice *big.Int) bool {
+	return gasPrice != nil && (gasPrice.Sign() < 0 || gasPrice.Cmp(big.NewInt(maxGasPriceWei)) > 0)
+}
+
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
 // gas price and gas limit through the HTTP API headers.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
@@ -602,6 +618,11 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
+				return
+			}
+			if gasPriceOutOfRange(headers.GasPrice) {
+				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+				jsonhttp.BadRequest(w, "gas price out of range")
 				return
 			}
 			ctx := r.Context()
@@ -628,8 +649,17 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.isForbiddenCrossOriginRequest(r) {
+			s.logger.Debug("cross origin request rejected", "method", r.Method, "path", r.URL.Path, "origin", r.Header.Get(OriginHeader), "sec_fetch_site", r.Header.Get(secFetchSiteHeader))
+			jsonhttp.Forbidden(w, "cross origin request not allowed")
+			return
+		}
 		if o := r.Header.Get(OriginHeader); o != "" && s.checkOrigin(r) {
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			// A wildcard lets any page read responses, so it must not also
+			// grant access to credentialed requests.
+			if s.isOriginListed(o) || !slices.Contains(s.CORSAllowedOrigins, "*") {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE")
@@ -637,6 +667,53 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+// secFetchSiteHeader is the Fetch Metadata header browsers set to describe
+// the relation between the requesting page and the target.
+const secFetchSiteHeader = "Sec-Fetch-Site"
+
+// isForbiddenCrossOriginRequest reports whether r is a state-changing request
+// sent by a browser from a page that is not allowed to use the API. Such
+// requests are not always preflighted, for example a form POST, so the CORS
+// headers alone do not stop their side effects.
+//
+// Sec-Fetch-Site is set by the browser and cannot be changed by the page, so
+// it decides when present. Otherwise, as with older browsers, the Origin host
+// is compared with the request host. The scheme is ignored in both cases: the
+// API serves plain HTTP, and a TLS-terminating proxy in front of it makes
+// same-origin pages send an https origin.
+func (s *Service) isForbiddenCrossOriginRequest(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+
+	origin := r.Header.Get(OriginHeader)
+	allowed := s.isOriginListed(origin) || slices.Contains(s.CORSAllowedOrigins, "*")
+
+	switch r.Header.Get(secFetchSiteHeader) {
+	case "same-origin", "none":
+		return false
+	case "same-site", "cross-site":
+		return !allowed
+	}
+
+	if origin == "" || allowed {
+		return false
+	}
+	u, err := url.Parse(origin)
+	return err != nil || !strings.EqualFold(u.Host, r.Host)
+}
+
+// isOriginListed reports whether origin is explicitly configured as allowed.
+func (s *Service) isOriginListed(origin string) bool {
+	for _, v := range s.CORSAllowedOrigins {
+		if v != "*" && equalASCIIFold(origin, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
