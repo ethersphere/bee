@@ -77,6 +77,8 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 # postage-stamp-address: ""
 ## postage stamp contract start block number
 # postage-stamp-start-block: "0"
+## maximum number of blocks per eth_getLogs request when syncing postage contract events
+# postage-sync-block-range: 1000
 ## enable pprof mutex profile
 # pprof-mutex: false
 ## enable pprof block profile
@@ -125,8 +127,8 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 #   sampling-ratio: 1.0
 #   ## service name identifier for tracing
 #   service-name: bee
-## gas limit fallback when estimation fails for contract transactions (default 500000)
-# gas-limit-fallback: 500000
+## gas limit fallback when estimation fails for contract transactions (default 900000)
+# gas-limit-fallback: 900000
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace

@@ -20,6 +20,10 @@ var (
 	errWrongChunkSize = errors.New("soc: chunk length is less than minimum")
 )
 
+// OwnerPubKeySize is the byte length of a compressed secp256k1 public key,
+// as returned by crypto.EncodeSecp256k1PublicKey.
+const OwnerPubKeySize = 33
+
 // ID is a SOC identifier
 type ID []byte
 

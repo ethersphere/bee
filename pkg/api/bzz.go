@@ -721,6 +721,12 @@ func (s *Service) serveManifestEntry(
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
+		// Files uploaded in a collection with an unknown extension are stored
+		// with an empty type and served without one. Leave those for the
+		// browser to sniff: with nosniff it would not load or render them.
+		if mimeType == "" {
+			w.Header().Del(xContentTypeOptionsHeader)
+		}
 	}
 
 	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)
@@ -733,8 +739,10 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool             `map:"Swarm-Cache"`
+		// The buffer is allocated eagerly, so it must be bounded: 4 MiB is 8x
+		// the largest default (largeFileBufferSize).
+		LookaheadBufferSize *int  `map:"Swarm-Lookahead-Buffer-Size" validate:"omitempty,gte=0,lte=4194304"`
+		Cache               *bool `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {

@@ -182,6 +182,7 @@ type Options struct {
 	PaymentTolerance              int64
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
+	PostageSyncBlockRange         uint64
 	PriceOracleAddress            string
 	RedistributionContractAddress string
 	ReserveCapacityDoubling       int
@@ -811,7 +812,7 @@ func NewBee(
 		contractGasLimit,
 	)
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, o.PostageSyncBlockRange)
 	b.listenerCloser = eventListener
 
 	// Construct protocols.

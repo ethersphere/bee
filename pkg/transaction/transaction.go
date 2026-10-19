@@ -57,8 +57,7 @@ const (
 	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
 	MinGasLimit            = 21_000     // Minimum gas for any transaction
 	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
-	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
-
+	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
 	// DefaultSendWithRetryDelay is the default wait for a receipt before escalating fees in SendWithRetry.
 	DefaultSendWithRetryDelay = 1 * time.Minute
 
