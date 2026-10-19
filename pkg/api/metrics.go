@@ -125,15 +125,27 @@ func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
-// metricsMethod maps a request method to a bounded label value. Any token is a
-// valid HTTP method, so it is not used verbatim as a label.
+// otherMethodLabel is the method label value used for non-standard HTTP methods.
+const otherMethodLabel = "other"
+
+// metricsMethod returns the HTTP method to be used as a metric label value.
+// Non-standard methods are collapsed into a single value, so that clients
+// cannot create an unbounded number of time series.
 func metricsMethod(method string) string {
 	switch method {
-	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
-		http.MethodDelete, http.MethodConnect, http.MethodOptions, http.MethodTrace:
+	case http.MethodGet,
+		http.MethodHead,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodConnect,
+		http.MethodOptions,
+		http.MethodTrace:
 		return method
+	default:
+		return otherMethodLabel
 	}
-	return "OTHER"
 }
 
 // UpgradedResponseWriter adds more functionality on top of ResponseWriter

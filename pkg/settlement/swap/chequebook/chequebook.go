@@ -201,10 +201,6 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 			return nil, err
 		}
 		cumulativePayout = big.NewInt(0)
-	} else if lastCheque.CumulativePayout == nil {
-		// a corrupt statestore entry unmarshals into a non-nil cheque with a
-		// nil cumulativePayout; guard against the arithmetic below.
-		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
 	} else {
 		cumulativePayout = lastCheque.CumulativePayout
 	}
@@ -280,6 +276,10 @@ func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) 
 		return nil, fmt.Errorf("nil cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
 	}
 
+	if lastCheque.CumulativePayout == nil {
+		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNilCumulativePayout)
+	}
+
 	return lastCheque, nil
 }
 
@@ -343,7 +343,6 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		To:          &s.address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    95000,
 		Value:       big.NewInt(0),
 		Description: fmt.Sprintf("chequebook withdrawal of %d BZZ", amount),
 	}
