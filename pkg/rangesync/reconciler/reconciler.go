@@ -111,6 +111,10 @@ type peerState struct {
 	// it meanwhile. idle, if not nil, is closed when it does, or leaves.
 	stripeWaiters int
 	idle          chan struct{}
+	// verdict is the peer's Status, if any (verdictHave), when it was found
+	// Unsupported; a Status not seen then shows a reconnect.
+	verdict     rangesync.Status
+	verdictHave bool
 
 	// Status gossip (gossip.go): lastSent is when our Status last, last,
 	// was picked for the peer (zero: never), sending holds while that send
@@ -333,8 +337,18 @@ func (r *Reconciler) round() {
 		// Without the peer's Status the peer may lack this node's too: both
 		// are forgotten on a disconnect, which a reconnect between two
 		// rounds hides from the peer set. Ask for it to be sent again.
-		if _, have := r.svc.LastStatus(p); !have && !st.sending {
+		remote, have := r.svc.LastStatus(p)
+		if !have && !st.sending {
 			st.resend = true
+		}
+		// A Status from a peer that did not speak rangesync, one it had not
+		// sent when it was found so (statuses are forgotten on a
+		// disconnect), shows such a reconnect: follow the new connection
+		// from a first contact.
+		if have && st.fsm.state == stateUnsupported && !st.sending && (!st.verdictHave || !equalStatus(remote, st.verdict)) {
+			st.fsm = newPeerFSM()
+			st.sent, st.lastSent = false, time.Time{}
+			r.logger.Debug("peer speaks rangesync after a reconnect", "peer_address", p)
 		}
 	}
 	for k, st := range r.peers {
@@ -399,17 +413,26 @@ func (r *Reconciler) round() {
 	// A peer that accepts our Status but never sends its own keeps
 	// exchanged false; the guard then releases only at StartupGuardTimeout
 	// (the fallback path). Its eligibility is unknown without its Status.
-	exchanged, eligible := true, 0
+	// A differing peer this node initiates with that backs off keeps its
+	// difference unresolved, and so does the guard.
+	exchanged, eligible, unresolved := true, 0, false
 	clear(r.awaiting)
 	var candidates []swarm.Address
 	opens := make(map[string][]fingerprint.Range)
 	now := r.now()
 	for _, p := range connected {
 		st, ok := r.peers[p.ByteString()]
-		if !ok || st.fsm.state == stateUnsupported {
+		if !ok {
 			continue
 		}
+		// admitted from the Status evaluated below, so that an exchanged,
+		// eligible peer is never left out of Idle by a Status that arrived
+		// since admitLocked
 		remote, have := r.svc.LastStatus(p)
+		r.admitPeerLocked(p, st, local, remote, have)
+		if st.fsm.state == stateUnsupported {
+			continue
+		}
 		if !st.sent || !have {
 			exchanged = false
 			continue
@@ -426,6 +449,10 @@ func (r *Reconciler) round() {
 			if !st.served {
 				r.awaiting[p.ByteString()] = true
 			}
+			continue
+		}
+		if st.fsm.state == stateIdle && !st.fsm.canReconcile(now) {
+			unresolved = true // backing off
 			continue
 		}
 		// Idle and past its backoff, with no stripe session waiting for it
@@ -449,7 +476,7 @@ func (r *Reconciler) round() {
 			r.session(p, st, opens[p.ByteString()])
 		}()
 	}
-	r.guardArmed = exchanged && eligible > 0
+	r.guardArmed = exchanged && eligible > 0 && !unresolved
 	r.checkGuardLocked()
 }
 
@@ -487,6 +514,7 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 					st.wakeLocked()
 				}
 				r.fireLocked(st, eventUnsupported)
+				st.verdict, st.verdictHave = r.svc.LastStatus(pk.peer)
 				r.logger.Debug("peer does not support rangesync", "peer_address", pk.peer)
 			default:
 				// sent stays: an earlier Status of ours reached the peer
@@ -526,9 +554,10 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // session runs Reconcile then Fetch with peer, whose entry st is in
 // Reconciling, then transfers the ranges the session handed to its Striper
 // (d̂ > LargeDiff) as stripes. open, if not empty, is the session's opening
-// (the old half after a radius decrease). The outcome moves st on: Busy or an
-// error back to Idle with a backoff, a completed session to Fetching and,
-// once its wants are fetched, to Idle.
+// (the old half after a radius decrease). The outcome moves st on: the
+// peer's Busy or an error back to Idle with a backoff, a cause on this node
+// (localCause) back to Idle without one, a completed session to Fetching
+// and, once its wants are fetched, to Idle.
 func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range) {
 	striper := new(StripeCollector)
 	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
@@ -539,18 +568,26 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	if catchUp {
 		r.catchUpFetches++
 	}
-	r.checkGuardLocked()
 	if r.peers[peer.ByteString()] == st { // not left meanwhile
 		switch {
 		case err == nil:
-			r.fireLocked(st, eventSessionDone)
-			st.fetching = true
+			if r.fireLocked(st, eventSessionDone) {
+				st.fetching = true
+			}
+		case localCause(err):
+			r.fireLocked(st, eventAborted)
 		case isBusy(err):
 			r.fireLocked(st, eventBusy)
 		default:
 			r.fireLocked(st, eventError)
 		}
+		if err != nil {
+			// the difference is unresolved: the next round arms the guard
+			// again, or keeps it while the peer backs off
+			r.guardArmed = false
+		}
 	}
+	r.checkGuardLocked()
 	r.mu.Unlock()
 
 	switch {

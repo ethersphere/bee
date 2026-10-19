@@ -155,6 +155,7 @@ const (
 	EventFetched      = eventFetched
 	EventBusy         = eventBusy
 	EventError        = eventError
+	EventAborted      = eventAborted
 	EventDisjoint     = eventDisjoint
 	EventDisconnected = eventDisconnected
 
@@ -166,7 +167,7 @@ var (
 	PeerStates = []PeerState{stateProbing, stateUnsupported, stateIdle, stateReconciling, stateFetching, stateStriped, stateRemoved}
 	PeerEvents = []PeerEvent{
 		eventUnsupported, eventExchanged, eventEqualDigest, eventReconcile, eventSessionDone, eventLargeDiff, eventStripe,
-		eventStripeDone, eventFetched, eventBusy, eventError, eventDisjoint, eventDisconnected,
+		eventStripeDone, eventFetched, eventBusy, eventError, eventAborted, eventDisjoint, eventDisconnected,
 	}
 )
 
@@ -219,3 +220,22 @@ func (r *Reconciler) KnowsPeer(peer swarm.Address) bool {
 
 // PeerStatuses returns the peers offered for stripes, with their Status.
 func (r *Reconciler) PeerStatuses() []PeerStatus { return r.peerStatuses() }
+
+// PeerFetching reports whether the wants of peer's last round session are
+// being fetched.
+func (r *Reconciler) PeerFetching(peer swarm.Address) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.peers[peer.ByteString()]
+	return ok && st.fetching
+}
+
+// StripeWaiters returns the number of stripe sessions waiting for peer.
+func (r *Reconciler) StripeWaiters(peer swarm.Address) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if st, ok := r.peers[peer.ByteString()]; ok {
+		return st.stripeWaiters
+	}
+	return 0
+}

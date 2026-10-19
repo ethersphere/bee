@@ -464,13 +464,16 @@ func (r *Reconciler) stripeWorker() {
 	}
 }
 
-// peerStatuses returns the known peers with their last Status, except those
-// the reconciler ignores: Unsupported, and Removed (not eligible).
+// peerStatuses returns the peers the reconciler follows (admitted: neither
+// Probing, Unsupported nor Removed) with their last Status. A Probing peer
+// is left out: a round could admit it during a stripe session that would
+// then race the round's session for the peer's session slot.
 func (r *Reconciler) peerStatuses() []PeerStatus {
 	r.mu.Lock()
 	var addrs []swarm.Address
 	for k, st := range r.peers {
-		if s := st.fsm.state; s != stateUnsupported && s != stateRemoved {
+		switch st.fsm.state {
+		case stateIdle, stateReconciling, stateFetching, stateStriped:
 			addrs = append(addrs, swarm.NewAddress([]byte(k)))
 		}
 	}

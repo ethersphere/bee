@@ -56,6 +56,12 @@ var (
 	// when this node already runs MaxConcurrentSessions sessions or one
 	// with the peer (incoming or outgoing).
 	ErrSessionLimit = errors.New("rangesync: session limit")
+	// ErrNodeSessionLimit is the ErrSessionLimit of a node that already runs
+	// MaxConcurrentSessions sessions, a cause on this node.
+	ErrNodeSessionLimit = fmt.Errorf("%w: node", ErrSessionLimit)
+	// ErrPeerSessionLimit is the ErrSessionLimit of a node that already runs
+	// a session with the peer, incoming or outgoing.
+	ErrPeerSessionLimit = fmt.Errorf("%w: peer", ErrSessionLimit)
 	// ErrProtocolUnsupported is returned (wrapped) by SendStatus when the
 	// peer does not support the rangesync protocol (the stream could not be
 	// negotiated, p2p.IncompatibleStreamError). The reconciler does not

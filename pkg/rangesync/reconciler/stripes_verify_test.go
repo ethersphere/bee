@@ -28,6 +28,7 @@ func verifyHarness(t *testing.T, deliver, verify int) (*harness, swarm.Address) 
 	svc.wants[other.ByteString()] = verify
 	h := newHarness(t, svc, higher, other)
 	waitFor(t, "status", func() bool { return svc.count(svc.sent, other) > 0 && svc.count(svc.sent, higher) > 0 })
+	waitAdmitted(t, h.r, higher, other)
 	return h, other
 }
 

@@ -1016,11 +1016,11 @@ func TestStart(t *testing.T) {
 func TestReconcileInitiatorSessionLimit(t *testing.T) {
 	t.Parallel()
 
-	assertLimit := func(t *testing.T, a, b *testNode) {
+	assertLimit := func(t *testing.T, a, b *testNode, want error) {
 		t.Helper()
 		_, err := a.svc.Reconcile(context.Background(), b.addr)
-		if !errors.Is(err, rangesync.ErrSessionLimit) {
-			t.Fatalf("got %v, want %v", err, rangesync.ErrSessionLimit)
+		if !errors.Is(err, rangesync.ErrSessionLimit) || !errors.Is(err, want) {
+			t.Fatalf("got %v, want %v", err, want)
 		}
 		if fails, succeeds := a.scorer.get(b.addr); len(fails) != 0 || succeeds != 0 {
 			t.Fatalf("scorer: %v fails, %d succeeds", fails, succeeds)
@@ -1037,7 +1037,7 @@ func TestReconcileInitiatorSessionLimit(t *testing.T) {
 		// a raw peer with b's address holds an incoming session on a
 		p := &rawPeer{addr: b.addr, rec: streamtest.New(streamtest.WithBaseAddr(b.addr), streamtest.WithProtocols(a.svc.Protocol()))}
 		openSession(t, p)
-		assertLimit(t, a, b)
+		assertLimit(t, a, b, rangesync.ErrPeerSessionLimit)
 	})
 
 	t.Run("node-wide cap", func(t *testing.T) {
@@ -1054,7 +1054,7 @@ func TestReconcileInitiatorSessionLimit(t *testing.T) {
 			}
 			openSession(t, p)
 		}
-		assertLimit(t, a, b)
+		assertLimit(t, a, b, rangesync.ErrNodeSessionLimit)
 	})
 
 	t.Run("slot released after session", func(t *testing.T) {

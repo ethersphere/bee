@@ -7,6 +7,7 @@ package reconciler_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,6 +21,39 @@ import (
 func peerState(r *reconciler.Reconciler, peer swarm.Address) reconciler.PeerState {
 	s, _ := r.PeerState(peer)
 	return s
+}
+
+// gatedRound runs a round of h and reports whether it started a session
+// with peer, which it then waits for until the peer is Idle again. The
+// session is held until the state is read.
+func gatedRound(t *testing.T, h *harness, peer swarm.Address) bool {
+	t.Helper()
+	gate := make(chan struct{})
+	h.svc.set(func() { h.svc.reconcileGate = gate })
+	n := h.svc.count(h.svc.reconciled, peer)
+	h.r.Round()
+	started := peerState(h.r, peer) == reconciler.StateReconciling
+	close(gate)
+	if started {
+		waitFor(t, "session", func() bool { return h.svc.count(h.svc.reconciled, peer) == n+1 })
+		waitState(t, h.r, peer, reconciler.StateIdle)
+	}
+	return started
+}
+
+// waitAdmitted waits until r follows each of peers: Idle, or in a session,
+// fetch or stripe.
+func waitAdmitted(t *testing.T, r *reconciler.Reconciler, peers ...swarm.Address) {
+	t.Helper()
+	for _, p := range peers {
+		waitFor(t, "peer admitted", func() bool {
+			switch peerState(r, p) {
+			case reconciler.StateIdle, reconciler.StateReconciling, reconciler.StateFetching, reconciler.StateStriped:
+				return true
+			}
+			return false
+		})
+	}
 }
 
 // waitState waits until peer is in state want.
@@ -161,11 +195,17 @@ func TestPeerStateProbing(t *testing.T) {
 	if got := peerState(h.r, higher); got != reconciler.StateProbing {
 		t.Fatalf("state %v before this node's Status reached the peer, want %v", got, reconciler.StateProbing)
 	}
+	if got := len(h.r.PeerStatuses()); got != 0 {
+		t.Fatalf("%d probing peers offered for stripes, want 0", got)
+	}
 	svc.set(func() { delete(svc.sendErr, higher.ByteString()) })
 	h.clock.Add(reconciler.StatusMinInterval)
 	h.r.Round()
 	if got := peerState(h.r, higher); got != reconciler.StateIdle {
 		t.Fatalf("state %v after the exchange, want %v", got, reconciler.StateIdle)
+	}
+	if got := h.r.PeerStatuses(); len(got) != 1 || !got[0].Peer.Equal(higher) {
+		t.Fatalf("peers offered for stripes %v, want the admitted peer", got)
 	}
 }
 
@@ -181,21 +221,7 @@ func TestPeerStateSessionBackoff(t *testing.T) {
 	busy := func(err error) {
 		svc.set(func() { svc.reconErr[higher.ByteString()] = err })
 	}
-	// round runs a round and reports whether it started a session, which
-	// it then waits for. The session is held until the state is read.
-	round := func() bool {
-		gate := make(chan struct{})
-		svc.set(func() { svc.reconcileGate = gate })
-		n := svc.count(svc.reconciled, higher)
-		h.r.Round()
-		started := peerState(h.r, higher) == reconciler.StateReconciling
-		close(gate)
-		if started {
-			waitFor(t, "session", func() bool { return svc.count(svc.reconciled, higher) == n+1 })
-			waitState(t, h.r, higher, reconciler.StateIdle)
-		}
-		return started
-	}
+	round := func() bool { return gatedRound(t, h, higher) }
 
 	busy(rangesync.ErrPeerBusy)
 	if !round() {
@@ -217,7 +243,7 @@ func TestPeerStateSessionBackoff(t *testing.T) {
 		if i == 1 {
 			busy(errors.New("stream reset")) // an error counts like Busy
 		} else {
-			busy(rangesync.ErrSessionLimit)
+			busy(rangesync.ErrPeerSessionLimit)
 		}
 		if !round() {
 			t.Fatalf("Busy %d in a row: no session after a %v backoff", i+2, wait)
@@ -421,5 +447,273 @@ func TestStatusGossipBackoff(t *testing.T) {
 	}
 	if got := h.r.Gossip(); got != reconciler.StatusMinInterval {
 		t.Fatalf("retry in %v after a first failure, want %v", got, reconciler.StatusMinInterval)
+	}
+}
+
+// TestStartupGuardBusyPeer: the start-up guard holds while a differing peer
+// this node initiates with answers Busy or backs off, and releases once a
+// session with it completes.
+func TestStartupGuardBusyPeer(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, higher)
+	for i := range 2 {
+		svc.set(func() { svc.reconErr[higher.ByteString()] = rangesync.ErrPeerBusy })
+		if !gatedRound(t, h, higher) {
+			t.Fatalf("round %d: no session", i)
+		}
+		if h.r.GuardReleased() {
+			t.Fatalf("guard released after Busy %d", i+1)
+		}
+	}
+	if gatedRound(t, h, higher) {
+		t.Fatal("session within the backoff")
+	}
+	if h.r.GuardReleased() {
+		t.Fatal("guard released while the peer backs off")
+	}
+	h.clock.Add(rangesync.MinRoundInterval)
+	if !gatedRound(t, h, higher) {
+		t.Fatal("no session after the backoff")
+	}
+	if !h.r.GuardReleased() {
+		t.Fatal("guard held after the session completed")
+	}
+}
+
+// TestPeerStateLocalCauseNoBackoff: a session that did not run for a cause
+// on this node (its session cap, its index rebuilding, a stale scope, no
+// Status) is retried by the next round and leaves the peer's Busy streak as
+// it is; the peer's own answers (Busy, its session slot taken) back off.
+func TestPeerStateLocalCauseNoBackoff(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, higher)
+	fail := func(err error) {
+		svc.set(func() { svc.reconErr[higher.ByteString()] = err })
+	}
+	for _, err := range []error{
+		rangesync.ErrNodeSessionLimit,
+		fmt.Errorf("index: %w", fingerprint.ErrBusy),
+		fmt.Errorf("session scope: %w", rangesync.ErrDisjointRoots),
+		fmt.Errorf("session scope: %w", rangesync.ErrInvalidScope),
+		rangesync.ErrNoStatus,
+		fmt.Errorf("%w: peer mapping 2", rangesync.ErrMappingMismatch),
+		rangesync.ErrNodeSessionLimit,
+	} {
+		fail(err)
+		if !gatedRound(t, h, higher) {
+			t.Fatalf("no session after %v", err)
+		}
+	}
+	fail(rangesync.ErrPeerSessionLimit)
+	if !gatedRound(t, h, higher) {
+		t.Fatal("no session")
+	}
+	fail(rangesync.ErrPeerSessionLimit)
+	if !gatedRound(t, h, higher) {
+		t.Fatal("first peer answer in a row not retried by the next round")
+	}
+	if gatedRound(t, h, higher) {
+		t.Fatal("session within the backoff after two peer answers")
+	}
+}
+
+// TestPeerStateUnsupportedReconnect: a peer in Unsupported whose Status
+// arrives reconnected unseen with rangesync: it gets a new machine, this
+// node's first contact, and sessions.
+func TestPeerStateUnsupportedReconnect(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.unsupported[higher.ByteString()] = true
+	h := newGossipHarness(t, svc, higher)
+	h.r.Round()
+	if got := peerState(h.r, higher); got != reconciler.StateUnsupported {
+		t.Fatalf("state %v, want %v", got, reconciler.StateUnsupported)
+	}
+	h.r.Round()
+	if n := svc.count(svc.sent, higher); n != 1 {
+		t.Fatalf("unsupported peer probed %d times", n)
+	}
+
+	svc.set(func() {
+		delete(svc.unsupported, higher.ByteString())
+		svc.remote[higher.ByteString()] = status(2)
+	})
+	h.r.Round()
+	if n := svc.count(svc.sent, higher); n != 2 {
+		t.Fatalf("%d statuses, want a first contact after the reconnect", n)
+	}
+	waitFor(t, "session", func() bool { return svc.count(svc.reconciled, higher) == 1 })
+
+	// a Status that was there when the peer was found Unsupported proves
+	// nothing; a different one does
+	svc2 := newFakeService(status(1))
+	svc2.unsupported[higher.ByteString()] = true
+	svc2.remote[higher.ByteString()] = status(2)
+	h2 := newGossipHarness(t, svc2, higher)
+	h2.r.Round()
+	h2.r.Round()
+	if n := svc2.count(svc2.sent, higher); n != 1 || peerState(h2.r, higher) != reconciler.StateUnsupported {
+		t.Fatalf("%d statuses, state %v: re-probed on a Status seen before", n, peerState(h2.r, higher))
+	}
+	svc2.set(func() {
+		delete(svc2.unsupported, higher.ByteString())
+		svc2.remote[higher.ByteString()] = status(3)
+	})
+	h2.r.Round()
+	if n := svc2.count(svc2.sent, higher); n != 2 {
+		t.Fatalf("%d statuses, want a first contact after a new Status", n)
+	}
+}
+
+// TestPeerStateStripeDuringFetch: a stripe session starts while the wants of
+// the peer's round session are fetched (Fetching -> Striped), and the peer
+// is Idle only once both have ended, whichever ends first.
+func TestPeerStateStripeDuringFetch(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	for _, tc := range []struct {
+		name       string
+		roundFirst bool
+	}{
+		{"round fetch ends first", true},
+		{"stripe ends first", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newFakeService(status(1))
+			svc.remote[higher.ByteString()] = status(2)
+			svc.wants[higher.ByteString()] = 3
+			calls := make(chan chan struct{})
+			svc.fetchCalls = calls
+			h := newGossipHarness(t, svc, higher)
+			h.r.Round()
+			roundFetch := <-calls
+			if got := peerState(h.r, higher); got != reconciler.StateFetching {
+				t.Fatalf("state %v during the round fetch, want %v", got, reconciler.StateFetching)
+			}
+			done := make(chan reconciler.StripeResult, 1)
+			go func() {
+				done <- h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+			}()
+			stripeFetch := <-calls
+			if got := peerState(h.r, higher); got != reconciler.StateStriped {
+				t.Fatalf("state %v during the stripe, want %v", got, reconciler.StateStriped)
+			}
+
+			if tc.roundFirst {
+				close(roundFetch)
+				waitFor(t, "round fetch recorded", func() bool { return !h.r.PeerFetching(higher) })
+				if got := peerState(h.r, higher); got != reconciler.StateStriped {
+					t.Fatalf("state %v after the round fetch, want %v", got, reconciler.StateStriped)
+				}
+				close(stripeFetch)
+				if res := <-done; res.Err != nil {
+					t.Fatal(res.Err)
+				}
+			} else {
+				close(stripeFetch)
+				if res := <-done; res.Err != nil {
+					t.Fatal(res.Err)
+				}
+				if got := peerState(h.r, higher); got != reconciler.StateFetching {
+					t.Fatalf("state %v after the stripe, want %v (round fetch held)", got, reconciler.StateFetching)
+				}
+				close(roundFetch)
+			}
+			waitState(t, h.r, higher, reconciler.StateIdle)
+		})
+	}
+}
+
+// TestPeerStateWaiterWoken: a stripe session waiting for a peer's round
+// session goes on, untracked, when the peer leaves or is found Unsupported
+// (a reconnect the peer set did not show).
+func TestPeerStateWaiterWoken(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	for _, tc := range []struct {
+		name  string
+		event func(h *harness)
+		want  reconciler.PeerState // 0: no entry
+	}{
+		{"disconnect", func(h *harness) {
+			h.topo.setPeers()
+			h.r.Round()
+		}, 0},
+		{"unsupported", func(h *harness) {
+			h.svc.set(func() { h.svc.unsupported[higher.ByteString()] = true })
+			h.clock.Add(reconciler.StatusMaxInterval)
+			h.r.Gossip() // the heartbeat finds the peer does not speak rangesync
+		}, reconciler.StateUnsupported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newFakeService(status(1))
+			svc.remote[higher.ByteString()] = status(2)
+			gate := make(chan struct{})
+			svc.reconcileGate = gate
+			h := newGossipHarness(t, svc, higher)
+			h.r.Round()
+			if got := peerState(h.r, higher); got != reconciler.StateReconciling {
+				t.Fatalf("state %v, want %v", got, reconciler.StateReconciling)
+			}
+			done := make(chan reconciler.StripeResult, 1)
+			go func() {
+				done <- h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+			}()
+			waitFor(t, "stripe waiting", func() bool { return h.r.StripeWaiters(higher) == 1 })
+
+			tc.event(h)
+			waitFor(t, "stripe session", func() bool { return len(svc.sessionOpens(higher)) == 2 })
+			if got := peerState(h.r, higher); got != tc.want {
+				t.Fatalf("state %v, want %v", got, tc.want)
+			}
+			close(gate)
+			<-done
+		})
+	}
+}
+
+// TestPeerStateReadmittedBackoff: a peer re-admitted after its roots were
+// disjoint starts with a new machine: no backoff from before.
+func TestPeerStateReadmittedBackoff(t *testing.T) {
+	t.Parallel()
+
+	withRoot := func(st rangesync.Status, root fingerprint.Range) rangesync.Status {
+		st.Root = root
+		return st
+	}
+	whole := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	disjoint := fingerprint.NewRange(addr(0x00, 0), 1)
+	svc := newFakeService(withRoot(status(1), fingerprint.NewRange(self, 1)))
+	svc.remote[higher.ByteString()] = withRoot(status(2), whole)
+	h := newGossipHarness(t, svc, higher)
+	for range 2 {
+		svc.set(func() { svc.reconErr[higher.ByteString()] = rangesync.ErrPeerBusy })
+		if !gatedRound(t, h, higher) {
+			t.Fatal("no session")
+		}
+	}
+	if gatedRound(t, h, higher) {
+		t.Fatal("session within the backoff")
+	}
+
+	svc.set(func() { svc.remote[higher.ByteString()] = withRoot(status(2), disjoint) })
+	h.r.Round()
+	if got := peerState(h.r, higher); got != reconciler.StateRemoved {
+		t.Fatalf("state %v, want %v", got, reconciler.StateRemoved)
+	}
+	svc.set(func() { svc.remote[higher.ByteString()] = withRoot(status(2), whole) })
+	if !gatedRound(t, h, higher) {
+		t.Fatal("re-admitted peer still backing off")
 	}
 }

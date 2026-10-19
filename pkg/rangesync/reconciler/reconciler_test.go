@@ -95,6 +95,9 @@ type fakeService struct {
 	reconcileDelay time.Duration
 	inSession      map[string]int
 	maxInSession   map[string]int
+	// fetchCalls, if not nil, receives a channel from each Fetch call,
+	// which then waits until that channel is closed.
+	fetchCalls chan chan struct{}
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -255,8 +258,21 @@ func (s *fakeService) Reconcile(ctx context.Context, peer swarm.Address) ([]stor
 
 func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error) {
 	s.mu.Lock()
-	gate, delay := s.fetchGate, s.fetchDelay
+	gate, delay, calls := s.fetchGate, s.fetchDelay, s.fetchCalls
 	s.mu.Unlock()
+	if calls != nil {
+		release := make(chan struct{})
+		select {
+		case calls <- release:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
 	if delay > 0 {
 		select {
 		case <-time.After(delay):

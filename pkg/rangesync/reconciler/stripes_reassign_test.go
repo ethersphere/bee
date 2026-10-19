@@ -195,6 +195,7 @@ func TestTransferStripesWithheld(t *testing.T) {
 		svc.withhold[higher.ByteString()] = true
 		h := newHarness(t, svc, higher, other)
 		waitFor(t, "status", func() bool { return svc.count(svc.sent, other) > 0 && svc.count(svc.sent, higher) > 0 })
+		waitAdmitted(t, h.r, higher, other)
 
 		res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
 		if res.Err != nil || !res.Peer.Equal(other) {

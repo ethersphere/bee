@@ -6,8 +6,10 @@ package reconciler
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -43,24 +45,51 @@ func (st *peerState) wakeLocked() {
 // rangesync. r.mu must be held.
 func (r *Reconciler) admitLocked(local rangesync.Status, connected []swarm.Address) {
 	for _, p := range connected {
-		st, ok := r.peers[p.ByteString()]
-		if !ok {
-			continue
-		}
-		remote, have := r.svc.LastStatus(p)
-		exchanged := st.sent && have
-		if st.fsm.state == stateRemoved && (!exchanged || isEligible(local, remote)) {
-			st.fsm = newPeerFSM()
-		}
-		if !exchanged {
-			continue
-		}
-		r.fireLocked(st, eventExchanged)
-		if st.fsm.state == stateIdle && !isEligible(local, remote) {
-			r.fireLocked(st, eventDisjoint)
-			r.logger.Debug("peer dropped: no session scope", "peer_address", p, "root", local.Root, "peer_root", remote.Root)
+		if st, ok := r.peers[p.ByteString()]; ok {
+			remote, have := r.svc.LastStatus(p)
+			r.admitPeerLocked(p, st, local, remote, have)
 		}
 	}
+}
+
+// admitPeerLocked is admitLocked for the peer p with entry st, whose last
+// Status is remote (have reports whether there is one). r.mu must be held.
+func (r *Reconciler) admitPeerLocked(p swarm.Address, st *peerState, local, remote rangesync.Status, have bool) {
+	exchanged := st.sent && have
+	if st.fsm.state == stateRemoved && (!exchanged || isEligible(local, remote)) {
+		st.fsm = newPeerFSM()
+	}
+	if !exchanged {
+		return
+	}
+	r.fireLocked(st, eventExchanged)
+	if st.fsm.state == stateIdle && !isEligible(local, remote) {
+		r.fireLocked(st, eventDisjoint)
+		r.logger.Debug("peer dropped: no session scope", "peer_address", p, "root", local.Root, "peer_root", remote.Root)
+	}
+}
+
+// localCause reports whether a session failed with err for a cause on this
+// node, which says nothing about the peer: this node runs
+// MaxConcurrentSessions sessions, its index is rebuilding, the two Statuses
+// give no session scope (this node's root moved since the round picked the
+// peer), or the peer's Status is gone or has another Mapping (it left or is
+// about to be dropped). Such a session is retried by the next round without
+// a backoff.
+func localCause(err error) bool {
+	for _, target := range []error{
+		rangesync.ErrNodeSessionLimit,
+		fingerprint.ErrBusy,
+		rangesync.ErrDisjointRoots,
+		rangesync.ErrInvalidScope,
+		rangesync.ErrNoStatus,
+		rangesync.ErrMappingMismatch,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // acquireStripe moves peer to Striped for a stripe session (a transfer or a

@@ -40,10 +40,12 @@ var spec81 = []transition{
 // beyond81 holds the transitions the reconciler adds to §8.1: a stripe
 // session with an idle neighbor (§7.4 assigns stripes to neighbors that run
 // no session) or with one whose last wants are being fetched (the fetch
-// does not take the session slot), and a disconnect in every state.
+// does not take the session slot), a session that did not run for a cause
+// on this node, and a disconnect in every state.
 var beyond81 = []transition{
 	{reconciler.StateIdle, reconciler.EventStripe, reconciler.StateStriped},
 	{reconciler.StateFetching, reconciler.EventStripe, reconciler.StateStriped},
+	{reconciler.StateReconciling, reconciler.EventAborted, reconciler.StateIdle},
 	{reconciler.StateProbing, reconciler.EventDisconnected, reconciler.StateRemoved},
 	{reconciler.StateReconciling, reconciler.EventDisconnected, reconciler.StateRemoved},
 	{reconciler.StateFetching, reconciler.EventDisconnected, reconciler.StateRemoved},
@@ -207,4 +209,75 @@ func TestStatusRetry(t *testing.T) {
 			t.Fatalf("retry after %d failures: %v, want %v", n, got, want)
 		}
 	}
+}
+
+// TestPeerFSMStreakEnds: a Busy streak ends with an equal digest, after a
+// quiet period of MaxSessionBackoff past its last backoff, and is untouched
+// by a session that did not run for a cause on this node.
+func TestPeerFSMStreakEnds(t *testing.T) {
+	t.Parallel()
+
+	start := time.Unix(1_000_000, 0)
+	// busy returns a machine after two Busy answers at start: backing off
+	// until start+MinRoundInterval.
+	busy := func() *reconciler.PeerFSM {
+		m := reconciler.NewPeerFSM()
+		m.Fire(reconciler.EventExchanged, start)
+		for range 2 {
+			m.Fire(reconciler.EventReconcile, start)
+			m.Fire(reconciler.EventBusy, start)
+		}
+		if got := m.RetryAt().Sub(start); got != rangesync.MinRoundInterval {
+			t.Fatalf("backoff %v, want %v", got, rangesync.MinRoundInterval)
+		}
+		return m
+	}
+	// nextWait returns the backoff after one more Busy at now.
+	nextWait := func(m *reconciler.PeerFSM, now time.Time) time.Duration {
+		m.Fire(reconciler.EventReconcile, now)
+		m.Fire(reconciler.EventBusy, now)
+		return m.RetryAt().Sub(now)
+	}
+
+	t.Run("equal digest", func(t *testing.T) {
+		t.Parallel()
+		m := busy()
+		now := start.Add(time.Second)
+		if !m.Fire(reconciler.EventEqualDigest, now) {
+			t.Fatal("equal digest rejected")
+		}
+		if !m.CanReconcile(now) {
+			t.Fatal("backing off after an equal digest")
+		}
+		if got := nextWait(m, now); got != 0 {
+			t.Fatalf("first Busy after an equal digest waits %v, want 0", got)
+		}
+	})
+	t.Run("quiet period", func(t *testing.T) {
+		t.Parallel()
+		m := busy()
+		retry := m.RetryAt()
+		if got := nextWait(m, retry.Add(reconciler.MaxSessionBackoff)); got != 2*rangesync.MinRoundInterval {
+			t.Fatalf("Busy %v past the backoff waits %v, want %v", reconciler.MaxSessionBackoff, got, 2*rangesync.MinRoundInterval)
+		}
+		m = busy()
+		if got := nextWait(m, retry.Add(reconciler.MaxSessionBackoff+time.Second)); got != 0 {
+			t.Fatalf("Busy after a quiet period waits %v, want 0", got)
+		}
+	})
+	t.Run("aborted", func(t *testing.T) {
+		t.Parallel()
+		m := busy()
+		now := m.RetryAt()
+		m.Fire(reconciler.EventReconcile, now)
+		if !m.Fire(reconciler.EventAborted, now) || m.State() != reconciler.StateIdle {
+			t.Fatalf("state %v after an aborted session", m.State())
+		}
+		if !m.CanReconcile(now) {
+			t.Fatal("an aborted session set a backoff")
+		}
+		if got := nextWait(m, now); got != 2*rangesync.MinRoundInterval {
+			t.Fatalf("Busy after an aborted session waits %v, want %v (streak kept)", got, 2*rangesync.MinRoundInterval)
+		}
+	})
 }

@@ -27,7 +27,7 @@ import (
 //	Idle --> [*]: disconnected or neighborhoods disjoint
 //	Unsupported --> [*]: disconnected
 //
-// The reconciler adds three kinds of transition to the diagram:
+// The reconciler adds four kinds of transition to the diagram:
 //   - Idle --> Striped: a stripe session with the peer starts. The stripe
 //     worker plans a striped range across every neighbor that covers it
 //     (§7.4, §7.5), not only the peer whose session found the difference, so
@@ -38,6 +38,8 @@ import (
 //   - Fetching --> Striped: a stripe session may also start while the wants
 //     of the peer's last session are fetched. The fetch uses its own stream,
 //     not the session slot. The peer returns to Idle once both have ended.
+//   - Reconciling --> Idle without a backoff: the session did not run for a
+//     cause on this node (eventAborted), which says nothing about the peer.
 //   - any state --> [*] on a disconnect.
 //
 // [*] is stateRemoved. A peer that leaves because the neighborhoods became
@@ -102,6 +104,9 @@ const (
 	eventBusy
 	// eventError: the session failed.
 	eventError
+	// eventAborted: the session did not run for a cause on this node
+	// (localCause): its session cap, its index rebuilding, a stale scope.
+	eventAborted
 	// eventDisjoint: the peer is not eligible (isEligible): the
 	// neighborhoods are disjoint or the Mappings differ.
 	eventDisjoint
@@ -121,6 +126,7 @@ var eventNames = map[fsmEvent]string{
 	eventFetched:      "fetched",
 	eventBusy:         "busy",
 	eventError:        "error",
+	eventAborted:      "aborted",
 	eventDisjoint:     "disjoint",
 	eventDisconnected: "disconnected",
 }
@@ -156,6 +162,7 @@ var transitions = map[fsmState]map[fsmEvent]fsmState{
 		eventLargeDiff:    stateStriped,
 		eventBusy:         stateIdle,
 		eventError:        stateIdle,
+		eventAborted:      stateIdle,
 		eventDisconnected: stateRemoved,
 	},
 	stateStriped: {
@@ -189,8 +196,8 @@ const (
 // peerFSM is a peer's state machine, with the backoff of its sessions.
 type peerFSM struct {
 	state fsmState
-	// failures counts the Busy or failed sessions in a row; retryAt is
-	// when the next session may start.
+	// failures counts the Busy or failed sessions in a row (the streak);
+	// retryAt is when the next session may start.
 	failures int
 	retryAt  time.Time
 }
@@ -202,7 +209,10 @@ func newPeerFSM() peerFSM {
 
 // fire applies e at now and reports whether it was a transition of the
 // current state; any other event leaves the machine unchanged. Busy and
-// error set the backoff (sessionBackoff); a completed session clears it.
+// error extend the streak and set the backoff (sessionBackoff). A completed
+// session or an equal digest ends the streak, and so does a quiet period of
+// maxSessionBackoff past the last backoff: a streak counts answers in a row,
+// not over the peer's lifetime. An aborted session leaves it as it is.
 func (m *peerFSM) fire(e fsmEvent, now time.Time) bool {
 	next, ok := transition(m.state, e)
 	if !ok {
@@ -210,9 +220,12 @@ func (m *peerFSM) fire(e fsmEvent, now time.Time) bool {
 	}
 	switch e {
 	case eventBusy, eventError:
+		if now.Sub(m.retryAt) > maxSessionBackoff {
+			m.failures = 0
+		}
 		m.failures++
 		m.retryAt = now.Add(sessionBackoff(m.failures))
-	case eventSessionDone:
+	case eventSessionDone, eventEqualDigest:
 		m.failures, m.retryAt = 0, time.Time{}
 	}
 	m.state = next

@@ -158,17 +158,18 @@ func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote S
 
 // acquireSession takes a node-wide session token and the session slot of
 // peer for an outgoing session. Both caps are shared with the incoming
-// sessions. It returns ErrSessionLimit when either is taken.
+// sessions. It returns ErrNodeSessionLimit or ErrPeerSessionLimit (both
+// ErrSessionLimit) when either is taken.
 func (s *Service) acquireSession(peer swarm.Address) (release func(), err error) {
 	select {
 	case s.sessions <- struct{}{}:
 	default:
-		return nil, fmt.Errorf("%w: node", ErrSessionLimit)
+		return nil, ErrNodeSessionLimit
 	}
 	releasePeer, ok := s.peerSessions.acquire(peer)
 	if !ok {
 		<-s.sessions
-		return nil, fmt.Errorf("%w: peer", ErrSessionLimit)
+		return nil, ErrPeerSessionLimit
 	}
 	return func() {
 		releasePeer()
