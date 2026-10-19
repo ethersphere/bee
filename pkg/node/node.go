@@ -190,6 +190,7 @@ type Options struct {
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
 	NodeMode                      NodeMode
+	BpsBroker                     bool
 	LightNodeLimit                int
 	GasLimitFallback              uint64
 	Logger                        log.Logger
@@ -326,6 +327,10 @@ func NewBee(
 			}
 		}
 	}(b)
+
+	if o.NodeMode != FullMode && o.BpsBroker {
+		return nil, fmt.Errorf("bps broker is only allowed for full nodes")
+	}
 
 	if o.NodeMode != FullMode && o.ReserveCapacityDoubling != 0 {
 		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
@@ -1190,9 +1195,9 @@ func NewBee(
 	b.pssCloser = pssService
 	b.gsocCloser = gsocService
 
-	bpsService := bps.New(p2ps, p2ps, o.FullNodeMode, logger, bps.DefaultOptions)
+	bpsService := bps.New(p2ps, p2ps, o.BpsBroker, logger, bps.DefaultOptions)
 	b.bpsCloser = bpsService
-	if o.FullNodeMode {
+	if o.BpsBroker {
 		if err = p2ps.AddProtocol(bpsService.Protocol()); err != nil {
 			return nil, fmt.Errorf("bps protocol: %w", err)
 		}

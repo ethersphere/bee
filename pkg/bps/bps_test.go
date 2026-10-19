@@ -608,3 +608,15 @@ func TestVerify(t *testing.T) {
 		}
 	}
 }
+
+func TestJoinNotBroker(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	notBroker := bps.New(nil, nil, false, log.Noop, bps.Options{})
+	rec := streamtest.New(streamtest.WithProtocols(notBroker.Protocol()), streamtest.WithBaseAddr(swarm.RandAddress(t)))
+	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal})
+	if err == nil {
+		t.Fatal("join to a non-broker succeeded")
+	}
+}
