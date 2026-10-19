@@ -302,6 +302,100 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   a by-bucket parallel build. It is the sync-unavailable window on a first start (no live slab),
   under the 120 s start-up guard. The follow-up is closed; the storer-iterator rebuild time on a
   real node is still worth reading off T6.3's testnet runs.
+- **(T4.3) Round scheduler in `reconciler/scheduler.go`.** It keeps the Phase-1 loop structure
+  (round timer plus topology wakes, T4.5 replaces it) and adds:
+  - *Takeover.* The lower overlay still initiates. The higher side starts its own session when
+    the digests have differed for `2 × RoundInterval + jitter` (jitter: a per-peer fraction of one
+    interval) with no session of the initiator with this node. The wait is measured against the
+    current interval, so it shrinks with it while the mismatch persists. It restarts when the
+    initiator completes a session or lists wants with this node (`Succeed`/`Wants`), and when a
+    takeover gets `ErrPeerSessionLimit`: on this node that slot can only be held by the
+    initiator's own session, so the takeover goes back to Idle with no backoff. An equal digest,
+    a lost Status or ineligibility ends the wait. A takeover runs under the same rules as an
+    initiated session (backoff, stripe waiters, bootstrap, radius opening).
+  - *Adaptive interval.* After each round the interval halves (floor `MinRoundInterval = 5 s`)
+    when any eligible, exchanged peer's digest differed, and doubles (cap `MaxRoundInterval =
+    30 s`) otherwise, including rounds with no eligible peer. It starts at 5 s. Gauge
+    `round_interval_seconds` (the T6.0 follow-up). `Options.RoundInterval` now fixes the interval
+    (min = max) for tests; the exported constant `reconciler.RoundInterval` is gone (no user
+    outside the package) in favor of `reconciler.MinRoundInterval`/`MaxRoundInterval`.
+  - *Triggers.* A changed peer Status, a root change of this node (the initiator reacts to its
+    own new chunks, not only its peers'), and a gossip send that delivered a root the peer lacked
+    trigger a round. A trigger runs no sooner than the minimum interval after the last round, so
+    triggers never exceed a peer's session rate (`PeerSessionInterval = MinRoundInterval / 2`).
+    The round timer stays on the real clock as before; triggers follow `Options.Now`/`After`.
+    Topology changes still run a round at once.
+- **(T4.3) The node-wide cap is shared through `MaxInitiatedSessions = MaxConcurrentSessions / 2 =
+  8` slots.** These cover every session this node opens: round sessions, takeovers, stripe
+  transfers and verifications. rangesync's 16 tokens are shared by served and initiated sessions,
+  so the other half stays for the sessions peers open with this node. With the lower-overlay rule,
+  the lowest node of a neighborhood initiates with everyone, and without a reconciler cap it would
+  take all 16 tokens and answer every peer Busy. A session waits for a slot, first come, first
+  served, in its peer's Reconciling or Striped state, so a round never starts two sessions with one
+  peer, and the start-up guard counts the waiting sessions as unresolved. A stripe takes its
+  peer first and then a slot, so it never holds an idle slot while it waits for the peer. A stripe
+  frees its slot before a Busy retry. A round no longer gets `ErrNodeSessionLimit` from its own
+  sessions; served sessions can still cause it (a local cause, no backoff). This covers the
+  T3.2 part 2 / T3.4 carry-over: T4.2 made a peer's round and stripe sessions exclusive, and this
+  shares the node cap across peers.
+- **(T4.3) Rounds do not read one index snapshot; T1.6's locking cannot give one.** `Commit` holds
+  `ix.mu` in *read* mode across `run` and the apply, and writes the slab under `slabMu`.
+  `Summary`, `RootSummary` and `Symbols` take `ix.mu` (R) and `slabMu` (R) per call. A round-wide
+  `ix.mu.RLock` would therefore block only rebuilds, not deltas. A real snapshot would need a copy
+  of the slab per round (8 MB of `LtHash` at B = 4096) or copy-on-write in the Index, which G1
+  rules out ("`Commit` is unchanged"). What holds instead:
+  - the round decides on one `LocalStatus` snapshot;
+  - each symbol stream reads one fixed set (T2.4's stream snapshot), so churn never corrupts a
+    decoder;
+  - a delta applied during a round changes the root summary, which the Index signals. That
+    gossips the new Status and, since T4.3, triggers the next round.
+
+  So a delta reaches the current round's later sessions or the next round, and is never lost.
+  Two sessions of one round can see different sets, so a chunk added mid-round may be fetched by
+  one session and listed by the next. The want set (T4.4) de-duplicates the fetch. §8.2's "the
+  index is under `RLock`" is not what T1.6 built; the proposal text should say "each symbol stream
+  reads one snapshot" (follow-up below).
+- **(T4.3) Moved-root race and sender-rate deferral (T4.1 follow-ups).** `peerState.reached` keeps
+  the root of the last Status of ours that reached the peer. A round starts no session, initiated
+  or taken over, with a peer whose `reached` is not this node's current root, and counts it as
+  unresolved for the guard. A send in flight (gossip) or one the sender-side rate deferred no
+  longer causes a refused session. The gossip pass that delivers the root triggers the round.
+  Failed heartbeats and pushes still keep sessions (T4.1 fix): only the root matters for the
+  session scope.
+- **(T4.3) A received Status wakes the reconciler (T4.1 follow-up).** New additive API in
+  `pkg/rangesync`: `Service.SubscribeStatus()` signals, coalesced (buffer of one), when a peer's
+  recorded Status differs from its last one or is its first. Heartbeats that repeat a Status are
+  not signaled. The reconciler takes it through an optional interface (`statusSubscriber`, with a
+  compile-time check against `*rangesync.Service`), so the narrow `reconciler.Service` contract
+  and `pkg/node` are unchanged. A signal wakes the gossip loop at once (a peer that became
+  eligible from its side gets our changed summary without waiting for the heartbeat) and triggers
+  a round.
+- **(T4.3) Stripe peer choice avoids peers in backoff (T4.2 follow-up).** The stripe worker plans
+  with the admitted peers whose `peerFSM.retryAt` has passed, and falls back to every admitted
+  peer when that leaves a stripe without a peer. `nextStripePeer`'s fallback and `verifier` take
+  such peers first. Stripe Busy answers still do not count towards the backoff.
+- **(T4.3) Open question 8 (pushsync trigger): skipped, needs `pkg/pushsync`.** pushsync exposes no
+  hook for a delivery to this node that failed. Its only per-chunk callbacks are `unwrap`,
+  `gsocHandler` and `validStamp`, which `pkg/node` passes in. A stamp failure is rejected by
+  rangesync too, so triggering on it gains nothing, and storer or forward failures are visible
+  only inside pushsync's handler. Wrapping the storer in `pkg/node` would observe `Put` failures
+  of every protocol, not pushsync deliveries. No constant was added. The status and root-change
+  triggers above already start a round within `MinRoundInterval` of the Status change that a
+  pushsync delivery to a neighbor causes.
+- **(T4.3) Session memory budget of the symbol path (T2.1 follow-up).** New constants in
+  `pkg/rangesync/constants.go`: `DecoderBytesPerID = 200`, `SessionDecoderMemory =
+  SessionSymbolBudget × 88 B + 2 × SessionSymbolBudget × DecoderBytesPerID` (1.4 + 6.25 MiB) and
+  `NodeDecoderMemory = MaxConcurrentSessions × SessionDecoderMemory` (about 122 MiB). A session
+  receives at most `SessionSymbolBudget` symbols, and a decoder recovers at most two IDs per
+  symbol (else `ErrCorrupt`). `TestSessionDecoderMemory` measures about 110 B per recovered ID
+  beyond the symbols on amd64 and checks the bound. The godoc lists what the budget does not
+  count and where each part is bounded:
+  - stream prefix copies, at most cap(R) per open stream;
+  - `MaxPendingReplies`;
+  - wants, bounded by `LargeDiff` through the Striper;
+  - one Message each way.
+
+  `Local.Symbols` session cancellation was not cheap; see Follow-ups.
 
 ## Follow-ups
 _(sessions append here)_
@@ -384,3 +478,40 @@ _(sessions append here)_
     `TestPeerStateUnsupportedReconnect`, `TestPeerStateReadmittedBackoff`, and
     `TestVerifyStripes*` again (`waitAdmitted`).
   - `pkg/rangesync`: `TestReconcileInitiatorSessionLimit`.
+- **(T4.3) Tests to run with `-race` on CI.** These ran with `-count=10..20 -cpu=1,2,4` instead.
+  - `pkg/rangesync/reconciler`: `TestRound*` (new: `TestRoundInitiatorRule`,
+    `TestRoundTakeover*`, `TestRoundIntervalAdapts`, `TestRoundSessionCap*`,
+    `TestRoundWaitsForMovedRoot`; also `TestRoundOwnsFirstContact` and `TestRoundBootstrap*`),
+    `TestStatusChangeTriggersRound`, `TestRootChangeTriggersRound`, `TestStatusChangeWakesGossip`,
+    `TestStripePlanAvoidsBackoff`.
+  - Re-run with `-race`, because `round`, `session`, `probe`, `loop`, `gossip` and
+    `transferStripe` changed: `TestStatusGossip*`, `TestPeerState*`, `TestStartupGuard*`,
+    `TestSyncRate*`, `TestRadius*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestPeerJoinLeave`,
+    `TestClose`.
+  - `pkg/rangesync`: `TestSubscribeStatus`, `TestStatus*`.
+- **(T4.3) First Busy retry on topology rounds (T4.5).** Still open. Triggers are now deferred to
+  the minimum interval, but topology changes still run a round at once, which can retry a peer's
+  first Busy within milliseconds. Deferring topology rounds like triggers breaks the tests that
+  drive rounds through topology changes with `RoundInterval = 1 h`: `TestRoundOwnsFirstContact`
+  and the radius tests. T4.5 replaces the loop and should rework those tests with it.
+- **(T4.3) Stripe registry trimming (T4.5).** Not done. A partially overlapping range is still
+  dropped and shows up again in a later round. Trimming changes the job bookkeeping (`started`,
+  bootstrap and radius jobs, `cancel`). T4.6's simulation should first show whether the dropped
+  ranges cost rounds.
+- **(T4.3) Compare session-root summaries in `sameDigest` (T4.5).** Not done. It needs an
+  additive `Service` method for the local summary of a range, which changes the narrow
+  `reconciler.Service` and its fakes. It helps only when the session root is the peer's root,
+  since the peer's Status carries only its root's summary. "Different roots ⇒ different" costs one
+  Fingerprint exchange per round with such a peer, not a wrong outcome.
+- **(T4.3) `Local.Symbols` cancellation (T4.5 or later).** Not cheap. The scan path takes no
+  context, so a slow scan blocks `Handle` for up to `maxScanIDs` IDs. Cancellation needs a context
+  in the `Local` interface (T1.8 contract), in `local.scanIDs`, and in every session-test fake.
+  The scan is bounded (`ScanLimit`, `MaxScansPerMessage`), so it is a latency issue, not a
+  memory one.
+- **(T4.3) Correct §8.2 "all sessions in a round read the same index snapshot".** T1.6's locking
+  gives per-stream snapshots, not per-round ones (see Decisions log). Edit the proposal, or let
+  T6.0's acceptance text say "each symbol stream reads one snapshot".
+- **(T4.3) Initiated-session share (T4.6).** `MaxInitiatedSessions = 8` leaves half of the 16
+  tokens for served sessions. In a neighborhood of more than 9 differing peers, the lowest node
+  runs its sessions in several waves within a round. T4.6's N = 17 simulation should check the
+  convergence time against `RoundInterval`.
