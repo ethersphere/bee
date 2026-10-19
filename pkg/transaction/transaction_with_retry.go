@@ -363,14 +363,19 @@ func (t *transactionService) sendWithRetry(
 func (t *transactionService) retryLoop(
 	ctx context.Context, request *TxRequest,
 	rs *RetriedTransaction, nonceWatch *retryNonceWatch,
-	previousTip, previousFeeCap *big.Int, tiers []feeTier, 	overrides *RetryOverrides,
+	previousTip, previousFeeCap *big.Int, tiers []feeTier, overrides *RetryOverrides,
 ) (common.Hash, *types.Receipt, int, error) {
 	var attempts int // track total number of attempts for metrics
 	for _, tier := range tiers {
-		for k := 0; k < t.attemptsPerTier; k++ {
-			attempts++
-
+		for k := 0; k < t.attemptsPerTier; {
 			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonceWatch, overrides)
+			if errors.Is(err, ErrTxMaxPriceDeferred) {
+				t.logger.Debug("retried transaction: attempt deferred until max price bypass", "nonce", rs.Nonce, "tier", tier.String(), "error", err)
+				continue
+			}
+			attempts++
+			k++
+
 			// Check receipt before check error: some non-retryable errors might occur after transaction was sent and executed
 			// It might have receipt
 			if receipt != nil {
