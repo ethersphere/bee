@@ -487,6 +487,37 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   (`TestSessionRecheckAfterSlot`). Wants listed in a served session keep the interval at the floor
   (`TestRoundIntervalServedWants`). New test exports: `SetStripeRetryInterval`, `SessionsTotal`,
   `PeerFailures`.
+- **(T4.3 fix round 3) The stripe timeout bounds the fetch after the session again.** This
+  supersedes the round-2 entry's "runs only while the attempt holds its slots" for the end of an
+  attempt. The clock still starts once both slots are held and pauses while the attempt waits to
+  retry the peer's Busy. It is no longer paused after the session: it runs on while the listed IDs
+  are fetched, without the slots, as `StripeTimeout` documents. The round-2 code paused it
+  there, so a peer that kept delivering slowly could hold the stripe worker and the Striped peer
+  for up to `sessionTimeout` per queued batch instead of 15 min. Tested by
+  `TestStripeFetchBoundedByTimeout`.
+- **(T4.3 fix round 3) Busy causes on this node neither count towards `maxStripeBusyRetries` nor
+  reassign the stripe.** `localBusy` covers this node's index rebuilding (`fingerprint.ErrBusy`)
+  and its session slots being taken (`rangesync.ErrSessionLimit`: the node cap, or the peer's own
+  session with this node). The attempt still frees its slots and waits `stripeRetryInterval` before
+  each retry, but the stripe clock keeps running through those waits, so they end at the stripe
+  timeout. runStripe restarts such an attempt with the same peer, counted in
+  `maxStripeRestarts`, before it reassigns. The error then wraps both `ErrStripeTimeout` and the
+  local cause. The stripe stays bounded: at most `(maxStripeRestarts + 1) × StripeTimeout` on one
+  peer, then the usual reassignment. Before this, a local rebuild longer than about 2 min failed a
+  concurrent radius-half stripe by reassigning it away from healthy peers. `TestStripeLocalBusy`
+  covers it (more local Busy answers than capped attempts and restarts could take, then
+  always-Busy-here with a short timeout), and `TestStripeBusyReassigns` covers the peer-Busy
+  reassignment (Peer = B, Tried = 2, one reassignment, Busy peer unscored).
+- **(T4.3 fix round 3) Stronger tests.** `TestStripeBusyDoesNotStall` now holds the round share of
+  the session slots, so it fails unless a Busy stripe frees its session slot as well as its stripe
+  slot. `TestStripeTimeoutPausedWhileBusy` also checks that held time adds up across Busy answers
+  (100 ms per answer, so a 300 ms timeout expires), which catches a clock that restarts its
+  budget on resume. Two "don't regress" tests had synchronization gaps that earlier T4.3 rounds
+  exposed (1–2 failures in 120 stress runs, also at a9fa2066). Both are fixed in the tests only:
+  - `TestPeerStateWaiterWoken` waits for the round session to be past its slot and recheck;
+  - `TestRadiusIncreaseNoFetch` runs one more round once the peers hold the new root, since a
+    gossip pass can have it in flight during the test's single round, and the follow-up round is
+    deferred by the test's 1 h interval.
 
 ## Follow-ups
 _(sessions append here)_
@@ -629,3 +660,15 @@ _(sessions append here)_
 - **(T4.3 fix round 2) T4.6: Busy-heavy stripes.** An always-Busy peer now costs a stripe about
   30 s per attempt before it is reassigned. T4.6 should check whether `maxStripeBusyRetries`
   delays bootstraps when many neighbors sit at their session cap.
+- **(T4.3 fix round 3) A Busy-only peer counts as tried for verification (T4.5).** A stripe peer
+  that only answered Busy (past `maxStripeBusyRetries`) lands in `StripeResult.Tried`, so
+  `verifier` skips it. In small neighborhoods that means more `ErrNoVerifier`; the Busy peer is
+  never blamed. T4.5 could record only the peers that delivered (or ran a session) as tried for
+  verification.
+- **(T4.3 fix round 3) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead.
+  - `pkg/rangesync/reconciler`: `TestStripeFetchBoundedByTimeout`, `TestStripeLocalBusy`,
+    `TestStripeBusyReassigns`, `TestStripeBusyDoesNotStall`, `TestStripeTimeoutPausedWhileBusy`,
+    `TestPeerStateWaiterWoken` and `TestRadiusIncreaseNoFetch` (both ran 60 × 3 after their fix).
+  - Re-run with `-race`, because `transferStripe` and `runStripe` changed: `TestTransferStripes*`,
+    `TestVerifyStripes*`, `TestRadius*`, `TestRoundBootstrap*`.
