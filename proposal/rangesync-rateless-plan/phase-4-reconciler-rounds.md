@@ -258,6 +258,44 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   is striped once a neighbor that covers it appears, even past `radiusHold`. Admission now runs
   before `enqueueRadiusHalf`, so a neighbor admitted in a round counts in that round.
   `TestRadiusHalfStripedWhenCovered` pins this.
+- **(T4.2 fix) The start-up guard waits for differences that are not resolved yet.**
+  - The round's last critical section admits each peer from the same `LastStatus` it evaluates
+    (`admitPeerLocked`). An exchanged, eligible peer is therefore always Idle there, or already in
+    a session, fetch or stripe. A Status that arrives after `admitLocked` can no longer leave a
+    peer Probing, or Removed but eligible, and so skipped without counting.
+  - A differing peer this node initiates with that is backing off keeps the guard from arming.
+  - A session that ends without completing, for any cause, disarms the guard until the next round.
+    This also closes the case from before T4.2 where a Busy session released the guard.
+
+  `StartupGuardTimeout` still bounds all of this.
+- **(T4.2 fix) Causes on this node do not count towards the peer's backoff.** A session that failed
+  for a local cause (`localCause`) fires `eventAborted`: Reconciling to Idle with no backoff, and
+  the streak unchanged. Local causes are:
+  - this node's session cap;
+  - `fingerprint.ErrBusy`;
+  - no session scope (this node's root moved);
+  - `ErrNoStatus`;
+  - `ErrMappingMismatch`.
+
+  `pkg/rangesync` gains two additive sentinels to tell the session caps apart:
+  `ErrNodeSessionLimit` and `ErrPeerSessionLimit`. Both wrap `ErrSessionLimit` and keep their
+  messages. The backoff counts `ErrPeerBusy`, `ErrPeerSessionLimit`, and other errors of the
+  exchange with the peer (§8.1 "error (backoff)"). A responder that refuses a session after this
+  node's root moved answers Busy, so the reconciler cannot tell that refusal from a real Busy. It
+  costs one step of the streak.
+- **(T4.2 fix) A streak counts answers in a row.** It ends with a completed session, with an equal
+  digest, or after a quiet period of `maxSessionBackoff` past the last backoff.
+- **(T4.2 fix) Stripes are planned with admitted peers only.** `peerStatuses` leaves out Probing,
+  Unsupported and Removed peers. A Probing peer that a round admits mid-stripe would race the
+  round's session for the slot. Tests that call `TransferStripes` on a started harness now wait
+  for admission (`waitAdmitted`).
+- **(T4.2 fix) An Unsupported peer is followed again after a reconnect.** When a Status arrives
+  that the peer had not sent at the Unsupported verdict (none then, or a different one), the peer
+  gets a new machine and a first contact. Statuses are forgotten on a disconnect, so a reconnect
+  that the peer set did not show looks like this. A Status present at the verdict proves nothing.
+- **(T4.2 fix) `Reconciling → Striped` (`eventLargeDiff`) is unused for now.** It stays in the
+  table so that the table matches §8.1. T4.5 may route a session's large range to the session's
+  own peer if that pays.
 
 ## Follow-ups
 _(sessions append here)_
@@ -330,3 +368,13 @@ _(sessions append here)_
     changed: `TestRadius*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestRoundBootstrap*`,
     `TestStartupGuard*`, `TestSyncRate*`, `TestStatusGossip*`, `TestRoundOwnsFirstContact`,
     `TestPeerJoinLeave`, `TestClose`.
+- **(T4.2 fix) Local store errors still count towards the backoff (T4.5).** `ReconcileWith` wraps
+  local store errors and stream errors alike, so a failing local store backs off every peer.
+  Telling them apart needs an error class in `pkg/rangesync`.
+- **(T4.2 fix) More tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead.
+  - `pkg/rangesync/reconciler`: `TestStartupGuardBusyPeer`, `TestPeerStateStripeDuringFetch`,
+    `TestPeerStateWaiterWoken`, `TestPeerStateLocalCauseNoBackoff`,
+    `TestPeerStateUnsupportedReconnect`, `TestPeerStateReadmittedBackoff`, and
+    `TestVerifyStripes*` again (`waitAdmitted`).
+  - `pkg/rangesync`: `TestReconcileInitiatorSessionLimit`.
