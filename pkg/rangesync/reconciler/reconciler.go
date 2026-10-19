@@ -30,8 +30,9 @@ const (
 	CatchUpMinDiff = rangesync.CatchUpMinDiff
 	// SyncRateWindow is the window over which SyncRate is measured.
 	SyncRateWindow = rangesync.SyncRateWindow
-	// RoundInterval is the interval of the timer-driven rounds. Every round
-	// also exchanges Status with every connected peer.
+	// RoundInterval is the interval of the timer-driven rounds. Status is
+	// gossiped on its own schedule (gossip.go); a round sends only the
+	// Statuses due when it runs.
 	RoundInterval = rangesync.StatusMaxInterval
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
@@ -49,7 +50,8 @@ const (
 	// a success does not reset it.
 	ScoreDecayInterval = 10 * time.Minute
 
-	// maxConcurrentProbes bounds the concurrent SendStatus calls of a round.
+	// maxConcurrentProbes bounds the concurrent SendStatus calls of a round
+	// or a gossip pass.
 	maxConcurrentProbes = 16
 )
 
@@ -63,6 +65,9 @@ type Service interface {
 	// rangesync; the reconciler does not probe it again while connected.
 	SendStatus(ctx context.Context, peer swarm.Address) error
 	LastStatus(peer swarm.Address) (rangesync.Status, bool)
+	// SubscribeRootChange signals that this node's root summary may have
+	// changed (debounced); the reconciler then pushes its Status.
+	SubscribeRootChange() (c <-chan struct{}, unsubscribe func())
 	ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) ([]storer.ChunkID, error)
 	Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error)
 }
@@ -79,8 +84,13 @@ type Topology interface {
 // defaults.
 type Options struct {
 	// Now returns the current time; time.Now if nil. Tests set a fake clock.
-	// It drives the start-up guard, the score decay and the SyncRate window.
+	// It drives the start-up guard, the score decay, the SyncRate window and
+	// the Status gossip schedule.
 	Now func() time.Time
+	// After returns a channel that receives once d has passed; time.After if
+	// nil. Tests set one that follows the fake clock of Now. It wakes the
+	// Status gossip when the next Status is due.
+	After func(d time.Duration) <-chan time.Time
 	// RoundInterval overrides RoundInterval.
 	RoundInterval time.Duration
 	// StartupGuardTimeout overrides StartupGuardTimeout.
@@ -95,6 +105,14 @@ type peerState struct {
 	sent        bool // our Status reached the peer
 	running     bool // a session with the peer is running
 	served      bool // the peer started a session with this node (Succeed or Wants)
+
+	// Status gossip (gossip.go): lastSent is when our Status last, last,
+	// was sent to the peer (zero: never), sending holds while that send
+	// runs, and resend asks for it again although unchanged.
+	lastSent time.Time
+	last     rangesync.Status
+	sending  bool
+	resend   bool
 }
 
 // score is a peer's failure score at time at.
@@ -113,6 +131,7 @@ type Reconciler struct {
 	svc           Service
 	logger        log.Logger
 	now           func() time.Time
+	after         func(time.Duration) <-chan time.Time
 	roundInterval time.Duration
 	guardTimeout  time.Duration
 	stripeTimeout time.Duration
@@ -136,6 +155,9 @@ type Reconciler struct {
 	stripeRegistry []fingerprint.Range
 	stripeQueue    []stripeJob
 	stripeWake     chan struct{}
+	// gossipWake makes the gossip loop recompute when the next Status is
+	// due.
+	gossipWake chan struct{}
 	// bootstrapping holds while a bootstrap transfer of the root is queued
 	// or in flight; bootstrapFailed is set when one did not complete.
 	bootstrapping, bootstrapFailed bool
@@ -162,6 +184,9 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	if o.After == nil {
+		o.After = time.After
+	}
 	if o.RoundInterval <= 0 {
 		o.RoundInterval = RoundInterval
 	}
@@ -178,6 +203,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		svc:           svc,
 		logger:        logger.WithName(loggerName).Register(),
 		now:           o.Now,
+		after:         o.After,
 		roundInterval: o.RoundInterval,
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
@@ -186,6 +212,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
 		stripeWake:    make(chan struct{}, 1),
+		gossipWake:    make(chan struct{}, 1),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -200,10 +227,11 @@ func (r *Reconciler) SetService(svc Service) {
 	r.svc = svc
 }
 
-// Start subscribes to the topology and starts the round loop. It returns
-// immediately and is safe to call once, from the storer's reserve-worker
-// start-up; later calls are no-ops. It panics when the Service is nil (a
-// wiring bug). ctx is not retained: Close stops the loop.
+// Start subscribes to the topology and to the index's root changes and
+// starts the round and Status gossip loops. It returns immediately and is
+// safe to call once, from the storer's reserve-worker start-up; later calls
+// are no-ops. It panics when the Service is nil (a wiring bug). ctx is not
+// retained: Close stops the loops.
 func (r *Reconciler) Start(_ context.Context) {
 	if r.svc == nil {
 		panic("reconciler: Start without a Service")
@@ -218,7 +246,8 @@ func (r *Reconciler) Start(_ context.Context) {
 		return
 	}
 	changes, unsubscribe := r.topo.SubscribeTopologyChange()
-	r.wg.Add(2)
+	rootChanges, unsubscribeRoot := r.svc.SubscribeRootChange()
+	r.wg.Add(3)
 	go func() {
 		defer r.wg.Done()
 		r.stripeWorker()
@@ -228,30 +257,35 @@ func (r *Reconciler) Start(_ context.Context) {
 		defer unsubscribe()
 		r.loop(changes)
 	}()
+	go func() {
+		defer r.wg.Done()
+		defer unsubscribeRoot()
+		r.gossipLoop(rootChanges)
+	}()
 }
 
-// loop runs a full round at start and every round interval, and a probing
-// round on every topology change, until Close.
+// loop runs a round at start, every round interval and on every topology
+// change, until Close.
 func (r *Reconciler) loop(changes <-chan struct{}) {
 	ticker := time.NewTicker(r.roundInterval)
 	defer ticker.Stop()
-	r.round(true)
+	r.round()
 	for {
 		select {
 		case <-r.ctx.Done():
 			return
 		case <-ticker.C:
-			r.round(true)
+			r.round()
 		case <-changes:
-			r.round(false)
+			r.round()
 		}
 	}
 }
 
-// round refreshes the peer set from the topology, sends Status to the peers
-// (all of them when full, else those without a completed exchange) and
-// starts a session with every peer this node initiates with.
-func (r *Reconciler) round(full bool) {
+// round refreshes the peer set from the topology, sends the Statuses that
+// are due (first contacts, a moved root; pickDueLocked) and starts a session
+// with every peer this node initiates with.
+func (r *Reconciler) round() {
 	local, err := r.svc.LocalStatus()
 	if err != nil {
 		r.logger.Debug("round skipped", "error", err)
@@ -265,14 +299,9 @@ func (r *Reconciler) round(full bool) {
 	}, topology.Select{})
 
 	r.mu.Lock()
-	// a new root makes the peers' scopes with this node stale: send it to
-	// every peer now rather than at the next full round
-	if r.trackRootLocked(local.Root) {
-		full = true
-	}
+	r.trackRootLocked(local.Root)
 	radiusPending := r.radius.pending
 	present := make(map[string]bool, len(connected))
-	var probe []swarm.Address
 	for _, p := range connected {
 		k := p.ByteString()
 		present[k] = true
@@ -281,11 +310,11 @@ func (r *Reconciler) round(full bool) {
 			st = &peerState{}
 			r.peers[k] = st
 		}
-		if st.unsupported {
-			continue
-		}
-		if _, have := r.svc.LastStatus(p); full || !st.sent || !have {
-			probe = append(probe, p)
+		// Without the peer's Status the peer may lack this node's too: both
+		// are forgotten on a disconnect, which a reconnect between two
+		// rounds hides from the peer set. Ask for it to be sent again.
+		if _, have := r.svc.LastStatus(p); !have && !st.sending {
+			st.resend = true
 		}
 	}
 	for k := range r.peers {
@@ -293,9 +322,14 @@ func (r *Reconciler) round(full bool) {
 			delete(r.peers, k)
 		}
 	}
+	// First contacts, and a new root (it makes the peers' session scopes
+	// with this node stale), go out now, so that the evaluation below sees
+	// the outcome. The gossip loop sends the rest when due.
+	due := r.pickDueLocked(local, r.now())
 	r.mu.Unlock()
 
-	r.probe(probe)
+	r.probe(due)
+	r.wakeGossip()
 	if r.ctx.Err() != nil {
 		return
 	}
@@ -387,7 +421,7 @@ func (r *Reconciler) round(full bool) {
 }
 
 // probe sends Status to peers, at most maxConcurrentProbes at once, and
-// records the outcome.
+// records the outcome. The caller marked the peers as sending.
 func (r *Reconciler) probe(peers []swarm.Address) {
 	sem := make(chan struct{}, maxConcurrentProbes)
 	var wg sync.WaitGroup
@@ -409,6 +443,7 @@ func (r *Reconciler) probe(peers []swarm.Address) {
 			if !ok {
 				return // left meanwhile
 			}
+			st.sending = false
 			switch {
 			case err == nil:
 				st.sent = true
@@ -656,9 +691,9 @@ func (r *Reconciler) Metrics() []prometheus.Collector {
 	return r.metrics.collectors()
 }
 
-// Close unsubscribes from the topology, stops the round loop, cancels
-// running sessions and waits for them to end. It is safe to call more than
-// once.
+// Close unsubscribes from the topology and the index, stops the round and
+// gossip loops, cancels running sessions and waits for them to end. It is
+// safe to call more than once.
 func (r *Reconciler) Close() error {
 	r.closeOnce.Do(func() {
 		r.mu.Lock()

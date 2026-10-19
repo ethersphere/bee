@@ -57,17 +57,17 @@ func isBusy(err error) bool {
 	return errors.Is(err, rangesync.ErrPeerBusy) || errors.Is(err, fingerprint.ErrBusy) || errors.Is(err, rangesync.ErrSessionLimit)
 }
 
-// trackRootLocked records the local root of a round and reports whether it
-// changed (the peers then need this node's new Status). A root that widens to
+// trackRootLocked records the local root of a round. A root that widens to
 // contain the previous one is a radius decrease: the halves of the new root
 // are recorded and the new half is pending. A pending half the root no longer
-// contains (a radius increase) is dropped.
-func (r *Reconciler) trackRootLocked(root fingerprint.Range) (changed bool) {
+// contains (a radius increase) is dropped. The peers get the new root from
+// the Status gossip (statusDue sends a moved root at once).
+func (r *Reconciler) trackRootLocked(root fingerprint.Range) {
 	s := &r.radius
 	prev, known := s.root, s.known
 	s.root, s.known = root, true
 	if !known || root.Equal(prev) {
-		return false
+		return
 	}
 	if s.striping && !root.ContainsRange(s.striped) {
 		s.cancel() // the worker ends the job and calls radiusDoneLocked
@@ -77,12 +77,11 @@ func (r *Reconciler) trackRootLocked(root fingerprint.Range) (changed bool) {
 		s.oldHalf, s.newHalf = root.Child(1, i), root.Child(1, 1-i)
 		s.pending, s.since, s.attempts = true, r.now(), 0
 		r.logger.Debug("radius decreased", "root", root, "new_half", s.newHalf)
-		return true
+		return
 	}
 	if s.pending && !root.ContainsRange(s.newHalf) {
 		s.pending = false
 	}
-	return true
 }
 
 // enqueueRadiusHalf registers the pending new half for a striped transfer

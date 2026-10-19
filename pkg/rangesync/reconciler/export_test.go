@@ -6,6 +6,7 @@ package reconciler
 
 import (
 	"slices"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -111,3 +112,10 @@ func (r *Reconciler) RadiusAttempts() int {
 	defer r.mu.Unlock()
 	return r.radius.attempts
 }
+
+// Round runs one round.
+func (r *Reconciler) Round() { r.round() }
+
+// Gossip runs one pass of the Status gossip at Now and returns how long
+// until a Status is next due.
+func (r *Reconciler) Gossip() time.Duration { return r.gossip() }

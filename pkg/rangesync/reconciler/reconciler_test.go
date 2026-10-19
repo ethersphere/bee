@@ -80,6 +80,10 @@ type fakeService struct {
 	// by peer, is the number of IDs of each Fetch not stored.
 	sessionErrSticky bool
 	withholdN        map[string]int
+	// sendErr, by peer, is returned by SendStatus; rootCh is the channel of
+	// SubscribeRootChange (rootChange signals it).
+	sendErr map[string]error
+	rootCh  chan struct{}
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -98,6 +102,21 @@ func newFakeService(local rangesync.Status) *fakeService {
 		sessionErrAfter: make(map[string]error),
 		withhold:        make(map[string]bool),
 		withholdN:       make(map[string]int),
+		sendErr:         make(map[string]error),
+		rootCh:          make(chan struct{}, 1),
+	}
+}
+
+// SubscribeRootChange returns rootCh; unsubscribing does nothing.
+func (s *fakeService) SubscribeRootChange() (<-chan struct{}, func()) {
+	return s.rootCh, func() {}
+}
+
+// rootChange signals a root change, coalescing like the Index.
+func (s *fakeService) rootChange() {
+	select {
+	case s.rootCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -150,7 +169,7 @@ func (s *fakeService) SendStatus(_ context.Context, peer swarm.Address) error {
 	if s.unsupported[peer.ByteString()] {
 		return fmt.Errorf("%w: test", rangesync.ErrProtocolUnsupported)
 	}
-	return nil
+	return s.sendErr[peer.ByteString()]
 }
 
 func (s *fakeService) LastStatus(peer swarm.Address) (rangesync.Status, bool) {
@@ -263,10 +282,17 @@ func (f *fakeTopology) setPeers(peers ...swarm.Address) {
 	}
 }
 
-// fakeClock is a settable clock.
+// fakeClock is a settable clock. The channels of After receive when Add
+// moves the clock to or past their time.
 type fakeClock struct {
-	mu  sync.Mutex
-	now time.Time
+	mu     sync.Mutex
+	now    time.Time
+	timers []fakeTimer
+}
+
+type fakeTimer struct {
+	at time.Time
+	c  chan time.Time
 }
 
 func (c *fakeClock) Now() time.Time {
@@ -279,6 +305,25 @@ func (c *fakeClock) Add(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = c.now.Add(d)
+	c.timers = slices.DeleteFunc(c.timers, func(t fakeTimer) bool {
+		if t.at.After(c.now) {
+			return false
+		}
+		t.c <- c.now
+		return true
+	})
+}
+
+func (c *fakeClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	if d <= 0 {
+		ch <- c.now
+		return ch
+	}
+	c.timers = append(c.timers, fakeTimer{at: c.now.Add(d), c: ch})
+	return ch
 }
 
 type harness struct {
@@ -298,6 +343,7 @@ func newHarness(t *testing.T, svc *fakeService, peers ...swarm.Address) *harness
 	}
 	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{
 		Now:           h.clock.Now,
+		After:         h.clock.After,
 		RoundInterval: 10 * time.Millisecond,
 	})
 	t.Cleanup(func() {
