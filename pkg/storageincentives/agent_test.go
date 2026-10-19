@@ -522,16 +522,16 @@ func runWinningAgent(t *testing.T, claimErr error, opts ...serviceOption) (*stor
 	const radius = uint8(8)
 	wait := make(chan struct{}, 1)
 	backend := &mockchainBackend{
-		limit:         12 * winningAgentBlocksPerRound,
+		limit: 12 * winningAgentBlocksPerRound,
 		limitCallback: func() {
 			select {
 			case wait <- struct{}{}:
 			default:
 			}
 		},
-		incrementBy:   1,
-		block:         winningAgentBlocksPerRound,
-		balance:       big.NewInt(4_000_000_000),
+		incrementBy: 1,
+		block:       winningAgentBlocksPerRound,
+		balance:     big.NewInt(4_000_000_000),
 	}
 	contract := &mockContract{
 		t:              t,
