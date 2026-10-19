@@ -54,3 +54,16 @@ func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
 	defer r.mu.Unlock()
 	r.stripeRegistry = append(r.stripeRegistry, rg)
 }
+
+// VerifyMinDiff is verifyMinDiff.
+const VerifyMinDiff = verifyMinDiff
+
+// VerificationDiffCount returns the number of verification_diff
+// observations.
+func (r *Reconciler) VerificationDiffCount() uint64 {
+	m := new(dto.Metric)
+	if err := r.metrics.VerificationDiff.Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetHistogram().GetSampleCount()
+}

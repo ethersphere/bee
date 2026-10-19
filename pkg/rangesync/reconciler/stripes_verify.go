@@ -1,0 +1,139 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package reconciler
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+)
+
+const (
+	// verifyMinDiff is the largest verification difference that never
+	// counts against the deliverer, whatever the stripe's size: chunks
+	// uploaded while the stripe was transferred.
+	verifyMinDiff = 4
+	// verifyDiffRatio sets the tolerance of larger stripes: a difference
+	// above 1/verifyDiffRatio of the chunks the deliverer stored (and above
+	// verifyMinDiff) is reported as a failure of the deliverer.
+	verifyDiffRatio = 100
+)
+
+var (
+	// ErrNoVerifier is the error of a stripe that has no peer other than
+	// its deliverer to verify it with; it is not verified.
+	ErrNoVerifier = errors.New("reconciler: no peer to verify stripe")
+	// ErrStripeNotDone is the error of a stripe whose transfer did not
+	// complete; it is not verified.
+	ErrStripeNotDone = errors.New("reconciler: stripe not done")
+	// ErrStripeVerification is the reason reported to the PeerScorer for a
+	// deliverer whose stripe the verification found incomplete.
+	ErrStripeVerification = errors.New("reconciler: stripe incomplete at verification")
+)
+
+// VerifyResult is the outcome of the verification of one stripe.
+type VerifyResult struct {
+	// Range is the stripe's range.
+	Range fingerprint.Range
+	// Deliverer is the peer that transferred the stripe; Verifier the peer
+	// it was verified with (zero when not verified).
+	Deliverer, Verifier swarm.Address
+	// Diff is the number of IDs the verification session listed (the
+	// difference found); Stored the number of chunks fetched for them.
+	Diff, Stored int
+	// Err is ErrStripeNotDone or ErrNoVerifier for a stripe not verified,
+	// or the error of the verification session or its fetch.
+	Err error
+}
+
+// VerifyStripes runs the verification round of a striped transfer (§7.4,
+// SREP iteration 2): every stripe that completed is reconciled again, in a
+// normal session opened with the stripe, with a peer with a Status that
+// covers it other than its deliverer, and the IDs found are fetched from
+// that peer. A difference above the tolerance (verifyMinDiff, or
+// 1/verifyDiffRatio of what the deliverer stored) is reported to the
+// PeerScorer as a failure of the deliverer (§9 stripe withholding). A
+// stripe with no other peer is not verified (ErrNoVerifier): verifying with
+// the deliverer could not find what it withheld. The verifications run
+// like a transfer: one session per peer at a time, peers in parallel; they
+// count as catch-up (SyncRate). The results are in the order of results.
+func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) []VerifyResult {
+	r.mu.Lock()
+	r.catchUpFetches++
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		r.catchUpFetches--
+		r.mu.Unlock()
+	}()
+
+	out := make([]VerifyResult, len(results))
+	locks := newPeerLocks()
+	statuses := r.peerStatuses()
+	var wg sync.WaitGroup
+	for i, res := range results {
+		out[i] = VerifyResult{Range: res.Range, Deliverer: res.Peer}
+		if res.Err != nil || res.Peer.IsZero() {
+			out[i].Err = ErrStripeNotDone
+			continue
+		}
+		verifier, ok := r.verifier(res, statuses)
+		if !ok {
+			out[i].Err = ErrNoVerifier
+			r.logger.Debug("stripe not verified: no other peer", "range", res.Range, "peer_address", res.Peer)
+			continue
+		}
+		out[i].Verifier = verifier
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = r.verifyStripe(ctx, res, verifier, locks)
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// verifier returns the peer to verify res with: a peer of statuses whose
+// root covers the stripe, other than the deliverer, lowest failure score
+// first.
+func (r *Reconciler) verifier(res StripeResult, statuses []PeerStatus) (swarm.Address, bool) {
+	var cands []swarm.Address
+	for _, ps := range statuses {
+		if !ps.Peer.Equal(res.Peer) && ps.Status.Root.ContainsRange(res.Range) {
+			cands = append(cands, ps.Peer)
+		}
+	}
+	if len(cands) == 0 {
+		return swarm.ZeroAddress, false
+	}
+	return r.orderCandidates(cands)[0], true
+}
+
+// verifyStripe verifies res with verifier and scores the deliverer.
+func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks) VerifyResult {
+	v := VerifyResult{Range: res.Range, Deliverer: res.Peer, Verifier: verifier}
+	release, err := locks.acquire(ctx, verifier)
+	if err != nil {
+		v.Err = err
+		return v
+	}
+	t := r.transferStripe(ctx, res.Range, verifier, func() {})
+	release()
+	v.Diff, v.Stored, v.Err = t.Listed, t.Stored, t.Err
+	if v.Err != nil {
+		// an incomplete verification says nothing about the deliverer
+		return v
+	}
+	r.metrics.VerificationDiff.Observe(float64(v.Diff))
+	if v.Diff > max(verifyMinDiff, res.Stored/verifyDiffRatio) {
+		r.Fail(res.Peer, fmt.Errorf("stripe %s: %d missing after verification with %s: %w", res.Range, v.Diff, verifier, ErrStripeVerification))
+	}
+	return v
+}

@@ -1,0 +1,150 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package reconciler_test
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+)
+
+// verifyHarness returns a started reconciler whose peers higher and other
+// have a Status covering the root; higher lists deliver IDs, other verify.
+func verifyHarness(t *testing.T, deliver, verify int) (*harness, swarm.Address) {
+	t.Helper()
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.remote[other.ByteString()] = status(2)
+	svc.wants[higher.ByteString()] = deliver
+	svc.wants[other.ByteString()] = verify
+	h := newHarness(t, svc, higher, other)
+	waitFor(t, "status", func() bool { return svc.count(svc.sent, other) > 0 && svc.count(svc.sent, higher) > 0 })
+	return h, other
+}
+
+// TestVerifyStripesWithheld: a deliverer that withholds 5% of its stripe
+// (does not list it) completes the stripe; the verification session with
+// another peer finds and fetches the rest, and the deliverer is scored.
+func TestVerifyStripesWithheld(t *testing.T) {
+	t.Parallel()
+
+	const stripe = 100
+	h, other := verifyHarness(t, stripe*95/100, stripe*5/100)
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	if res[0].Err != nil || !res[0].Peer.Equal(higher) {
+		t.Fatalf("transfer: peer %s, err %v", res[0].Peer, res[0].Err)
+	}
+	if got := h.r.Score(higher); got != 0 {
+		t.Fatalf("score before verification %d", got)
+	}
+
+	fetched := h.svc.count(h.svc.fetched, other) // round sessions fetch too
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || !v.Verifier.Equal(other) || !v.Deliverer.Equal(higher) {
+		t.Fatalf("verifier %s, deliverer %s, err %v", v.Verifier, v.Deliverer, v.Err)
+	}
+	if v.Diff != 5 || v.Stored != 5 {
+		t.Fatalf("diff %d, stored %d, want 5", v.Diff, v.Stored)
+	}
+	if got := h.svc.count(h.svc.fetched, other) - fetched; got < 5 {
+		t.Fatalf("fetched %d from verifier, want 5", got)
+	}
+	if !slices.ContainsFunc(h.svc.sessionOpens(other), func(o []fingerprint.Range) bool { return len(o) == 1 && o[0].Equal(root) }) {
+		t.Fatal("no verification session opened with the stripe")
+	}
+	if got := h.r.Score(higher); got != 1 {
+		t.Fatalf("deliverer score %d, want 1", got)
+	}
+	if got := h.r.Score(other); got != 0 {
+		t.Fatalf("verifier score %d, want 0", got)
+	}
+	if got := h.r.VerificationDiffCount(); got != 1 {
+		t.Fatalf("verification_diff observations %d, want 1", got)
+	}
+}
+
+// TestVerifyStripesHonest: a verification that finds nothing (or no more
+// than the tolerance) leaves the deliverer's score alone.
+func TestVerifyStripesHonest(t *testing.T) {
+	t.Parallel()
+
+	for _, diff := range []int{0, reconciler.VerifyMinDiff} {
+		h, _ := verifyHarness(t, 100, diff)
+		root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+		res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+		v := h.r.VerifyStripes(context.Background(), res)[0]
+		if v.Err != nil || v.Diff != diff {
+			t.Fatalf("diff %d: got %d, err %v", diff, v.Diff, v.Err)
+		}
+		if got := h.r.Score(higher); got != 0 {
+			t.Fatalf("diff %d: deliverer score %d, want 0", diff, got)
+		}
+	}
+}
+
+// TestVerifyStripesNoOtherPeer: with no peer other than the deliverer
+// covering the stripe, verification is skipped (ErrNoVerifier), no session
+// is opened and nobody is scored.
+func TestVerifyStripesNoOtherPeer(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.wants[higher.ByteString()] = 10
+	h := newHarness(t, svc, higher)
+	waitFor(t, "status", func() bool { return svc.count(svc.sent, higher) > 0 })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	before := len(svc.sessionOpens(higher))
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if !errors.Is(v.Err, reconciler.ErrNoVerifier) {
+		t.Fatalf("got %v, want %v", v.Err, reconciler.ErrNoVerifier)
+	}
+	if got := len(svc.sessionOpens(higher)); got != before {
+		t.Fatalf("%d sessions with the deliverer, want %d", got, before)
+	}
+	if got := h.r.Score(higher); got != 0 {
+		t.Fatalf("score %d", got)
+	}
+}
+
+// TestVerifyStripesFailedNotVerified: a stripe that did not complete is
+// not verified.
+func TestVerifyStripesFailedNotVerified(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(self, nil, newFakeService(status(0)), log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	v := r.VerifyStripes(context.Background(), []reconciler.StripeResult{{Range: root, Peer: higher, Err: reconciler.ErrStripeTimeout}})[0]
+	if !errors.Is(v.Err, reconciler.ErrStripeNotDone) {
+		t.Fatalf("got %v, want %v", v.Err, reconciler.ErrStripeNotDone)
+	}
+}
+
+// TestRoundBootstrapVerifies: the stripe worker verifies each bootstrap
+// stripe with the peer that did not deliver it before leaving bootstrap.
+func TestRoundBootstrapVerifies(t *testing.T) {
+	t.Parallel()
+
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(0))
+	svc.remote[higher.ByteString()] = status(5)
+	svc.remote[other.ByteString()] = status(5)
+	h := newHarness(t, svc, higher, other)
+
+	// both halves verified, each with the peer that did not deliver it
+	waitFor(t, "verification", func() bool { return h.r.VerificationDiffCount() >= 2 })
+}

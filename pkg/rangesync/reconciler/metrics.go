@@ -20,6 +20,9 @@ type metrics struct {
 	// Stripes counts stripe transfers by result: done, reassigned or
 	// timeout.
 	Stripes *prometheus.CounterVec
+	// VerificationDiff is the number of differences (IDs this node lacked)
+	// the verification round found per verified stripe.
+	VerificationDiff prometheus.Histogram
 }
 
 func newMetrics(syncRate func() float64) metrics {
@@ -50,9 +53,16 @@ func newMetrics(syncRate func() float64) metrics {
 			Name:      "stripes_total",
 			Help:      "Striped transfers of a stripe, by result (done, reassigned, timeout).",
 		}, []string{"result"}),
+		VerificationDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "verification_diff",
+			Help:      "Differences found per stripe verified with a peer other than its deliverer.",
+			Buckets:   []float64{0, 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536},
+		}),
 	}
 }
 
 func (m metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes}
+	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff}
 }

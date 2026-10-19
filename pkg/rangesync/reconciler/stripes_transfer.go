@@ -409,6 +409,8 @@ func (r *Reconciler) stripeWorker() {
 			r.mu.Unlock()
 
 			results := r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started)
+			// the verification round, before leaving bootstrap (§7.4)
+			r.VerifyStripes(r.ctx, results)
 			failed := len(results) == 0 // defensive: PlanStripes returns at least one stripe
 			for _, res := range results {
 				if res.Err != nil {
