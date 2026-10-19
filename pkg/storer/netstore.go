@@ -97,7 +97,9 @@ func (db *DB) DirectUpload() PutterSession {
 // pushRequeued pushes a chunk that failed once for the second and last time.
 func (db *DB) pushRequeued(egCtx context.Context, r requeued) error {
 	err := db.pushChunk(r.ctx, egCtx, r.ch)
-	if err != nil {
+	// a gone client, a failed upload or a closing node is not a chunk lost
+	// to the network
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, ErrDBQuit) {
 		db.metrics.DirectUploadRequeueFailed.Inc()
 		db.logger.Debug("direct upload: chunk failed again", "chunk_address", r.ch.Address(), "error", err)
 	}

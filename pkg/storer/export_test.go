@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func (db *DB) Reserve() *reserve.Reserve {
@@ -70,4 +71,12 @@ func (r *Requeue) Drain() []swarm.Chunk {
 		chunks[i] = it.ch
 	}
 	return chunks
+}
+
+// DirectUploadRequeueFailed returns how many requeued direct upload chunks
+// were counted as lost.
+func (db *DB) DirectUploadRequeueFailed() float64 {
+	m := &dto.Metric{}
+	_ = db.metrics.DirectUploadRequeueFailed.Write(m)
+	return m.GetCounter().GetValue()
 }

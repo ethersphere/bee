@@ -695,6 +695,10 @@ func TestDirectUploadRequeue(t *testing.T) {
 				if got := p.count(chunks[0].Address()); got != 1 {
 					t.Fatalf("got %d pushes, want 1", got)
 				}
+				// the client left; the chunk was not lost to the network
+				if got := lstore.DirectUploadRequeueFailed(); got != 0 {
+					t.Fatalf("got %v requeued chunks counted as lost, want 0", got)
+				}
 			})
 		})
 	})
