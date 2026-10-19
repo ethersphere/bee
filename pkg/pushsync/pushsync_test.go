@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -361,6 +362,38 @@ func TestOutOfDepthStoring(t *testing.T) {
 	if !errors.Is(err, pushsync.ErrOutOfDepthStoring) {
 		t.Fatalf("got %v, want %v", err, pushsync.ErrOutOfDepthStoring)
 	}
+}
+
+// TestForwarderUnwrapsOnce verifies that a forwarder left without peers does
+// not unwrap the chunk again after its handler has already unwrapped it.
+func TestForwarderUnwrapsOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const radius = 31
+
+		chunk := testingc.FixtureChunk("7000")
+
+		// the forwarder is outside the chunk's AOR and has no peers
+		origin := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+		forwarder := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+
+		var unwrapped atomic.Int32
+		unwrap := func(swarm.Chunk) { unwrapped.Add(1) }
+
+		psForwarder, _ := createPushSyncNodeWithRadius(t, forwarder, defaultPrices, nil, unwrap, defaultSigner(chunk), radius, mock.WithClosestPeerErr(topology.ErrNotFound))
+		recorder := streamtest.New(streamtest.WithProtocols(psForwarder.Protocol()), streamtest.WithBaseAddr(origin))
+		psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, recorder, nil, defaultSigner(chunk), radius, mock.WithClosestPeer(forwarder))
+
+		if _, err := psOrigin.PushChunkToClosest(context.Background(), chunk); err == nil {
+			t.Fatal("got a receipt, want the forwarder to refuse the chunk")
+		}
+		synctest.Wait()
+
+		if got := unwrapped.Load(); got != 1 {
+			t.Fatalf("got %d unwraps, want 1", got)
+		}
+	})
 }
 
 // TestForwardToUnhealthyCloserPeer verifies that a forwarder outside of the

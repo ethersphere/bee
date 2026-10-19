@@ -445,7 +445,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if inflight == 0 {
 					if ps.fullNode {
-						if cac.Valid(ch) {
+						// a forwarder's handler has already unwrapped the chunk
+						if origin && cac.Valid(ch) {
 							safe.Go(ps.logger, "pushsync-unwrap-ch", func() {
 								ps.unwrap(ch)
 							})
