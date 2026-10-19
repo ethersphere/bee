@@ -26,10 +26,11 @@ const (
 // parked tracks deferred chunks that failed their first round and wait in the
 // upload queue for their second and last one.
 type parked struct {
-	mu      sync.Mutex
-	entries map[[64]byte]time.Time // identity address + batch ID -> until
-	delay   time.Duration
-	ttl     time.Duration
+	mu        sync.Mutex
+	entries   map[[64]byte]time.Time // identity address + batch ID -> until
+	delay     time.Duration
+	ttl       time.Duration
+	lastPrune time.Time
 }
 
 func newParked(delay, ttl time.Duration) *parked {
@@ -55,10 +56,15 @@ func (p *parked) park(idAddress swarm.Address, batchID []byte, now time.Time) bo
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for k, until := range p.entries {
-		if now.After(until.Add(p.ttl)) {
-			delete(p.entries, k)
+	// walk the map at most once per delay: chunksWorker waits on the same
+	// lock, and a burst of failures parks many chunks at once
+	if now.Sub(p.lastPrune) >= p.delay {
+		for k, until := range p.entries {
+			if now.After(until.Add(p.ttl)) {
+				delete(p.entries, k)
+			}
 		}
+		p.lastPrune = now
 	}
 
 	if _, ok := p.entries[key]; ok {
