@@ -22,8 +22,6 @@ const (
 	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
 
-	minEstimatedGasLimit = 250_000
-
 	//  caps the retry delay for redistribution game txs.
 	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
