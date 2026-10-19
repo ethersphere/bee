@@ -994,7 +994,7 @@ paths:
       summary: Subscribe to a BPS cohort
       description: |
         WebSocket. The node joins the BPS-lite (SWIP-74) cohort `{topic, FEED_TOPIC, owner}`
-        at `broker` as `identity` and sends every update as a binary frame
+        at `broker` as `identity` (`broker` must be a full node started with `bps-broker`) and sends every update as a binary frame
         `challenge (32) | index (8, big-endian) | soc`, where `soc` is the full single-owner
         chunk (`id | signature | span | payload`) signed by `owner` with
         `id = keccak256(keccak256(topic | challenge) | index)`. Updates that do not verify,
