@@ -483,6 +483,109 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 	assert.True(t, isStored(t, svc, txs.hash(0)))
 }
 
+// The store write fails after the broadcast and the nonce is mined while this attempt waits.
+// The receipt belongs to that broadcast, so the disk error is not the result of the call.
+func TestSendWithRetry_UpdateStateErrorReceiptReturned(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+
+	putErr := errors.New("disk write failed")
+	callCount := 0
+	store := &failOnNthPutStore{
+		StateStorer: storemock.NewStateStore(),
+		failOnPut:   3, // persistReplaceTx: stored tx, pending key, then retry state
+		putErr:      putErr,
+		callCount:   &callCount,
+	}
+
+	minedC := make(chan struct{})
+	var (
+		txs        broadcastLog
+		watchCount atomic.Int32
+		closed     atomic.Bool
+	)
+	svc := s.newService(t, store, s.retryConfig(),
+		monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error) {
+			watchCount.Add(1)
+			assert.Equal(t, s.nonce, nonce)
+			// Close before WatchNonce returns, so the attempt's wait sees the nonce as mined.
+			if closed.CompareAndSwap(false, true) {
+				close(minedC)
+			}
+			return minedC, make(chan error)
+		}),
+		txs.sendOK(),
+		backendmock.WithTransactionReceiptFunc(func(_ context.Context, txHash common.Hash) (*types.Receipt, error) {
+			if txs.count() == 1 && txHash == txs.hash(0) {
+				return &types.Receipt{TxHash: txHash, Status: types.ReceiptStatusSuccessful}, nil
+			}
+			return nil, ethereum.NotFound
+		}),
+	)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, putErr)
+	require.NotNil(t, receipt)
+	require.Equal(t, 1, txs.count(), "a receipt ends the session, no replacement is sent")
+	assert.Equal(t, int32(1), watchCount.Load(), "the broadcast nonce is watched during the call")
+	assert.Equal(t, txs.hash(0), txHash)
+	assert.Equal(t, txs.hash(0), receipt.TxHash)
+	assert.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+	s.assertSessionCleared(t, svc, store, txHash, txHash)
+}
+
+// The store write fails after the broadcast and the nonce is mined while this attempt waits.
+// No session hash has a receipt, so the nonce was spent elsewhere and the session is cancelled.
+// The disk error must not replace that result, and no further replacement is broadcast.
+func TestSendWithRetry_UpdateStateErrorMinedWithoutReceipt(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+
+	putErr := errors.New("disk write failed")
+	callCount := 0
+	store := &failOnNthPutStore{
+		StateStorer: storemock.NewStateStore(),
+		failOnPut:   3, // persistReplaceTx: stored tx, pending key, then retry state
+		putErr:      putErr,
+		callCount:   &callCount,
+	}
+
+	cfg := s.retryConfig()
+	cfg.CancellationDepth = 0
+
+	minedC := make(chan struct{})
+	var (
+		txs        broadcastLog
+		watchCount atomic.Int32
+		closed     atomic.Bool
+	)
+	svc := s.newService(t, store, cfg,
+		monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error) {
+			watchCount.Add(1)
+			assert.Equal(t, s.nonce, nonce)
+			if closed.CompareAndSwap(false, true) {
+				close(minedC)
+			}
+			return minedC, make(chan error)
+		}),
+		txs.sendOK(),
+		receiptNotFound(),
+		chainHead(100),
+	)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.ErrorIs(t, err, transaction.ErrTransactionCancelled)
+	require.NotErrorIs(t, err, putErr)
+	assert.Equal(t, common.Hash{}, txHash)
+	assert.Nil(t, receipt)
+	require.Equal(t, 1, txs.count(), "cancellation stops the session, no replacement is sent")
+	assert.Equal(t, int32(1), watchCount.Load(), "the broadcast nonce is watched during the call")
+	s.assertSessionCleared(t, svc, store, common.Hash{}, txs.hash(0))
+}
+
 // A broadcast that fails before SendTransaction leaves nothing to watch: the loop waits the
 // retry delay, and the next attempt takes the same nonce.
 func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
