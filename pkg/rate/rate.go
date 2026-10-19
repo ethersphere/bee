@@ -30,15 +30,6 @@ func New(windowsSize time.Duration) *Rate {
 	}
 }
 
-// NewWithClock is New with now as the clock of the windows; time.Now if nil.
-func NewWithClock(windowsSize time.Duration, now func() time.Time) *Rate {
-	r := New(windowsSize)
-	if now != nil {
-		r.now = now
-	}
-	return r
-}
-
 // add uses the current time and rounds it down to a window
 // and increments the window's value.
 func (r *Rate) Add(count int) {
@@ -64,7 +55,7 @@ func (r *Rate) Rate() float64 {
 
 	interpolate := 1 - float64(now-(window*r.windowSize))/float64(r.windowSize)
 
-	return milliInSeconds * (float64(r.windows[window]) + (interpolate * float64(r.windows[window-1]))) / float64(r.windowSize)
+	return milliInSeconds * ((float64(r.windows[window])) + ((interpolate) * float64(r.windows[window-1]))) / float64(r.windowSize)
 }
 
 // cleanup removes windows older than the most recent two windows.

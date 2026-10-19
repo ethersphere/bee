@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
-	"github.com/ethersphere/bee/v2/pkg/rate"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -117,7 +116,7 @@ type Reconciler struct {
 	roundInterval time.Duration
 	guardTimeout  time.Duration
 	stripeTimeout time.Duration
-	rate          *rate.Rate
+	rate          *rateWindow
 	metrics       metrics
 
 	mu         sync.Mutex
@@ -182,7 +181,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		roundInterval: o.RoundInterval,
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
-		rate:          rate.NewWithClock(SyncRateWindow, o.Now),
+		rate:          newRateWindow(SyncRateWindow, o.Now),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
