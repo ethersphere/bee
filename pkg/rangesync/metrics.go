@@ -9,6 +9,7 @@ import (
 
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 )
 
 // metrics are the protocol metrics of the rangesync service.
@@ -63,6 +64,15 @@ type metrics struct {
 	BytesMetadata *prometheus.CounterVec
 	// BytesChunks counts the wire bytes of Delivery messages, by direction.
 	BytesChunks *prometheus.CounterVec
+	// WantClaims counts the outcomes of the want set for the IDs Fetch
+	// would request (§10 want_claims): the claim results (granted, denied,
+	// peer_full, full, rejected, closed), and, for granted claims that
+	// expired before their fetch ended them, expired, and late for those of
+	// them whose chunk was delivered anyway (late is a subset of expired).
+	WantClaims *prometheus.CounterVec
+	// RejectedCacheSize is the number of IDs in the want set's rejected
+	// cache (§10 rejected_cache_size).
+	RejectedCacheSize prometheus.GaugeFunc
 }
 
 // Label values of the parts and bytes metrics.
@@ -77,7 +87,41 @@ const (
 	partUnknown     = "unknown"
 )
 
-func newMetrics() metrics {
+// Label values of the want_claims metric.
+const (
+	claimGranted  = "granted"
+	claimDenied   = "denied"
+	claimPeerFull = "peer_full"
+	claimFull     = "full"
+	claimRejected = "rejected"
+	claimClosed   = "closed"
+	claimExpired  = "expired"
+	claimLate     = "late"
+)
+
+// claimLabel returns the want_claims label of the claim result r.
+func claimLabel(r wantset.Result) string {
+	switch r {
+	case wantset.Granted:
+		return claimGranted
+	case wantset.Held:
+		return claimDenied
+	case wantset.PeerFull:
+		return claimPeerFull
+	case wantset.Full:
+		return claimFull
+	case wantset.Rejected:
+		return claimRejected
+	case wantset.Closed:
+		return claimClosed
+	default:
+		return r.String()
+	}
+}
+
+// newMetrics returns the metrics; rejected reports the size of the rejected
+// cache.
+func newMetrics(rejected func() float64) metrics {
 	const subsystem = "rangesync"
 
 	return metrics{
@@ -198,6 +242,18 @@ func newMetrics() metrics {
 			Name:      "bytes_chunks",
 			Help:      "Wire bytes of chunk deliveries, by direction.",
 		}, []string{"dir"}),
+		WantClaims: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "want_claims",
+			Help:      "Want set outcomes of the IDs fetch would request: claim results (granted, denied, peer_full, full, rejected, closed), and granted claims that expired before their fetch ended them (expired; late: delivered anyway, a subset of expired).",
+		}, []string{"result"}),
+		RejectedCacheSize: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "rejected_cache_size",
+			Help:      "IDs skipped by fetch for RejectTTL because their stamp was rejected or older than the stored one.",
+		}, rejected),
 	}
 }
 

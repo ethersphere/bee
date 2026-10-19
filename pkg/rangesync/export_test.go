@@ -56,6 +56,24 @@ func (s *Service) WantSet() *wantset.Set {
 	return s.wantSet
 }
 
+// SetWantSet replaces the want set of the service. It must be called before
+// the service is used.
+func (s *Service) SetWantSet(ws *wantset.Set) {
+	s.wantSet = ws
+}
+
+// WantClaims returns the want_claims counter of result.
+func (s *Service) WantClaims(result string) float64 {
+	return counterValue(s.metrics.WantClaims.WithLabelValues(result))
+}
+
+// RejectedCacheSize returns the value of the rejected_cache_size gauge.
+func (s *Service) RejectedCacheSize() float64 {
+	var m dto.Metric
+	_ = s.metrics.RejectedCacheSize.Write(&m)
+	return m.GetGauge().GetValue()
+}
+
 // CrossProtocolDuplicates returns the value of the
 // cross_protocol_duplicates_total metric.
 func (s *Service) CrossProtocolDuplicates() float64 {

@@ -6,9 +6,10 @@ package wantset
 
 import "time"
 
-// NewWithClock returns a Set with the claim deadline deadline that holds at
-// most maxClaims IDs, at most maxPerPeer of them for one peer, and reads the
-// current time from now.
-func NewWithClock(deadline time.Duration, maxClaims, maxPerPeer int, now func() time.Time) *Set {
-	return newSet(deadline, maxClaims, maxPerPeer, now)
+// NewWithClock returns a Set with the claim deadline deadline and the reject
+// TTL rejectTTL that holds at most maxClaims IDs, at most maxPerPeer of them
+// for one peer, at most maxRejected rejected IDs, and reads the current time
+// from now.
+func NewWithClock(deadline, rejectTTL time.Duration, maxClaims, maxPerPeer, maxRejected int, now func() time.Time) *Set {
+	return newSet(deadline, rejectTTL, maxClaims, maxPerPeer, maxRejected, now)
 }

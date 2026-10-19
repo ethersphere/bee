@@ -23,6 +23,12 @@ const (
 	// keeps a peer that wins claims and stalls from denying every fetch of
 	// the node until its claims expire.
 	MaxClaimsPerPeer = 1000
+	// MaxRejected is the largest number of IDs the rejected cache of a Set
+	// created by New holds at once; a rejection beyond it drops the oldest.
+	// It is ten seconds of the node-wide fetch rate (rangesync
+	// DefaultFetchRate): a larger set of rejected IDs takes longer to fetch
+	// than that, so the fetch rate bounds its refetches.
+	MaxRejected = 10000
 )
 
 // Result is the outcome of Claim.
@@ -43,6 +49,9 @@ const (
 	PeerFull
 	// Closed means the set is closed.
 	Closed
+	// Rejected means the ID was rejected (Reject) within the reject TTL; the
+	// caller skips it, through every peer.
+	Rejected
 )
 
 // String returns the name of r, usable as a metric label.
@@ -58,6 +67,8 @@ func (r Result) String() string {
 		return "peer_full"
 	case Closed:
 		return "closed"
+	case Rejected:
+		return "rejected"
 	default:
 		return "Result(" + strconv.Itoa(int(r)) + ")"
 	}
@@ -69,12 +80,18 @@ func (r Result) String() string {
 // with Done or Release, or expires after the claim deadline, after which the
 // ID can be claimed again, typically through another peer.
 //
+// A Set also keeps a bounded cache of rejected IDs (§8.2): IDs whose delivery
+// failed stamp validation, or whose stamp is older than the one the reserve
+// holds, are not claimed again until the reject TTL has passed.
+//
 // A Set is safe for concurrent use. It starts no goroutines: expired claims
-// are dropped by the calls that observe them.
+// and rejections are dropped by the calls that observe them.
 type Set struct {
-	deadline   time.Duration
-	maxClaims  int
-	maxPerPeer int
+	deadline    time.Duration
+	rejectTTL   time.Duration
+	maxClaims   int
+	maxPerPeer  int
+	maxRejected int
 	// now must not go backwards. time.Now carries a monotonic clock reading,
 	// so wall-clock steps do not affect it. If now does step back (an
 	// injected clock), a claim made after the step still expires on time for
@@ -89,7 +106,12 @@ type Set struct {
 	// is the same for every claim and the time is read under mu, so this is
 	// the order in which they were made.
 	expiry *list.List
-	closed bool
+	// rejected holds the rejected IDs, rejectList the same in the order
+	// they expire (values are *rejection), which is the order of their last
+	// rejection, as for expiry.
+	rejected   map[fingerprint.ID]*list.Element
+	rejectList *list.List
+	closed     bool
 }
 
 // peerClaims counts the active claims of one peer.
@@ -105,32 +127,46 @@ type claim struct {
 	expires time.Time
 }
 
-// New returns an empty Set whose claims expire after deadline (the protocol
-// uses rangesync.ClaimDeadline, 30 s) and which holds at most MaxClaims IDs,
-// and at most MaxClaimsPerPeer for one peer. It panics if deadline is not
-// positive.
-func New(deadline time.Duration) *Set {
-	return newSet(deadline, MaxClaims, MaxClaimsPerPeer, time.Now)
+// rejection is one rejected ID.
+type rejection struct {
+	id      fingerprint.ID
+	expires time.Time
 }
 
-func newSet(deadline time.Duration, maxClaims, maxPerPeer int, now func() time.Time) *Set {
+// New returns an empty Set whose claims expire after deadline (the protocol
+// uses rangesync.ClaimDeadline, 30 s), whose rejections expire after
+// rejectTTL (rangesync.RejectTTL, 10 min), and which holds at most MaxClaims
+// IDs, at most MaxClaimsPerPeer for one peer, and at most MaxRejected
+// rejected IDs. It panics if deadline or rejectTTL is not positive.
+func New(deadline, rejectTTL time.Duration) *Set {
+	return newSet(deadline, rejectTTL, MaxClaims, MaxClaimsPerPeer, MaxRejected, time.Now)
+}
+
+func newSet(deadline, rejectTTL time.Duration, maxClaims, maxPerPeer, maxRejected int, now func() time.Time) *Set {
 	if deadline <= 0 {
 		panic("wantset: claim deadline must be positive")
 	}
+	if rejectTTL <= 0 {
+		panic("wantset: reject TTL must be positive")
+	}
 	return &Set{
-		deadline:   deadline,
-		maxClaims:  maxClaims,
-		maxPerPeer: maxPerPeer,
-		now:        now,
-		claims:     make(map[fingerprint.ID]*list.Element),
-		peers:      make(map[string]*peerClaims),
-		expiry:     list.New(),
+		deadline:    deadline,
+		rejectTTL:   rejectTTL,
+		maxClaims:   maxClaims,
+		maxPerPeer:  maxPerPeer,
+		maxRejected: maxRejected,
+		now:         now,
+		claims:      make(map[fingerprint.ID]*list.Element),
+		peers:       make(map[string]*peerClaims),
+		expiry:      list.New(),
+		rejected:    make(map[fingerprint.ID]*list.Element),
+		rejectList:  list.New(),
 	}
 }
 
 // Claim records that id is about to be requested from peer unless something
 // stops it, and reports the outcome. Only Granted records a claim. The checks
-// are made in the order Closed, Held, Full, PeerFull.
+// are made in the order Closed, Rejected, Held, Full, PeerFull.
 //
 // Callers claim right before each Want, only the IDs that Want carries.
 func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
@@ -142,6 +178,9 @@ func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 	}
 	now := s.now()
 	s.expire(now)
+	if s.isRejected(id, now) {
+		return Rejected
+	}
 	if e, ok := s.claims[id]; ok {
 		if now.Before(e.Value.(*claim).expires) {
 			return Held
@@ -195,6 +234,80 @@ func (s *Set) Release(id fingerprint.ID, peer swarm.Address) {
 	}
 }
 
+// Reject ends the claim on id, whichever peer holds it, and records id as
+// rejected for the reject TTL: Claim returns Rejected for it through every
+// peer. The ID's delivery failed stamp validation, or the reserve holds a
+// newer stamp of the chunk (storage.ErrOverwriteNewerChunk); either holds
+// whichever peer delivers it, since the ID includes the stamp. Rejecting an
+// ID again restarts its TTL. When the cache holds its maximum number of IDs,
+// the oldest rejection is dropped. It is a no-op on a closed set.
+func (s *Set) Reject(id fingerprint.ID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return
+	}
+	if e, ok := s.claims[id]; ok {
+		s.drop(e)
+	}
+	now := s.now()
+	s.expireRejected(now)
+	if e, ok := s.rejected[id]; ok {
+		e.Value.(*rejection).expires = now.Add(s.rejectTTL)
+		s.rejectList.MoveToBack(e)
+		return
+	}
+	if s.maxRejected <= 0 {
+		return
+	}
+	for len(s.rejected) >= s.maxRejected {
+		s.dropRejected(s.rejectList.Front())
+	}
+	s.rejected[id] = s.rejectList.PushBack(&rejection{id: id, expires: now.Add(s.rejectTTL)})
+}
+
+// IsRejected reports whether id was rejected within the reject TTL.
+func (s *Set) IsRejected(id fingerprint.ID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return false
+	}
+	now := s.now()
+	s.expireRejected(now)
+	return s.isRejected(id, now)
+}
+
+// RejectedLen drops the expired rejections and returns the number of
+// rejected IDs.
+func (s *Set) RejectedLen() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return 0
+	}
+	s.expireRejected(s.now())
+	return len(s.rejected)
+}
+
+// HeldBy reports whether peer holds an active claim on id. A fetch asks it
+// when a delivery arrives or its claim ends, to tell whether its claim
+// expired meanwhile (and the ID may have been claimed through another peer).
+func (s *Set) HeldBy(id fingerprint.ID, peer swarm.Address) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e, ok := s.claims[id]
+	if !ok {
+		return false
+	}
+	c := e.Value.(*claim)
+	return c.peer.key == string(peer.Bytes()) && s.now().Before(c.expires)
+}
+
 // Len drops the expired claims and returns the number of active claims.
 func (s *Set) Len() int {
 	s.mu.Lock()
@@ -217,6 +330,8 @@ func (s *Set) Close() error {
 	s.claims = nil
 	s.peers = nil
 	s.expiry.Init()
+	s.rejected = nil
+	s.rejectList.Init()
 	return nil
 }
 
@@ -240,4 +355,36 @@ func (s *Set) drop(e *list.Element) {
 	if c.peer.n == 0 {
 		delete(s.peers, c.peer.key)
 	}
+}
+
+// isRejected reports whether id has a rejection that has not expired at now.
+// s.mu must be held.
+func (s *Set) isRejected(id fingerprint.ID, now time.Time) bool {
+	e, ok := s.rejected[id]
+	if !ok {
+		return false
+	}
+	if now.Before(e.Value.(*rejection).expires) {
+		return true
+	}
+	// Expired, but behind a rejection that has not: the clock went back.
+	s.dropRejected(e)
+	return false
+}
+
+// expireRejected drops the rejections at the front of s.rejectList that
+// expired at or before now. s.mu must be held.
+func (s *Set) expireRejected(now time.Time) {
+	for e := s.rejectList.Front(); e != nil; e = s.rejectList.Front() {
+		if now.Before(e.Value.(*rejection).expires) {
+			return
+		}
+		s.dropRejected(e)
+	}
+}
+
+// dropRejected removes the rejection held in e. s.mu must be held.
+func (s *Set) dropRejected(e *list.Element) {
+	s.rejectList.Remove(e)
+	delete(s.rejected, e.Value.(*rejection).id)
 }

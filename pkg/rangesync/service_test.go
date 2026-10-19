@@ -94,6 +94,9 @@ type nodeOpts struct {
 	// streamer, if not nil, wraps the recorder the service opens streams
 	// with.
 	streamer func(p2p.StreamerDisconnecter) p2p.StreamerDisconnecter
+	// putHook, if not nil, is called by the reserve's Put before it stores
+	// a chunk; an error fails the Put.
+	putHook func(swarm.Chunk) error
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -113,7 +116,7 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	}
 	n := &testNode{
 		addr:   swarm.RandAddress(tb),
-		store:  mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(chunks...)),
+		store:  mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(chunks...), mockstorer.WithPutHook(o.putHook)),
 		scorer: newRecordingScorer(),
 		wants:  make(map[string][]storer.ChunkID),
 	}

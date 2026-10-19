@@ -214,18 +214,17 @@ func New(
 		RootChangeDebounce: StatusMinInterval,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{
+	s := &Service{
 		streamer:         streamer,
 		store:            store,
 		logger:           logger.WithName(loggerName).Register(),
-		metrics:          newMetrics(),
 		scorer:           o.Scorer,
 		wants:            o.Wants,
 		unwrap:           unwrap,
 		gsocHandler:      gsocHandler,
 		validStamp:       validStamp,
 		fetchTimeout:     o.FetchTimeout,
-		wantSet:          wantset.New(ClaimDeadline),
+		wantSet:          wantset.New(ClaimDeadline, RejectTTL),
 		fetchLimiter:     ratelimit.New(time.Second/time.Duration(o.FetchRate), MaxWantIDs),
 		deliveryLimiter:  ratelimit.New(handleRateLimit, MaxWantIDs),
 		sessionLimiter:   ratelimit.New(PeerSessionInterval, PeerSessionBurst),
@@ -243,6 +242,8 @@ func New(
 		ctx:              ctx,
 		cancel:           cancel,
 	}
+	s.metrics = newMetrics(func() float64 { return float64(s.wantSet.RejectedLen()) })
+	return s
 }
 
 // Start registers the Indexer as the reserve observer and, if that

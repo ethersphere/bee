@@ -51,27 +51,63 @@ const (
 // stamp validator.
 var errNoStampValidator = errors.New("rangesync: no stamp validator")
 
-// Fetch requests the chunks with the given IDs (batch IDs are ignored) from
-// peer on fetch streams, MaxWantIDs per Want, and stores the valid
-// deliveries in the reserve. It returns the number of chunks stored.
+// FetchResult is the outcome of FetchWithResult. Every ID passed is in at
+// most one of its parts; the IDs in none were not requested for a cause that
+// says nothing about the peer: outside the storage radius, in the reserve
+// already (a delivery included, the cross protocol duplicates), not granted
+// because the want set or the peer's share of it is full, or not looked at
+// because the fetch ended with an error.
+type FetchResult struct {
+	// Stored is the number of chunks stored.
+	Stored int
+	// Undelivered are the IDs requested from the peer whose chunk was
+	// neither stored nor rejected: the peer did not deliver it, delivered
+	// it invalid, or its Want failed or timed out, or storing it failed on
+	// this node. Their claims were released, so they can be requested from
+	// another peer.
+	Undelivered []storer.ChunkID
+	// Held are the IDs not requested because another fetch held their
+	// claim (wantset.Held), through another peer or this one. The peer is
+	// another source of them should that claim end without the chunk.
+	Held []storer.ChunkID
+	// Rejected is the number of IDs rejected: delivered with a stamp the
+	// stamp validator rejected or older than the one the reserve holds
+	// (storage.ErrOverwriteNewerChunk), or not requested because they were
+	// rejected within RejectTTL. They are not requested again until then.
+	Rejected int
+}
+
+// Fetch is FetchWithResult, returning only the number of chunks stored.
+func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (stored int, err error) {
+	res, err := s.FetchWithResult(ctx, peer, ids)
+	return res.Stored, err
+}
+
+// FetchWithResult requests the chunks with the given IDs (batch IDs are
+// ignored) from peer on fetch streams, MaxWantIDs per Want, stores the valid
+// deliveries in the reserve and reports the outcome; on error, the outcome
+// so far.
 //
 // Before each Want it drops the IDs outside the storage radius, the IDs the
-// reserve holds already and the IDs the want set does not grant; when none
-// remains no stream is opened. The claims of an ID end with Done when it was
-// stored (or a newer stamp is held) and with Release otherwise, on every
-// return. The node-wide fetch rate (Options.FetchRate) is waited for before
-// the IDs of each Want are claimed. A holder that has not finished within
-// Options.FetchTimeout of the Want is a violation. Close ends a running Fetch.
+// reserve holds already, the IDs rejected within RejectTTL and the IDs the
+// want set does not grant; when none remains no stream is opened. The claims
+// of an ID end with Done when it was stored, with Reject when it was
+// rejected, and with Release otherwise, on every return. The node-wide fetch
+// rate (Options.FetchRate) is waited for before the IDs of each Want are
+// claimed. A holder that has not finished within Options.FetchTimeout of the
+// Want is a violation. Close ends a running fetch.
 //
 // Deliveries are validated as pullsync.Sync validates them. A delivery that
 // was not requested (or delivered twice), does not decode or is neither a
 // valid CAC nor a valid SOC is a violation: the stream is reset, the peer is
 // disconnected, the failure is reported to the PeerScorer and the error wraps
-// ErrInvalidMessage. A delivery whose stamp the stamp validator rejects is
-// dropped without penalty. Requested IDs the peer does not deliver are not
-// an error. A chunk that is in the reserve when it would be stored is counted
-// as a cross protocol duplicate and not stored again.
-func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (stored int, err error) {
+// ErrInvalidMessage. A delivery whose stamp the stamp validator rejects, or
+// whose stamp is older than the one the reserve holds, is dropped without
+// penalty and its ID rejected for RejectTTL (wantset.Set.Reject). Requested
+// IDs the peer does not deliver are not an error. A chunk that is in the
+// reserve when it would be stored is counted as a cross protocol duplicate
+// and not stored again.
+func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.ctx, cancel) // Close ends the fetch
@@ -79,34 +115,33 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 
 	for len(ids) > 0 {
 		var cands []fingerprint.ID
-		cands, ids, err = s.wantCandidates(ids)
+		cands, ids, err = s.wantCandidates(ids, &res)
 		if err != nil {
-			return stored, err
+			return res, err
 		}
 		if len(cands) == 0 {
 			continue
 		}
 		// wait before claiming, so that the wait cannot outlast the claims
 		if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
-			return stored, fmt.Errorf("fetch limiter: %w", err)
+			return res, fmt.Errorf("fetch limiter: %w", err)
 		}
-		claimed := s.claim(peer, cands)
+		claimed := s.claim(peer, cands, &res)
 		if len(claimed) == 0 {
 			continue
 		}
-		n, err := s.fetch(ctx, peer, claimed)
-		stored += n
-		if err != nil {
-			return stored, err
+		if err := s.fetch(ctx, peer, claimed, &res); err != nil {
+			return res, err
 		}
 	}
-	return stored, nil
+	return res, nil
 }
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of
-// ids that are within the storage radius and not in the reserve, and the IDs
-// not looked at yet.
-func (s *Service) wantCandidates(ids []storer.ChunkID) (cands []fingerprint.ID, rest []storer.ChunkID, err error) {
+// ids that are within the storage radius, not in the reserve and not
+// rejected, and the IDs not looked at yet. It counts the rejected ones in
+// res.
+func (s *Service) wantCandidates(ids []storer.ChunkID, res *FetchResult) (cands []fingerprint.ID, rest []storer.ChunkID, err error) {
 	seen := make(map[fingerprint.ID]struct{})
 	for len(ids) > 0 && len(cands) < MaxWantIDs {
 		c := ids[0]
@@ -128,37 +163,74 @@ func (s *Service) wantCandidates(ids []storer.ChunkID) (cands []fingerprint.ID, 
 			continue
 		}
 		seen[id] = struct{}{}
+		if s.wantSet.IsRejected(id) {
+			s.metrics.FetchSkipped.WithLabelValues(claimRejected).Inc()
+			s.metrics.WantClaims.WithLabelValues(claimRejected).Inc()
+			res.Rejected++
+			continue
+		}
 		cands = append(cands, id)
 	}
 	return cands, ids, nil
 }
 
-// claim claims cands for peer and returns the granted IDs.
-func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID) map[fingerprint.ID]struct{} {
+// claim claims cands for peer and returns the granted IDs. It records the IDs
+// held by another claim and the rejected ones in res.
+func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID, res *FetchResult) map[fingerprint.ID]struct{} {
 	claimed := make(map[fingerprint.ID]struct{}, len(cands))
 	for _, id := range cands {
-		if r := s.wantSet.Claim(id, peer); r != wantset.Granted {
-			s.metrics.FetchSkipped.WithLabelValues(r.String()).Inc()
+		r := s.wantSet.Claim(id, peer)
+		s.metrics.WantClaims.WithLabelValues(claimLabel(r)).Inc()
+		switch r {
+		case wantset.Granted:
+			claimed[id] = struct{}{}
 			continue
+		case wantset.Held:
+			res.Held = append(res.Held, chunkID(id))
+		case wantset.Rejected:
+			res.Rejected++
 		}
-		claimed[id] = struct{}{}
+		s.metrics.FetchSkipped.WithLabelValues(r.String()).Inc()
 	}
 	return claimed
 }
 
-// releaseAll releases the claims of peer on ids.
-func (s *Service) releaseAll(peer swarm.Address, ids map[fingerprint.ID]struct{}) {
-	for id := range ids {
-		s.wantSet.Release(id, peer)
+// chunkID returns the storer.ChunkID of id, without a batch ID.
+func chunkID(id fingerprint.ID) storer.ChunkID {
+	return storer.ChunkID{Address: id.Address(), StampHash: id.StampHash()}
+}
+
+// claimExpired reports whether the claim of peer on id, granted to this
+// fetch, has ended without this fetch ending it, and counts it as expired.
+// Only an expiry ends a granted claim before its fetch does, or, after one, a
+// fetch through another peer that stored or rejected the ID. A closed
+// service is not counted: Close drops every claim.
+func (s *Service) claimExpired(peer swarm.Address, id fingerprint.ID) bool {
+	if s.wantSet.HeldBy(id, peer) || s.ctx.Err() != nil {
+		return false
 	}
+	s.metrics.WantClaims.WithLabelValues(claimExpired).Inc()
+	return true
+}
+
+// undelivered releases the claim of peer on id, whose chunk was not stored,
+// and records id in res as undelivered.
+func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchResult) {
+	s.wantSet.Release(id, peer)
+	res.Undelivered = append(res.Undelivered, chunkID(id))
 }
 
 // fetch sends one Want of the claimed IDs to peer and handles the
 // deliveries until the peer closes the stream. Every claim in claimed is
 // ended before it returns.
-func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}) (stored int, err error) {
+func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult) (err error) {
 	// claimed holds the IDs not delivered yet
-	defer s.releaseAll(peer, claimed)
+	defer func() {
+		for id := range claimed {
+			s.claimExpired(peer, id)
+			s.undelivered(peer, id, res)
+		}
+	}()
 
 	// a holder that stalls must not keep the claims past ClaimDeadline
 	parent := ctx
@@ -178,7 +250,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
 	if err != nil {
-		return 0, fmt.Errorf("new stream: %w", err)
+		return fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -190,7 +262,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 
 	w, r := protobuf.NewWriter(stream), newReader(stream, maxDeliveryBytes)
 	if err := w.WriteMsgWithContext(ctx, want); err != nil {
-		return 0, stalled(fmt.Errorf("write want: %w", err))
+		return stalled(fmt.Errorf("write want: %w", err))
 	}
 	s.metrics.BytesMetadata.WithLabelValues(dirOut).Add(float64(wireSize(want)))
 
@@ -199,66 +271,68 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 		if err := readMessage(ctx, r, &d); err != nil {
 			if errors.Is(err, io.EOF) {
 				// the peer delivered what it holds
-				return stored, nil
+				return nil
 			}
 			if errors.Is(err, ErrInvalidMessage) {
-				return stored, s.initiatorViolation(peer, fmt.Errorf("delivery: %w", err))
+				return s.initiatorViolation(peer, fmt.Errorf("delivery: %w", err))
 			}
-			return stored, stalled(fmt.Errorf("read delivery: %w", err))
+			return stalled(fmt.Errorf("read delivery: %w", err))
 		}
 		s.metrics.BytesChunks.WithLabelValues(dirIn).Add(float64(wireSize(&d)))
-		ok, err := s.deliver(ctx, peer, claimed, &d)
+		err := s.deliver(ctx, peer, claimed, &d, res)
 		if errors.Is(err, ErrInvalidMessage) {
-			return stored, s.initiatorViolation(peer, err)
+			return s.initiatorViolation(peer, err)
 		}
 		if err != nil {
-			return stored, err
-		}
-		if ok {
-			stored++
+			return err
 		}
 	}
 	// every claimed ID was delivered: anything more is unsolicited
 	var d pb.Delivery
 	switch err := readMessage(ctx, r, &d); {
 	case errors.Is(err, io.EOF):
-		return stored, nil
+		return nil
 	case err == nil || errors.Is(err, ErrInvalidMessage):
-		return stored, s.initiatorViolation(peer, invalid("unsolicited delivery"))
+		return s.initiatorViolation(peer, invalid("unsolicited delivery"))
 	default:
-		return stored, stalled(fmt.Errorf("read delivery: %w", err))
+		return stalled(fmt.Errorf("read delivery: %w", err))
 	}
 }
 
 // deliver validates one Delivery against the claimed IDs and stores it. The
 // rules are those of pullsync.Sync (pkg/pullsync/pullsync.go), re-implemented
-// here. It removes the delivered ID from claimed and ends its claim. It
-// reports whether the chunk was stored; a violation wraps ErrInvalidMessage.
-func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery) (bool, error) {
+// here. It removes the delivered ID from claimed, ends its claim and records
+// the outcome in res. A delivery whose claim had expired is counted late
+// (want_claims). A violation wraps ErrInvalidMessage.
+func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult) error {
 	if len(d.Address) != swarm.HashSize {
-		return false, invalid("delivery address of %d bytes", len(d.Address))
+		return invalid("delivery address of %d bytes", len(d.Address))
 	}
 	addr := swarm.NewAddress(d.Address)
 	stamp := new(postage.Stamp)
 	if err := stamp.UnmarshalBinary(d.Stamp); err != nil {
-		return false, invalid("delivery stamp: %v", err)
+		return invalid("delivery stamp: %v", err)
 	}
 	stampHash, err := stamp.Hash()
 	if err != nil {
-		return false, invalid("delivery stamp hash: %v", err)
+		return invalid("delivery stamp hash: %v", err)
 	}
 	id := fingerprint.NewID(addr, stampHash)
 	if _, ok := claimed[id]; !ok {
-		return false, invalid("unsolicited chunk %s", addr)
+		return invalid("unsolicited chunk %s", addr)
 	}
 	delete(claimed, id)
+	if s.claimExpired(peer, id) {
+		s.metrics.WantClaims.WithLabelValues(claimLate).Inc()
+	}
 
 	chunk, err := s.validStamp(swarm.NewChunk(addr, d.Data).WithStamp(stamp))
 	if err != nil {
-		s.wantSet.Release(id, peer)
+		s.wantSet.Reject(id)
+		res.Rejected++
 		s.metrics.DeliveryRejected.Inc()
 		s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", addr)
-		return false, nil
+		return nil
 	}
 
 	if cac.Valid(chunk) {
@@ -267,33 +341,36 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		s.logger.Debug("fetch gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", sch.WrappedChunk().Address())
 		s.gsocHandler(sch)
 	} else {
-		s.wantSet.Release(id, peer)
-		return false, invalid("invalid chunk %s: %v", addr, swarm.ErrInvalidChunk)
+		s.undelivered(peer, id, res)
+		return invalid("invalid chunk %s: %v", addr, swarm.ErrInvalidChunk)
 	}
 
 	has, err := s.store.ReserveHasID(addr, stampHash)
 	if err != nil {
-		s.wantSet.Release(id, peer)
-		return false, fmt.Errorf("reserve has id: %w", err)
+		s.undelivered(peer, id, res)
+		return fmt.Errorf("reserve has id: %w", err)
 	}
 	if has {
 		s.metrics.CrossProtocolDuplicates.Inc()
 		s.wantSet.Done(id)
-		return false, nil
+		return nil
 	}
 	if err := s.store.ReservePutter().Put(ctx, chunk); err != nil {
 		if errors.Is(err, storage.ErrOverwriteNewerChunk) {
-			// a newer stamp of the chunk is held
+			// a newer stamp of the chunk is held: do not fetch this one
+			// again for RejectTTL
 			s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk_address", addr)
-			s.wantSet.Done(id)
-			return false, nil
+			s.wantSet.Reject(id)
+			res.Rejected++
+			return nil
 		}
-		s.wantSet.Release(id, peer)
-		return false, fmt.Errorf("reserve put: %w", err)
+		s.undelivered(peer, id, res)
+		return fmt.Errorf("reserve put: %w", err)
 	}
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()
-	return true, nil
+	res.Stored++
+	return nil
 }
 
 // handleFetch serves the fetch stream: it reads one Want, delivers the

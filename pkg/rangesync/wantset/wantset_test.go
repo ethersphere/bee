@@ -15,7 +15,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const testDeadline = 30 * time.Second
+const (
+	testDeadline  = 30 * time.Second
+	testRejectTTL = 10 * time.Minute
+)
 
 // clock is a manually advanced clock, safe for concurrent use.
 type clock struct {
@@ -59,7 +62,7 @@ func testPeer(i int) swarm.Address {
 func newTestSet(t *testing.T, maxClaims, maxPerPeer int) (*wantset.Set, *clock) {
 	t.Helper()
 	c := newClock()
-	s := wantset.NewWithClock(testDeadline, maxClaims, maxPerPeer, c.Now)
+	s := wantset.NewWithClock(testDeadline, testRejectTTL, maxClaims, maxPerPeer, wantset.MaxRejected, c.Now)
 	t.Cleanup(func() {
 		if err := s.Close(); err != nil {
 			t.Errorf("close: %v", err)
@@ -92,6 +95,7 @@ func TestResultString(t *testing.T) {
 		wantset.Full:     "full",
 		wantset.PeerFull: "peer_full",
 		wantset.Closed:   "closed",
+		wantset.Rejected: "rejected",
 		0:                "Result(0)",
 	} {
 		if got := r.String(); got != want {
@@ -295,7 +299,7 @@ func TestBounded(t *testing.T) {
 func TestBounded_Default(t *testing.T) {
 	t.Parallel()
 
-	s := wantset.New(testDeadline)
+	s := wantset.New(testDeadline, testRejectTTL)
 	t.Cleanup(func() { _ = s.Close() })
 
 	peers := wantset.MaxClaims / wantset.MaxClaimsPerPeer
@@ -354,7 +358,7 @@ func TestPeerCap(t *testing.T) {
 func TestClose(t *testing.T) {
 	t.Parallel()
 
-	s := wantset.New(testDeadline)
+	s := wantset.New(testDeadline, testRejectTTL)
 	checkClaim(t, s, 1, 1, wantset.Granted)
 	if err := s.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -368,19 +372,24 @@ func TestClose(t *testing.T) {
 	}
 }
 
-// TestNew_InvalidDeadline checks that New rejects a deadline that is not
-// positive.
+// TestNew_InvalidDeadline checks that New rejects a claim deadline or a
+// reject TTL that is not positive.
 func TestNew_InvalidDeadline(t *testing.T) {
 	t.Parallel()
 
-	for _, d := range []time.Duration{0, -time.Second} {
+	for _, d := range [][2]time.Duration{
+		{0, testRejectTTL},
+		{-time.Second, testRejectTTL},
+		{testDeadline, 0},
+		{testDeadline, -time.Second},
+	} {
 		func() {
 			defer func() {
 				if recover() == nil {
-					t.Errorf("New(%v) did not panic", d)
+					t.Errorf("New(%v, %v) did not panic", d[0], d[1])
 				}
 			}()
-			_ = wantset.New(d)
+			_ = wantset.New(d[0], d[1])
 		}()
 	}
 }
