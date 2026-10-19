@@ -436,3 +436,16 @@ func TestRoundBootstrapFailedResumesSessions(t *testing.T) {
 	})
 	waitFor(t, "root session", func() bool { return rootSessions(svc, higher, other) })
 }
+
+// TestRoundBootstrapNoStripePeer: a plan with no peer status yields a
+// failed stripe (ErrNoStripePeer), which marks a bootstrap failed.
+func TestRoundBootstrapNoStripePeer(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(self, nil, newFakeService(status(0)), log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+	res := r.TransferStripes(context.Background(), reconciler.PlanStripes(fingerprint.NewRange(swarm.ZeroAddress, 0), nil))
+	if len(res) == 0 || !errors.Is(res[0].Err, reconciler.ErrNoStripePeer) {
+		t.Fatalf("got %v, want a failed stripe", res)
+	}
+}

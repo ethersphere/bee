@@ -378,8 +378,20 @@ func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
 }
 
 // stripeWorker plans and transfers the queued ranges, one at a time, across
-// the peers with a Status, until Close.
+// the peers with a Status, until Close. On Close it calls started of the
+// jobs still queued, so that no pending reconcile is left counted.
 func (r *Reconciler) stripeWorker() {
+	defer func() {
+		r.mu.Lock()
+		queued := r.stripeQueue
+		r.stripeQueue = nil
+		r.mu.Unlock()
+		for _, job := range queued {
+			if job.started != nil {
+				job.started()
+			}
+		}
+	}()
 	for {
 		select {
 		case <-r.ctx.Done():
@@ -396,8 +408,9 @@ func (r *Reconciler) stripeWorker() {
 			r.stripeQueue = r.stripeQueue[1:]
 			r.mu.Unlock()
 
-			failed := false
-			for _, res := range r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started) {
+			results := r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started)
+			failed := len(results) == 0 // defensive: PlanStripes returns at least one stripe
+			for _, res := range results {
 				if res.Err != nil {
 					failed = true
 					r.logger.Debug("stripe", "range", res.Range, "peer_address", res.Peer, "error", res.Err)
