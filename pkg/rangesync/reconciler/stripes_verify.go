@@ -52,8 +52,9 @@ type VerifyResult struct {
 	Deliverer, Verifier swarm.Address
 	// Diff is the number of IDs the verification session listed; Stored
 	// the number of chunks fetched (and validated) for them, the
-	// difference the deliverer is judged on.
-	Diff, Stored int
+	// difference the deliverer is judged on; Undelivered the number of IDs
+	// requested from the verifier that it did not deliver, its shortfall.
+	Diff, Stored, Undelivered int
 	// Err is ErrStripeNotDone or ErrNoVerifier for a stripe not verified,
 	// or the error of the verification session or its fetch.
 	Err error
@@ -68,10 +69,12 @@ type VerifyResult struct {
 // PeerScorer as a failure of the deliverer (§9 stripe withholding); only
 // chunks the verifier delivered count, so a verifier cannot get a
 // deliverer scored by listing IDs it does not have. A verifier whose
-// shortfall (listed minus stored) is above the same tolerance (of what it
-// listed) is scored itself (withholding). A stripe with no peer other than
-// those that worked on it is not verified (ErrNoVerifier): verifying with
-// the deliverer could not find what it withheld. The verifications run
+// shortfall (IDs requested from it and not delivered; not the IDs the want
+// set did not grant or whose stamp was rejected) is above the same
+// tolerance (of what it listed) is scored itself (withholding). A stripe
+// with no peer other than those that worked on it is not verified
+// (ErrNoVerifier): verifying with the deliverer could not find what it
+// withheld. The verifications run
 // like a transfer: one session per peer at a time, peers in parallel; they
 // count as catch-up (SyncRate). The results are in the order of results.
 func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) []VerifyResult {
@@ -140,13 +143,13 @@ func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifie
 	}
 	t := r.transferStripe(ctx, res.Range, verifier, func() {})
 	release()
-	v.Diff, v.Stored, v.Err = t.Listed, t.Stored, t.Err
+	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered, t.Err
 	if v.Err != nil {
 		// an incomplete verification says nothing about the deliverer
 		return v
 	}
-	if v.Diff-v.Stored > max(verifyMinDiff, v.Diff/verifyDiffRatio) {
-		r.Fail(verifier, fmt.Errorf("stripe %s: verifier stored %d of %d: %w", res.Range, v.Stored, v.Diff, ErrVerifierWithheld))
+	if v.Undelivered > max(verifyMinDiff, v.Diff/verifyDiffRatio) {
+		r.Fail(verifier, fmt.Errorf("stripe %s: verifier stored %d of %d, %d undelivered: %w", res.Range, v.Stored, v.Diff, v.Undelivered, ErrVerifierWithheld))
 	}
 	r.metrics.VerificationDiff.Observe(float64(v.Stored))
 	if v.Stored > max(verifyMinDiff, res.PeerStored/verifyDiffRatio) {

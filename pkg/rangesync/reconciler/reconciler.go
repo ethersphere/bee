@@ -171,6 +171,11 @@ type Reconciler struct {
 	stripeRetry   time.Duration // stripeRetryInterval; tests shorten it
 	rate          *rateWindow
 	metrics       metrics
+	// sources is the id → peers map of the IDs the want set denied a fetch
+	// (§7.8); retryLocks lets one retry fetch per peer run at a time
+	// (wants.go).
+	sources    *wantSources
+	retryLocks *peerLocks
 
 	// minInterval and maxInterval bound the adaptive round interval, whose
 	// current value (nanoseconds) is interval; roundAfter runs the round
@@ -268,6 +273,8 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		stripeTimeout: o.StripeTimeout,
 		stripeRetry:   stripeRetryInterval,
 		rate:          newRateWindow(SyncRateWindow, o.Now),
+		sources:       newWantSources(),
+		retryLocks:    newPeerLocks(),
 		minInterval:   minInterval,
 		maxInterval:   maxInterval,
 		roundAfter:    roundAfter,
@@ -736,8 +743,10 @@ func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, root fing
 	return errStaleSession
 }
 
-// fetch fetches ids from peer and counts the stored chunks towards SyncRate
-// when catchUp. The caller incremented catchUpFetches for a catch-up fetch.
+// fetch fetches ids from peer (fetchFrom: IDs the peer does not deliver are
+// retried from other peers known to hold them) and counts the stored chunks
+// towards SyncRate when catchUp. The caller incremented catchUpFetches for a
+// catch-up fetch.
 func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	if catchUp {
 		defer func() {
@@ -749,9 +758,9 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 	if len(ids) == 0 {
 		return
 	}
-	stored, err := r.svc.Fetch(r.ctx, peer, ids)
-	if catchUp && stored > 0 {
-		r.rate.Add(stored)
+	out, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
+	if catchUp && out.stored > 0 {
+		r.rate.Add(out.stored)
 	}
 	if err != nil {
 		r.logger.Debug("fetch", "peer_address", peer, "error", err)

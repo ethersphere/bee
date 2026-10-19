@@ -79,17 +79,22 @@ type StripeResult struct {
 	// stripe has no peer.
 	Peer swarm.Address
 	// Listed is the number of IDs the peer listed that this node did not
-	// hold; Stored the number of chunks stored.
-	Listed, Stored int
+	// hold; Stored the number of chunks stored; Undelivered the number of
+	// IDs requested from the peer that it did not deliver. IDs the want set
+	// did not grant (another fetch held them, or they were rejected), IDs
+	// whose stamp was rejected and IDs stored meanwhile are listed but
+	// neither stored nor undelivered.
+	Listed, Stored, Undelivered int
 	// PeerStored is the number of chunks Peer itself stored (over its
 	// restarts); Stored also counts the peers the stripe was reassigned
 	// from. Tried is every peer that worked on the stripe, Peer included.
 	PeerStored int
 	Tried      []swarm.Address
-	// Err is nil when the stripe is done: the session completed and every
-	// listed ID went through Fetch. It wraps ErrStripeTimeout on timeout
-	// and is ErrNoStripePeer for a stripe with no peer. A failed stripe can
-	// be transferred again: its session lists only the IDs still missing.
+	// Err is nil when the stripe is done: the session completed, every
+	// listed ID went through Fetch and the peer delivered every ID
+	// requested. It wraps ErrStripeTimeout on timeout and is
+	// ErrNoStripePeer for a stripe with no peer. A failed stripe can be
+	// transferred again: its session lists only the IDs still missing.
 	Err error
 }
 
@@ -169,26 +174,46 @@ func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, star
 // own.
 type peerLocks struct {
 	mu    sync.Mutex
-	locks map[string]chan struct{}
+	locks map[string]*peerLock
+}
+
+// peerLock is the lock of one peer; refs counts its holder and waiters, and
+// the lock is forgotten when it drops to zero.
+type peerLock struct {
+	c    chan struct{}
+	refs int
 }
 
 func newPeerLocks() *peerLocks {
-	return &peerLocks{locks: make(map[string]chan struct{})}
+	return &peerLocks{locks: make(map[string]*peerLock)}
 }
 
 // acquire takes peer's lock; the caller holds at most one at a time.
 func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), error) {
+	k := peer.ByteString()
 	l.mu.Lock()
-	c, ok := l.locks[peer.ByteString()]
+	pl, ok := l.locks[k]
 	if !ok {
-		c = make(chan struct{}, 1)
-		l.locks[peer.ByteString()] = c
+		pl = &peerLock{c: make(chan struct{}, 1)}
+		l.locks[k] = pl
 	}
+	pl.refs++
 	l.mu.Unlock()
+	unref := func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if pl.refs--; pl.refs == 0 {
+			delete(l.locks, k)
+		}
+	}
 	select {
-	case c <- struct{}{}:
-		return func() { <-c }, nil
+	case pl.c <- struct{}{}:
+		return func() {
+			<-pl.c
+			unref()
+		}, nil
 	case <-ctx.Done():
+		unref()
 		return nil, context.Cause(ctx)
 	}
 }
@@ -199,8 +224,9 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 // (localBusy), at most maxStripeRestarts times, else reassigned to the next of its Peers
 // or, when they are exhausted, to the next eligible peer with a Status, at
 // most maxStripeReassign times. A restart re-runs FP(stripe), so it lists
-// only the IDs still missing. A session that completed without every listed
-// ID stored is withholding (ErrStripeWithheld) and is reassigned.
+// only the IDs still missing. A session that completed with IDs requested
+// from the peer and not delivered is withholding (ErrStripeWithheld) and is
+// reassigned; IDs the want set did not grant and rejected stamps are not.
 func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks, started func()) StripeResult {
 	total := StripeResult{Range: st.Range}
 	tried := make(map[string]bool)
@@ -222,10 +248,11 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		total.Peer = peer
 		total.Listed += res.Listed
 		total.Stored += res.Stored
+		total.Undelivered += res.Undelivered
 		total.PeerStored += res.Stored
 		total.Err = res.Err
-		if res.Err == nil && res.Stored < res.Listed {
-			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d: %w", st.Range, peer, res.Stored, res.Listed, ErrStripeWithheld)
+		if res.Err == nil && res.Undelivered > 0 {
+			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d, %d undelivered: %w", st.Range, peer, res.Stored, res.Listed, res.Undelivered, ErrStripeWithheld)
 		}
 		switch {
 		case total.Err == nil:
@@ -356,10 +383,11 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			if fetchErr != nil {
 				continue // drain
 			}
-			n, err := r.svc.Fetch(ctx, peer, ids)
-			res.Stored += n
-			if n > 0 {
-				r.rate.Add(n)
+			out, err := r.fetchFrom(ctx, peer, ids, true)
+			res.Stored += out.stored
+			res.Undelivered += out.undelivered
+			if out.stored > 0 {
+				r.rate.Add(out.stored)
 			}
 			if err != nil {
 				fetchErr = fmt.Errorf("fetch: %w", err)

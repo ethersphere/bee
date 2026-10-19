@@ -112,6 +112,9 @@ type fakeService struct {
 	peerGate   map[string]chan struct{}
 	busyN      map[string]int
 	localBusyN map[string]int
+	// wantIDs, by peer, are the wants Reconcile returns, instead of wants
+	// zero IDs.
+	wantIDs map[string][]storer.ChunkID
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -139,6 +142,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 		peerGate:        make(map[string]chan struct{}),
 		busyN:           make(map[string]int),
 		localBusyN:      make(map[string]int),
+		wantIDs:         make(map[string][]storer.ChunkID),
 	}
 }
 
@@ -315,6 +319,9 @@ func (s *fakeService) Reconcile(ctx context.Context, peer swarm.Address) ([]stor
 	if err := s.reconErr[peer.ByteString()]; err != nil {
 		delete(s.reconErr, peer.ByteString()) // once
 		return nil, err
+	}
+	if ids, ok := s.wantIDs[peer.ByteString()]; ok {
+		return slices.Clone(ids), nil
 	}
 	return make([]storer.ChunkID, s.wants[peer.ByteString()]), nil
 }
