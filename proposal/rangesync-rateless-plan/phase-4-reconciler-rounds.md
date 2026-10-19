@@ -618,6 +618,86 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 - **(T4.4) Scope notes.** No `pkg/node`, `go.mod` or proto change. No new parser of peer input, so
   no `followup-fuzzing.md` line. The shared test fake gains `wantIDs` (per-peer want IDs).
 
+- **(T4.4 fix round 1, High) The reserve is checked again after the claim.** This supersedes the
+  "(T4.4) `want_claims{result}`" entry's claim that intra-`rangesync` duplicates are at most
+  `want_claims{expired}`; that was false. `Fetch` checked the reserve, then waited for the fetch
+  limiter (up to 250 ms at the default rate), then claimed. Meanwhile another fetch could claim
+  the ID, store it and end its claim; the claim was then granted and the chunk delivered twice.
+  That duplicate showed only in `cross_protocol_duplicates_total`, with no expired claim.
+
+  Now `claim` checks `ReserveHasID` for each granted ID and ends the claim (`Done`) without
+  requesting a chunk that is already stored. A claim ends with `Done` only after `Put`, so an ID
+  that is claimed and not in the reserve is requested by no other fetch until the claim ends.
+  An intra-`rangesync` duplicate therefore needs a claim that expired during its fetch.
+
+  With the default timeouts that cannot happen: `FetchTimeout = ClaimDeadline / 2` bounds each
+  Want from the claim to its last delivery. A stall is ended by that timeout and its stream reset,
+  so no delivery comes late. So `want_claims{expired}`, `want_claims{late}` and intra-`rangesync`
+  duplicates are 0 by construction, faults included. They become non-zero only if
+  `FetchTimeout` is raised to `ClaimDeadline` or more.
+
+  The cost is one more reserve lookup per granted ID (at most the fetch rate).
+  `TestFetchClaimRechecksReserve` drains the limiter, stores x through another claim while the
+  fetch waits, and checks that x is not requested again. It fails without the re-check.
+- **(T4.4 fix round 1, Medium) Deferred and unresolved held IDs fail a stripe without blame.**
+  This supersedes "(T4.4) Withholding is judged on undelivered IDs" where it let such a stripe
+  end as done. Before this fix, IDs the want set refused (`PeerFull`, `Full`) and held IDs whose
+  holder failed were counted nowhere. The stripe ended done, which cleared `bootstrapFailed`,
+  marked the radius half done, and could get an honest deliverer blamed by the verification.
+  One peer could also arrange it: hold the claims through our fetches from it, stall just under
+  the timeout, then close (unscored, and never its own retry source). Now:
+  - `FetchResult.Deferred` reports IDs refused as `Full` or `PeerFull`, and stamp checks that may
+    pass (Low 1).
+  - After its session's fetches, a stripe asks its peer again for the IDs still held or deferred,
+    every `stripeRetryInterval`, up to `maxPendingPasses = ClaimDeadline / stripeRetryInterval`
+    times (30). It does so without slots, on the stripe clock. An ID another fetch stored is
+    skipped. One whose claim ended without the chunk is claimed for the stripe peer, which must
+    then deliver it or be found withholding. This closes the evasion above.
+  - IDs still pending fail the stripe with `ErrStripeDeferred` (`StripeResult.Deferred`). It is
+    restarted with the same peer within `maxStripeRestarts`, then reassigned as usual. It is never
+    scored and never verified: `VerifyStripes` verifies only done stripes, and a verification
+    that ends deferred returns before any scoring.
+  - Withholding takes precedence over deferral: undelivered IDs still reassign.
+  - Rejected IDs count towards completion. They are deliberately not fetched (an invalid stamp, or
+    an older one than this node holds), and the rounds fetch them after `RejectTTL` if they are
+    still listed.
+
+  Tests: `TestStripeDeferred` (held, peer full, full: 1 + `maxStripeRestarts` sessions, no score,
+  not verified) and `TestStripeDeferredResolved` (a released foreign claim is fetched within the
+  attempt; the peer's own claim, then withheld, is found withholding). Also reworked:
+  `TestStripeWithheldUndeliveredOnly` (the held ID is now stored by its holder) and
+  `TestVerifyStripesUndeliveredOnly` (a held ID makes the verification deferred and blames
+  nobody).
+- **(T4.4 fix round 1, Low 1) Only errors about the stamp itself reject an ID.** This supersedes
+  the "(T4.4) Rejected cache" entry's "a stamp the stamp validator rejects ends with `Reject`".
+  `stampRejected` covers what `postage.ValidStamp` returns for the stamp: `postage.ErrNotFound`
+  (an unknown or expired batch), `ErrInvalidChunkAddress`, `ErrBucketMismatch`,
+  `ErrInvalidIndex` and `ErrOwnerMismatch`. It also covers `crypto.ErrInvalidLength` and the
+  missing-validator error. Any other error (a batch store failure) releases the claim and defers
+  the ID; it says nothing about the peer.
+
+  A signature that fails secp256k1 recovery is deterministic too, but has no sentinel without a
+  new import. It is treated as one that may pass, so such a stamp is fetched again each round, as
+  before T4.4.
+
+  `TestFetchInvalidStamp` is back to its original assertions (its generic error is now a
+  may-pass error). `TestFetchStampCheckFailure` covers each class. The help of
+  `fetch_rejected_total` now reads "the stamp validator failed".
+- **(T4.4 fix round 1, Low 2) Retry sources outlive the fetch that holds the claim.** This
+  supersedes the *Lifetime* and *Granularity* bullets of "(T4.4) `id → peers` retries". A source
+  is kept for `ClaimDeadline` after its last denial (a re-denial refreshes it). It is also kept
+  while any fetch that started before that denial is running: `fetchFrom` registers each fetch
+  for its duration. The claim's own fetch started before the denial, so its sources survive until
+  its result arrives, however long it runs. That covers up to `LargeDiff` IDs at the fetch rate
+  (about 65 s), where the old 30-second window from the first denial lost most retries of large
+  catch-up fetches. Memory stays at most `maxSourceIDs`, the oldest dropped first.
+
+  `TestWantSetRetryLongFetch` replaces `TestWantSetRetryWindow`, whose assertion (no retry after
+  the claim deadline) is now intentionally reversed. `TestWantSetSourcesPruned` covers the drop
+  once no older fetch runs.
+- **(T4.4 fix round 1) `want_claims` coverage.** `TestFetchWantSetFull` checks `peer_full`, `full`
+  (`Deferred`) and `closed` (no part, no Want).
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -833,3 +913,34 @@ _(sessions append here)_
     `TestStripeWithheldUndeliveredOnly`, `TestVerifyStripesUndeliveredOnly`. Re-run, because the
     fetch path and `peerLocks` changed: `TestTransferStripes*`, `TestVerifyStripes*`,
     `TestStripe*`, `TestRadius*`, `TestRound*`, `TestPeerState*`.
+- **(T4.4 fix round 1 → T6.4) AC-D1/AC-D2/AC-D3 wording.** With the reserve re-check after the
+  claim and the default timeouts, intra-`rangesync` duplicates and `want_claims{expired,late}` are
+  0 by construction, faults included (see Decisions log). This supersedes the "(T4.4 → T6.0)
+  `want_claims` semantics" bullet's "bound duplicates by `want_claims{result="expired"}`": that
+  bound still holds, but trivially (0 ≤ 0). In acceptance-criteria.md:
+  - AC-D1's "with faults: duplicates ≤ expired claims" can read "zero, faults included, unless
+    `FetchTimeout` ≥ `ClaimDeadline`".
+  - AC-D2: in a `rangesync`-only cohort, `cross_protocol_duplicates_total` counts only other
+    writers (pushsync) racing a fetch. `want_claims{result="late"}` is expected to be 0, and a
+    non-zero value flags a misconfigured timeout. AC-D2's "upper bound on AC-D1" note and the
+    summary row ("can't tell intra-`rangesync` duplicates apart") can be tightened.
+  - AC-D3's "the `ReserveHasID` re-check before `Want`": there are now two, one before the limiter
+    wait and one after the claim.
+- **(T4.4 fix round 1 → T4.6) Deferred stripes under a busy want set.** A stripe with deferred IDs
+  makes up to `maxPendingPasses` extra `Fetch` calls per attempt (30 s), then restarts. T4.6
+  should check that a bootstrap near `MaxClaims` or `MaxClaimsPerPeer` does not burn its restarts
+  and reassignments on `ErrStripeDeferred`. If it does, wait longer between passes or exempt
+  deferral from the restart count.
+- **(T4.4 fix round 1) Signature-recovery stamp errors are not rejected.** secp256k1 recovery
+  errors have no sentinel, so such stamps are refetched each round. A `postage` sentinel wrapping
+  `RecoverBatchOwner` errors would let `stampRejected` cover them; that needs a `pkg/postage`
+  change, outside this plan's allowed scope.
+- **(T4.4 fix round 1) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead.
+  - `pkg/rangesync`: `TestFetchClaimRechecksReserve`, `TestFetchWantSetFull`,
+    `TestFetchStampCheckFailure`, and `TestFetch*` again (`claim` and `deliver` changed).
+  - `pkg/rangesync/reconciler`: `TestStripeDeferred`, `TestStripeDeferredResolved`,
+    `TestWantSetRetryLongFetch`, `TestWantSetSourcesPruned`, `TestStripeWithheldUndeliveredOnly`
+    and `TestVerifyStripesUndeliveredOnly`. Re-run, because `transferStripe`, `runStripe` and
+    `wantSources` changed again: `TestWantSet*`, `TestSREP*`, `TestTransferStripes*`,
+    `TestVerifyStripes*`, `TestStripe*`, `TestRadius*`, `TestRound*`.
