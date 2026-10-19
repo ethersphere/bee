@@ -131,9 +131,10 @@ func (o Options) withDefaults() Options {
 	return d
 }
 
-// Service is the bps protocol service. On a full node it is also the broker.
+// Service is the bps protocol service. When broker is set it also serves
+// cohorts to inbound joins; otherwise it only joins remote brokers.
 type Service struct {
-	fullNode    bool
+	broker      bool
 	streamer    p2p.Streamer
 	blocklister p2p.Blocklister
 	opts        Options
@@ -147,9 +148,9 @@ type Service struct {
 }
 
 // New returns a new bps Service. The blocklister may be nil.
-func New(streamer p2p.Streamer, blocklister p2p.Blocklister, fullNode bool, logger log.Logger, o Options) *Service {
+func New(streamer p2p.Streamer, blocklister p2p.Blocklister, broker bool, logger log.Logger, o Options) *Service {
 	return &Service{
-		fullNode:    fullNode,
+		broker:      broker,
 		streamer:    streamer,
 		blocklister: blocklister,
 		opts:        o.withDefaults(),
@@ -562,7 +563,7 @@ func validateJoin(join *pb.Join) error {
 
 // handler is the protocol handler on the broker.
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	if !s.fullNode {
+	if !s.broker {
 		_ = stream.Reset()
 		return errNotBroker
 	}

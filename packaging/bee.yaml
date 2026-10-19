@@ -19,6 +19,8 @@
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
+## enable the bps broker (requires full node)
+# bps-broker: false
 ## bzz token contract address
 # bzz-token-address: ""
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
