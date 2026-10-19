@@ -925,3 +925,54 @@ func TestReconcileInitiatorSessionLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestReconcileWithStripe(t *testing.T) {
+	t.Parallel()
+
+	chs := stampedChunks(t, 3000)
+	a := newTestNode(t)
+	b := newTestNode(t, chs...)
+	a.start(t)
+	b.start(t)
+	connect(t, a, b)
+
+	st, err := a.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stripe := st.Root.Child(1, 1)
+	var want []storer.ChunkID
+	for _, ch := range chs {
+		if stripe.Contains(ch.Address()) {
+			want = append(want, chunkIDOf(t, ch))
+		}
+	}
+
+	var (
+		got   []storer.ChunkID
+		calls int
+	)
+	wants, err := a.svc.ReconcileWith(context.Background(), b.addr, rangesync.ReconcileOptions{
+		Open: []fingerprint.Range{stripe},
+		Wants: func(ids []storer.ChunkID) {
+			calls++
+			got = append(got, ids...)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wants) != 0 {
+		t.Fatalf("returned %d wants with a Wants callback", len(wants))
+	}
+	if calls == 0 {
+		t.Fatal("Wants not called")
+	}
+	// the opening is the stripe only: every want is in it, each listed once
+	assertChunkIDs(t, got, want...)
+	sent, _ := reconcileMessages(t, a, b.addr)
+	fps, _ := partsOf(t, sent[0])
+	if len(fps) != 1 || !fps[0].Equal(stripe) {
+		t.Fatalf("opening %v, want %s", fps, stripe)
+	}
+}

@@ -4,7 +4,10 @@
 
 package reconciler
 
-import "github.com/ethersphere/bee/v2/pkg/swarm"
+import (
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	dto "github.com/prometheus/client_model/go"
+)
 
 // GuardReleased reports whether the start-up guard of SyncRate is released.
 func (r *Reconciler) GuardReleased() bool {
@@ -21,4 +24,13 @@ func (r *Reconciler) KnownPeers() int {
 // OrderCandidates orders peers as a round runs their sessions.
 func (r *Reconciler) OrderCandidates(peers []swarm.Address) []swarm.Address {
 	return r.orderCandidates(peers)
+}
+
+// StripesTotal returns the stripes_total counter of result.
+func (r *Reconciler) StripesTotal(result string) float64 {
+	m := new(dto.Metric)
+	if err := r.metrics.Stripes.WithLabelValues(result).Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetCounter().GetValue()
 }

@@ -7,6 +7,7 @@ package reconciler_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -60,6 +61,12 @@ type fakeService struct {
 	// until closed.
 	reconcileGate chan struct{}
 	fetchGate     chan struct{}
+	// offer, by peer, is the range a session with no Open offers to its
+	// Striper; opens records the Open of each session by peer.
+	offer map[string]fingerprint.Range
+	opens map[string][][]fingerprint.Range
+	// fetchErr, if not nil, is returned by Fetch.
+	fetchErr error
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -72,7 +79,34 @@ func newFakeService(local rangesync.Status) *fakeService {
 		sent:        make(map[string]int),
 		reconciled:  make(map[string]int),
 		fetched:     make(map[string]int),
+		offer:       make(map[string]fingerprint.Range),
+		opens:       make(map[string][][]fingerprint.Range),
 	}
+}
+
+func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) ([]storer.ChunkID, error) {
+	s.mu.Lock()
+	s.opens[peer.ByteString()] = append(s.opens[peer.ByteString()], opts.Open)
+	offer, ok := s.offer[peer.ByteString()]
+	s.mu.Unlock()
+	if ok && len(opts.Open) == 0 && opts.Striper != nil {
+		opts.Striper.Stripe(offer, 1, rangesync.LargeDiff+2)
+	}
+	wants, err := s.Reconcile(ctx, peer)
+	if err != nil || opts.Wants == nil {
+		return wants, err
+	}
+	if len(wants) > 0 {
+		opts.Wants(wants)
+	}
+	return nil, nil
+}
+
+// sessionOpens returns the Open of each session with peer.
+func (s *fakeService) sessionOpens(peer swarm.Address) [][]fingerprint.Range {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.opens[peer.ByteString()])
 }
 
 func (s *fakeService) LocalStatus() (rangesync.Status, error) {
@@ -132,6 +166,9 @@ func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []store
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.fetchErr != nil {
+		return 0, s.fetchErr
+	}
 	s.fetched[peer.ByteString()] += len(ids)
 	return len(ids), nil
 }

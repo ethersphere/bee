@@ -17,6 +17,9 @@ type metrics struct {
 	Sessions *prometheus.CounterVec
 	// Failures counts PeerScorer failures.
 	Failures prometheus.Counter
+	// Stripes counts stripe transfers by result: done, reassigned or
+	// timeout.
+	Stripes *prometheus.CounterVec
 }
 
 func newMetrics(syncRate func() float64) metrics {
@@ -41,9 +44,15 @@ func newMetrics(syncRate func() float64) metrics {
 			Name:      "peer_failures_total",
 			Help:      "Protocol violations reported to the peer score.",
 		}),
+		Stripes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "stripes_total",
+			Help:      "Striped transfers of a stripe, by result (done, reassigned, timeout).",
+		}, []string{"result"}),
 	}
 }
 
 func (m metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures}
+	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes}
 }

@@ -53,6 +53,27 @@ func (s *Service) sessionContext(ctx context.Context) (context.Context, context.
 // stream failing) are not scored. A completed session is reported to the
 // PeerScorer as a success.
 func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []storer.ChunkID, err error) {
+	return s.ReconcileWith(ctx, peer, ReconcileOptions{})
+}
+
+// ReconcileOptions are the optional parameters of ReconcileWith.
+type ReconcileOptions struct {
+	// Open is Config.Open: the ranges of the opening Message, the session
+	// root when empty. A striped transfer opens with its stripe.
+	Open []fingerprint.Range
+	// Striper is Config.Striper: it is offered the ranges with a large
+	// difference.
+	Striper Striper
+	// Wants, if not nil, receives the wants as the session finds them, once
+	// per handled Message with wants, instead of ReconcileWith returning
+	// them. It is called on the session's goroutine, so a Wants that blocks
+	// holds the session back (the peer waits for the next Message).
+	Wants func(wants []storer.ChunkID)
+}
+
+// ReconcileWith is Reconcile with options. With opts.Wants set it returns no
+// wants.
+func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts ReconcileOptions) (wants []storer.ChunkID, err error) {
 	remote, ok := s.LastStatus(peer)
 	if !ok {
 		return nil, ErrNoStatus
@@ -73,7 +94,9 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 		return nil, err
 	}
 	defer release()
-	sess, open, err := NewInitiator(s.sessionConfig(peer, scope, st, remote))
+	cfg := s.sessionConfig(peer, scope, st, remote)
+	cfg.Open, cfg.Striper = opts.Open, opts.Striper
+	sess, open, err := NewInitiator(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open session: %w", err)
 	}
@@ -97,7 +120,15 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 		return nil, fmt.Errorf("write opening: %w", err)
 	}
 	s.metrics.reconcileMessage(dirOut, open)
-	ids, handled, err := s.converse(ctx, sess, nil, r, w)
+	var emit func([]fingerprint.ID)
+	found := 0
+	if opts.Wants != nil {
+		emit = func(ids []fingerprint.ID) {
+			found += len(ids)
+			opts.Wants(toChunkIDs(ids))
+		}
+	}
+	ids, handled, err := s.converse(ctx, sess, nil, r, w, emit)
 	s.metrics.sessionStats(sess.Stats())
 	switch {
 	case errors.Is(err, ErrPeerBusy):
@@ -107,7 +138,7 @@ func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []st
 	case err != nil:
 		return nil, err
 	}
-	s.metrics.sessionDone(handled, len(ids))
+	s.metrics.sessionDone(handled, len(ids)+found)
 	s.scorer.Succeed(peer)
 	return toChunkIDs(ids), nil
 }
@@ -162,8 +193,9 @@ func (s *Service) initiatorViolation(peer swarm.Address, err error) error {
 // Message if in is nil. Each Message is answered with the one Handle
 // returns; the session ends when Handle returns no Message, or when the peer
 // closes the stream after this side sent an empty Message. A Message that
-// does not decode or is over MaxMessageBytes is a violation.
-func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r protobuf.Reader, w protobuf.Writer) (wants []fingerprint.ID, handled int, err error) {
+// does not decode or is over MaxMessageBytes is a violation. With emit set,
+// the wants of each handled Message are passed to it instead of returned.
+func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r protobuf.Reader, w protobuf.Writer, emit func([]fingerprint.ID)) (wants []fingerprint.ID, handled int, err error) {
 	sentEmpty := false
 	for ; ; handled++ {
 		if in == nil {
@@ -181,7 +213,13 @@ func (s *Service) converse(ctx context.Context, sess *Session, in *pb.Message, r
 		if err != nil {
 			return nil, handled, err
 		}
-		wants = append(wants, ids...)
+		if emit != nil {
+			if len(ids) > 0 {
+				emit(ids)
+			}
+		} else {
+			wants = append(wants, ids...)
+		}
 		if out == nil {
 			return wants, handled + 1, nil
 		}
@@ -290,7 +328,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 	}
 
 	sess := NewResponder(s.sessionConfig(peer, scope, st, remote))
-	wants, handled, err := s.converse(ctx, sess, open, r, w)
+	wants, handled, err := s.converse(ctx, sess, open, r, w, nil)
 	s.metrics.sessionStats(sess.Stats())
 	switch {
 	case handled == 0 && errors.Is(err, fingerprint.ErrBusy):

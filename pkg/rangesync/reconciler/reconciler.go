@@ -63,7 +63,7 @@ type Service interface {
 	// rangesync; the reconciler does not probe it again while connected.
 	SendStatus(ctx context.Context, peer swarm.Address) error
 	LastStatus(peer swarm.Address) (rangesync.Status, bool)
-	Reconcile(ctx context.Context, peer swarm.Address) ([]storer.ChunkID, error)
+	ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) ([]storer.ChunkID, error)
 	Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error)
 }
 
@@ -86,6 +86,8 @@ type Options struct {
 	RoundInterval time.Duration
 	// StartupGuardTimeout overrides StartupGuardTimeout.
 	StartupGuardTimeout time.Duration
+	// StripeTimeout overrides StripeTimeout.
+	StripeTimeout time.Duration
 }
 
 // peerState is what the reconciler keeps for a connected peer.
@@ -114,6 +116,7 @@ type Reconciler struct {
 	now           func() time.Time
 	roundInterval time.Duration
 	guardTimeout  time.Duration
+	stripeTimeout time.Duration
 	rate          *rate.Rate
 	metrics       metrics
 
@@ -155,6 +158,9 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.StartupGuardTimeout <= 0 {
 		o.StartupGuardTimeout = StartupGuardTimeout
 	}
+	if o.StripeTimeout <= 0 {
+		o.StripeTimeout = StripeTimeout
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Reconciler{
 		overlay:       overlay,
@@ -164,6 +170,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		now:           o.Now,
 		roundInterval: o.RoundInterval,
 		guardTimeout:  o.StartupGuardTimeout,
+		stripeTimeout: o.StripeTimeout,
 		rate:          rate.New(SyncRateWindow),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
@@ -382,9 +389,11 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 	return r.overlay.Compare(peer) < 0
 }
 
-// session runs Reconcile then Fetch with peer.
+// session runs Reconcile then Fetch with peer, then transfers the ranges
+// the session handed to its Striper (d̂ > LargeDiff) as stripes.
 func (r *Reconciler) session(peer swarm.Address) {
-	wants, err := r.svc.Reconcile(r.ctx, peer)
+	striper := new(StripeCollector)
+	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Striper: striper})
 
 	r.mu.Lock()
 	r.pendingReconcile--
@@ -414,6 +423,9 @@ func (r *Reconciler) session(peer swarm.Address) {
 	}
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
 	r.fetch(peer, wants, catchUp)
+	if ranges := striper.Ranges(); len(ranges) > 0 {
+		r.stripe(ranges)
+	}
 }
 
 // fetch fetches ids from peer and counts the stored chunks towards SyncRate
