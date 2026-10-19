@@ -161,7 +161,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T3.2 Striped transfer with pipelined paging/fetch and reassignment
 - [x] T3.3 Verification round
 - [x] T3.4 Radius decrease / increase handling
-- [ ] T3.5 Catch-up `SyncRate` and reserve-worker interplay
+- [x] T3.5 Catch-up `SyncRate` and reserve-worker interplay
 
 **Phase 4**
 - [ ] T4.1 Status gossip (debounce + heartbeat)
