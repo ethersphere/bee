@@ -344,8 +344,10 @@ type stripeJob struct {
 	rg        fingerprint.Range
 	started   func()
 	bootstrap bool
-	// radius marks the transfer of the new half after a radius decrease.
+	// radius marks the transfer of the new half after a radius decrease;
+	// ctx, if not nil, bounds the job (canceled on a radius increase).
 	radius bool
+	ctx    context.Context
 }
 
 // enqueueStripes registers ranges for a striped transfer by the stripe
@@ -421,9 +423,13 @@ func (r *Reconciler) stripeWorker() {
 			r.stripeQueue = r.stripeQueue[1:]
 			r.mu.Unlock()
 
-			results := r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started)
+			ctx := r.ctx
+			if job.ctx != nil {
+				ctx = job.ctx
+			}
+			results := r.transferStripes(ctx, PlanStripes(job.rg, r.peerStatuses()), job.started)
 			// the verification round, before leaving bootstrap (§7.4)
-			r.VerifyStripes(r.ctx, results)
+			r.VerifyStripes(ctx, results)
 			failed := len(results) == 0 // defensive: PlanStripes returns at least one stripe
 			for _, res := range results {
 				if res.Err != nil {

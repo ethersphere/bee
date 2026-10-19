@@ -5,6 +5,8 @@
 package reconciler
 
 import (
+	"slices"
+
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	dto "github.com/prometheus/client_model/go"
@@ -55,6 +57,13 @@ func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
 	r.stripeRegistry = append(r.stripeRegistry, rg)
 }
 
+// ReleaseStripe removes rg from the registry (a HoldStripe ended).
+func (r *Reconciler) ReleaseStripe(rg fingerprint.Range) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(rg) })
+}
+
 // VerifyMinDiff is verifyMinDiff.
 const VerifyMinDiff = verifyMinDiff
 
@@ -66,4 +75,19 @@ func (r *Reconciler) VerificationDiffCount() uint64 {
 		panic(err)
 	}
 	return m.GetHistogram().GetSampleCount()
+}
+
+// StripeRegistry returns the number of registered stripe ranges.
+func (r *Reconciler) StripeRegistry() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.stripeRegistry)
+}
+
+// RadiusStriping reports whether a new half is registered for the stripe
+// worker.
+func (r *Reconciler) RadiusStriping() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.radius.striping
 }

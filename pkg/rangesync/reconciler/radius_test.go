@@ -7,6 +7,7 @@ package reconciler_test
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -306,4 +307,222 @@ func TestRadiusDecreaseBusyRetried(t *testing.T) {
 			}
 		}
 	}
+}
+
+// selfRoot returns a Status rooted at self with bits and count.
+func selfRoot(bits uint8, count uint64) rangesync.Status {
+	st := status(count)
+	st.Root = fingerprint.NewRange(self, bits)
+	return st
+}
+
+// newRadiusFake returns a harness whose node has a root of bits and whose
+// peers (roots at bits 0) each list wants IDs per session.
+func newRadiusFake(t *testing.T, bits uint8, wants int, peers ...swarm.Address) *harness {
+	t.Helper()
+	svc := newFakeService(selfRoot(bits, 5))
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = selfRoot(0, 10)
+		svc.wants[p.ByteString()] = wants
+	}
+	h := newHarness(t, svc, peers...)
+	waitFor(t, "first sessions", func() bool { return len(svc.sessionOpens(peers[0])) > 0 })
+	return h
+}
+
+// sibling returns the child of the root of bits-1 around self that does not
+// hold self.
+func sibling(bits uint8) fingerprint.Range {
+	parent := fingerprint.NewRange(self, bits-1)
+	return parent.Child(1, 1-parent.ChildIndex(self, 1))
+}
+
+// countInside returns the number of sessions with peers that opened a
+// single range inside rg.
+func countInside(svc *fakeService, rg fingerprint.Range, peers ...swarm.Address) int {
+	n := 0
+	for _, p := range peers {
+		for _, open := range svc.sessionOpens(p) {
+			if len(open) == 1 && rg.ContainsRange(open[0]) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// gateFetch blocks every Fetch of svc until the returned func is called.
+func gateFetch(t *testing.T, svc *fakeService) (open func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	var once sync.Once
+	open = func() { once.Do(func() { close(gate) }) }
+	svc.set(func() { svc.fetchGate = gate })
+	t.Cleanup(open)
+	return open
+}
+
+// TestRadiusDecreaseThenIncreaseCancels: a radius increase while the new
+// half is in flight cancels its transfer (no further stripe session or
+// fetch), and a later decrease stripes the half again.
+func TestRadiusDecreaseThenIncreaseCancels(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 1, 2, peers...)
+	svc := h.svc
+	open := gateFetch(t, svc)
+	newHalf := sibling(1)
+
+	svc.set(func() { svc.local = selfRoot(0, 5) })
+	waitFor(t, "stripe in flight", func() bool { return countInside(svc, newHalf, peers...) > 0 })
+	svc.set(func() { svc.local = selfRoot(1, 5) }) // radius back up
+	waitFor(t, "job canceled", func() bool { return !h.r.RadiusStriping() && h.r.StripeRegistry() == 0 })
+	n := countInside(svc, newHalf, peers...)
+	open()
+	settle()
+	if got := countInside(svc, newHalf, peers...); got != n {
+		t.Fatalf("%d stripe sessions after the cancel", got-n)
+	}
+	if got := h.r.StripesTotal("done"); got != 0 {
+		t.Fatalf("stripes done %v after the radius increase", got)
+	}
+
+	svc.set(func() { svc.local = selfRoot(0, 5) }) // decrease again
+	waitFor(t, "half striped again", func() bool { return h.r.StripesTotal("done") >= 2 })
+}
+
+// TestRadiusTwoDecreases: r -> r-1 -> r-2 while the first half is in
+// flight: the first half completes, then the second is striped.
+func TestRadiusTwoDecreases(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 2, peers...)
+	svc := h.svc
+	open := gateFetch(t, svc)
+
+	svc.set(func() { svc.local = selfRoot(1, 5) })
+	waitFor(t, "first half in flight", func() bool { return countInside(svc, sibling(2), peers...) > 0 })
+	svc.set(func() { svc.local = selfRoot(0, 5) })
+	settle()
+	open()
+	waitFor(t, "second half striped", func() bool { return countInside(svc, sibling(1), peers...) > 0 })
+	waitFor(t, "both done", func() bool { return h.r.StripesTotal("done") >= 4 })
+	if !opensExactly(svc, fingerprint.NewRange(self, 1), peers...) {
+		t.Fatal("no old-half session at the r-2 root")
+	}
+}
+
+// opensExactly reports whether a session with any of peers opened exactly
+// [rg].
+func opensExactly(svc *fakeService, rg fingerprint.Range, peers ...swarm.Address) bool {
+	for _, p := range peers {
+		for _, open := range svc.sessionOpens(p) {
+			if len(open) == 1 && open[0].Equal(rg) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestRadiusJumpTwoBits: a root that widens by 2 bits at once stripes the
+// sibling of the new root's child that holds the old root; that child (old
+// root plus one new quarter) goes through the old-half session.
+func TestRadiusJumpTwoBits(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 0, peers...)
+	svc := h.svc
+	svc.set(func() { svc.local = selfRoot(0, 5) })
+	waitFor(t, "half striped", func() bool { return h.r.StripesTotal("done") >= 2 })
+	waitFor(t, "old-half session", func() bool { return opensExactly(svc, fingerprint.NewRange(self, 1), peers...) })
+	if countInside(svc, sibling(2), peers...) != 0 {
+		t.Fatal("quarter next to the old root striped; want it in the old-half session")
+	}
+}
+
+// TestRadiusHalfFailedFallsBack: after a failed transfer of the new half the
+// sessions run over the whole root again.
+func TestRadiusHalfFailedFallsBack(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 1, 2, peers...)
+	svc := h.svc
+	before := len(svc.sessionOpens(higher)) + len(svc.sessionOpens(peers[1]))
+	svc.set(func() {
+		for _, p := range peers {
+			svc.withhold[p.ByteString()] = true
+		}
+		svc.local = selfRoot(0, 5)
+	})
+	waitFor(t, "stripe", func() bool { return countInside(svc, sibling(1), peers...) > 0 })
+	waitFor(t, "whole-root session", func() bool {
+		n := 0
+		for _, p := range peers {
+			for _, open := range svc.sessionOpens(p) {
+				if len(open) == 0 {
+					n++
+				}
+			}
+		}
+		return n > before
+	})
+	if h.r.RadiusStriping() {
+		t.Fatal("half still registered")
+	}
+}
+
+// TestRadiusSkipsSessionInsideNewHalf: while the new half is in flight, a
+// peer whose root lies inside it gets no session of its own.
+func TestRadiusSkipsSessionInsideNewHalf(t *testing.T) {
+	t.Parallel()
+
+	inner := addr(0xf2, 0)
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	svc := newFakeService(selfRoot(1, 5))
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = selfRoot(0, 10)
+		svc.wants[p.ByteString()] = 2
+	}
+	newHalf := sibling(1)
+	in := status(3)
+	in.Root = newHalf.Child(1, 0)
+	svc.remote[inner.ByteString()] = in
+	open := gateFetch(t, svc)
+	h := newHarness(t, svc, higher, peers[1], inner)
+	waitFor(t, "first sessions", func() bool { return len(svc.sessionOpens(higher)) > 0 })
+	if n := len(svc.sessionOpens(inner)); n != 0 {
+		t.Fatalf("%d sessions with a disjoint peer", n)
+	}
+	svc.set(func() { svc.local = selfRoot(0, 5) })
+	waitFor(t, "stripe in flight", func() bool { return h.r.RadiusStriping() && countInside(svc, newHalf, peers...) > 0 })
+	settle()
+	for _, o := range svc.sessionOpens(inner) {
+		if len(o) == 0 {
+			t.Fatal("session with a peer inside the new half while it is striped")
+		}
+	}
+	open()
+}
+
+// TestRadiusHalfOverlapRetried: a new half overlapping a registered range is
+// refused and registered by a later round.
+func TestRadiusHalfOverlapRetried(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 1, 0, peers...)
+	held := sibling(1).Child(1, 0)
+	h.r.HoldStripe(held)
+	h.svc.set(func() { h.svc.local = selfRoot(0, 5) })
+	settle()
+	if h.r.RadiusStriping() {
+		t.Fatal("half registered over an overlapping range")
+	}
+	h.r.ReleaseStripe(held)
+	waitFor(t, "half striped", func() bool { return h.r.StripesTotal("done") >= 2 })
 }

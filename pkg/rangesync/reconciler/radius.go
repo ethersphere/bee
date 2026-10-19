@@ -5,6 +5,7 @@
 package reconciler
 
 import (
+	"context"
 	"errors"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
@@ -21,7 +22,11 @@ type radiusState struct {
 	root, oldHalf, newHalf fingerprint.Range
 	known                  bool // root is set
 	pending                bool // newHalf awaits or is in its striped transfer
-	striping               bool // newHalf is registered for the stripe worker
+	striping               bool // a half is registered for the stripe worker
+	// striped is the registered half and cancel ends its transfer, when the
+	// root no longer contains it (a radius increase).
+	striped fingerprint.Range
+	cancel  context.CancelFunc
 }
 
 // isBusy reports whether err is a Busy answer: the peer's (ErrPeerBusy) or
@@ -42,6 +47,9 @@ func (r *Reconciler) trackRootLocked(root fingerprint.Range) (changed bool) {
 	s.root, s.known = root, true
 	if !known || root.Equal(prev) {
 		return false
+	}
+	if s.striping && !root.ContainsRange(s.striped) {
+		s.cancel() // the worker ends the job and calls radiusDoneLocked
 	}
 	if root.Bits < prev.Bits && root.ContainsRange(prev) {
 		i := root.ChildIndex(prev.Prefix, 1)
@@ -78,10 +86,15 @@ func (r *Reconciler) enqueueRadiusHalf() {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.radius.pending && !r.radius.striping && r.radius.newHalf.Equal(s.newHalf) &&
-		r.registerStripeLocked(stripeJob{rg: s.newHalf, radius: true}) {
-		r.radius.striping = true
+	if !r.radius.pending || r.radius.striping || !r.radius.newHalf.Equal(s.newHalf) {
+		return
 	}
+	ctx, cancel := context.WithCancel(r.ctx)
+	if !r.registerStripeLocked(stripeJob{rg: s.newHalf, radius: true, ctx: ctx}) {
+		cancel() // overlaps a registered range: retried next round
+		return
+	}
+	r.radius.striping, r.radius.striped, r.radius.cancel = true, s.newHalf, cancel
 }
 
 // radiusOpenLocked returns the Open of a session with a peer whose root is
@@ -109,7 +122,10 @@ func (r *Reconciler) radiusOpenLocked(local, remote rangesync.Status) (open []fi
 // transferred once: after a failed transfer the sessions run over the whole
 // root again and what is still missing goes through their Striper.
 func (r *Reconciler) radiusDoneLocked(rg fingerprint.Range) {
-	r.radius.striping = false
+	if r.radius.cancel != nil {
+		r.radius.cancel()
+	}
+	r.radius.striping, r.radius.cancel = false, nil
 	if r.radius.newHalf.Equal(rg) {
 		r.radius.pending = false
 	}
