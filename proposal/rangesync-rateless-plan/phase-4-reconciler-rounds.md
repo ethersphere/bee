@@ -672,3 +672,18 @@ _(sessions append here)_
     `TestPeerStateWaiterWoken` and `TestRadiusIncreaseNoFetch` (both ran 60 × 3 after their fix).
   - Re-run with `-race`, because `transferStripe` and `runStripe` changed: `TestTransferStripes*`,
     `TestVerifyStripes*`, `TestRadius*`, `TestRoundBootstrap*`.
+- **(T4.3 round-3 review, Lows; recorded by the orchestrator at landing) Stripe bounds and timer (T4.5).**
+  1. `restarts` resets on each reassign (stripes_transfer.go ~L236/245). For a node-wide local cause
+     (`ErrNodeSessionLimit`, `fingerprint.ErrBusy`) the 3 reassigns gain nothing and multiply the wait
+     by 4 (worst case ≈ 15 min × 9 attempts × 4 peers ≈ 9 h; the doc states only the 135 min per-peer
+     figure). `ErrPeerSessionLimit` is under the peer's control: the responder holds the slot through
+     `busy()`→`FullClose` (reconcile.go ~L292), so a peer that delivers nothing can pin a stripe for
+     ~135 min (round 2: ~30 s). Fix: one local-Busy restart budget per stripe, not reset on reassign
+     (or count `ErrPeerSessionLimit` as peer Busy), and document the total bound.
+  2. The peer-Busy pause (~L400) can overlap a fetch still draining from an earlier session in the
+     same attempt (only after a mid-session local `ErrBusy`), adding up to 30 × (1 s + slot wait) of
+     fetch time the clock does not bound. Fix: don't pause while a fetch is pending.
+  3. Tests: `TestStripeFetchBoundedByTimeout` is vacuous if the 100 ms timeout fires before the
+     session ends (gate on the fetch actually starting); `TestStripeLocalBusy` checks only the lower
+     time bound.
+  4. `stripeClock` and the Busy retry timer (~L404/481) use the real clock, not the injected one.
