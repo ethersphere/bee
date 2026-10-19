@@ -105,8 +105,10 @@ type fakeService struct {
 	maxInAll int
 	statusCh chan struct{}
 	// peerGate, by peer, blocks that peer's ReconcileWith calls (counted as
-	// running) until closed.
+	// running) until closed; busyN, by peer, is the number of its next
+	// ReconcileWith calls answered rangesync.ErrPeerBusy.
 	peerGate map[string]chan struct{}
+	busyN    map[string]int
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -132,6 +134,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 		maxInSession:    make(map[string]int),
 		statusCh:        make(chan struct{}, 1),
 		peerGate:        make(map[string]chan struct{}),
+		busyN:           make(map[string]int),
 	}
 }
 
@@ -199,6 +202,15 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+	s.mu.Lock()
+	busy := s.busyN[k] > 0
+	if busy {
+		s.busyN[k]--
+	}
+	s.mu.Unlock()
+	if busy {
+		return nil, rangesync.ErrPeerBusy
 	}
 	if delay > 0 {
 		select {

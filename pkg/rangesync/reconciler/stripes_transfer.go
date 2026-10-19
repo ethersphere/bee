@@ -34,6 +34,10 @@ const (
 	// (after a radius change, §7.5). A round session of this node never
 	// takes the slot: the peer's state machine keeps them apart.
 	stripeRetryInterval = time.Second
+	// maxStripeBusyRetries bounds the Busy retries of one stripe attempt
+	// (about 30 s at stripeRetryInterval, longer than an index rebuild);
+	// past it the attempt fails and runStripe reassigns the stripe.
+	maxStripeBusyRetries = 30
 	// maxStripeReassign bounds the reassignments of one stripe to another
 	// peer after a failure, timeout or withholding without progress.
 	maxStripeReassign = 3
@@ -301,32 +305,30 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants.
-// It first takes a stripe slot (MaxStripeSessions) and a session slot
-// (MaxInitiatedSessions), which it holds until the session ends, Busy
-// retries included; the stripe timeout starts once it has both. The peer is
+// It holds a stripe slot (MaxStripeSessions) and a session slot
+// (MaxInitiatedSessions) while its session runs, and frees both while it
+// waits to retry a Busy answer, at most maxStripeBusyRetries times. The
+// stripe timeout runs only while it holds them (stripeClock). The peer is
 // in Striped throughout (acquireStripe); the wait for its round session to
 // end counts towards the stripe timeout.
 func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
-	releaseStripeSlot, err := r.acquireStripeSlot(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	clock := &stripeClock{left: r.stripeTimeout, expire: func() { cancel(ErrStripeTimeout) }}
+	defer clock.pause()
+	releaseSlots, err := r.acquireStripeSlots(ctx)
 	if err != nil {
 		res.Err = err
 		return res
 	}
-	defer releaseStripeSlot()
-	releaseSlot, err := r.acquireSlot(ctx)
-	if err != nil {
-		res.Err = err
-		return res
-	}
-	slotHeld := true
+	held := true
 	defer func() {
-		if slotHeld {
-			releaseSlot()
+		if held {
+			releaseSlots()
 		}
 	}()
-	ctx, cancel := context.WithTimeoutCause(ctx, r.stripeTimeout, ErrStripeTimeout)
-	defer cancel()
+	clock.resume()
 	release, err := r.acquireStripe(ctx, peer)
 	if err != nil {
 		res.Err = err
@@ -353,7 +355,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			}
 			if err != nil {
 				fetchErr = fmt.Errorf("fetch: %w", err)
-				cancel() // end the session
+				cancel(nil) // end the session
 			}
 		}
 	}()
@@ -369,12 +371,16 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			}
 		},
 	}
-	for {
+	for busy := 0; ; busy++ {
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
-		if !isBusy(err) {
+		if !isBusy(err) || busy == maxStripeBusyRetries {
 			break
 		}
-		t := time.NewTimer(stripeRetryInterval)
+		// wait for the retry without the slots and off the stripe clock
+		clock.pause()
+		releaseSlots()
+		held = false
+		t := time.NewTimer(r.stripeRetry)
 		select {
 		case <-ctx.Done():
 		case <-t.C:
@@ -383,9 +389,17 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		if ctx.Err() != nil {
 			break
 		}
+		if releaseSlots, err = r.acquireStripeSlots(ctx); err != nil {
+			break
+		}
+		held = true
+		clock.resume()
 	}
-	releaseSlot() // the session ended; its fetch does not use the slot
-	slotHeld = false
+	clock.pause()
+	if held { // the session ended; its fetch does not use the slots
+		releaseSlots()
+		held = false
+	}
 	close(queue)
 	<-fetched
 
@@ -400,6 +414,50 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		res.Err = ctx.Err()
 	}
 	return res
+}
+
+// acquireStripeSlots takes a stripe slot, then a session slot, waiting for
+// each until ctx ends. release frees both.
+func (r *Reconciler) acquireStripeSlots(ctx context.Context) (release func(), err error) {
+	releaseStripe, err := r.acquireStripeSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	releaseSlot, err := r.acquireSlot(ctx)
+	if err != nil {
+		releaseStripe()
+		return nil, err
+	}
+	return func() {
+		releaseSlot()
+		releaseStripe()
+	}, nil
+}
+
+// stripeClock is the stripe timeout of one attempt, which runs only while
+// the attempt holds its slots: expire is called once left has run out.
+type stripeClock struct {
+	left   time.Duration
+	since  time.Time
+	timer  *time.Timer
+	expire func()
+}
+
+// resume starts the clock.
+func (c *stripeClock) resume() {
+	c.since = time.Now()
+	c.timer = time.AfterFunc(max(c.left, 0), c.expire)
+}
+
+// pause stops the clock; it is a no-op when the clock is not running.
+func (c *stripeClock) pause() {
+	if c.timer == nil {
+		return
+	}
+	if c.timer.Stop() {
+		c.left -= time.Since(c.since)
+	}
+	c.timer = nil
 }
 
 // stripeJob is a range queued for a striped transfer; started, if not nil,

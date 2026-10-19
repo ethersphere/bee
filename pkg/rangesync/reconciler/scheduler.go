@@ -17,9 +17,10 @@ import (
 //     overlay starts the session. The other side takes over when the
 //     mismatch persists for takeoverRounds round intervals plus a jitter of
 //     up to one round interval with no session of the initiator with this
-//     node (takeoverDueLocked); a session the initiator runs with this node,
-//     or a takeover that finds the initiator's session holding the peer's
-//     session slot, restarts the wait.
+//     node (takeoverDueLocked; the maximum round interval for a peer of
+//     another root); a session the initiator runs with this node, or a
+//     takeover that finds the initiator alive (its session holding the
+//     peer's session slot, or a Busy answer), restarts the wait.
 //   - Rounds. A round starts a session with every eligible peer whose digest
 //     differs and that this node initiates with (or takes over), at most one
 //     per peer (the peer's state machine). The round decides on one snapshot
@@ -49,7 +50,8 @@ import (
 //     transfers and verifications alike, take one of MaxInitiatedSessions
 //     slots first and wait for one, first come, first served. Stripe
 //     transfers and verifications first take one of MaxStripeSessions
-//     stripe slots, so that round sessions always have the other slots.
+//     stripe slots, so that round sessions always have the other slots, and
+//     free both while they wait to retry a Busy answer.
 const (
 	// MinRoundInterval is the shortest round interval, used while rounds
 	// keep finding differences.
@@ -113,15 +115,23 @@ func (r *Reconciler) restartTakeoverLocked(st *peerState, now time.Time) {
 // takeoverDueLocked reports whether this node takes over the session with
 // the peer of st, which initiates, at now. The wait starts at the first round
 // that sees the mismatch, and again after every session the peer ran with
-// this node (markServedLocked). It is takeoverRounds current round intervals
-// plus the peer's jitter (a fraction of one), so it shrinks with the
-// interval while the mismatch persists. r.mu must be held.
-func (r *Reconciler) takeoverDueLocked(st *peerState, now time.Time) bool {
+// this node (markServedLocked). It is takeoverRounds round intervals plus the
+// peer's jitter (a fraction of one). With a peer of the same root (sameRoot)
+// both sides see the same digests and adapt alike, so the interval is the
+// current one and the wait shrinks with it while the mismatch persists. With
+// a peer of another root it is the maximum: digests do not show whether the
+// two are in sync, so the initiator's interval may have grown to the
+// maximum while this node's stays short for its other peers. r.mu must be
+// held.
+func (r *Reconciler) takeoverDueLocked(st *peerState, now time.Time, sameRoot bool) bool {
 	if st.takeoverSince.IsZero() {
 		r.restartTakeoverLocked(st, now)
 		return false
 	}
 	ri := r.currentInterval()
+	if !sameRoot {
+		ri = r.maxInterval
+	}
 	wait := takeoverRounds*ri + time.Duration(st.takeoverJitter*float64(ri))
 	return !now.Before(st.takeoverSince.Add(wait))
 }

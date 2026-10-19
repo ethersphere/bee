@@ -270,3 +270,30 @@ func (r *Reconciler) VerifierFor(res StripeResult) (swarm.Address, bool) {
 	all, ready := r.stripePeers()
 	return r.verifier(res, all, ready)
 }
+
+// MaxStripeBusyRetries is maxStripeBusyRetries.
+const MaxStripeBusyRetries = maxStripeBusyRetries
+
+// SetStripeRetryInterval sets the wait before a Busy stripe session is
+// retried. It must be called before the reconciler runs stripes.
+func (r *Reconciler) SetStripeRetryInterval(d time.Duration) { r.stripeRetry = d }
+
+// SessionsTotal returns the sessions_total counter of result.
+func (r *Reconciler) SessionsTotal(result string) float64 {
+	m := new(dto.Metric)
+	if err := r.metrics.Sessions.WithLabelValues(result).Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetCounter().GetValue()
+}
+
+// PeerFailures returns the Busy or failed sessions in a row of peer (its
+// backoff streak).
+func (r *Reconciler) PeerFailures(peer swarm.Address) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if st, ok := r.peers[peer.ByteString()]; ok {
+		return st.fsm.failures
+	}
+	return 0
+}

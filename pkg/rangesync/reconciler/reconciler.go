@@ -168,6 +168,7 @@ type Reconciler struct {
 	after         func(time.Duration) <-chan time.Time
 	guardTimeout  time.Duration
 	stripeTimeout time.Duration
+	stripeRetry   time.Duration // stripeRetryInterval; tests shorten it
 	rate          *rateWindow
 	metrics       metrics
 
@@ -265,6 +266,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		after:         o.After,
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
+		stripeRetry:   stripeRetryInterval,
 		rate:          newRateWindow(SyncRateWindow, o.Now),
 		minInterval:   minInterval,
 		maxInterval:   maxInterval,
@@ -493,7 +495,7 @@ func (r *Reconciler) round() {
 			if !st.served {
 				r.awaiting[p.ByteString()] = true
 			}
-			if !r.takeoverDueLocked(st, now) {
+			if !r.takeoverDueLocked(st, now, local.Root.Equal(remote.Root)) {
 				continue
 			}
 		}

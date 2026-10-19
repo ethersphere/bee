@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -465,31 +466,41 @@ func TestStripeSessionCap(t *testing.T) {
 }
 
 // TestStripeTimeoutAfterSlot: the stripe timeout starts once a stripe has
-// its slots, so a stripe that waited for one still has its whole timeout.
+// its slots, so a stripe that waited longer than its timeout for one (here
+// round sessions hold every session slot) still has its whole timeout.
 func TestStripeTimeoutAfterSlot(t *testing.T) {
 	t.Parallel()
 
 	const timeout = 300 * time.Millisecond
 	svc := newFakeService(status(1))
-	stripes := make([]reconciler.Stripe, reconciler.MaxStripeSessions+1)
-	stalled := make(chan struct{}) // the first wave never answers
-	t.Cleanup(func() { close(stalled) })
-	for i := range stripes {
-		p := addr(0xf1, byte(i))
-		if i < reconciler.MaxStripeSessions {
-			svc.peerGate[p.ByteString()] = stalled
-		}
-		stripes[i] = reconciler.Stripe{Range: fingerprint.NewRange(swarm.ZeroAddress, 0).Child(3, uint64(i)), Peers: []swarm.Address{p}}
+	gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
+	peers := make([]swarm.Address, len(gates))
+	for i := range gates {
+		peers[i] = addr(0xf0, byte(i+1))
+		gates[i] = make(chan struct{})
+		svc.peerGate[peers[i].ByteString()] = gates[i]
+		svc.remote[peers[i].ByteString()] = status(2)
 	}
-	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: timeout})
-	results := h.r.TransferStripes(context.Background(), stripes)
-	for i, res := range results {
-		switch {
-		case i < reconciler.MaxStripeSessions && !errors.Is(res.Err, reconciler.ErrStripeTimeout):
-			t.Fatalf("stalled stripe %d: %v, want a timeout", i, res.Err)
-		case i == reconciler.MaxStripeSessions && res.Err != nil:
-			t.Fatalf("stripe that waited for a slot: %v", res.Err)
+	t.Cleanup(func() {
+		for _, g := range gates[1:] {
+			close(g)
 		}
+	})
+	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: timeout}, peers...)
+	h.r.Round()
+	waitFor(t, "slots taken", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+
+	done := make(chan []reconciler.StripeResult, 1)
+	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(addr(0xf1, 0))) }()
+	time.Sleep(2 * timeout)
+	select {
+	case <-done:
+		t.Fatal("stripe ended without a slot")
+	default:
+	}
+	close(gates[0])
+	if res := <-done; res[0].Err != nil {
+		t.Fatalf("stripe that waited for a slot: %v", res[0].Err)
 	}
 }
 
@@ -656,6 +667,18 @@ func TestSessionRecheckAfterSlot(t *testing.T) {
 			if n := len(svc.sessionOpens(tc.peer)); n != tc.want {
 				t.Fatalf("%d sessions, want %d: a stale decision ran", n, tc.want)
 			}
+			if got := h.r.SessionsTotal("stale"); got != 1 {
+				t.Fatalf("sessions_total{stale} = %v, want 1", got)
+			}
+			if f := h.r.PeerFailures(tc.peer); f != 0 {
+				t.Fatalf("backoff streak %d after a stale session", f)
+			}
+			if tc.name == "equal digests" { // differing again: the next round runs it at once
+				svc.set(func() { svc.remote[tc.peer.ByteString()] = status(2) })
+				if !gatedRound(t, h, tc.peer) {
+					t.Fatal("no session after a stale one")
+				}
+			}
 		})
 	}
 }
@@ -685,4 +708,129 @@ func TestStatusChangeFloor(t *testing.T) {
 	assertSessions(t, svc, higher, 2)
 	spam()
 	assertSessions(t, svc, higher, 2)
+}
+
+// TestRoundIntervalServedWants: wants a peer listed in a session this node
+// served count as differences found, like the wants of its own sessions.
+func TestRoundIntervalServedWants(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(1) // equal: no differing digest
+	h := newScheduledHarness(t, svc, lower)
+	waitFor(t, "first round", func() bool { return h.r.CurrentRoundInterval() == 2*reconciler.MinRoundInterval })
+	h.r.Wants(lower, make([]storer.ChunkID, 3))
+	waitFor(t, "fetch", func() bool { return svc.count(svc.fetched, lower) == 3 })
+	h.clock.Add(2 * reconciler.MinRoundInterval) // the round timer
+	waitFor(t, "second round", func() bool { return h.r.CurrentRoundInterval() != 2*reconciler.MinRoundInterval })
+	if got := h.r.CurrentRoundInterval(); got != reconciler.MinRoundInterval {
+		t.Fatalf("round interval %v after served wants, want %v", got, reconciler.MinRoundInterval)
+	}
+}
+
+// TestRoundTakeoverNestedRoots: the takeover of a lower peer whose root
+// differs from this node's waits for MaxRoundInterval rounds, not for this
+// node's current interval, which its other peers keep short.
+func TestRoundTakeoverNestedRoots(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(selfRoot(1, 5))
+	svc.remote[lower.ByteString()] = selfRoot(0, 10) // contains this node's root
+	svc.remote[higher.ByteString()] = selfRoot(1, 6) // same root, differs: the interval stays short
+	h := newGossipHarnessOptions(t, svc, reconciler.Options{Jitter: func() float64 { return 0 }}, lower, higher)
+	h.r.Round()
+	h.clock.Add(3 * reconciler.MinRoundInterval) // past a wait at the current interval
+	h.r.Round()
+	if got := h.r.CurrentRoundInterval(); got != reconciler.MinRoundInterval {
+		t.Fatalf("round interval %v, want %v", got, reconciler.MinRoundInterval)
+	}
+	assertSessions(t, svc, lower, 0)
+	h.clock.Add(2*reconciler.MaxRoundInterval - 3*reconciler.MinRoundInterval - time.Millisecond)
+	h.r.Round()
+	assertSessions(t, svc, lower, 0)
+	h.clock.Add(time.Millisecond)
+	h.r.Round()
+	assertSessions(t, svc, lower, 1)
+}
+
+// stripesTo returns a stripe per peer, each a different part of the root.
+func stripesTo(peers ...swarm.Address) []reconciler.Stripe {
+	out := make([]reconciler.Stripe, len(peers))
+	for i, p := range peers {
+		out[i] = reconciler.Stripe{Range: fingerprint.NewRange(swarm.ZeroAddress, 0).Child(4, uint64(i)), Peers: []swarm.Address{p}}
+	}
+	return out
+}
+
+// TestStripeBusyDoesNotStall: stripes whose peers keep answering Busy free
+// their slots while they wait to retry, so an honest stripe runs at once.
+func TestStripeBusyDoesNotStall(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	busy := make([]swarm.Address, reconciler.MaxStripeSessions)
+	for i := range busy {
+		busy[i] = addr(0xf1, byte(i))
+		svc.busyN[busy[i].ByteString()] = 1 << 30
+	}
+	honest := addr(0xf2, 0)
+	h := newGossipHarness(t, svc)
+	ctx, cancel := context.WithCancel(context.Background())
+	busyDone := make(chan struct{})
+	go func() {
+		defer close(busyDone)
+		h.r.TransferStripes(ctx, stripesTo(busy...))
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-busyDone
+	})
+	for _, p := range busy {
+		waitFor(t, "busy answer", func() bool { return len(svc.sessionOpens(p)) > 0 })
+	}
+
+	start := time.Now()
+	res := h.r.TransferStripes(context.Background(), stripesTo(honest))
+	if res[0].Err != nil {
+		t.Fatal(res[0].Err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("honest stripe took %v behind Busy stripes", d)
+	}
+}
+
+// TestStripeBusyRetriesBounded: an attempt that keeps getting Busy gives up
+// after MaxStripeBusyRetries retries, so a stripe is never stuck on such a
+// peer (runStripe reassigns it).
+func TestStripeBusyRetriesBounded(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	p := addr(0xf1, 0)
+	svc.busyN[p.ByteString()] = 1 << 30
+	h := newGossipHarness(t, svc)
+	h.r.SetStripeRetryInterval(time.Millisecond)
+	res := h.r.TransferStripes(context.Background(), stripesTo(p))
+	if !errors.Is(res[0].Err, rangesync.ErrPeerBusy) {
+		t.Fatalf("stripe error %v, want Busy", res[0].Err)
+	}
+	if n := len(svc.sessionOpens(p)); n != reconciler.MaxStripeBusyRetries+1 {
+		t.Fatalf("%d attempts, want %d", n, reconciler.MaxStripeBusyRetries+1)
+	}
+}
+
+// TestStripeTimeoutPausedWhileBusy: the waits between Busy retries do not
+// count towards the stripe timeout.
+func TestStripeTimeoutPausedWhileBusy(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 300 * time.Millisecond
+	svc := newFakeService(status(1))
+	p := addr(0xf1, 0)
+	svc.busyN[p.ByteString()] = 5 // 500 ms of retries
+	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: timeout})
+	h.r.SetStripeRetryInterval(100 * time.Millisecond)
+	if res := h.r.TransferStripes(context.Background(), stripesTo(p)); res[0].Err != nil {
+		t.Fatalf("stripe: %v", res[0].Err)
+	}
 }
