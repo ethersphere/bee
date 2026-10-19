@@ -127,3 +127,95 @@ func (r *Reconciler) StatusSending(peer swarm.Address) bool {
 	st, ok := r.peers[peer.ByteString()]
 	return ok && st.sending
 }
+
+// The per-peer state machine (peerfsm.go).
+type (
+	PeerFSM   = peerFSM
+	PeerState = fsmState
+	PeerEvent = fsmEvent
+)
+
+const (
+	StateProbing     = stateProbing
+	StateUnsupported = stateUnsupported
+	StateIdle        = stateIdle
+	StateReconciling = stateReconciling
+	StateFetching    = stateFetching
+	StateStriped     = stateStriped
+	StateRemoved     = stateRemoved
+
+	EventUnsupported  = eventUnsupported
+	EventExchanged    = eventExchanged
+	EventEqualDigest  = eventEqualDigest
+	EventReconcile    = eventReconcile
+	EventSessionDone  = eventSessionDone
+	EventLargeDiff    = eventLargeDiff
+	EventStripe       = eventStripe
+	EventStripeDone   = eventStripeDone
+	EventFetched      = eventFetched
+	EventBusy         = eventBusy
+	EventError        = eventError
+	EventDisjoint     = eventDisjoint
+	EventDisconnected = eventDisconnected
+
+	MaxSessionBackoff = maxSessionBackoff
+)
+
+// PeerStates and PeerEvents are every state and event of the machine.
+var (
+	PeerStates = []PeerState{stateProbing, stateUnsupported, stateIdle, stateReconciling, stateFetching, stateStriped, stateRemoved}
+	PeerEvents = []PeerEvent{
+		eventUnsupported, eventExchanged, eventEqualDigest, eventReconcile, eventSessionDone, eventLargeDiff, eventStripe,
+		eventStripeDone, eventFetched, eventBusy, eventError, eventDisjoint, eventDisconnected,
+	}
+)
+
+// NewPeerFSM returns the machine of a peer that connected.
+func NewPeerFSM() *PeerFSM {
+	m := newPeerFSM()
+	return &m
+}
+
+// PeerFSMIn returns a machine in state s.
+func PeerFSMIn(s PeerState) *PeerFSM {
+	return &PeerFSM{state: s}
+}
+
+// Fire applies e at now.
+func (m *peerFSM) Fire(e PeerEvent, now time.Time) bool { return m.fire(e, now) }
+
+// State returns the machine's state.
+func (m *peerFSM) State() PeerState { return m.state }
+
+// CanReconcile reports whether a session may start at now.
+func (m *peerFSM) CanReconcile(now time.Time) bool { return m.canReconcile(now) }
+
+// RetryAt returns when the next session may start.
+func (m *peerFSM) RetryAt() time.Time { return m.retryAt }
+
+// Transition is transition.
+func Transition(s PeerState, e PeerEvent) (PeerState, bool) { return transition(s, e) }
+
+// StatusRetry is statusRetry.
+func StatusRetry(n int) time.Duration { return statusRetry(n) }
+
+// PeerState returns the state of peer's machine, and false when r keeps no
+// entry for peer.
+func (r *Reconciler) PeerState(peer swarm.Address) (PeerState, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.peers[peer.ByteString()]
+	if !ok {
+		return 0, false
+	}
+	return st.fsm.state, true
+}
+
+// KnowsPeer reports whether r keeps an entry for peer.
+func (r *Reconciler) KnowsPeer(peer swarm.Address) bool {
+	_, ok := r.PeerState(peer)
+	return ok
+}
+
+// PeerStatuses returns the peers offered for stripes, with their Status.
+func (r *Reconciler) PeerStatuses() []PeerStatus { return r.peerStatuses() }

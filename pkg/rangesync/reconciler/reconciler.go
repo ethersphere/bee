@@ -102,22 +102,28 @@ type Options struct {
 
 // peerState is what the reconciler keeps for a connected peer.
 type peerState struct {
-	unsupported bool // SendStatusWith reported ErrProtocolUnsupported
-	sent        bool // a Status of ours reached the peer
-	running     bool // a session with the peer is running
-	served      bool // the peer started a session with this node (Succeed or Wants)
+	fsm      peerFSM // the peer's state machine (§8.1, peerfsm.go)
+	sent     bool    // a Status of ours reached the peer
+	served   bool    // the peer started a session with this node (Succeed or Wants)
+	fetching bool    // the wants of the peer's last session are being fetched
+	// stripeWaiters counts the stripe sessions waiting for the peer to leave
+	// Reconciling or Striped (acquireStripe); rounds start no session with
+	// it meanwhile. idle, if not nil, is closed when it does, or leaves.
+	stripeWaiters int
+	idle          chan struct{}
 
 	// Status gossip (gossip.go): lastSent is when our Status last, last,
 	// was picked for the peer (zero: never), sending holds while that send
-	// runs, failed records that it did not reach the peer, resend asks for
-	// it again although unchanged, and tat is the theoretical arrival time
-	// of the sender-side rate (statusBurst).
-	lastSent time.Time
-	last     rangesync.Status
-	sending  bool
-	failed   bool
-	resend   bool
-	tat      time.Time
+	// runs, failed records that it did not reach the peer (statusFails
+	// times in a row), resend asks for it again although unchanged, and tat
+	// is the theoretical arrival time of the sender-side rate (statusBurst).
+	lastSent    time.Time
+	last        rangesync.Status
+	sending     bool
+	failed      bool
+	statusFails int
+	resend      bool
+	tat         time.Time
 }
 
 // score is a peer's failure score at time at.
@@ -128,7 +134,9 @@ type score struct {
 
 // Reconciler follows the topology, exchanges Status with the connected peers
 // and runs Reconcile then Fetch with every eligible peer whose digest differs
-// and whose overlay is higher than this node's. It owns the per-peer failure
+// and whose overlay is higher than this node's. It keeps a state machine per
+// peer (§8.1, peerfsm.go): one session per peer, round or stripe, and a
+// backoff for peers that answer Busy or fail. It owns the per-peer failure
 // score (rangesync.PeerScorer) and reports the catch-up rate (storer.Syncer).
 type Reconciler struct {
 	overlay       swarm.Address
@@ -319,7 +327,7 @@ func (r *Reconciler) round() {
 		present[k] = true
 		st, ok := r.peers[k]
 		if !ok {
-			st = &peerState{}
+			st = &peerState{fsm: newPeerFSM()}
 			r.peers[k] = st
 		}
 		// Without the peer's Status the peer may lack this node's too: both
@@ -329,8 +337,10 @@ func (r *Reconciler) round() {
 			st.resend = true
 		}
 	}
-	for k := range r.peers {
+	for k, st := range r.peers {
 		if !present[k] {
+			r.fireLocked(st, eventDisconnected)
+			st.wakeLocked()
 			delete(r.peers, k)
 		}
 	}
@@ -347,6 +357,11 @@ func (r *Reconciler) round() {
 	if r.ctx.Err() != nil {
 		return
 	}
+	// The peers whose Statuses are now exchanged leave Probing before any
+	// stripe is planned below, so that the stripe sessions find them Idle.
+	r.mu.Lock()
+	r.admitLocked(local, connected)
+	r.mu.Unlock()
 
 	// An empty or far-behind node transfers its root striped (§7.4) instead
 	// of one full listing per peer; its per-peer sessions wait while that
@@ -388,9 +403,10 @@ func (r *Reconciler) round() {
 	clear(r.awaiting)
 	var candidates []swarm.Address
 	opens := make(map[string][]fingerprint.Range)
+	now := r.now()
 	for _, p := range connected {
 		st, ok := r.peers[p.ByteString()]
-		if !ok || st.unsupported {
+		if !ok || st.fsm.state == stateUnsupported {
 			continue
 		}
 		remote, have := r.svc.LastStatus(p)
@@ -403,6 +419,7 @@ func (r *Reconciler) round() {
 		}
 		eligible++
 		if sameDigest(local, remote) {
+			r.fireLocked(st, eventEqualDigest)
 			continue
 		}
 		if !r.initiates(p) {
@@ -411,7 +428,8 @@ func (r *Reconciler) round() {
 			}
 			continue
 		}
-		if st.running || bootstrap {
+		// Idle and past its backoff, with no stripe session waiting for it
+		if bootstrap || st.stripeWaiters > 0 || !st.fsm.canReconcile(now) {
 			continue
 		}
 		open, skip := r.radiusOpenLocked(local, remote)
@@ -422,12 +440,13 @@ func (r *Reconciler) round() {
 		opens[p.ByteString()] = open
 	}
 	for _, p := range r.orderCandidatesLocked(candidates) {
-		r.peers[p.ByteString()].running = true
+		st := r.peers[p.ByteString()]
+		r.fireLocked(st, eventReconcile)
 		r.pendingReconcile++
 		r.wg.Add(1)
 		go func() {
 			defer r.wg.Done()
-			r.session(p, opens[p.ByteString()])
+			r.session(p, st, opens[p.ByteString()])
 		}()
 	}
 	r.guardArmed = exchanged && eligible > 0
@@ -460,13 +479,20 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 			st.sending = false
 			switch {
 			case err == nil:
-				st.sent, st.failed = true, false
+				st.sent, st.failed, st.statusFails = true, false, 0
 			case errors.Is(err, rangesync.ErrProtocolUnsupported):
-				st.unsupported = true
+				if st.fsm.state != stateProbing {
+					// a reconnect the peer set did not show: a new peer
+					st.fsm = newPeerFSM()
+					st.wakeLocked()
+				}
+				r.fireLocked(st, eventUnsupported)
+				r.logger.Debug("peer does not support rangesync", "peer_address", pk.peer)
 			default:
 				// sent stays: an earlier Status of ours reached the peer
 				st.failed = true
-				r.logger.Debug("send status", "peer_address", pk.peer, "error", err)
+				st.statusFails++
+				r.logger.Debug("send status", "peer_address", pk.peer, "failures", st.statusFails, "error", err)
 			}
 		}()
 	}
@@ -497,10 +523,13 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 	return r.overlay.Compare(peer) < 0
 }
 
-// session runs Reconcile then Fetch with peer, then transfers the ranges
-// the session handed to its Striper (d̂ > LargeDiff) as stripes. open, if not
-// empty, is the session's opening (the old half after a radius decrease).
-func (r *Reconciler) session(peer swarm.Address, open []fingerprint.Range) {
+// session runs Reconcile then Fetch with peer, whose entry st is in
+// Reconciling, then transfers the ranges the session handed to its Striper
+// (d̂ > LargeDiff) as stripes. open, if not empty, is the session's opening
+// (the old half after a radius decrease). The outcome moves st on: Busy or an
+// error back to Idle with a backoff, a completed session to Fetching and,
+// once its wants are fetched, to Idle.
+func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range) {
 	striper := new(StripeCollector)
 	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
 
@@ -511,23 +540,26 @@ func (r *Reconciler) session(peer swarm.Address, open []fingerprint.Range) {
 		r.catchUpFetches++
 	}
 	r.checkGuardLocked()
-	r.mu.Unlock()
-
-	defer func() {
-		r.mu.Lock()
-		if st, ok := r.peers[peer.ByteString()]; ok {
-			st.running = false
+	if r.peers[peer.ByteString()] == st { // not left meanwhile
+		switch {
+		case err == nil:
+			r.fireLocked(st, eventSessionDone)
+			st.fetching = true
+		case isBusy(err):
+			r.fireLocked(st, eventBusy)
+		default:
+			r.fireLocked(st, eventError)
 		}
-		r.mu.Unlock()
-	}()
+	}
+	r.mu.Unlock()
 
 	switch {
 	case errors.Is(err, rangesync.ErrSessionLimit):
 		r.metrics.Sessions.WithLabelValues("session_limit").Inc()
-		return // retry next round, not scored
+		return // retried after the backoff, not scored
 	case isBusy(err):
 		r.metrics.Sessions.WithLabelValues("busy").Inc()
-		return // an index is rebuilding: retry next round, not scored
+		return // an index is rebuilding: retried after the backoff, not scored
 	case err != nil:
 		r.metrics.Sessions.WithLabelValues("error").Inc()
 		r.logger.Debug("reconcile", "peer_address", peer, "error", err)
@@ -535,6 +567,12 @@ func (r *Reconciler) session(peer swarm.Address, open []fingerprint.Range) {
 	}
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
 	r.fetch(peer, wants, catchUp)
+	r.mu.Lock()
+	if r.peers[peer.ByteString()] == st {
+		st.fetching = false
+		r.fireLocked(st, eventFetched) // a stripe session in flight ends Fetching instead
+	}
+	r.mu.Unlock()
 	if ranges := striper.Ranges(); len(ranges) > 0 {
 		r.enqueueStripes(ranges)
 	}

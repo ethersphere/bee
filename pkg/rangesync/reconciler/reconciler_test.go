@@ -89,6 +89,12 @@ type fakeService struct {
 	// call, which then waits until that channel is closed.
 	statuses  map[string][]rangesync.Status
 	sendCalls chan chan struct{}
+	// reconcileDelay delays every ReconcileWith; inSession and maxInSession
+	// record, by peer, the ReconcileWith calls running and the most that ran
+	// at once.
+	reconcileDelay time.Duration
+	inSession      map[string]int
+	maxInSession   map[string]int
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -110,7 +116,14 @@ func newFakeService(local rangesync.Status) *fakeService {
 		sendErr:         make(map[string]error),
 		rootCh:          make(chan struct{}, 1),
 		statuses:        make(map[string][]rangesync.Status),
+		inSession:       make(map[string]int),
+		maxInSession:    make(map[string]int),
 	}
+}
+
+// maxConcurrent returns the most sessions with peer that ran at once.
+func (s *fakeService) maxConcurrent(peer swarm.Address) int {
+	return s.count(s.maxInSession, peer)
 }
 
 // sentStatuses returns the Statuses sent to peer, in order.
@@ -135,9 +148,21 @@ func (s *fakeService) rootChange() {
 
 func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) ([]storer.ChunkID, error) {
 	s.mu.Lock()
-	s.opens[peer.ByteString()] = append(s.opens[peer.ByteString()], opts.Open)
-	offer, ok := s.offer[peer.ByteString()]
+	k := peer.ByteString()
+	s.opens[k] = append(s.opens[k], opts.Open)
+	offer, ok := s.offer[k]
+	s.inSession[k]++
+	s.maxInSession[k] = max(s.maxInSession[k], s.inSession[k])
+	delay := s.reconcileDelay
 	s.mu.Unlock()
+	defer s.set(func() { s.inSession[k]-- })
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if ok && len(opts.Open) == 0 && opts.Striper != nil {
 		opts.Striper.Stripe(offer, 1, rangesync.LargeDiff+2)
 	}

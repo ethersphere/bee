@@ -29,8 +29,10 @@ const (
 	stripeQueue = 4
 	// stripeRetryInterval is the wait before a stripe session is opened
 	// again after a Busy answer (isBusy): rangesync.ErrSessionLimit (the
-	// peer's session slot is taken, for example by a round's session) or an
-	// index rebuilding on either side (after a radius change, §7.5).
+	// peer's session slot is taken by a session the peer started, or this
+	// node runs MaxConcurrentSessions) or an index rebuilding on either side
+	// (after a radius change, §7.5). A round session of this node never
+	// takes the slot: the peer's state machine keeps them apart.
 	stripeRetryInterval = time.Second
 	// maxStripeReassign bounds the reassignments of one stripe to another
 	// peer after a failure, timeout or withholding without progress.
@@ -268,10 +270,21 @@ func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address,
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants.
+// The peer is in Striped throughout (acquireStripe); the wait for its round
+// session to end counts towards the stripe timeout.
 func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithTimeoutCause(ctx, r.stripeTimeout, ErrStripeTimeout)
 	defer cancel()
+	release, err := r.acquireStripe(ctx, peer)
+	if err != nil {
+		res.Err = err
+		if errors.Is(err, ErrStripeTimeout) {
+			res.Err = fmt.Errorf("stripe %s from %s: waiting for the peer: %w", sr, peer, ErrStripeTimeout)
+		}
+		return res
+	}
+	defer release()
 
 	queue := make(chan []storer.ChunkID, stripeQueue)
 	var fetchErr error
@@ -305,7 +318,6 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			}
 		},
 	}
-	var err error
 	for {
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
 		if !isBusy(err) {
@@ -452,12 +464,13 @@ func (r *Reconciler) stripeWorker() {
 	}
 }
 
-// peerStatuses returns the known peers with their last Status.
+// peerStatuses returns the known peers with their last Status, except those
+// the reconciler ignores: Unsupported, and Removed (not eligible).
 func (r *Reconciler) peerStatuses() []PeerStatus {
 	r.mu.Lock()
 	var addrs []swarm.Address
 	for k, st := range r.peers {
-		if !st.unsupported {
+		if s := st.fsm.state; s != stateUnsupported && s != stateRemoved {
 			addrs = append(addrs, swarm.NewAddress([]byte(k)))
 		}
 	}

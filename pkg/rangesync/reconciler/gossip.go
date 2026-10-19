@@ -19,8 +19,10 @@ import (
 //     whose Status this node lacks), at most every StatusMinInterval;
 //   - as a heartbeat: to every peer that speaks rangesync, at least every
 //     StatusMaxInterval, so that a Status a peer lost heals in that time;
-//   - after a failed send, or when a round asks for it again because this
-//     node lacks the peer's Status: after StatusMinInterval;
+//   - after a failed send: after StatusMinInterval, doubling with each
+//     failed send in a row up to StatusMaxInterval (statusRetry);
+//   - when a round asks for it again because this node lacks the peer's
+//     Status: after StatusMinInterval;
 //   - never faster than statusBurst back to back, then one per
 //     PeerStatusInterval, so that it stays within the peer's inbound rate.
 //
@@ -65,11 +67,13 @@ type statusPick struct {
 func statusDue(st *peerState, local, remote rangesync.Status, have bool) (time.Time, bool) {
 	var at time.Time
 	switch {
-	case st.unsupported, st.sending:
+	case st.fsm.state == stateUnsupported, st.sending:
 		return time.Time{}, false
 	case st.lastSent.IsZero(), !st.last.Root.Equal(local.Root):
 		at = st.lastSent
-	case st.failed, st.resend:
+	case st.failed:
+		at = st.lastSent.Add(statusRetry(st.statusFails))
+	case st.resend:
 		at = st.lastSent.Add(StatusMinInterval)
 	case !equalStatus(st.last, local) && (!have || isEligible(local, remote)):
 		at = st.lastSent.Add(StatusMinInterval)
