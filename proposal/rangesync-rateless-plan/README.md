@@ -159,7 +159,7 @@ the implementer (otherwise every task conflicts on this list).
 **Phase 3**
 - [x] T3.1 Bootstrap detection and stripe planner
 - [x] T3.2 Striped transfer with pipelined paging/fetch and reassignment
-- [ ] T3.3 Verification round
+- [x] T3.3 Verification round
 - [ ] T3.4 Radius decrease / increase handling
 - [ ] T3.5 Catch-up `SyncRate` and reserve-worker interplay
 
