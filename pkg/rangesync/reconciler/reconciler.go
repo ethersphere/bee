@@ -141,6 +141,8 @@ type Reconciler struct {
 	// bootstrapping holds while a bootstrap transfer of the root is queued
 	// or in flight; bootstrapFailed is set when one did not complete.
 	bootstrapping, bootstrapFailed bool
+	// radius follows the local root for radius changes (§7.5).
+	radius radiusState
 
 	started       atomic.Bool
 	guardReleased atomic.Bool
@@ -265,6 +267,12 @@ func (r *Reconciler) round(full bool) {
 	}, topology.Select{})
 
 	r.mu.Lock()
+	// a new root makes the peers' scopes with this node stale: send it to
+	// every peer now rather than at the next full round
+	if r.trackRootLocked(local.Root) {
+		full = true
+	}
+	radiusPending := r.radius.pending
 	present := make(map[string]bool, len(connected))
 	var probe []swarm.Address
 	for _, p := range connected {
@@ -298,8 +306,12 @@ func (r *Reconciler) round(full bool) {
 	// of one full listing per peer; its per-peer sessions wait while that
 	// transfer is in flight. After a bootstrap transfer that did not
 	// complete, one round runs the per-peer sessions before the next try.
+	// After a radius decrease only the new half is striped (§7.5), and the
+	// node is not bootstrapping however far its count is behind.
 	bootstrap := false
-	if IsBootstrap(local, r.peerStatuses()) {
+	if radiusPending {
+		r.enqueueRadiusHalf()
+	} else if IsBootstrap(local, r.peerStatuses()) {
 		r.mu.Lock()
 		switch {
 		case r.bootstrapping:
@@ -329,6 +341,7 @@ func (r *Reconciler) round(full bool) {
 	exchanged, eligible := true, 0
 	clear(r.awaiting)
 	var candidates []swarm.Address
+	opens := make(map[string][]fingerprint.Range)
 	for _, p := range connected {
 		st, ok := r.peers[p.ByteString()]
 		if !ok || st.unsupported {
@@ -355,7 +368,12 @@ func (r *Reconciler) round(full bool) {
 		if st.running || bootstrap {
 			continue
 		}
+		open, skip := r.radiusOpenLocked(local, remote)
+		if skip {
+			continue
+		}
 		candidates = append(candidates, p)
+		opens[p.ByteString()] = open
 	}
 	for _, p := range r.orderCandidatesLocked(candidates) {
 		r.peers[p.ByteString()].running = true
@@ -363,7 +381,7 @@ func (r *Reconciler) round(full bool) {
 		r.wg.Add(1)
 		go func() {
 			defer r.wg.Done()
-			r.session(p)
+			r.session(p, opens[p.ByteString()])
 		}()
 	}
 	r.guardArmed = exchanged && eligible > 0
@@ -432,10 +450,11 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 }
 
 // session runs Reconcile then Fetch with peer, then transfers the ranges
-// the session handed to its Striper (d̂ > LargeDiff) as stripes.
-func (r *Reconciler) session(peer swarm.Address) {
+// the session handed to its Striper (d̂ > LargeDiff) as stripes. open, if not
+// empty, is the session's opening (the old half after a radius decrease).
+func (r *Reconciler) session(peer swarm.Address, open []fingerprint.Range) {
 	striper := new(StripeCollector)
-	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Striper: striper})
+	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
 
 	r.mu.Lock()
 	r.pendingReconcile--
@@ -458,6 +477,9 @@ func (r *Reconciler) session(peer swarm.Address) {
 	case errors.Is(err, rangesync.ErrSessionLimit):
 		r.metrics.Sessions.WithLabelValues("session_limit").Inc()
 		return // retry next round, not scored
+	case isBusy(err):
+		r.metrics.Sessions.WithLabelValues("busy").Inc()
+		return // an index is rebuilding: retry next round, not scored
 	case err != nil:
 		r.metrics.Sessions.WithLabelValues("error").Inc()
 		r.logger.Debug("reconcile", "peer_address", peer, "error", err)

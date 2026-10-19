@@ -28,8 +28,9 @@ const (
 	// MaxMessageBytes of IDs); a full queue holds the stripe's session back.
 	stripeQueue = 4
 	// stripeRetryInterval is the wait before a stripe session is opened
-	// again after rangesync.ErrSessionLimit (the peer's session slot is
-	// taken, for example by a round's session).
+	// again after a Busy answer (isBusy): rangesync.ErrSessionLimit (the
+	// peer's session slot is taken, for example by a round's session) or an
+	// index rebuilding on either side (after a radius change, §7.5).
 	stripeRetryInterval = time.Second
 	// maxStripeReassign bounds the reassignments of one stripe to another
 	// peer after a failure, timeout or withholding without progress.
@@ -307,7 +308,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	var err error
 	for {
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
-		if !errors.Is(err, rangesync.ErrSessionLimit) {
+		if !isBusy(err) {
 			break
 		}
 		t := time.NewTimer(stripeRetryInterval)
@@ -343,6 +344,8 @@ type stripeJob struct {
 	rg        fingerprint.Range
 	started   func()
 	bootstrap bool
+	// radius marks the transfer of the new half after a radius decrease.
+	radius bool
 }
 
 // enqueueStripes registers ranges for a striped transfer by the stripe
@@ -433,6 +436,9 @@ func (r *Reconciler) stripeWorker() {
 			r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(job.rg) })
 			if job.bootstrap {
 				r.bootstrapping, r.bootstrapFailed = false, failed
+			}
+			if job.radius {
+				r.radiusDoneLocked(job.rg)
 			}
 			r.mu.Unlock()
 		}
