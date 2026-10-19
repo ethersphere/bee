@@ -203,6 +203,61 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   retry. So a failed heartbeat or push no longer skips the peer's sessions or disarms the guard. A
   send's outcome is recorded only in the `*peerState` it was picked with, so a peer that left and
   came back mid-send keeps its new entry's state.
+- **(T4.2) The §8.1 machine is an explicit table in `reconciler/peerfsm.go`, with no I/O.**
+  `transitions` maps state and event to the next state; an event a state does not list leaves the
+  machine unchanged. `[*]` is `stateRemoved`. The reconciler fires the events under `r.mu`
+  (`reconciler/peers.go`) and passes the time. Three kinds of edge are added to §8.1:
+  - `Idle → Striped`: the stripe worker plans a range across every neighbor that covers it
+    (§7.4, §7.5), so a stripe session starts from Idle.
+  - `Fetching → Striped`: the fetch of a session's wants uses the fetch stream, not the session
+    slot. The peer returns to Idle once both have ended. Round sessions still wait for the fetch,
+    as the old `running` flag did.
+  - A disconnect from every state.
+
+  `Reconciling → Striped` is in the table but the wiring never takes it. A session hands its large
+  ranges to the stripe worker and ends, and with one session per peer the peer cannot serve a
+  stripe while its own session runs.
+- **(T4.2) "Disjoint" means not eligible (`isEligible`).** That covers disjoint neighborhoods and a
+  different Mapping. A round moves an exchanged peer from Probing to Idle, then to Removed when it
+  is not eligible. It does this before any stripe is planned, so the stripes of a bootstrap find
+  their peers Idle. A Removed peer is dropped from sessions, from stripe planning
+  (`peerStatuses`) and from the start-up guard. It stays connected and keeps its Status gossip
+  (T4.1: first contact, moved roots, heartbeat). It gets a new machine when it is eligible again
+  (either root moved) or its Status is gone. `pkg/node` is unchanged.
+- **(T4.2) `Unsupported` replaces the `unsupported` flag.** `ErrProtocolUnsupported` outside
+  Probing means a reconnect the peer set did not show, so the peer gets a new machine, which then
+  goes to Unsupported.
+- **(T4.2) A peer serving a stripe is in Striped, and round and stripe sessions are exclusive.**
+  This covers the T3.2 part 2 and T3.4 carry-overs. `transferStripe` (transfers and verifications)
+  calls `acquireStripe`, which waits while the peer is Reconciling or Striped. The waiter is woken
+  by a channel, and the wait counts towards the stripe timeout. Rounds start no session with a
+  peer a stripe waits for, so the stripe is not starved. A peer that is unknown, Probing,
+  Unsupported or Removed is not tracked, which keeps direct `TransferStripes` callers working as
+  before; `peerLocks` stay for them. A round session no longer gets `ErrSessionLimit` from this
+  node's own stripe session. A session the peer started, or the node-wide cap, still causes it
+  (Busy).
+- **(T4.2) Busy and errors back off per peer.** This is the T3.4 review item. Round sessions
+  answered Busy (`isBusy`, including `ErrSessionLimit`) or failed count as one streak per peer.
+  - The first in a row is retried by the next round, as before.
+  - From the second, the wait is `MinRoundInterval`, doubling up to `maxSessionBackoff = 5 min`.
+  - A completed session resets the streak.
+
+  Busy stays unscored; the growing backoff is the deprioritization of peers that stay Busy.
+  Stripe sessions keep their 1 s Busy retry within the stripe timeout and are not counted. The
+  first step is zero because the T3.x tests run rounds on a frozen fake clock. In production,
+  rounds are at least `MinRoundInterval` apart, except rounds that a topology change triggers.
+- **(T4.2) Failed Status sends back off.** This is the T4.1 follow-up. The retry is
+  `statusRetry(n)`: `StatusMinInterval` doubling with each failure in a row, up to
+  `StatusMaxInterval`. A success resets it. A first contact or a moved root still goes out at
+  once. A black-holed peer now holds up a gossip pass (≤ `statusTimeout`) at most once per 60 s
+  instead of every 5 s.
+- **(T4.2) Responder-side fetches are not a state.** `Wants` fetches what a peer that initiated
+  listed; the peer's machine stays Idle.
+- **(T4.2) An uncovered radius half needed no change (T3.5 carry-over).** `pending` has no time
+  bound (only its `SyncRate` hold does), and every round retries `enqueueRadiusHalf`. So the half
+  is striped once a neighbor that covers it appears, even past `radiusHold`. Admission now runs
+  before `enqueueRadiusHalf`, so a neighbor admitted in a round counts in that round.
+  `TestRadiusHalfStripedWhenCovered` pins this.
 
 ## Follow-ups
 _(sessions append here)_
@@ -247,3 +302,31 @@ _(sessions append here)_
 - **(T4.1 fix) The sender-side rate can also defer a moved root.** After three quick Statuses, the
   round that sees a radius change does not send at once, and its sessions meet the same benign
   refusal as in the moved-root race above. The same T4.3 remedy applies.
+- **(T4.2) Stripe registry trimming (T4.3).** A range that overlaps a registered one is still
+  dropped, not trimmed (T3.2 part 2). For prefix ranges, an overlap is a containment. Trimming
+  would split the larger range into the uncovered siblings, which multiplies jobs and the
+  bootstrap and radius bookkeeping (`started`, `cancel`). That is stripe scheduling, not per-peer
+  state.
+- **(T4.2) Compare session-root summaries (T4.3).** `sameDigest` still treats different roots as
+  different (T1.11). Comparing needs a `Service` method for the local summary of a range. The
+  peer's Status carries only its own root's summary, so this works only when the session root is
+  the peer's root. The "digest differs" decision belongs to the scheduler.
+- **(T4.2) Escalate Status spam (T4.5).** The drops happen in `rangesync`'s `handleStatus`, which
+  the reconciler never sees. Escalation needs a counter there that feeds `PeerScorer`. T4.1
+  decided to escalate only if testnet shows persistent spam.
+- **(T4.2) Stripe peer choice ignores the backoff (T4.3).** `PlanStripes`, `nextStripePeer` and
+  `verifier` do not look at a peer's Busy streak. The scheduler could prefer peers that are not
+  backing off.
+- **(T4.2) First Busy retry on topology rounds (T4.3).** The first Busy has no extra wait, so a
+  round that a topology change triggers can retry a Busy peer within milliseconds. T4.3's
+  scheduler should rate-limit rounds; otherwise raise the first backoff step.
+- **(T4.2) `peers{state}` gauge (T4.5).** No §10 metric covers it, but it would show testnet
+  operators (T6) how many neighbors are Striped, backing off or dropped.
+- **(T4.2) Tests to run with `-race` on CI.** These ran with `-count=10..40 -cpu=1,2,4` instead.
+  - `pkg/rangesync/reconciler`: `TestPeerState*` (especially `TestPeerStateSessionSlotExclusive`
+    and `TestPeerStateStripeWaitsForSession`), `TestPeerFSM*`, `TestStatusGossipBackoff`,
+    `TestRadiusHalfStripedWhenCovered`.
+  - Re-run the earlier lists with `-race`, because `round`, `session`, `probe` and `transferStripe`
+    changed: `TestRadius*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestRoundBootstrap*`,
+    `TestStartupGuard*`, `TestSyncRate*`, `TestStatusGossip*`, `TestRoundOwnsFirstContact`,
+    `TestPeerJoinLeave`, `TestClose`.
