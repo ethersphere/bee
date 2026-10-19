@@ -456,6 +456,37 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   option keeps the real clock so the frozen-clock tests that set it still get timed rounds. A
   started reconciler with the adaptive interval (`newScheduledHarness`) therefore gets no round
   the fake clock does not schedule.
+- **(T4.3 fix round 2) A stripe frees both slots while it waits to retry Busy, its timeout runs
+  only while it holds them, and its Busy retries are bounded.** This supersedes the
+  "(T4.3 fix, M1)" entry's "holds both slots across its Busy retries". That rule let four peers
+  that always answer Busy (Busy is free and unscored, and stripes do not back off) hold every
+  stripe slot for 15 min per wave; honest peers at their session cap or rebuilding their index did
+  the same. Now:
+  - Before each 1 s retry wait, `transferStripe` frees its stripe slot and its session slot, then
+    takes both again (`acquireStripeSlots`).
+  - The stripe timeout is a pausable clock (`stripeClock`) that runs only while the attempt holds
+    its slots: the peer wait, the session and its Busy answers. This is consistent with M1.
+  - With the clock paused an always-Busy peer would be retried forever and block the stripe
+    worker's job, so an attempt gives up after `maxStripeBusyRetries = 30` Busy retries (about
+    30 s, longer than an index rebuild). runStripe then reassigns the stripe (at most
+    `maxStripeReassign`).
+
+  `TestStripeBusyDoesNotStall` (an honest stripe runs at once behind four always-Busy ones),
+  `TestStripeBusyRetriesBounded` and `TestStripeTimeoutPausedWhileBusy` cover these.
+  `TestStripeTimeoutAfterSlot` now holds every session slot with round sessions, so the stripe
+  that waits is deterministic.
+- **(T4.3 fix round 2) The takeover wait of a peer with another root uses `MaxRoundInterval`.**
+  After the M2 fix, the lower node of a nested-root pair can reach 30 s while the higher node stays
+  at 5 s for its other peers. With waits measured against its own interval, the higher node took
+  over every 10–15 s while the initiator was alive. Digests of different roots cannot show
+  whether the two are in sync, so for such a peer the wait is `2 × MaxRoundInterval + jitter`
+  (60–90 s), independent of the local interval. Same-root peers see the same digests on both sides
+  and keep the current interval. `TestRoundTakeoverNestedRoots` covers this.
+- **(T4.3 fix round 2) Test gaps.** A stale session is now asserted to end with no backoff streak
+  and to count in `sessions_total{stale}`, and a follow-up round runs its session at once
+  (`TestSessionRecheckAfterSlot`). Wants listed in a served session keep the interval at the floor
+  (`TestRoundIntervalServedWants`). New test exports: `SetStripeRetryInterval`, `SessionsTotal`,
+  `PeerFailures`.
 
 ## Follow-ups
 _(sessions append here)_
@@ -588,3 +619,13 @@ _(sessions append here)_
   - Re-run with `-race`, because `transferStripe`, `session` and `loop` changed again:
     `TestTransferStripes*`, `TestVerifyStripes*`, `TestRadius*`, `TestPeerState*`, `TestRound*`,
     `TestStatusChange*`, `TestRootChangeTriggersRound`.
+- **(T4.3 fix round 2) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead.
+  - `pkg/rangesync/reconciler`: `TestStripeBusyDoesNotStall`, `TestStripeBusyRetriesBounded`,
+    `TestStripeTimeoutPausedWhileBusy`, `TestStripeTimeoutAfterSlot`,
+    `TestRoundTakeoverNestedRoots`, `TestRoundIntervalServedWants`, `TestSessionRecheckAfterSlot`.
+  - Re-run with `-race`, because `transferStripe` changed again: `TestTransferStripes*`,
+    `TestVerifyStripes*`, `TestRadius*`, `TestRoundBootstrap*`, `TestStripeSessionCap`.
+- **(T4.3 fix round 2) T4.6: Busy-heavy stripes.** An always-Busy peer now costs a stripe about
+  30 s per attempt before it is reassigned. T4.6 should check whether `maxStripeBusyRetries`
+  delays bootstraps when many neighbors sit at their session cap.
