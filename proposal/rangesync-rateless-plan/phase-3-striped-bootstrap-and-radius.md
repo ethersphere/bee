@@ -119,9 +119,13 @@ against `pairwise_diff` from the simulations (T4.6) and record it.
 ## Decisions log
 _(sessions append here — T3.1 bootstrap threshold and stripe redundancy default; T3.5
 `CatchUpMinDiff`)_
+- **(T3.1) Bootstrap threshold.** `IsBootstrap`: own count < `BootstrapRatio` (0.5) × median count of the peers whose Status root equals our root (upper median; peers with other roots are skipped; no peers or a zero median → not bootstrapping). No absolute floor.
+- **(T3.1) Stripe redundancy default.** `StripeRedundancy = 1`; the verification round (T3.3) covers withholding. `PlanStripesRedundancy` takes 2 when needed.
+- **(T3.1) Stripe depth and eligibility.** k counts peers whose root overlaps the striped range; s = ceil(log2 k), deepened to the deepest narrower peer root (cap 16 bits below the range) so each stripe is inside or outside every peer root. Eligible = peer root contains the stripe; an ineligible peer's turn passes to the next eligible peer in rotation. Unassigned stripes come back with no Peers (`Unassigned`). The sub-range variant is `PlanStripes(subRange, peers)`.
 
 ## Follow-ups
 _(sessions append here)_
+- **(T3.1) Striper not wired into Service.** session.go already calls `cfg.Striper` (T1.8); `StripeCollector` implements it, but `Service.sessionConfig` (reconcile.go) never sets `Config.Striper` and `Reconcile` has no parameter for one. Wiring needs a rangesync API change outside session.go (T3.2).
 - **(T6.0) Stripe and verification metrics (T3.2, T3.3).** §10 has none, but AC-B2 (verification
   ≤ 1 MB, "a few KB" in §7.4) and the T6.1 Churn scenario ("stripes reassigned") need them.
   Proposed: `stripes_total{result}` (done, reassigned, timeout) in T3.2 and `verification_diff`
