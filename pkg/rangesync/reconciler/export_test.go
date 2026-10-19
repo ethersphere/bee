@@ -119,3 +119,11 @@ func (r *Reconciler) Round() { r.round() }
 // Gossip runs one pass of the Status gossip at Now and returns how long
 // until a Status is next due.
 func (r *Reconciler) Gossip() time.Duration { return r.gossip() }
+
+// StatusSending reports whether a Status send to peer is in flight.
+func (r *Reconciler) StatusSending(peer swarm.Address) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.peers[peer.ByteString()]
+	return ok && st.sending
+}

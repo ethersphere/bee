@@ -80,10 +80,15 @@ type fakeService struct {
 	// by peer, is the number of IDs of each Fetch not stored.
 	sessionErrSticky bool
 	withholdN        map[string]int
-	// sendErr, by peer, is returned by SendStatus; rootCh is the channel of
-	// SubscribeRootChange (rootChange signals it).
+	// sendErr, by peer, is returned by SendStatusWith; rootCh is the
+	// channel of SubscribeRootChange (rootChange signals it).
 	sendErr map[string]error
 	rootCh  chan struct{}
+	// statuses, by peer, are the Statuses SendStatusWith sent, in order.
+	// sendCalls, if not nil, receives a channel from each SendStatusWith
+	// call, which then waits until that channel is closed.
+	statuses  map[string][]rangesync.Status
+	sendCalls chan chan struct{}
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -104,7 +109,15 @@ func newFakeService(local rangesync.Status) *fakeService {
 		withholdN:       make(map[string]int),
 		sendErr:         make(map[string]error),
 		rootCh:          make(chan struct{}, 1),
+		statuses:        make(map[string][]rangesync.Status),
 	}
+}
+
+// sentStatuses returns the Statuses sent to peer, in order.
+func (s *fakeService) sentStatuses(peer swarm.Address) []rangesync.Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.statuses[peer.ByteString()])
 }
 
 // SubscribeRootChange returns rootCh; unsubscribing does nothing.
@@ -162,14 +175,29 @@ func (s *fakeService) LocalStatus() (rangesync.Status, error) {
 	return s.local, s.localErr
 }
 
-func (s *fakeService) SendStatus(_ context.Context, peer swarm.Address) error {
+func (s *fakeService) SendStatusWith(ctx context.Context, peer swarm.Address, st rangesync.Status) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.sent[peer.ByteString()]++
-	if s.unsupported[peer.ByteString()] {
+	s.statuses[peer.ByteString()] = append(s.statuses[peer.ByteString()], st)
+	calls, unsupported, err := s.sendCalls, s.unsupported[peer.ByteString()], s.sendErr[peer.ByteString()]
+	s.mu.Unlock()
+	if calls != nil {
+		release := make(chan struct{})
+		select {
+		case calls <- release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if unsupported {
 		return fmt.Errorf("%w: test", rangesync.ErrProtocolUnsupported)
 	}
-	return s.sendErr[peer.ByteString()]
+	return err
 }
 
 func (s *fakeService) LastStatus(peer swarm.Address) (rangesync.Status, bool) {

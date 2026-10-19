@@ -17,13 +17,18 @@ import (
 //     that speaks rangesync;
 //   - when its root summary changed: to every eligible neighbor (or peer
 //     whose Status this node lacks), at most every StatusMinInterval;
-//   - as a heartbeat: to the same peers, at least every StatusMaxInterval;
+//   - as a heartbeat: to every peer that speaks rangesync, at least every
+//     StatusMaxInterval, so that a Status a peer lost heals in that time;
 //   - after a failed send, or when a round asks for it again because this
-//     node lacks the peer's Status: after StatusMinInterval.
+//     node lacks the peer's Status: after StatusMinInterval;
+//   - never faster than statusBurst back to back, then one per
+//     PeerStatusInterval, so that it stays within the peer's inbound rate.
 //
-// A round and the gossip loop both pick the peers through pickDueLocked,
-// which marks a peer's Status as sent before it is sent, so the two never
-// send the same change twice. A round picks in the critical section that
+// A round and the gossip loop both take their snapshot (LocalStatus) and pick
+// the peers (pickDueLocked) under pickMu, and send exactly the picked Status.
+// Picking records the Status as the peer's last before it is sent, so the
+// two never send the same change twice, and no pick records an older
+// snapshot than an earlier one. A round picks in the critical section that
 // adds new peers, so first contacts are always its own and the outcome is
 // known to its evaluation. The Index's own debounce (also StatusMinInterval)
 // only coalesces the loop's wake-ups; the per-peer schedule bounds the sends.
@@ -34,27 +39,47 @@ const (
 	// StatusMaxInterval is the longest interval between two Statuses sent to
 	// an eligible neighbor (the heartbeat).
 	StatusMaxInterval = rangesync.StatusMaxInterval
+
+	// statusBurst is the number of Statuses sent to a peer back to back
+	// (first contact, moved roots); after it, one per PeerStatusInterval.
+	// It is one below the peer's PeerStatusBurst, so that arrival jitter of
+	// up to PeerStatusInterval cannot push them over the peer's rate.
+	statusBurst = rangesync.PeerStatusBurst - 1
+	// statusTolerance is how far ahead of a send its theoretical arrival
+	// time (peerState.tat) may be (GCRA burst tolerance).
+	statusTolerance = (statusBurst - 1) * rangesync.PeerStatusInterval
 )
+
+// statusPick is a peer picked for this node's Status, with the entry it was
+// picked with.
+type statusPick struct {
+	peer swarm.Address
+	st   *peerState
+}
 
 // statusDue returns when this node's Status local is next due to a peer in
 // state st whose last Status this node received is remote (have reports
 // whether there is one), and false when none is scheduled. A time at or
-// before now is due now.
+// before now is due now. The sender-side rate defers a send past the time
+// the peer's rate allows it.
 func statusDue(st *peerState, local, remote rangesync.Status, have bool) (time.Time, bool) {
+	var at time.Time
 	switch {
 	case st.unsupported, st.sending:
 		return time.Time{}, false
 	case st.lastSent.IsZero(), !st.last.Root.Equal(local.Root):
-		return st.lastSent, true
-	case !st.sent, st.resend:
-		return st.lastSent.Add(StatusMinInterval), true
-	case have && !isEligible(local, remote):
-		return time.Time{}, false
-	case !equalStatus(st.last, local):
-		return st.lastSent.Add(StatusMinInterval), true
+		at = st.lastSent
+	case st.failed, st.resend:
+		at = st.lastSent.Add(StatusMinInterval)
+	case !equalStatus(st.last, local) && (!have || isEligible(local, remote)):
+		at = st.lastSent.Add(StatusMinInterval)
 	default:
-		return st.lastSent.Add(StatusMaxInterval), true
+		at = st.lastSent.Add(StatusMaxInterval)
 	}
+	if allowed := st.tat.Add(-statusTolerance); at.Before(allowed) {
+		at = allowed
+	}
+	return at, true
 }
 
 // equalStatus reports whether a and b are the same Status.
@@ -64,16 +89,21 @@ func equalStatus(a, b rangesync.Status) bool {
 
 // pickDueLocked returns the known peers local is due to at now and marks
 // them as sending it, so that no other caller picks them until probe has
-// recorded the outcome. r.mu must be held.
-func (r *Reconciler) pickDueLocked(local rangesync.Status, now time.Time) []swarm.Address {
-	var due []swarm.Address
+// recorded the outcome. r.pickMu and r.mu must be held, and local must have
+// been taken under r.pickMu.
+func (r *Reconciler) pickDueLocked(local rangesync.Status, now time.Time) []statusPick {
+	var due []statusPick
 	for k, st := range r.peers {
 		p := swarm.NewAddress([]byte(k))
 		remote, have := r.svc.LastStatus(p)
 		if at, ok := statusDue(st, local, remote, have); ok && !at.After(now) {
 			st.sending, st.resend = true, false
 			st.lastSent, st.last = now, local
-			due = append(due, p)
+			if st.tat.Before(now) {
+				st.tat = now
+			}
+			st.tat = st.tat.Add(rangesync.PeerStatusInterval)
+			due = append(due, statusPick{peer: p, st: st})
 		}
 	}
 	return due
@@ -99,14 +129,17 @@ func (r *Reconciler) nextStatusIn(local rangesync.Status) time.Duration {
 // one is. Until the index is built there is nothing to send; its first build
 // signals a root change.
 func (r *Reconciler) gossip() time.Duration {
+	r.pickMu.Lock()
 	local, err := r.svc.LocalStatus()
 	if err != nil {
+		r.pickMu.Unlock()
 		return StatusMaxInterval
 	}
 	r.mu.Lock()
 	due := r.pickDueLocked(local, r.now())
 	r.mu.Unlock()
-	r.probe(due)
+	r.pickMu.Unlock()
+	r.probe(due, local)
 	return r.nextStatusIn(local)
 }
 

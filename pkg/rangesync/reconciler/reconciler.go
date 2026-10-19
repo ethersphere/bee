@@ -60,10 +60,11 @@ const (
 type Service interface {
 	// LocalStatus returns this node's current Status.
 	LocalStatus() (rangesync.Status, error)
-	// SendStatus sends this node's Status to peer. An error wrapping
-	// rangesync.ErrProtocolUnsupported means the peer does not speak
-	// rangesync; the reconciler does not probe it again while connected.
-	SendStatus(ctx context.Context, peer swarm.Address) error
+	// SendStatusWith sends st, which LocalStatus returned, to peer. An error
+	// wrapping rangesync.ErrProtocolUnsupported means the peer does not
+	// speak rangesync; the reconciler does not probe it again while
+	// connected.
+	SendStatusWith(ctx context.Context, peer swarm.Address, st rangesync.Status) error
 	LastStatus(peer swarm.Address) (rangesync.Status, bool)
 	// SubscribeRootChange signals that this node's root summary may have
 	// changed (debounced); the reconciler then pushes its Status.
@@ -101,18 +102,22 @@ type Options struct {
 
 // peerState is what the reconciler keeps for a connected peer.
 type peerState struct {
-	unsupported bool // SendStatus reported ErrProtocolUnsupported
-	sent        bool // our Status reached the peer
+	unsupported bool // SendStatusWith reported ErrProtocolUnsupported
+	sent        bool // a Status of ours reached the peer
 	running     bool // a session with the peer is running
 	served      bool // the peer started a session with this node (Succeed or Wants)
 
 	// Status gossip (gossip.go): lastSent is when our Status last, last,
-	// was sent to the peer (zero: never), sending holds while that send
-	// runs, and resend asks for it again although unchanged.
+	// was picked for the peer (zero: never), sending holds while that send
+	// runs, failed records that it did not reach the peer, resend asks for
+	// it again although unchanged, and tat is the theoretical arrival time
+	// of the sender-side rate (statusBurst).
 	lastSent time.Time
 	last     rangesync.Status
 	sending  bool
+	failed   bool
 	resend   bool
+	tat      time.Time
 }
 
 // score is a peer's failure score at time at.
@@ -137,6 +142,12 @@ type Reconciler struct {
 	stripeTimeout time.Duration
 	rate          *rateWindow
 	metrics       metrics
+
+	// pickMu orders the Status snapshot (LocalStatus) of a round or a
+	// gossip pass together with its pick (pickDueLocked), so that a pick
+	// never records an older Status than an earlier one. It is taken before
+	// mu and never while holding it.
+	pickMu sync.Mutex
 
 	mu         sync.Mutex
 	peers      map[string]*peerState
@@ -286,18 +297,19 @@ func (r *Reconciler) loop(changes <-chan struct{}) {
 // are due (first contacts, a moved root; pickDueLocked) and starts a session
 // with every peer this node initiates with.
 func (r *Reconciler) round() {
-	local, err := r.svc.LocalStatus()
-	if err != nil {
-		r.logger.Debug("round skipped", "error", err)
-		return
-	}
-
 	var connected []swarm.Address
 	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 		connected = append(connected, addr)
 		return false, false, nil
 	}, topology.Select{})
 
+	r.pickMu.Lock()
+	local, err := r.svc.LocalStatus()
+	if err != nil {
+		r.pickMu.Unlock()
+		r.logger.Debug("round skipped", "error", err)
+		return
+	}
 	r.mu.Lock()
 	r.trackRootLocked(local.Root)
 	radiusPending := r.radius.pending
@@ -323,12 +335,14 @@ func (r *Reconciler) round() {
 		}
 	}
 	// First contacts, and a new root (it makes the peers' session scopes
-	// with this node stale), go out now, so that the evaluation below sees
-	// the outcome. The gossip loop sends the rest when due.
+	// with this node stale), go out now unless the sender-side rate defers
+	// them, so that the evaluation below sees the outcome. The gossip loop
+	// sends the rest when due.
 	due := r.pickDueLocked(local, r.now())
 	r.mu.Unlock()
+	r.pickMu.Unlock()
 
-	r.probe(due)
+	r.probe(due, local)
 	r.wakeGossip()
 	if r.ctx.Err() != nil {
 		return
@@ -420,12 +434,12 @@ func (r *Reconciler) round() {
 	r.checkGuardLocked()
 }
 
-// probe sends Status to peers, at most maxConcurrentProbes at once, and
-// records the outcome. The caller marked the peers as sending.
-func (r *Reconciler) probe(peers []swarm.Address) {
+// probe sends local to the picked peers, at most maxConcurrentProbes at
+// once, and records the outcome in the entry each was picked with.
+func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 	sem := make(chan struct{}, maxConcurrentProbes)
 	var wg sync.WaitGroup
-	for _, p := range peers {
+	for _, pk := range picks {
 		select {
 		case sem <- struct{}{}:
 		case <-r.ctx.Done():
@@ -436,22 +450,23 @@ func (r *Reconciler) probe(peers []swarm.Address) {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			err := r.svc.SendStatus(r.ctx, p)
+			err := r.svc.SendStatusWith(r.ctx, pk.peer, local)
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			st, ok := r.peers[p.ByteString()]
-			if !ok {
-				return // left meanwhile
+			st := pk.st
+			if r.peers[pk.peer.ByteString()] != st {
+				return // left meanwhile, maybe with a new entry since
 			}
 			st.sending = false
 			switch {
 			case err == nil:
-				st.sent = true
+				st.sent, st.failed = true, false
 			case errors.Is(err, rangesync.ErrProtocolUnsupported):
 				st.unsupported = true
 			default:
-				st.sent = false
-				r.logger.Debug("send status", "peer_address", p, "error", err)
+				// sent stays: an earlier Status of ours reached the peer
+				st.failed = true
+				r.logger.Debug("send status", "peer_address", pk.peer, "error", err)
 			}
 		}()
 	}

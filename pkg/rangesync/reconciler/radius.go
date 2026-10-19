@@ -61,7 +61,8 @@ func isBusy(err error) bool {
 // contain the previous one is a radius decrease: the halves of the new root
 // are recorded and the new half is pending. A pending half the root no longer
 // contains (a radius increase) is dropped. The peers get the new root from
-// the Status gossip (statusDue sends a moved root at once).
+// the Status gossip (statusDue sends a moved root at once, within the
+// sender-side rate).
 func (r *Reconciler) trackRootLocked(root fingerprint.Range) {
 	s := &r.radius
 	prev, known := s.root, s.known
