@@ -763,7 +763,9 @@ func stripesTo(peers ...swarm.Address) []reconciler.Stripe {
 }
 
 // TestStripeBusyDoesNotStall: stripes whose peers keep answering Busy free
-// their slots while they wait to retry, so an honest stripe runs at once.
+// their stripe and session slots while they wait to retry, so an honest
+// stripe runs at once, also when round sessions hold the other session
+// slots.
 func TestStripeBusyDoesNotStall(t *testing.T) {
 	t.Parallel()
 
@@ -774,7 +776,17 @@ func TestStripeBusyDoesNotStall(t *testing.T) {
 		svc.busyN[busy[i].ByteString()] = 1 << 30
 	}
 	honest := addr(0xf2, 0)
-	h := newGossipHarness(t, svc)
+	rounds := make([]swarm.Address, reconciler.MaxInitiatedSessions-reconciler.MaxStripeSessions)
+	gate := make(chan struct{})
+	for i := range rounds {
+		rounds[i] = addr(0xf0, byte(i+1))
+		svc.peerGate[rounds[i].ByteString()] = gate
+		svc.remote[rounds[i].ByteString()] = status(2)
+	}
+	t.Cleanup(func() { close(gate) })
+	h := newGossipHarness(t, svc, rounds...)
+	h.r.Round()
+	waitFor(t, "round sessions", func() bool { return svc.running() == len(rounds) })
 	ctx, cancel := context.WithCancel(context.Background())
 	busyDone := make(chan struct{})
 	go func() {
@@ -789,13 +801,10 @@ func TestStripeBusyDoesNotStall(t *testing.T) {
 		waitFor(t, "busy answer", func() bool { return len(svc.sessionOpens(p)) > 0 })
 	}
 
-	start := time.Now()
-	res := h.r.TransferStripes(context.Background(), stripesTo(honest))
-	if res[0].Err != nil {
-		t.Fatal(res[0].Err)
-	}
-	if d := time.Since(start); d > 3*time.Second {
-		t.Fatalf("honest stripe took %v behind Busy stripes", d)
+	hctx, hcancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer hcancel()
+	if res := h.r.TransferStripes(hctx, stripesTo(honest)); res[0].Err != nil {
+		t.Fatalf("honest stripe behind Busy stripes: %v", res[0].Err)
 	}
 }
 
@@ -832,5 +841,96 @@ func TestStripeTimeoutPausedWhileBusy(t *testing.T) {
 	h.r.SetStripeRetryInterval(100 * time.Millisecond)
 	if res := h.r.TransferStripes(context.Background(), stripesTo(p)); res[0].Err != nil {
 		t.Fatalf("stripe: %v", res[0].Err)
+	}
+
+	// the time the attempts hold their slots adds up: 100 ms per Busy answer
+	svc2 := newFakeService(status(1))
+	svc2.busyN[p.ByteString()] = 5
+	svc2.reconcileDelay = 100 * time.Millisecond
+	h2 := newGossipHarnessOptions(t, svc2, reconciler.Options{StripeTimeout: timeout})
+	h2.r.SetStripeRetryInterval(10 * time.Millisecond)
+	if res := h2.r.TransferStripes(context.Background(), stripesTo(p)); !errors.Is(res[0].Err, reconciler.ErrStripeTimeout) {
+		t.Fatalf("stripe: %v, want a timeout after 300 ms of Busy answers", res[0].Err)
+	}
+}
+
+// TestStripeFetchBoundedByTimeout: the stripe timeout also bounds the fetch
+// of the listed IDs after the session ended.
+func TestStripeFetchBoundedByTimeout(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	p := addr(0xf1, 0)
+	svc.wants[p.ByteString()] = 3
+	svc.fetchGate = make(chan struct{}) // the fetch never ends on its own
+	t.Cleanup(func() { close(svc.fetchGate) })
+	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: 100 * time.Millisecond})
+	done := make(chan []reconciler.StripeResult, 1)
+	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(p)) }()
+	select {
+	case res := <-done:
+		if !errors.Is(res[0].Err, reconciler.ErrStripeTimeout) {
+			t.Fatalf("stripe: %v, want a timeout", res[0].Err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the fetch after the session outlived the stripe timeout")
+	}
+}
+
+// TestStripeLocalBusy: Busy answers for a cause on this node (its index
+// rebuilding) do not count towards MaxStripeBusyRetries and do not reassign
+// the stripe; they end at the stripe timeout, and the stripe is restarted
+// with the same peer (maxStripeRestarts) before it is reassigned.
+func TestStripeLocalBusy(t *testing.T) {
+	t.Parallel()
+
+	a, b := addr(0xf1, 0), addr(0xf1, 1)
+	stripe := []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}}
+
+	svc := newFakeService(status(1))
+	// more than capped attempts with their restarts could take
+	svc.localBusyN[a.ByteString()] = (reconciler.MaxStripeRestarts+1)*(reconciler.MaxStripeBusyRetries+1) + 10
+	h := newGossipHarness(t, svc)
+	h.r.SetStripeRetryInterval(time.Millisecond)
+	res := h.r.TransferStripes(context.Background(), stripe)[0]
+	if res.Err != nil || !res.Peer.Equal(a) || len(res.Tried) != 1 {
+		t.Fatalf("stripe from %s (tried %v): %v; want done by %s", res.Peer, res.Tried, res.Err, a)
+	}
+
+	// always Busy here: bounded by the timeout, restarted, then reassigned
+	const timeout = 20 * time.Millisecond
+	svc2 := newFakeService(status(1))
+	svc2.localBusyN[a.ByteString()] = 1 << 30
+	h2 := newGossipHarnessOptions(t, svc2, reconciler.Options{StripeTimeout: timeout})
+	h2.r.SetStripeRetryInterval(time.Millisecond)
+	start := time.Now()
+	res = h2.r.TransferStripes(context.Background(), stripe)[0]
+	if res.Err != nil || !res.Peer.Equal(b) {
+		t.Fatalf("stripe from %s: %v; want done by %s", res.Peer, res.Err, b)
+	}
+	if d, least := time.Since(start), (reconciler.MaxStripeRestarts+1)*timeout; d < least {
+		t.Fatalf("reassigned after %v, before %d restarts (%v)", d, reconciler.MaxStripeRestarts, least)
+	}
+}
+
+// TestStripeBusyReassigns: an attempt whose peer stays Busy past
+// MaxStripeBusyRetries is reassigned to another peer; Busy is not scored.
+func TestStripeBusyReassigns(t *testing.T) {
+	t.Parallel()
+
+	a, b := addr(0xf1, 0), addr(0xf1, 1)
+	svc := newFakeService(status(1))
+	svc.busyN[a.ByteString()] = 1 << 30
+	h := newGossipHarness(t, svc)
+	h.r.SetStripeRetryInterval(time.Millisecond)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}})[0]
+	if res.Err != nil || !res.Peer.Equal(b) || len(res.Tried) != 2 {
+		t.Fatalf("stripe from %s (tried %v): %v; want done by %s", res.Peer, res.Tried, res.Err, b)
+	}
+	if got := h.r.StripesTotal("reassigned"); got != 1 {
+		t.Fatalf("stripes_total{reassigned} = %v, want 1", got)
+	}
+	if s := h.r.Score(a); s != 0 {
+		t.Fatalf("score of the Busy peer %d", s)
 	}
 }

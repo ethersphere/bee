@@ -106,9 +106,12 @@ type fakeService struct {
 	statusCh chan struct{}
 	// peerGate, by peer, blocks that peer's ReconcileWith calls (counted as
 	// running) until closed; busyN, by peer, is the number of its next
-	// ReconcileWith calls answered rangesync.ErrPeerBusy.
-	peerGate map[string]chan struct{}
-	busyN    map[string]int
+	// ReconcileWith calls answered rangesync.ErrPeerBusy (after
+	// reconcileDelay), localBusyN the number that fail with this node's
+	// fingerprint.ErrBusy.
+	peerGate   map[string]chan struct{}
+	busyN      map[string]int
+	localBusyN map[string]int
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -135,6 +138,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 		statusCh:        make(chan struct{}, 1),
 		peerGate:        make(map[string]chan struct{}),
 		busyN:           make(map[string]int),
+		localBusyN:      make(map[string]int),
 	}
 }
 
@@ -203,21 +207,27 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 			return nil, ctx.Err()
 		}
 	}
-	s.mu.Lock()
-	busy := s.busyN[k] > 0
-	if busy {
-		s.busyN[k]--
-	}
-	s.mu.Unlock()
-	if busy {
-		return nil, rangesync.ErrPeerBusy
-	}
 	if delay > 0 {
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+	s.mu.Lock()
+	busy, localBusy := s.busyN[k] > 0, s.localBusyN[k] > 0
+	switch {
+	case busy:
+		s.busyN[k]--
+	case localBusy:
+		s.localBusyN[k]--
+	}
+	s.mu.Unlock()
+	switch {
+	case busy:
+		return nil, rangesync.ErrPeerBusy
+	case localBusy:
+		return nil, fmt.Errorf("index: %w", fingerprint.ErrBusy)
 	}
 	if ok && len(opts.Open) == 0 && opts.Striper != nil {
 		opts.Striper.Stripe(offer, 1, rangesync.LargeDiff+2)

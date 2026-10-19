@@ -207,6 +207,18 @@ func TestRadiusIncreaseNoFetch(t *testing.T) {
 	n.a.store.SetStorageRadius(1)
 	waitRoot(t, n.a, 1)
 	n.round()
+	// a gossip pass may have had the new root in flight during that round,
+	// which then skipped the sessions (T4.3); with the hourly rounds here,
+	// run one more once the peers have it
+	waitFor(t, "new root sent", func() bool {
+		for _, p := range n.peers {
+			if st, ok := p.svc.LastStatus(n.a.addr); !ok || st.Root.Bits != 1 || n.r.StatusSending(p.addr) {
+				return false
+			}
+		}
+		return true
+	})
+	n.round()
 	waitFor(t, "sessions at the new root", func() bool {
 		o, _ := n.sessions(t)
 		c := 0

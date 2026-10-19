@@ -670,6 +670,8 @@ func TestPeerStateWaiterWoken(t *testing.T) {
 			if got := peerState(h.r, higher); got != reconciler.StateReconciling {
 				t.Fatalf("state %v, want %v", got, reconciler.StateReconciling)
 			}
+			// the round session runs (past its slot and recheck, T4.3)
+			waitFor(t, "round session", func() bool { return len(svc.sessionOpens(higher)) == 1 })
 			done := make(chan reconciler.StripeResult, 1)
 			go func() {
 				done <- h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
