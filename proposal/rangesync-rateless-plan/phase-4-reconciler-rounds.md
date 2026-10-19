@@ -518,6 +518,105 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   - `TestRadiusIncreaseNoFetch` runs one more round once the peers hold the new root, since a
     gossip pass can have it in flight during the test's single round, and the follow-up round is
     deferred by the test's 1 h interval.
+- **(T4.4) Rejected cache in the want set.** `wantset.Set` gains `Reject(id)`, `IsRejected(id)`
+  and `RejectedLen()`, and `Claim` returns the new `Rejected` (checked after `Closed`, before
+  `Held`). `Reject` ends the claim on the ID whichever peer holds it, as `Done` does: the ID
+  includes the stamp, so the verdict holds for every peer. Rejecting again restarts the TTL.
+  Expiry is passive, like the claims'. `MaxRejected = 10000` IDs, the oldest dropped first: ten
+  seconds of the node-wide fetch rate; a larger rejected set takes longer than that to fetch, so
+  the fetch limiter bounds its refetches. Measured about 270 B per ID, so about 2.7 MB at the cap
+  (same as the want set). `New(claimDeadline, rejectTTL)`; its only production call site is
+  `rangesync.New`. In `Fetch`:
+  - a stamp the stamp validator rejects ends with `Reject` (was `Release`);
+  - `ErrOverwriteNewerChunk` ends with `Reject` (was `Done`; this supersedes T1.7's "`Done` after
+    `ErrOverwriteNewerChunk`");
+  - rejected IDs are dropped before the fetch limiter wait, so they cost no tokens.
+
+  `TestFetchInvalidStamp` now expects the rejected ID not to be claimable again (by design).
+- **(T4.4) `FetchWithResult` (T3.2 part 2 carry-over).** Additive rangesync API; `Fetch` wraps it.
+  `FetchResult` has:
+  - `Stored`;
+  - `Undelivered`: the IDs whose claims the fetch released. These were not delivered, delivered
+    invalid, in a Want that failed or timed out, or failed to store on this node;
+  - `Held`: IDs the want set denied because another fetch held the claim;
+  - `Rejected`.
+
+  IDs outside the radius, already in the reserve, refused as `PeerFull`/`Full`, or not reached
+  after an error are in no part. The reconciler uses it through an optional interface
+  (`resultFetcher`, compile-time checked against `*rangesync.Service`), as T4.3 did with
+  `statusSubscriber`. So `reconciler.Service`, its fakes and `pkg/node` are unchanged. Without
+  it, the old rule (every ID not stored is undelivered) applies.
+- **(T4.4) Withholding is judged on undelivered IDs.** A stripe is withheld when
+  `Undelivered > 0` (was `Stored < Listed`). A verifier is scored when `Undelivered` is above the
+  tolerance (was `Diff − Stored`). New fields `StripeResult.Undelivered` and
+  `VerifyResult.Undelivered`. These are no longer blamed:
+  - foreign want-set claims and rejected stamps;
+  - IDs stored meanwhile (pushsync or pullsync);
+  - IDs outside the radius.
+
+  The deliverer check (verifier-Stored above the tolerance) is unchanged.
+  `TestStripeWithheldUndeliveredOnly` and `TestVerifyStripesUndeliveredOnly` fail under the old
+  rules.
+- **(T4.4) `id → peers` retries (§7.8) in `reconciler/wants.go`.** Only denied (`Held`) IDs are
+  recorded, with the peers they were denied to. Only those need another source when the claim's
+  fetch fails. A peer that listed an ID but whose fetch has not reached it yet claims it itself.
+  - *Lifetime.* An ID is kept for `ClaimDeadline` after its first denial ("known this round":
+    after that, the denied peer's next session claims the ID itself), at most `wantset.MaxClaims`
+    IDs.
+  - *Trigger.* `FetchResult.Undelivered`. This includes a stall: the fetch timeout
+    (`ClaimDeadline / 2`) ends a stalled fetch before its claims would expire, so passive expiry
+    needed no hook.
+  - *Choice.* The first peer denied, still connected and not Unsupported, other than the failing
+    one. It is popped, so a retry that fails too goes to the next source.
+  - *Concurrency.* Retries run in `r.wg` goroutines, one retry fetch per peer at a time
+    (`peerLocks`, which now forgets an unused peer's lock). So retries add at most one fetch
+    stream per peer.
+  - *SyncRate.* A catch-up fetch's retries are catch-up fetches (they hold `catchUpFetches`).
+  - *Granularity.* Results come per `Fetch` call, not per Want. A denied ID claimed early in a
+    long fetch is retried when that fetch returns, or, past the lifetime, left to the next round.
+
+  Tests: `TestSREPFetchedOnce` and `TestSREPStallRetry` are §7.8 literally, with real services, the
+  real want set and fetch timeout, and reconciler rounds. B1 stalls, so x comes from B2 after the
+  timeout and y (only B1 has it) waits. The `TestWantSet*` unit tests cover the chain, a peer that
+  left, the window and catch-up. Without the retry call, `TestSREPStallRetry` fails.
+- **(T4.4) Claim-and-stall goes through the single `PeerScorer`; no new code.** rangesync's fetch
+  timeout already reports a stalled holder to `Options.Scorer` (the reconciler) and disconnects
+  it. `TestSREPStallRetry` asserts B1's score is 1. A peer that closes the fetch stream without
+  some listed IDs is not scored: T1.10 treats eviction between session and fetch as honest. Its
+  IDs are retried instead (see Follow-ups).
+- **(T4.4) `want_claims{result}` (T6.0 carry-over).** Two kinds of count:
+  - once per ID offered to the want set: `granted`, `denied` (`wantset.Held`), `peer_full`,
+    `full`, `rejected` (the pre-claim check and `Claim`) and `closed`;
+  - once per granted claim the fetch finds already ended, when a delivery arrives or when it
+    releases the claim: `expired`. That is an expiry, or, after one, another fetch's `Done` or
+    `Reject`. `late` counts those whose chunk was delivered anyway, so it is a subset of
+    `expired`.
+
+  Detection uses the additive `Set.HeldBy(id, peer)`. With the defaults a claim cannot expire
+  during its fetch: `FetchTimeout = ClaimDeadline / 2` bounds each Want from the claim to the
+  last delivery. So `expired` and `late` stay 0 unless the fetch timeout is raised, and
+  intra-`rangesync` duplicates are at most `want_claims{expired}` (AC-D1). A closed service
+  counts nothing. `TestFetchLateDelivery` and `TestFetchExpiredClaim` run with a 50 ms deadline.
+- **(T4.4) Open question 7 (expired-batch skew): what the tests show.** The rejected cache stops
+  per-round refetches. `TestRejectedNotRefetchedEachRound` (real services, reconciler rounds)
+  covers a stale stamp (§7.7, `ErrOverwriteNewerChunk`) and an evicted-batch stamp
+  (`validStamp` fails). Each is fetched once over four rounds; without the cache it is 4 Wants
+  in 4 sessions. The ID is skipped through every peer and fetched once more after `RejectTTL`
+  (`TestFetchRejectedNotRefetched`, `TestFetchRejectTTL`). What the cache cannot do:
+  - *Prevent the first fetch.* Wants carry no batch ID (nil `BatchID`; G2 froze the wire). So a
+    node that evicts an expired batch before its neighbors fetches every chunk of it that a
+    session lists, once, and rejects it. That is up to skew × fetch rate deliveries per early
+    node, for example 60 s × 1000/s = 60k × 4 KiB ≈ 240 MiB.
+  - *Hold a large set.* At the full fetch rate the 10000 IDs fill in 10 s. While the skew lasts,
+    later rounds refetch the oldest rejections, bounded by the fetch limiter.
+  - *Resist a peer.* A peer can flush the cache by delivering invalid stamps for IDs it listed
+    (`validStamp` runs before the CAC check, unpenalized; T1.10).
+  - *Help a lagging node.* A node more than 10 blocks behind on chain events (bee's batch
+    usability threshold) rejects a new batch's chunks for `RejectTTL`.
+
+  The measurement under skew goes to T4.6 (Follow-ups).
+- **(T4.4) Scope notes.** No `pkg/node`, `go.mod` or proto change. No new parser of peer input, so
+  no `followup-fuzzing.md` line. The shared test fake gains `wantIDs` (per-peer want IDs).
 
 ## Follow-ups
 _(sessions append here)_
@@ -687,3 +786,50 @@ _(sessions append here)_
      session ends (gate on the fetch actually starting); `TestStripeLocalBusy` checks only the lower
      time bound.
   4. `stripeClock` and the Busy retry timer (~L404/481) use the real clock, not the injected one.
+- **(T4.4 → T4.6) Open question 7 under skew.** Measure on an N-node simulation with a batch
+  that expires a few blocks apart across nodes:
+  - the wasted deliveries of an early-evicting node;
+  - the `rejected_cache_size` peak against `MaxRejected`;
+  - refetches after the cache overflows.
+
+  Then decide whether Q7's alternative is needed. Either exclude batches within N blocks of
+  expiry from fingerprints and symbols (the Index would need batch expiry), or reject per batch
+  (wants would need batch IDs, frozen by G2). Also check a node that lags more than 10 blocks
+  behind batch creation (its new chunks are rejected for 10 min). Record the finding against Q7.
+- **(T4.4 → T6.0) `want_claims` semantics for AC-D1/AC-D2/AC-D4.** `denied` is `wantset.Held`.
+  `expired` counts every granted claim found ended before its fetch ended it; `late` is the subset
+  delivered anyway. Both are expected to stay 0 with the default fetch timeout. The acceptance
+  text should bound duplicates by `want_claims{result="expired"}`, not by `expired + late`.
+- **(T4.4 → T4.5) Undelivered IDs are not scored (§9 "bogus wants count against the peer").** A
+  peer that lists IDs and closes its fetch stream without them costs a retry or a round, never a
+  score. If testnet shows it, score it above a tolerance, as `verifyStripe` does.
+- **(T4.4 → T4.5) Rejected-cache flush.** A peer can fill the FIFO cache with its own IDs by
+  delivering invalid stamps. `validStamp` runs before the CAC/SOC check and its failure is
+  unpenalized (T1.10). Options: validate CAC/SOC before the stamp, or cap rejections per peer.
+- **(T4.4 → T4.5) Concurrent fetch streams per peer (pre-existing).** Several sources can run
+  fetches to one peer at once:
+  - a round fetch;
+  - responder-side `Wants` fetches, one goroutine per served session, unbounded;
+  - a stripe fetch;
+  - now at most one retry.
+
+  Only `MaxClaimsPerPeer` bounds their streams, and only when Wants are full (1000 / 250 = 4). The
+  holder disconnects over `maxPeerFetchStreams = 4`. A requester-side per-peer stream bound would
+  remove the risk.
+- **(T4.4 → T4.6) Retry granularity.** Results come per `Fetch` call. T4.6 should check whether
+  retries that wait for a long fetch (up to `LargeDiff` / 1000/s ≈ 65 s) delay convergence; a
+  per-Want result callback would retry sooner.
+- **(T4.4) `fetch_skipped_total{reason="held"}` is ambiguous (pre-existing).** It counts both "in
+  the reserve" and the want set's `Held`. `want_claims{result="denied"}` now covers the latter;
+  T4.5 could rename the reserve reason.
+- **(T4.4) Proposal §5.3 memory table.** Add the rejected cache: about 2.7 MB at `MaxRejected`
+  (measured about 270 B per ID), next to the want set's 2.7 MB (T1.7 follow-up).
+- **(T4.4) Tests to run with `-race` on CI.** These ran with `-count=10..20 -cpu=1,2,4` instead.
+  - `pkg/rangesync/wantset`: `TestConcurrentReject`, and `TestConcurrent*` again.
+  - `pkg/rangesync`: `TestFetchWithResult*`, `TestFetchRejected*`, `TestFetchRejectTTL`,
+    `TestFetchLateDelivery`, `TestFetchExpiredClaim`, and `TestFetch*` again (the fetch path
+    changed).
+  - `pkg/rangesync/reconciler`: `TestWantSet*`, `TestSREP*`, `TestRejectedNotRefetchedEachRound`,
+    `TestStripeWithheldUndeliveredOnly`, `TestVerifyStripesUndeliveredOnly`. Re-run, because the
+    fetch path and `peerLocks` changed: `TestTransferStripes*`, `TestVerifyStripes*`,
+    `TestStripe*`, `TestRadius*`, `TestRound*`, `TestPeerState*`.
