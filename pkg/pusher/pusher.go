@@ -61,6 +61,7 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
 	attempts          *attempts
+	parked            *parked
 	smuggler          chan OpChan
 }
 
@@ -94,6 +95,7 @@ func New(
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
+		parked:            newParked(parkDelay, parkTTL),
 		smuggler:          make(chan OpChan),
 	}
 	go p.chunksWorker(startupStabilizer)
@@ -238,6 +240,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 				continue
 			}
 			op.identityAddress = idAddress
+			if !op.Direct && s.parked.waiting(idAddress, op.Chunk.Stamp().BatchID(), time.Now()) {
+				continue
+			}
 			if s.inflight.set(idAddress, op.Chunk.Stamp().BatchID()) {
 				if op.Direct {
 					select {
@@ -276,6 +281,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
+		s.parked.forget(op.identityAddress, op.Chunk.Stamp().BatchID())
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
@@ -295,16 +301,14 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		}
 		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
-	case errors.Is(err, pushsync.ErrShallowReceipt), errors.Is(err, pushsync.ErrOutOfDepthStoring):
+		s.parked.forget(op.identityAddress, op.Chunk.Stamp().BatchID())
+	case errors.Is(err, pushsync.ErrOutOfDepthStoring):
+		return s.parkOrGiveUp(ctx, loggerV1, op, err)
+	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
-		// budget exhausted; report CouldNotSync so the chunk isn't marked delivered
-		s.metrics.TotalCouldNotSync.Inc()
-		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
-			loggerV1.Error(err, "pusher: failed to report sync status")
-			return true, err
-		}
+		return s.parkOrGiveUp(ctx, loggerV1, op, err)
 	case err == nil:
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
@@ -312,11 +316,36 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		}
 		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
+		s.parked.forget(op.identityAddress, op.Chunk.Stamp().BatchID())
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 		return true, err
 	}
 
+	return false, nil
+}
+
+// parkOrGiveUp handles a deferred chunk that no node within its neighborhood
+// took, either at once or after its shallow receipt budget was spent. The
+// first time, the chunk stays in the upload queue and gets one more round
+// after parkDelay, with a fresh budget. The second time, it is given up on.
+func (s *Service) parkOrGiveUp(ctx context.Context, logger log.Logger, op *Op, err error) (bool, error) {
+	batchID := op.Chunk.Stamp().BatchID()
+	s.attempts.delete(op.identityAddress)
+
+	if s.parked.park(op.identityAddress, batchID, time.Now()) {
+		s.metrics.TotalParked.Inc()
+		logger.Debug("chunk not placed, will retry later", "chunk_address", op.Chunk.Address(), "retry_in", parkDelay, "error", err)
+		return false, err
+	}
+
+	s.parked.forget(op.identityAddress, batchID)
+	// report CouldNotSync so the chunk isn't marked delivered
+	s.metrics.TotalCouldNotSync.Inc()
+	if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
+		logger.Error(err, "pusher: failed to report sync status")
+		return true, err
+	}
 	return false, nil
 }
 

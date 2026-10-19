@@ -13,6 +13,7 @@ type metrics struct {
 	TotalToPush       prometheus.Counter
 	TotalSynced       prometheus.Counter
 	TotalCouldNotSync prometheus.Counter
+	TotalParked       prometheus.Counter
 	TotalErrors       prometheus.Counter
 	MarkAndSweepTime  prometheus.Histogram
 	SyncTime          prometheus.Histogram
@@ -40,6 +41,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_could_not_sync",
 			Help:      "Total chunks abandoned after exhausting retries with no valid receipt (shallow receipt or no peer in the correct neighbourhood).",
+		}),
+		TotalParked: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "total_parked",
+			Help:      "Total deferred chunks left in the upload queue for one more round after they failed to be placed.",
 		}),
 		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
