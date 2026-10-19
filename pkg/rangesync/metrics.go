@@ -23,6 +23,9 @@ type metrics struct {
 	// StreamLimitExceeded counts peers disconnected for opening too many
 	// concurrent streams.
 	StreamLimitExceeded prometheus.Counter
+	// StatusRateLimited counts received statuses dropped because the peer
+	// sent them over its rate.
+	StatusRateLimited prometheus.Counter
 	// FetchSkipped counts IDs Fetch did not request, by reason.
 	FetchSkipped *prometheus.CounterVec
 	// Delivered counts fetched chunks that were stored.
@@ -101,6 +104,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "stream_limit_exceeded_total",
 			Help:      "Peers disconnected for exceeding the concurrent stream limit.",
+		}),
+		StatusRateLimited: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "status_rate_limited_total",
+			Help:      "Received statuses dropped because the peer sent them over its rate.",
 		}),
 		FetchSkipped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: m.Namespace,

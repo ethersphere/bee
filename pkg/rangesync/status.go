@@ -20,6 +20,10 @@ import (
 // statusTimeout bounds the exchange of one Status.
 const statusTimeout = 10 * time.Second
 
+// errStatusRateLimit is returned by the status handler for a Status the peer
+// sent over its rate (PeerStatusBurst, PeerStatusInterval).
+var errStatusRateLimit = errors.New("rangesync: status rate limit exceeded")
+
 // LocalStatus returns this node's Status: the root and summary of the index
 // and its leaf bits, with fingerprint.DefaultMapperID. It returns an error
 // wrapping fingerprint.ErrBusy until the index is built.
@@ -70,8 +74,16 @@ func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error
 	return nil
 }
 
-// LastStatus returns the last Status received from peer, if any. It is
-// forgotten when the peer disconnects.
+// SubscribeRootChange returns a channel that receives a value after this
+// node's root summary may have changed, debounced to StatusMinInterval (see
+// fingerprint.Index.SubscribeRootChange). The reconciler pushes its Status
+// on it.
+func (s *Service) SubscribeRootChange() (c <-chan struct{}, unsubscribe func()) {
+	return s.index.SubscribeRootChange()
+}
+
+// LastStatus returns the last Status received from peer, if any. It is kept
+// in memory only and forgotten when the peer disconnects.
 func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
@@ -82,13 +94,25 @@ func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
 // handleStatus serves the status stream: it reads one Status and records it
 // as the peer's last status. An invalid Status disconnects the peer. A Status
 // whose Mapping differs from this node's is recorded and counted
-// (mapping_mismatch_total); sessions with that peer are refused.
+// (mapping_mismatch_total); sessions with that peer are refused. A Status
+// over the peer's rate (PeerStatusBurst, then one per PeerStatusInterval) is
+// dropped unread and counted (status_rate_limited_total): the stream is
+// reset, so the sender sees a failed send and retries later, and the peer is
+// neither disconnected nor scored.
 func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	release, ok := s.statusStreams.acquire(p.Address)
 	if !ok {
 		return s.streamLimitExceeded(p.Address, stream, StatusStreamName, maxPeerStatusStreams)
 	}
 	defer release()
+	// As with the session limiter, this can recreate the entry of a peer
+	// that just disconnected; it is cleared on its next disconnect.
+	if !s.statusLimiter.Allow(p.Address.ByteString(), 1) {
+		_ = stream.Reset()
+		s.metrics.StatusRateLimited.Inc()
+		s.logger.Debug("peer status over the rate, dropped", "peer_address", p.Address)
+		return errStatusRateLimit
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()

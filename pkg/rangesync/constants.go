@@ -82,6 +82,10 @@ const (
 	// back; after it, one per PeerSessionInterval. Sessions over the rate
 	// are answered with Busy (proposal §9, Status spam).
 	PeerSessionBurst = 4
+	// PeerStatusBurst is the number of Statuses a peer may send back to
+	// back; after it, one per PeerStatusInterval. Statuses over the rate are
+	// dropped unread (proposal §9, Status spam).
+	PeerStatusBurst = 4
 )
 
 // Scheduling constants (proposal §6.1, §8.2, §8.4).
@@ -101,6 +105,11 @@ const (
 	// session of PeerSessionBurst: half the shortest round interval, so an
 	// honest initiator never hits it.
 	PeerSessionInterval = MinRoundInterval / 2
+	// PeerStatusInterval is the interval at which a peer regains one Status
+	// of PeerStatusBurst: half of StatusMinInterval, so an honest peer,
+	// which sends a neighbor at most one Status per StatusMinInterval apart
+	// from the first contact and a radius change, never hits it.
+	PeerStatusInterval = StatusMinInterval / 2
 
 	// ClaimDeadline is how long a claimed ID stays in the want set before it
 	// can be claimed through another peer.

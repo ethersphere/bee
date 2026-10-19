@@ -29,6 +29,12 @@ func (s *Service) DecodeCorruptions() float64 {
 
 const MaxPeerReconcileStreams = maxPeerReconcileStreams
 
+// StatusRateLimited returns the value of the status_rate_limited_total
+// metric.
+func (s *Service) StatusRateLimited() float64 {
+	return counterValue(s.metrics.StatusRateLimited)
+}
+
 // MappingMismatches returns the value of the mapping_mismatch_total metric.
 func (s *Service) MappingMismatches() float64 {
 	var m dto.Metric

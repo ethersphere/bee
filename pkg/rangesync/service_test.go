@@ -485,6 +485,86 @@ func TestMappingMismatch(t *testing.T) {
 	_ = s.FullClose()
 }
 
+// TestStatusRateLimit: a peer that sends Statuses faster than
+// PeerStatusBurst, then one per PeerStatusInterval, has the excess dropped
+// unread (proposal §9, status spam): not recorded, the stream reset, the
+// peer neither disconnected nor scored. A disconnect clears its limit.
+func TestStatusRateLimit(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t)
+	b.start(t)
+	p := newRawPeer(t, b)
+	withCount := func(n uint64) *pb.Status {
+		return rangesync.EncodeStatus(rangesync.Status{
+			Root:     fingerprint.NewRange(swarm.ZeroAddress, 0),
+			Summary:  fingerprint.Summary{Count: n},
+			LeafBits: serviceLeafBits,
+			Mapping:  fingerprint.DefaultMapperID,
+		})
+	}
+	lastCount := func() uint64 {
+		t.Helper()
+		st, ok := b.svc.LastStatus(p.addr)
+		if !ok {
+			t.Fatal("no status")
+		}
+		return st.Summary.Count
+	}
+
+	// the burst is recorded, back to back
+	for i := range uint64(rangesync.PeerStatusBurst) {
+		if err := p.sendStatus(t, withCount(i+1)); err != nil {
+			t.Fatalf("status %d: %v", i+1, err)
+		}
+		if got := lastCount(); got != i+1 {
+			t.Fatalf("status %d: recorded count %d", i+1, got)
+		}
+	}
+
+	// the next one is over the rate: the handler resets the stream, which
+	// may beat the write, so write errors are not checked
+	s := p.open(t, rangesync.StatusStreamName)
+	_ = protobuf.NewWriter(s).WriteMsg(withCount(100))
+	_ = s.FullClose()
+	records := p.records(t, rangesync.StatusStreamName)
+	err := records[len(records)-1].Err()
+	if err == nil {
+		t.Fatal("status over the rate accepted")
+	}
+	var de *p2p.DisconnectError
+	if errors.As(err, &de) {
+		t.Fatalf("peer disconnected: %v", err)
+	}
+	if p.resets.Load() == 0 {
+		t.Fatal("stream not reset")
+	}
+	if got := lastCount(); got != rangesync.PeerStatusBurst {
+		t.Fatalf("recorded count %d after a status over the rate, want %d", got, rangesync.PeerStatusBurst)
+	}
+	if fails, _ := b.scorer.get(p.addr); len(fails) != 0 {
+		t.Fatalf("peer scored: %v", fails)
+	}
+	if got := b.svc.StatusRateLimited(); got != 1 {
+		t.Fatalf("status_rate_limited_total %v, want 1", got)
+	}
+
+	// a disconnect forgets the peer's status (kept in memory only) and
+	// clears its limit
+	if err := b.svc.Protocol().DisconnectIn(p2p.Peer{Address: p.addr}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.svc.LastStatus(p.addr); ok {
+		t.Fatal("status kept after a disconnect")
+	}
+	if err := p.sendStatus(t, withCount(200)); err != nil {
+		t.Fatalf("status after a reconnect: %v", err)
+	}
+	if got := lastCount(); got != 200 {
+		t.Fatalf("recorded count %d after a reconnect, want 200", got)
+	}
+}
+
 func TestReconcileEqual(t *testing.T) {
 	t.Parallel()
 
