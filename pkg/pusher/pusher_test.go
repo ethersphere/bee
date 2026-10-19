@@ -863,3 +863,47 @@ func createPusher(
 
 	return pusherService
 }
+
+// TestDirectOutOfDepthResetsAttempts tests that a direct chunk which ends with
+// ErrOutOfDepthStoring gets the full retry budget when it is pushed again.
+func TestDirectOutOfDepthResetsAttempts(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		if calls.Add(1) == 2 {
+			return nil, pushsync.ErrOutOfDepthStoring
+		}
+		return &pushsync.Receipt{Address: chunk.Address()}, pushsync.ErrShallowReceipt
+	})
+
+	storer := &mockStorer{chunks: make(chan swarm.Chunk)}
+	pusherSvc := createPusher(t, storer, pushSyncService, defaultMockBatchStore, defaultRetryCount)
+
+	newFeed := make(chan *pusher.Op)
+	pusherSvc.AddFeed(newFeed)
+
+	chunk := testingc.GenerateTestRandomChunk()
+	push := func() error {
+		errC := make(chan error, 1)
+		newFeed <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
+		return <-errC
+	}
+
+	if err := push(); !errors.Is(err, pushsync.ErrShallowReceipt) {
+		t.Fatalf("push 1: got %v, want %v", err, pushsync.ErrShallowReceipt)
+	}
+	if err := push(); !errors.Is(err, pusher.ErrCouldNotSync) {
+		t.Fatalf("push 2: got %v, want %v", err, pusher.ErrCouldNotSync)
+	}
+
+	// the next round has the full budget again
+	for i := 1; i < defaultRetryCount; i++ {
+		if err := push(); !errors.Is(err, pushsync.ErrShallowReceipt) {
+			t.Fatalf("round 2, push %d: got %v, want %v", i, err, pushsync.ErrShallowReceipt)
+		}
+	}
+	if err := push(); !errors.Is(err, pusher.ErrCouldNotSync) {
+		t.Fatalf("round 2, last push: got %v, want %v", err, pusher.ErrCouldNotSync)
+	}
+}

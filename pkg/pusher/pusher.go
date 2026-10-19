@@ -370,6 +370,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		s.metrics.TotalCouldNotSync.Inc()
 		loggerV1.Debug("direct upload: no node within the chunk's neighborhood took it", "chunk_address", op.Chunk.Address())
 		err = ErrCouldNotSync
+		s.attempts.delete(op.identityAddress)
 	case err == nil:
 		s.metrics.TotalSynced.Inc()
 		s.attempts.delete(op.identityAddress)
