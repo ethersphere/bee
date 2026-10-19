@@ -396,6 +396,66 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   - one Message each way.
 
   `Local.Symbols` session cancellation was not cheap; see Follow-ups.
+- **(T4.3 fix, M1) Stripes take at most `MaxStripeSessions = MaxInitiatedSessions / 2 = 4` slots,
+  and their timeout starts once they have them.** A stripe session holds its slot for the whole
+  `ReconcileWith`, which the fetch queue backpressures for up to `sessionTimeout` (10 min). Before
+  this fix, eight stripes could hold every initiated slot for that long, round sessions waited in
+  Reconciling, and a later wave of stripes lost its 15-min timeout while queuing. Now:
+  - `transferStripe` takes a stripe slot, then a session slot, and only then starts the stripe
+    timeout. Waiting for the peer (`acquireStripe`) still counts towards the timeout, as T4.2
+    decided.
+  - It holds both slots across its Busy retries and frees the session slot as soon as the session
+    ends, before draining the fetch.
+  - Round sessions take only a session slot, so at least four always remain for them.
+  - Stripes are bounded by the global fetch limiter (1000 chunks/s) anyway, so four in parallel
+    lose little throughput. The bootstrap of an empty node in an N = 17 neighborhood runs its 16
+    stripes in four waves.
+- **(T4.3 fix, M2) The interval adapts on comparable digests and on what sessions found.** The
+  digest of a peer whose root differs from this node's covers another range. Two eligible peers
+  with nested roots (radius off by one) always "differed", which kept the interval at 5 s. A
+  round now counts as finding differences when either:
+  - a peer with the *same* root has a differing digest, or
+  - a session since the last round found differences: a completed initiated session with wants or
+    ranges for the Striper, or wants a peer listed in a session this node served (`foundDiff`).
+
+  A nested-root pair in sync therefore lets the interval grow to 30 s
+  (`TestRoundIntervalNestedRoots`). Such a peer still gets a session every round, since the
+  digests cannot tell sync. With the interval at its cap that is once per 30 s, plus rounds
+  triggered by its Status changes. Comparing session-root summaries stays deferred (Follow-ups):
+  it would only help the side with the wider root, because the peer's Status carries only its
+  own root's summary.
+- **(T4.3 fix, L1) A local `ErrPeerSessionLimit` never backs off, and a takeover answered Busy
+  waits for the initiator again.** This supersedes the T4.2 fix entry's "the backoff counts
+  `ErrPeerSessionLimit`". Round and stripe sessions of a followed peer exclude each other through
+  its state machine, so a taken slot on this node means the peer runs its own session with this
+  node, and is alive. In either role the session goes back to Idle with no backoff
+  (`eventAborted`); a takeover also restarts its wait. A takeover answered `ErrPeerBusy` does the
+  same: a peer that answers is not the unresponsive initiator the takeover covers. In the
+  simultaneous open, both responders answer Busy:
+  - the takeover side yields;
+  - the initiator counts a first Busy, which the next round retries with no wait, so it keeps the
+    initiator role.
+
+  `TestSessionCollision` covers both roles and both orders. The T4.2 tests
+  `TestPeerStateSessionBackoff` and `TestPeerStateLocalCauseNoBackoff` now use `ErrPeerBusy` for
+  the peer answers that back off.
+- **(T4.3 fix, L2) A session rechecks the round's decision once it has its slot.** It may have
+  waited minutes. `recheckSession` requires, under `r.mu`:
+  - the entry is the peer's current one and still Reconciling;
+  - this node's root is unchanged since the round and has reached the peer;
+  - the peer's Status is known and its digest still differs;
+  - for a takeover, the initiator ran no session with this node since the decision.
+
+  Otherwise the session frees its slot and ends with `errStaleSession`: no backoff, the guard
+  disarmed until the next round, and a new `sessions_total{result="stale"}`. This closes the
+  moved-root race for waiting sessions and keeps the sessions of stale entries from piling up on
+  peer flaps.
+- **(T4.3 fix, L3) Test determinism.** New `Options.Jitter` (the takeover jitter fraction,
+  `rand.Float64` if nil); the takeover tests check the exact deadline with a fixed jitter. The
+  round timer now runs on `Options.After` unless `Options.RoundInterval` fixes the interval. That
+  option keeps the real clock so the frozen-clock tests that set it still get timed rounds. A
+  started reconciler with the adaptive interval (`newScheduledHarness`) therefore gets no round
+  the fake clock does not schedule.
 
 ## Follow-ups
 _(sessions append here)_
@@ -515,3 +575,16 @@ _(sessions append here)_
   tokens for served sessions. In a neighborhood of more than 9 differing peers, the lowest node
   runs its sessions in several waves within a round. T4.6's N = 17 simulation should check the
   convergence time against `RoundInterval`.
+- **(T4.3 fix) T4.6: check the stripe/round split.** In addition to the initiated-session share
+  above, stripes now take at most `MaxStripeSessions = 4` of the 8 initiated slots. An empty node
+  in an N = 17 neighborhood bootstraps its 16 stripes in four waves, each within its own stripe
+  timeout. T4.6 should measure the bootstrap time against the fetch limiter and the session
+  timeout, and adjust the split if the waves dominate.
+- **(T4.3 fix) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4` instead.
+  - `pkg/rangesync/reconciler`: `TestStripeSessionCap`, `TestStripeTimeoutAfterSlot`,
+    `TestRoundIntervalNestedRoots`, `TestSessionCollision`, `TestSessionRecheckAfterSlot`,
+    `TestStatusChangeFloor`, `TestRoundSessionCap` (second round while waiting),
+    `TestStripePlanAvoidsBackoff` (fallback and verifier).
+  - Re-run with `-race`, because `transferStripe`, `session` and `loop` changed again:
+    `TestTransferStripes*`, `TestVerifyStripes*`, `TestRadius*`, `TestPeerState*`, `TestRound*`,
+    `TestStatusChange*`, `TestRootChangeTriggersRound`.
