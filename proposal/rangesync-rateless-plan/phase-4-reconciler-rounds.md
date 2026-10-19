@@ -133,6 +133,47 @@ state machine + scheduler; keep the `storer.Syncer` contract (T1.11, T3.5) uncha
 
 ## Decisions log
 _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
+- **(T4.1) One Status send path with a per-peer schedule.** The round and a new gossip loop
+  (`reconciler/gossip.go`, woken by `Service.SubscribeRootChange`, by rounds and by a timer) both
+  pick due peers through `pickDueLocked`/`statusDue` under `r.mu`. Picking records the send before
+  it runs, so the two paths never send the same change twice. The round picks in the critical
+  section that adds new peers, so first contacts are always its own and its evaluation (start-up
+  guard, sessions) sees the outcome. Per peer:
+  - first contact, and a moved root (radius change): at once, to every `rangesync` peer. This
+    keeps T3.4's send before the round's sessions, so it bypasses `StatusMinInterval`. Radius
+    changes are rare.
+  - a changed root summary: at most every `StatusMinInterval`, deduplicated against the last
+    Status sent, so the Index signal that follows a radius-change round sends nothing.
+  - heartbeat: `StatusMaxInterval` after the last send.
+  - a failed send, or a "resend" (a round has no `LastStatus` of the peer, which may have lost
+    ours on a quick reconnect): after `StatusMinInterval`.
+
+  Rounds no longer send every peer a Status every `RoundInterval`: `round(full)` is now `round()`,
+  and `trackRootLocked` no longer returns `changed`. Additive API: `reconciler.Service.SubscribeRootChange`
+  (`*rangesync.Service` delegates to its Index), `reconciler.Options.After` (fake timers in tests),
+  and the constants `reconciler.StatusMinInterval` and `reconciler.StatusMaxInterval`. `pkg/node`
+  is unchanged.
+- **(T4.1) The Index debounce stays at `StatusMinInterval`.** It only coalesces the gossip loop's
+  wake-ups. The per-peer schedule bounds the sends on its own, so correctness does not depend on
+  the Index's real-time debounce, and the tests use a fake clock.
+- **(T4.1) Summary pushes and heartbeats go to eligible neighbors only** (§6.1, §7.1). These are
+  peers whose `LastStatus` passes `isEligible`, plus peers whose Status is unknown. A peer with a
+  disjoint root or another Mapping gets only the first contact and moved roots. Before T4.1, every
+  connected `rangesync` peer got a Status every round. Eligibility is symmetric, and the side whose
+  root moves sends to everyone, so a pair that becomes eligible finds out at once.
+- **(T4.1) An inbound Status over the rate is dropped. It is not a violation and is not scored.**
+  `PeerStatusBurst = 4`, then one per `PeerStatusInterval = StatusMinInterval / 2`. An honest
+  sender sends one peer at most one Status per 5 s, apart from first contact and radius changes.
+  Over the rate, `handleStatus` resets the stream before reading, records nothing, and counts
+  `status_rate_limited_total`. Reasons not to disconnect or score:
+  - `PeerScorer.Fail` implies a disconnect, and a reconnect race could trip an honest peer.
+  - A Status does not start a session; sessions have their own limits.
+
+  The reset makes the sender's `SendStatus` fail, so the sender retries after `StatusMinInterval`.
+  The limiter is a `ratelimit.Limiter`, as for sessions: it is cleared on disconnect and never
+  pruned otherwise.
+- **(T4.1) The flaky `TestIndexSubscribeRootChange/debounced` is left as is.** T4.1 does not touch
+  `pkg/rangesync/fingerprint` and does not rely on the debounce for correctness (see above).
 
 ## Follow-ups
 _(sessions append here)_
@@ -144,3 +185,26 @@ _(sessions append here)_
   peer). AC-D1/AC-D2 bound intra-`rangesync` duplicates by expired claims and need `late` to tell
   them apart from pushsync races in `cross_protocol_duplicates_total`. If `late` needs the fetch
   path (T1.10) to know whether its claim is still held, extend the T1.7 want-set API additively.
+- **(T4.1) Tests to run with `-race` on CI.** This host has no C compiler; these ran with
+  `-count=10..20 -cpu=1,2,4` instead.
+  - `pkg/rangesync/reconciler`: `TestStatusGossip*` (especially `TestStatusGossipLoop`),
+    `TestRadius*`, `TestStartupGuard*`, `TestSyncRate*`, `TestPeerJoinLeave`, `TestClose`.
+  - `pkg/rangesync`: `TestStatusRateLimit`, `TestStatus*`.
+- **(T4.1) A received Status does not wake the reconciler (T4.3).** When a peer becomes eligible
+  from its own side (its root moved), we send it our next Status only at the next gossip pass
+  (≤ `StatusMaxInterval`). T4.3's scheduler reacts to digests and could add a status-received hook
+  in `rangesync` (additive) that wakes the gossip loop and the round.
+- **(T4.1) Slow or failing peers in a gossip pass (T4.2).** A pass sends synchronously (≤ 16 at
+  once, `statusTimeout` 10 s each). A black-holed peer delays the pass's other sends by up to 10 s,
+  and a failing peer is retried every `StatusMinInterval`. T4.2's per-peer backoff is the place to
+  back off repeated Status failures.
+- **(T4.1) Repeated Status spam is never escalated (T4.2).** Statuses over the rate are only
+  dropped. If testnet shows peers persistently over the rate, escalate to `violation` with the
+  failure score (for example, N drops within a window).
+- **(T4.1) Moved-root race (T4.3).** If the gossip loop is sending a moved root while a round
+  evaluates, the round can start a session before the peer has the new Status. The responder
+  refuses (scope error or Busy), and the next round retries. This is benign, but T4.3's scheduler
+  could wait for in-flight Status sends before it starts sessions.
+- **(T4.1) `TestIndexSubscribeRootChange` data race (fingerprint).** Its parallel subtests
+  ("immediate" and "debounced") share one `*rand.Rand`. Give each subtest its own when the flaky
+  debounced wait gets fixed (phase-2 follow-up).
