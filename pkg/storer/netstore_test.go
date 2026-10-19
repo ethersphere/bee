@@ -616,11 +616,22 @@ func TestDirectUploadRequeue(t *testing.T) {
 	t.Run("full queue oldest fails again", func(t *testing.T) {
 		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
-			chunks := chunktesting.GenerateTestRandomChunks(storer.DirectUploadRequeueLimit + 1)
+			chunks := chunktesting.GenerateTestRandomChunks(storer.DirectUploadRequeueLimit + 2)
+			next := chunks[len(chunks)-1]
+			chunks = chunks[:len(chunks)-1]
 			withScriptedPusher(t, failFirst(chunks, chunks[:1]), func(lstore *storer.DB, p *scriptedPusher) {
 				session := lstore.DirectUpload()
 				for _, ch := range chunks {
 					put(t, session, ch)
+				}
+
+				// the upload has failed: the next chunk is not pushed
+				if err := session.Put(context.Background(), next); !errors.Is(err, pusher.ErrCouldNotSync) {
+					t.Fatalf("session.Put(next): got %v, want %v", err, pusher.ErrCouldNotSync)
+				}
+				synctest.Wait()
+				if got := p.count(next.Address()); got != 0 {
+					t.Fatalf("next chunk: got %d pushes, want 0", got)
 				}
 
 				if err := session.Done(swarm.ZeroAddress); !errors.Is(err, pusher.ErrCouldNotSync) {

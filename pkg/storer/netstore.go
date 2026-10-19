@@ -145,9 +145,9 @@ func (db *DB) pushChunk(ctx, egCtx context.Context, ch swarm.Chunk) (err error) 
 				return ErrDBQuit
 			case err := <-op.Err:
 				if errors.Is(err, pushsync.ErrShallowReceipt) {
-					logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+					logger.Debug("direct upload: shallow receipt received, retrying", "chunk_address", ch.Address())
 				} else if errors.Is(err, topology.ErrNotFound) {
-					logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+					logger.Debug("direct upload: no peers available, retrying", "chunk_address", ch.Address())
 					// wait for peers instead of resubmitting in a tight loop
 					select {
 					case <-time.After(directUploadRetryDelay):

@@ -1514,11 +1514,13 @@ func TestOriginInflightWaitCancelled(t *testing.T) {
 		time.AfterFunc(6*time.Second, cancel)
 
 		start := time.Now()
-		if _, err := psOrigin.PushChunkToClosest(ctx, chunk); err == nil {
-			t.Fatal("got nil error, want the push to end")
+		if _, err := psOrigin.PushChunkToClosest(ctx, chunk); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("got %v, want %v", err, pushsync.ErrNoPush)
 		}
-		if elapsed := time.Since(start); elapsed >= delay {
-			t.Fatalf("returned after %v, want before the storer answers at %v", elapsed, delay)
+		// the origin was still waiting when the context was cancelled, and
+		// it did not wait for the storer
+		if elapsed := time.Since(start); elapsed < 6*time.Second || elapsed >= delay {
+			t.Fatalf("returned after %v, want at the cancel (6s), before the storer answers at %v", elapsed, delay)
 		}
 
 		// let the storer answer, so the push still in flight can end
