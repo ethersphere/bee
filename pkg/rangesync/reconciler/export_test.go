@@ -37,9 +37,20 @@ func (r *Reconciler) StripesTotal(result string) float64 {
 }
 
 // MaxStripeReassign is maxStripeReassign.
-const MaxStripeReassign = maxStripeReassign
+const (
+	MaxStripeReassign = maxStripeReassign
+	MaxStripeRestarts = maxStripeRestarts
+	MaxStripeRegistry = maxStripeRegistry
+)
 
 // EnqueueStripes registers ranges for the stripe worker.
 func (r *Reconciler) EnqueueStripes(ranges []fingerprint.Range) bool {
-	return r.enqueueStripes(ranges, nil)
+	return r.enqueueStripes(ranges)
+}
+
+// HoldStripe registers rg as in flight without queuing it for the worker.
+func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stripeRegistry = append(r.stripeRegistry, rg)
 }

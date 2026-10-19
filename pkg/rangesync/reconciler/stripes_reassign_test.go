@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -285,4 +286,153 @@ func TestRoundBootstrapStripes(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestTransferStripesTrickle bounds the same-peer restarts of a peer that
+// stores a few chunks per attempt and then fails.
+func TestTransferStripesTrickle(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(0))
+	svc.wants[higher.ByteString()] = 1
+	svc.sessionErrAfter[higher.ByteString()] = context.DeadlineExceeded
+	svc.sessionErrSticky = true
+	r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+	if res.Err == nil {
+		t.Fatal("trickling stripe done")
+	}
+	if n := len(svc.sessionOpens(higher)); n != reconciler.MaxStripeRestarts+1 {
+		t.Fatalf("%d sessions, want %d", n, reconciler.MaxStripeRestarts+1)
+	}
+}
+
+// TestTransferStripesPartialShortfall shows the cost of a false withholding
+// positive (IDs listed but not stored, e.g. stamp rejects): the stripe is
+// reassigned at most MaxStripeReassign times.
+func TestTransferStripesPartialShortfall(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(0))
+	ps := make([]swarm.Address, 0, reconciler.MaxStripeReassign+3)
+	for i := range reconciler.MaxStripeReassign + 3 {
+		p := addr(0xe0, byte(i))
+		ps = append(ps, p)
+		svc.wants[p.ByteString()] = 3
+		svc.withholdN[p.ByteString()] = 1
+	}
+	r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: ps}})[0]
+	if !errors.Is(res.Err, reconciler.ErrStripeWithheld) {
+		t.Fatalf("got %v, want %v", res.Err, reconciler.ErrStripeWithheld)
+	}
+	sessions := 0
+	for _, p := range ps {
+		sessions += len(svc.sessionOpens(p))
+	}
+	if sessions != reconciler.MaxStripeReassign+1 {
+		t.Fatalf("%d sessions, want %d", sessions, reconciler.MaxStripeReassign+1)
+	}
+}
+
+// TestEnqueueStripesBound drops ranges past MaxStripeRegistry.
+func TestEnqueueStripesBound(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(self, nil, newFakeService(status(0)), log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	for i := range reconciler.MaxStripeRegistry {
+		if !r.EnqueueStripes([]fingerprint.Range{root.Child(11, uint64(i))}) {
+			t.Fatalf("range %d not registered", i)
+		}
+	}
+	if r.EnqueueStripes([]fingerprint.Range{root.Child(11, reconciler.MaxStripeRegistry)}) {
+		t.Fatal("range past the bound registered")
+	}
+	if got := r.StripesTotal("dropped"); got != 1 {
+		t.Fatalf("stripes dropped %v, want 1", got)
+	}
+}
+
+// rootSessions reports whether a session over the whole root (no Open) ran
+// with any of peers.
+func rootSessions(svc *fakeService, peers ...swarm.Address) bool {
+	for _, p := range peers {
+		for _, open := range svc.sessionOpens(p) {
+			if len(open) == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestRoundBootstrapOverlap: when the root overlaps a range already in a
+// striped transfer, the round does not bootstrap; it runs the per-peer
+// sessions, and the start-up guard waits for them.
+func TestRoundBootstrapOverlap(t *testing.T) {
+	t.Parallel()
+
+	other := addr(0xf1, 0)
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	svc := newFakeService(status(0))
+	svc.remote[higher.ByteString()] = status(5)
+	svc.remote[other.ByteString()] = status(5)
+	svc.reconcileGate = make(chan struct{}) // every session blocks
+	topo := &fakeTopology{peers: []swarm.Address{higher, other}}
+	r := reconciler.New(self, topo, svc, log.Noop, reconciler.Options{RoundInterval: 10 * time.Millisecond})
+	t.Cleanup(func() {
+		close(svc.reconcileGate)
+		_ = r.Close()
+	})
+	r.HoldStripe(root.Child(1, 0)) // in flight
+	r.Start(context.Background())
+
+	waitFor(t, "root session", func() bool { return rootSessions(svc, higher, other) })
+	settle()
+	for _, p := range []swarm.Address{higher, other} {
+		for _, open := range svc.sessionOpens(p) {
+			if len(open) != 0 {
+				t.Fatalf("stripe session %v with %s", open, p)
+			}
+		}
+	}
+	if r.GuardReleased() {
+		t.Fatal("guard released with no transfer making progress")
+	}
+}
+
+// TestRoundBootstrapFailedResumesSessions: after a bootstrap transfer that
+// did not complete, the per-peer sessions run.
+func TestRoundBootstrapFailedResumesSessions(t *testing.T) {
+	t.Parallel()
+
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(0))
+	for _, p := range []swarm.Address{higher, other} {
+		svc.remote[p.ByteString()] = status(5)
+		svc.wants[p.ByteString()] = 3
+		svc.withhold[p.ByteString()] = true
+	}
+	newHarness(t, svc, higher, other)
+
+	waitFor(t, "stripe session", func() bool {
+		for _, p := range []swarm.Address{higher, other} {
+			for _, open := range svc.sessionOpens(p) {
+				if len(open) == 1 {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	waitFor(t, "root session", func() bool { return rootSessions(svc, higher, other) })
 }

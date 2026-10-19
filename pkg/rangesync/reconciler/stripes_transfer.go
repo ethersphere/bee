@@ -34,12 +34,20 @@ const (
 	// maxStripeReassign bounds the reassignments of one stripe to another
 	// peer after a failure, timeout or withholding without progress.
 	maxStripeReassign = 3
+	// maxStripeRestarts bounds the restarts of one stripe with the same
+	// peer after attempts that failed with progress; past it the stripe is
+	// reassigned as if the attempt made no progress.
+	maxStripeRestarts = 8
+	// maxStripeRegistry bounds the ranges queued for or in a striped
+	// transfer; a range past it is dropped.
+	maxStripeRegistry = 1024
 )
 
 // Stripe transfer results, the values of the stripes_total result label.
 const (
 	stripeDone       = "done"
 	stripeReassigned = "reassigned"
+	stripeDropped    = "dropped"
 	stripeTimeout    = "timeout"
 )
 
@@ -183,7 +191,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 	tried := make(map[string]bool)
 	next := st.Peers
 	peer, ok := r.nextStripePeer(st.Range, &next, tried)
-	for reassigns := 0; ok; {
+	for reassigns, restarts := 0, 0; ok; {
 		tried[peer.ByteString()] = true
 		release, err := locks.acquire(ctx, peer)
 		if err != nil {
@@ -205,7 +213,8 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 			return total
 		case ctx.Err() != nil:
 			return total
-		case res.Err != nil && res.Stored > 0:
+		case res.Err != nil && res.Stored > 0 && restarts < maxStripeRestarts:
+			restarts++
 			continue // progress: restart with the same peer
 		case reassigns == maxStripeReassign:
 			ok = false
@@ -213,7 +222,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		}
 		r.logger.Debug("stripe reassigned", "range", st.Range, "peer_address", peer, "error", total.Err)
 		if peer, ok = r.nextStripePeer(st.Range, &next, tried); ok {
-			reassigns++
+			reassigns, restarts = reassigns+1, 0
 			r.metrics.Stripes.WithLabelValues(stripeReassigned).Inc()
 		}
 	}
@@ -318,38 +327,54 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 }
 
 // stripeJob is a range queued for a striped transfer; started, if not nil,
-// is called once when its transfer has its first wants or ends.
+// is called once when its transfer has its first wants or ends; bootstrap
+// marks the bootstrap transfer of the root.
 type stripeJob struct {
-	rg      fingerprint.Range
-	started func()
+	rg        fingerprint.Range
+	started   func()
+	bootstrap bool
 }
 
 // enqueueStripes registers ranges for a striped transfer by the stripe
-// worker. A range that overlaps a registered (queued or in-flight) range is
-// not registered, so that it is not transferred twice; what it misses
-// shows up again in a later round. It reports whether every range was
-// registered; started, if not nil, is called once for the first registered
-// range, else not at all.
-func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range, started func()) bool {
+// worker (registerStripeLocked) and reports whether every range was
+// registered.
+func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	all := true
 	for _, rg := range ranges {
-		if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool {
-			return o.ContainsRange(rg) || rg.ContainsRange(o)
-		}) {
+		if !r.registerStripeLocked(stripeJob{rg: rg}) {
 			all = false
-			continue
 		}
-		r.stripeRegistry = append(r.stripeRegistry, rg)
-		r.stripeQueue = append(r.stripeQueue, stripeJob{rg: rg, started: started})
-		started = nil
 	}
+	return all
+}
+
+// registerStripeLocked queues job for the stripe worker. A range that
+// overlaps a registered (queued or in-flight) range is not registered, so
+// that it is not transferred twice; what it misses shows up again in a
+// later round. Past maxStripeRegistry ranges it is dropped (counted as
+// stripes_total{dropped}). It reports whether job was registered.
+func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
+	rg := fingerprint.NewRange(job.rg.Prefix, job.rg.Bits)
+	if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool {
+		return o.ContainsRange(rg) || rg.ContainsRange(o)
+	}) {
+		return false
+	}
+	if len(r.stripeRegistry) >= maxStripeRegistry {
+		r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
+		r.logger.Debug("stripe range dropped", "range", rg)
+		return false
+	}
+	job.rg = rg
+	r.stripeRegistry = append(r.stripeRegistry, rg)
+	r.stripeQueue = append(r.stripeQueue, job)
 	select {
 	case r.stripeWake <- struct{}{}:
 	default:
 	}
-	return all
+	return true
 }
 
 // stripeWorker plans and transfers the queued ranges, one at a time, across
@@ -371,14 +396,19 @@ func (r *Reconciler) stripeWorker() {
 			r.stripeQueue = r.stripeQueue[1:]
 			r.mu.Unlock()
 
+			failed := false
 			for _, res := range r.transferStripes(r.ctx, PlanStripes(job.rg, r.peerStatuses()), job.started) {
 				if res.Err != nil {
+					failed = true
 					r.logger.Debug("stripe", "range", res.Range, "peer_address", res.Peer, "error", res.Err)
 				}
 			}
 
 			r.mu.Lock()
 			r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(job.rg) })
+			if job.bootstrap {
+				r.bootstrapping, r.bootstrapFailed = false, failed
+			}
 			r.mu.Unlock()
 		}
 	}

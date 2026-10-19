@@ -76,6 +76,10 @@ type fakeService struct {
 	// store nothing.
 	sessionErrAfter map[string]error
 	withhold        map[string]bool
+	// sessionErrSticky keeps sessionErrAfter for every session; withholdN,
+	// by peer, is the number of IDs of each Fetch not stored.
+	sessionErrSticky bool
+	withholdN        map[string]int
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -93,6 +97,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 
 		sessionErrAfter: make(map[string]error),
 		withhold:        make(map[string]bool),
+		withholdN:       make(map[string]int),
 	}
 }
 
@@ -117,7 +122,9 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.sessionErrAfter[peer.ByteString()]; err != nil {
-		delete(s.sessionErrAfter, peer.ByteString()) // once
+		if !s.sessionErrSticky {
+			delete(s.sessionErrAfter, peer.ByteString()) // once
+		}
 		return nil, err
 	}
 	return nil, ctx.Err()
@@ -200,8 +207,9 @@ func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []store
 	if s.withhold[peer.ByteString()] {
 		return 0, nil
 	}
-	s.fetched[peer.ByteString()] += len(ids)
-	return len(ids), nil
+	n := max(len(ids)-s.withholdN[peer.ByteString()], 0)
+	s.fetched[peer.ByteString()] += n
+	return n, nil
 }
 
 func (s *fakeService) count(m map[string]int, peer swarm.Address) int {

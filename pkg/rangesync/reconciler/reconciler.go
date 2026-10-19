@@ -138,6 +138,9 @@ type Reconciler struct {
 	stripeRegistry []fingerprint.Range
 	stripeQueue    []stripeJob
 	stripeWake     chan struct{}
+	// bootstrapping holds while a bootstrap transfer of the root is queued
+	// or in flight; bootstrapFailed is set when one did not complete.
+	bootstrapping, bootstrapFailed bool
 
 	started       atomic.Bool
 	guardReleased atomic.Bool
@@ -292,22 +295,30 @@ func (r *Reconciler) round(full bool) {
 	}
 
 	// An empty or far-behind node transfers its root striped (§7.4) instead
-	// of one full listing per peer; its per-peer sessions wait until the
-	// transfer is done.
-	bootstrap := IsBootstrap(local, r.peerStatuses())
-	if bootstrap {
+	// of one full listing per peer; its per-peer sessions wait while that
+	// transfer is in flight. After a bootstrap transfer that did not
+	// complete, one round runs the per-peer sessions before the next try.
+	bootstrap := false
+	if IsBootstrap(local, r.peerStatuses()) {
 		r.mu.Lock()
-		r.pendingReconcile++
+		switch {
+		case r.bootstrapping:
+			bootstrap = true
+		case r.bootstrapFailed:
+			r.bootstrapFailed = false
+		default:
+			started := func() {
+				r.mu.Lock()
+				r.pendingReconcile--
+				r.checkGuardLocked()
+				r.mu.Unlock()
+			}
+			if r.registerStripeLocked(stripeJob{rg: local.Root, started: started, bootstrap: true}) {
+				r.bootstrapping, bootstrap = true, true
+				r.pendingReconcile++
+			}
+		}
 		r.mu.Unlock()
-		started := func() {
-			r.mu.Lock()
-			r.pendingReconcile--
-			r.checkGuardLocked()
-			r.mu.Unlock()
-		}
-		if !r.enqueueStripes([]fingerprint.Range{local.Root}, started) {
-			started() // in flight already
-		}
 	}
 
 	r.mu.Lock()
@@ -455,7 +466,7 @@ func (r *Reconciler) session(peer swarm.Address) {
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
 	r.fetch(peer, wants, catchUp)
 	if ranges := striper.Ranges(); len(ranges) > 0 {
-		r.enqueueStripes(ranges, nil)
+		r.enqueueStripes(ranges)
 	}
 }
 
