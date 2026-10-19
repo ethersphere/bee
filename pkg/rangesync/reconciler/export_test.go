@@ -91,3 +91,23 @@ func (r *Reconciler) RadiusStriping() bool {
 	defer r.mu.Unlock()
 	return r.radius.striping
 }
+
+// RadiusPending reports whether a radius decrease's new half is pending.
+func (r *Reconciler) RadiusPending() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.radius.pending
+}
+
+// RadiusHold is radiusHold; MaxRadiusAttempts is maxRadiusAttempts.
+const (
+	RadiusHold        = radiusHold
+	MaxRadiusAttempts = maxRadiusAttempts
+)
+
+// RadiusAttempts returns the number of ended transfers of the pending half.
+func (r *Reconciler) RadiusAttempts() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.radius.attempts
+}

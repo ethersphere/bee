@@ -7,6 +7,7 @@ package reconciler
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -27,6 +28,26 @@ type radiusState struct {
 	// root no longer contains it (a radius increase).
 	striped fingerprint.Range
 	cancel  context.CancelFunc
+	// since is when the half started waiting for registration (the decrease
+	// or its last failed transfer); attempts counts its failed transfers.
+	since    time.Time
+	attempts int
+}
+
+const (
+	// radiusHold bounds how long a pending new half that is not registered
+	// for a transfer (no covering peer, overlap, full registry, a retry
+	// awaiting its round) keeps SyncRate above 0 (§8.4).
+	radiusHold = SyncRateWindow
+	// maxRadiusAttempts bounds the striped transfers of one new half.
+	maxRadiusAttempts = 3
+)
+
+// radiusHoldLocked reports whether a pending decrease holds SyncRate: its
+// half is registered (the registry counts it) or waits within radiusHold.
+func (r *Reconciler) radiusHoldLocked() bool {
+	s := r.radius
+	return s.pending && !s.striping && r.now().Sub(s.since) < radiusHold
 }
 
 // isBusy reports whether err is a Busy answer: the peer's (ErrPeerBusy) or
@@ -54,7 +75,7 @@ func (r *Reconciler) trackRootLocked(root fingerprint.Range) (changed bool) {
 	if root.Bits < prev.Bits && root.ContainsRange(prev) {
 		i := root.ChildIndex(prev.Prefix, 1)
 		s.oldHalf, s.newHalf = root.Child(1, i), root.Child(1, 1-i)
-		s.pending = true
+		s.pending, s.since, s.attempts = true, r.now(), 0
 		r.logger.Debug("radius decreased", "root", root, "new_half", s.newHalf)
 		return true
 	}
@@ -118,15 +139,23 @@ func (r *Reconciler) radiusOpenLocked(local, remote rangesync.Status) (open []fi
 	return nil, false
 }
 
-// radiusDoneLocked ends the striped transfer of the new half rg. The half is
-// transferred once: after a failed transfer the sessions run over the whole
-// root again and what is still missing goes through their Striper.
-func (r *Reconciler) radiusDoneLocked(rg fingerprint.Range) {
-	if r.radius.cancel != nil {
-		r.radius.cancel()
+// radiusDoneLocked ends the striped transfer of the new half rg. A failed
+// transfer of the pending half is retried by a later round, up to
+// maxRadiusAttempts transfers; after the last one the sessions run over the
+// whole root again and what is still missing goes through their Striper.
+func (r *Reconciler) radiusDoneLocked(rg fingerprint.Range, failed bool) {
+	s := &r.radius
+	if s.cancel != nil {
+		s.cancel()
 	}
-	r.radius.striping, r.radius.cancel = false, nil
-	if r.radius.newHalf.Equal(rg) {
-		r.radius.pending = false
+	s.striping, s.cancel = false, nil
+	if !s.pending || !s.newHalf.Equal(rg) {
+		return
 	}
+	s.attempts++
+	if failed && s.attempts < maxRadiusAttempts && r.ctx.Err() == nil {
+		s.since = r.now()
+		return
+	}
+	s.pending = false
 }

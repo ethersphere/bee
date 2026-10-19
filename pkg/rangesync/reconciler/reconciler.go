@@ -555,13 +555,15 @@ func (r *Reconciler) checkGuardLocked() {
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
 // eligible neighbor the guard holds until the timeout. While a catch-up
 // fetch is in flight, or a range is registered for a striped transfer
-// (queued, transferring or being verified), it is at least StartupGuardRate.
+// (queued, transferring or being verified), or a radius decrease's new half
+// waits for its transfer (at most radiusHold), it is at least
+// StartupGuardRate.
 func (r *Reconciler) SyncRate() float64 {
 	if !r.started.Load() {
 		return StartupGuardRate
 	}
 	r.mu.Lock()
-	inFlight := r.catchUpFetches > 0 || len(r.stripeRegistry) > 0
+	inFlight := r.catchUpFetches > 0 || len(r.stripeRegistry) > 0 || r.radiusHoldLocked()
 	guard := !r.guardReleased.Load() && r.now().Sub(r.startedAt) < r.guardTimeout
 	r.mu.Unlock()
 	rt := r.rate.Rate()

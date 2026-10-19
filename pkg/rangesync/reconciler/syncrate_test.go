@@ -168,3 +168,152 @@ func TestSyncRateRadiusDecreaseSequencing(t *testing.T) {
 	}
 	waitFor(t, "second half striped", func() bool { return countInside(svc, sibling(1), peers...) > 0 })
 }
+
+// decreaseUncovered returns a harness at root bits 2 whose peers have roots
+// at bits 2 too, lowered to bits 1: no peer covers the new half.
+func decreaseUncovered(t *testing.T) *harness {
+	t.Helper()
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	svc := newFakeService(selfRoot(2, 5))
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = selfRoot(2, 5)
+	}
+	h := newHarness(t, svc, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+	return h
+}
+
+// TestSyncRateRadiusHalfUncovered: a pending half no peer covers holds
+// SyncRate above 0 for at most RadiusHold, then it reads 0.
+func TestSyncRateRadiusHalfUncovered(t *testing.T) {
+	t.Parallel()
+
+	h := decreaseUncovered(t)
+	h.svc.set(func() { h.svc.local = selfRoot(1, 5) })
+	waitFor(t, "decrease seen", h.r.RadiusPending)
+	settle()
+	if h.r.RadiusStriping() {
+		t.Fatal("uncovered half registered")
+	}
+	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v with a pending half", got)
+	}
+	h.clock.Add(reconciler.RadiusHold + time.Second)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v past the hold, want 0", got)
+	}
+}
+
+// radiusBlocked lowers the root of a radius harness from bits 2 to 1 while
+// block keeps the new half from being registered, checks that SyncRate
+// stays above 0, then unblocks and checks the half is transferred and the
+// rate reads 0 past the window.
+func radiusBlocked(t *testing.T, block, unblock func(h *harness)) {
+	t.Helper()
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 2, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+	block(h)
+	h.svc.set(func() { h.svc.local = selfRoot(1, 5) })
+	waitFor(t, "decrease seen", h.r.RadiusPending)
+	settle()
+	if h.r.RadiusStriping() {
+		t.Fatal("blocked half registered")
+	}
+	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v with a blocked half", got)
+	}
+	unblock(h)
+	waitFor(t, "half transferred", func() bool { return !h.r.RadiusPending() && h.r.StripeRegistry() == 0 })
+	if countInside(h.svc, sibling(2), peers...) == 0 {
+		t.Fatal("half not striped")
+	}
+	settle()
+	pastWindow(h)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v after the half, want 0", got)
+	}
+}
+
+// TestSyncRateRadiusHalfOverlap: a half that overlaps a registered range
+// waits (SyncRate > 0) and is transferred once that range ends.
+func TestSyncRateRadiusHalfOverlap(t *testing.T) {
+	t.Parallel()
+
+	half := sibling(2)
+	radiusBlocked(t,
+		func(h *harness) { h.r.HoldStripe(half) },
+		func(h *harness) { h.r.ReleaseStripe(half) })
+}
+
+// TestSyncRateRadiusHalfRegistryFull: a half dropped by a full registry
+// waits (SyncRate > 0) and is transferred once the registry has room.
+func TestSyncRateRadiusHalfRegistryFull(t *testing.T) {
+	t.Parallel()
+
+	oldHalf := fingerprint.NewRange(self, 2)
+	var held []fingerprint.Range
+	radiusBlocked(t,
+		func(h *harness) {
+			for i := range reconciler.MaxStripeRegistry {
+				rg := oldHalf.Child(10, uint64(i))
+				held = append(held, rg)
+				h.r.HoldStripe(rg)
+			}
+		},
+		func(h *harness) {
+			for _, rg := range held {
+				h.r.ReleaseStripe(rg)
+			}
+		})
+}
+
+// TestSyncRateRadiusHalfRetried: a failed transfer of the new half is
+// retried by a later round and completes once the peers deliver.
+func TestSyncRateRadiusHalfRetried(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 2, peers...)
+	svc := h.svc
+	svc.set(func() {
+		for _, p := range peers {
+			svc.withhold[p.ByteString()] = true
+		}
+		svc.local = selfRoot(1, 5)
+	})
+	waitFor(t, "first attempt failed", func() bool { return h.r.RadiusAttempts() >= 1 })
+	svc.set(func() {
+		for _, p := range peers {
+			svc.withhold[p.ByteString()] = false
+		}
+	})
+	waitFor(t, "half done", func() bool { return !h.r.RadiusPending() })
+	if got := h.r.RadiusAttempts(); got < 2 || got > reconciler.MaxRadiusAttempts {
+		t.Fatalf("attempts %d, want 2..%d", got, reconciler.MaxRadiusAttempts)
+	}
+	if got := h.r.StripesTotal("done"); got == 0 {
+		t.Fatal("no stripe done after the retry")
+	}
+}
+
+// TestSyncRateRadiusHalfAttemptsBounded: a half whose transfer keeps failing
+// is given up after MaxRadiusAttempts transfers.
+func TestSyncRateRadiusHalfAttemptsBounded(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 2, peers...)
+	svc := h.svc
+	svc.set(func() {
+		for _, p := range peers {
+			svc.withhold[p.ByteString()] = true
+		}
+		svc.local = selfRoot(1, 5)
+	})
+	waitFor(t, "decrease seen", h.r.RadiusPending)
+	waitFor(t, "given up", func() bool { return !h.r.RadiusPending() })
+	if got := h.r.RadiusAttempts(); got != reconciler.MaxRadiusAttempts {
+		t.Fatalf("attempts %d, want %d", got, reconciler.MaxRadiusAttempts)
+	}
+}

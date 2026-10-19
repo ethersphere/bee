@@ -400,6 +400,7 @@ func (r *Reconciler) stripeWorker() {
 		r.mu.Lock()
 		queued := r.stripeQueue
 		r.stripeQueue = nil
+		r.stripeRegistry = nil // nothing is transferred after Close
 		r.mu.Unlock()
 		for _, job := range queued {
 			if job.started != nil {
@@ -444,7 +445,7 @@ func (r *Reconciler) stripeWorker() {
 				r.bootstrapping, r.bootstrapFailed = false, failed
 			}
 			if job.radius {
-				r.radiusDoneLocked(job.rg)
+				r.radiusDoneLocked(job.rg, failed)
 			}
 			r.mu.Unlock()
 		}
