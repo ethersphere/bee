@@ -30,6 +30,10 @@ func (db *DB) DirectUpload() PutterSession {
 	// already encountered error.
 	eg, egCtx := errgroup.WithContext(context.Background())
 
+	// chunks that failed once wait here for one more push at the end of the
+	// upload
+	q := newRequeue(directUploadRequeueLimit)
+
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
@@ -43,64 +47,120 @@ func (db *DB) DirectUpload() PutterSession {
 				case <-egCtx.Done():
 					return context.Cause(egCtx)
 				}
-				eg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload", func() (err error) {
+				eg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload", func() error {
 					defer func() { <-db.directUploadLimiter }()
 
-					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
-					span.SetAttributes(attribute.String("swarm.chunk.address", ch.Address().String()))
-					defer func() {
-						if err != nil {
-							tracing.RecordError(span, err)
-						}
-						span.End()
-					}()
-
-					for {
-						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-egCtx.Done():
-							return egCtx.Err()
-						case <-db.quit:
-							return ErrDBQuit
-						case db.pusherFeed <- op:
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
-							case <-egCtx.Done():
-								return egCtx.Err()
-							case <-db.quit:
-								return ErrDBQuit
-							case err := <-op.Err:
-								if errors.Is(err, pushsync.ErrShallowReceipt) {
-									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
-								} else if errors.Is(err, topology.ErrNotFound) {
-									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
-									// wait for peers instead of resubmitting in a tight loop
-									select {
-									case <-time.After(directUploadRetryDelay):
-									case <-ctx.Done():
-										return ctx.Err()
-									case <-egCtx.Done():
-										return egCtx.Err()
-									case <-db.quit:
-										return ErrDBQuit
-									}
-								} else {
-									return err
-								}
-							}
-						}
+					err := db.pushChunk(ctx, egCtx, ch)
+					if !errors.Is(err, pusher.ErrCouldNotSync) {
+						return err
 					}
+					db.metrics.DirectUploadRequeued.Inc()
+					db.logger.Debug("direct upload: chunk failed, will push it again at the end of the upload", "chunk_address", ch.Address())
+
+					oldest, full := q.add(requeued{ctx: ctx, ch: ch})
+					if !full {
+						return nil
+					}
+					return db.pushRequeued(egCtx, oldest)
 				}))
 				return nil
 			}),
 			db.metrics,
 			"netstore",
 		},
-		done:    func(swarm.Address) error { return eg.Wait() },
+		done: func(swarm.Address) error {
+			if err := eg.Wait(); err != nil {
+				return err
+			}
+			items := q.drain()
+			if len(items) == 0 {
+				return nil
+			}
+			rg, rgCtx := errgroup.WithContext(context.Background())
+			for _, r := range items {
+				select {
+				case db.directUploadLimiter <- struct{}{}:
+				case <-rgCtx.Done():
+					return rg.Wait()
+				}
+				rg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload-requeued", func() error {
+					defer func() { <-db.directUploadLimiter }()
+					return db.pushRequeued(rgCtx, r)
+				}))
+			}
+			return rg.Wait()
+		},
 		cleanup: func() error { _ = eg.Wait(); return nil },
+	}
+}
+
+// pushRequeued pushes a chunk that failed once for the second and last time.
+func (db *DB) pushRequeued(egCtx context.Context, r requeued) error {
+	err := db.pushChunk(r.ctx, egCtx, r.ch)
+	if err != nil {
+		db.metrics.DirectUploadRequeueFailed.Inc()
+		db.logger.Debug("direct upload: chunk failed again", "chunk_address", r.ch.Address(), "error", err)
+	}
+	return err
+}
+
+// pushChunk pushes one chunk of a direct upload until it is synced or fails
+// with an error a resubmit cannot fix.
+func (db *DB) pushChunk(ctx, egCtx context.Context, ch swarm.Chunk) (err error) {
+	span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
+	span.SetAttributes(attribute.String("swarm.chunk.address", ch.Address().String()))
+	defer func() {
+		if err != nil {
+			tracing.RecordError(span, err)
+		}
+		span.End()
+	}()
+
+	for {
+		// the select below picks at random among ready cases, so check the
+		// contexts first: a gone client must not get another push
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := egCtx.Err(); err != nil {
+			return err
+		}
+		op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-egCtx.Done():
+			return egCtx.Err()
+		case <-db.quit:
+			return ErrDBQuit
+		case db.pusherFeed <- op:
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-egCtx.Done():
+				return egCtx.Err()
+			case <-db.quit:
+				return ErrDBQuit
+			case err := <-op.Err:
+				if errors.Is(err, pushsync.ErrShallowReceipt) {
+					logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+				} else if errors.Is(err, topology.ErrNotFound) {
+					logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+					// wait for peers instead of resubmitting in a tight loop
+					select {
+					case <-time.After(directUploadRetryDelay):
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-egCtx.Done():
+						return egCtx.Err()
+					case <-db.quit:
+						return ErrDBQuit
+					}
+				} else {
+					return err
+				}
+			}
+		}
 	}
 }
 

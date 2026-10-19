@@ -5,6 +5,8 @@
 package storer
 
 import (
+	"context"
+
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -47,4 +49,25 @@ func DefaultOptions() *Options {
 // differently. Only this shim changes between them.
 func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	return transformedAddress(hasher, ch.Address(), ch.Data(), chType)
+}
+
+const DirectUploadRequeueLimit = directUploadRequeueLimit
+
+// Requeue exposes requeue to tests with chunks only.
+type Requeue struct{ q *requeue }
+
+func NewRequeue(limit int) *Requeue { return &Requeue{q: newRequeue(limit)} }
+
+func (r *Requeue) Add(ch swarm.Chunk) (swarm.Chunk, bool) {
+	oldest, full := r.q.add(requeued{ctx: context.Background(), ch: ch})
+	return oldest.ch, full
+}
+
+func (r *Requeue) Drain() []swarm.Chunk {
+	items := r.q.drain()
+	chunks := make([]swarm.Chunk, len(items))
+	for i, it := range items {
+		chunks[i] = it.ch
+	}
+	return chunks
 }
