@@ -296,6 +296,12 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 - **(T4.2 fix) `Reconciling → Striped` (`eventLargeDiff`) is unused for now.** It stays in the
   table so that the table matches §8.1. T4.5 may route a session's large range to the session's
   own peer if that pays.
+- **(Orchestrator, pre-T4.3 check, 2026-10-19) Index rebuild time accepted at 26.5 s.** The
+  T2.2/T2.6 follow-up ("rebuild ≤ 20 s at 4.2M, due before T4.3") had no task owner. The user
+  accepted the measured 26.5 s at 4.2M (single-threaded, in-memory IDs, reference host) instead of
+  a by-bucket parallel build. It is the sync-unavailable window on a first start (no live slab),
+  under the 120 s start-up guard. The follow-up is closed; the storer-iterator rebuild time on a
+  real node is still worth reading off T6.3's testnet runs.
 
 ## Follow-ups
 _(sessions append here)_

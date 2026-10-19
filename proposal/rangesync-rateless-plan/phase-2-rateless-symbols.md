@@ -677,3 +677,5 @@ _(sessions append here)_
   average" is ~68 (median) with FloatMapper. The literal tests assert the implementation's outcomes
   next to the proposal's.
 - **(T2.6 review, Low) Small cleanups, not blocking.** (1) `session_symbols.go` labels ranges with 0 < depth < FanoutBits as `bucket` in `streams_exhausted_total`; add a comment or a `default` case. (2) `integration_test.go` checks `symbols_per_difference` loosely (count ≤ symbol parts, sum ≥ n); assert the numerator. (3) `BenchmarkIndexRebuildScale/n=4194304` runs under `-bench .` (26 s+, ~128 MiB); gate it or say so in its doc. (4) Ex3's `want` bytes omit the `fp` term the other cases include. The review confirmed the §7.2/Ex2/Ex3 gaps are proposal errors (§7.2 |cA−cB| = 1, not 3), not code bugs: correct the proposal text when it is next edited.
+- **(Orchestrator, 2026-10-19) Rebuild 26.5 s accepted.** The two rebuild follow-ups above (T2.2,
+  T2.6) are closed: the user accepted 26.5 s at 4.2M at the pre-T4.3 check (phase-4 Decisions log).
