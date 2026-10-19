@@ -3,8 +3,10 @@
 // license that can be found in the LICENSE file.
 
 // Package rate is a thread-safe rate tracker with per second resolution.
-// Under the hood, it uses a sliding window split into buckets, so the rate
-// decays linearly and reaches zero one window after the last Add.
+// Under the hood, it sums counts over a sliding window split into buckets.
+// A count stays in the rate for at least one window and at most one window
+// plus one bucket, so the rate reaches zero no earlier than one window after
+// the last Add.
 package rate
 
 import (
@@ -27,7 +29,7 @@ type Rate struct {
 
 // New returns a new rate tracker with a defined window size that must be greater than one millisecond.
 func New(windowSize time.Duration) *Rate {
-	ws := windowSize.Milliseconds()
+	ws := max(windowSize.Milliseconds(), 1)
 	return &Rate{
 		buckets:    make(map[int64]int),
 		windowSize: ws,
@@ -37,12 +39,17 @@ func New(windowSize time.Duration) *Rate {
 }
 
 // Add increments the bucket for the current time by count.
+// Counts that are not positive are ignored.
 func (r *Rate) Add(count int) {
+	if count <= 0 {
+		return
+	}
+
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	defer r.cleanup()
 
-	r.buckets[r.now().UnixMilli()/r.bucketSize] += count
+	r.buckets[r.currentBucket()] += count
 }
 
 // Rate returns the per second rate over the most recent window.
@@ -51,11 +58,13 @@ func (r *Rate) Rate() float64 {
 	defer r.mtx.Unlock()
 	defer r.cleanup()
 
+	current := r.currentBucket()
 	oldest := r.oldestBucket()
 
 	var sum int
 	for bucket, count := range r.buckets {
-		if bucket >= oldest {
+		// buckets ahead of current are left over from a backward clock jump
+		if bucket >= oldest && bucket <= current {
 			sum += count
 		}
 	}
@@ -63,11 +72,18 @@ func (r *Rate) Rate() float64 {
 	return milliInSeconds * float64(sum) / float64(r.windowSize)
 }
 
-// oldestBucket returns the oldest bucket still inside the window.
+// currentBucket returns the bucket for the current time.
+// Must be called under lock.
+func (r *Rate) currentBucket() int64 {
+	return r.now().UnixMilli() / r.bucketSize
+}
+
+// oldestBucket returns the oldest bucket still inside the window. The current
+// bucket is only partly elapsed, so one extra bucket is kept to not expire
+// counts before a full window has passed.
 // Must be called under lock.
 func (r *Rate) oldestBucket() int64 {
-	current := r.now().UnixMilli() / r.bucketSize
-	return current - r.windowSize/r.bucketSize + 1
+	return r.currentBucket() - r.windowSize/r.bucketSize
 }
 
 // cleanup removes buckets that have fallen out of the window.

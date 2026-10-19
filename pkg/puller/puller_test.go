@@ -162,6 +162,23 @@ func TestSyncRates(t *testing.T) {
 		if !p.IsReserveSynced(3) {
 			t.Fatal("expected reserve to be synced at depth 3 when only bin 2 is syncing")
 		}
+		if p.IsReserveSynced(4) {
+			t.Fatal("expected a depth beyond the tracked bins not to be synced")
+		}
+	})
+
+	t.Run("bins above max", func(t *testing.T) {
+		t.Parallel()
+
+		p, _, _, _ := newPuller(t, opts{bins: swarm.MaxBins + 8, rs: resMock.NewReserve(resMock.WithRadius(2))})
+		if !p.IsReserveSynced(swarm.MaxBins - 1) {
+			t.Fatal("expected the last bin to be tracked")
+		}
+		if p.IsReserveSynced(swarm.MaxBins) {
+			t.Fatal("expected bins to be capped at swarm.MaxBins")
+		}
+		_ = p.SyncRateWithinRadius()
+		_ = p.SyncRateOutsideRadius()
 	})
 }
 
