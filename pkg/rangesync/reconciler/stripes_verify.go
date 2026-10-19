@@ -86,7 +86,7 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 
 	out := make([]VerifyResult, len(results))
 	locks := newPeerLocks()
-	statuses := r.peerStatuses()
+	statuses, ready := r.stripePeers()
 	var wg sync.WaitGroup
 	for i, res := range results {
 		out[i] = VerifyResult{Range: res.Range, Deliverer: res.Peer}
@@ -94,7 +94,7 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 			out[i].Err = ErrStripeNotDone
 			continue
 		}
-		verifier, ok := r.verifier(res, statuses)
+		verifier, ok := r.verifier(res, statuses, ready)
 		if !ok {
 			out[i].Err = ErrNoVerifier
 			r.logger.Debug("stripe not verified: no other peer", "range", res.Range, "peer_address", res.Peer)
@@ -113,18 +113,21 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 
 // verifier returns the peer to verify res with: a peer of statuses whose
 // root covers the stripe, other than the deliverer and every peer that
-// worked on the stripe (res.Tried), lowest failure score first.
-func (r *Reconciler) verifier(res StripeResult, statuses []PeerStatus) (swarm.Address, bool) {
-	var cands []swarm.Address
-	for _, ps := range statuses {
-		if !ps.Peer.Equal(res.Peer) && !slices.ContainsFunc(res.Tried, ps.Peer.Equal) && ps.Status.Root.ContainsRange(res.Range) {
-			cands = append(cands, ps.Peer)
+// worked on the stripe (res.Tried), of those in ready (not backing off) if
+// any, lowest failure score first.
+func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (swarm.Address, bool) {
+	for _, peers := range [][]PeerStatus{ready, statuses} {
+		var cands []swarm.Address
+		for _, ps := range peers {
+			if !ps.Peer.Equal(res.Peer) && !slices.ContainsFunc(res.Tried, ps.Peer.Equal) && ps.Status.Root.ContainsRange(res.Range) {
+				cands = append(cands, ps.Peer)
+			}
+		}
+		if len(cands) > 0 {
+			return r.orderCandidates(cands)[0], true
 		}
 	}
-	if len(cands) == 0 {
-		return swarm.ZeroAddress, false
-	}
-	return r.orderCandidates(cands)[0], true
+	return swarm.ZeroAddress, false
 }
 
 // verifyStripe verifies res with verifier and scores the deliverer.

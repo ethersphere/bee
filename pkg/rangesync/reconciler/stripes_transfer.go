@@ -247,7 +247,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 
 // nextStripePeer returns the next untried peer of *next, consuming it, or,
 // when *next is exhausted, the first untried peer with a Status whose root
-// covers sr (§7.6).
+// covers sr (§7.6), a peer that does not back off first.
 func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address, tried map[string]bool) (swarm.Address, bool) {
 	for len(*next) > 0 {
 		p := (*next)[0]
@@ -259,19 +259,52 @@ func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address,
 	if len(tried) == 0 {
 		return swarm.ZeroAddress, false
 	}
-	for _, ps := range r.peerStatuses() {
-		if !tried[ps.Peer.ByteString()] && ps.Status.Root.ContainsRange(sr) {
-			return ps.Peer, true
+	all, ready := r.stripePeers()
+	for _, peers := range [][]PeerStatus{ready, all} {
+		for _, ps := range peers {
+			if !tried[ps.Peer.ByteString()] && ps.Status.Root.ContainsRange(sr) {
+				return ps.Peer, true
+			}
 		}
 	}
 	return swarm.ZeroAddress, false
+}
+
+// planStripes plans rg (PlanStripes) across the peers that do not back off
+// after Busy or failed round sessions (peerFSM.retryAt), and across every
+// peer offered for stripes when those leave a stripe without a peer.
+func (r *Reconciler) planStripes(rg fingerprint.Range) []Stripe {
+	all, ready := r.stripePeers()
+	if len(ready) < len(all) {
+		if plan := PlanStripes(rg, ready); len(Unassigned(plan)) == 0 {
+			return plan
+		}
+	}
+	return PlanStripes(rg, all)
+}
+
+// stripePeers returns the peers offered for stripes (peerStatuses), and
+// those of them that do not back off.
+func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
+	all = r.peerStatuses()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.now()
+	for _, ps := range all {
+		if st, ok := r.peers[ps.Peer.ByteString()]; ok && !now.Before(st.fsm.retryAt) {
+			ready = append(ready, ps)
+		}
+	}
+	return all, ready
 }
 
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants.
 // The peer is in Striped throughout (acquireStripe); the wait for its round
-// session to end counts towards the stripe timeout.
+// session to end counts towards the stripe timeout, and so does the wait for
+// a session slot (MaxInitiatedSessions), which each session attempt takes
+// and frees again before a Busy retry.
 func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithTimeoutCause(ctx, r.stripeTimeout, ErrStripeTimeout)
@@ -319,7 +352,12 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		},
 	}
 	for {
+		var releaseSlot func()
+		if releaseSlot, err = r.acquireSlot(ctx); err != nil {
+			break
+		}
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
+		releaseSlot()
 		if !isBusy(err) {
 			break
 		}
@@ -440,7 +478,7 @@ func (r *Reconciler) stripeWorker() {
 			if job.ctx != nil {
 				ctx = job.ctx
 			}
-			results := r.transferStripes(ctx, PlanStripes(job.rg, r.peerStatuses()), job.started)
+			results := r.transferStripes(ctx, r.planStripes(job.rg), job.started)
 			// the verification round, before leaving bootstrap (§7.4)
 			r.VerifyStripes(ctx, results)
 			failed := len(results) == 0 // defensive: PlanStripes returns at least one stripe

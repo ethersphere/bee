@@ -88,6 +88,36 @@ const (
 	PeerStatusBurst = 4
 )
 
+// Session memory budget of the symbol path (proposal §6.4, T4.3). A session
+// receives at most SessionSymbolBudget coded symbols over all its streams,
+// and its decoders recover at most two IDs per received symbol (more is
+// fingerprint.ErrCorrupt). A decoder keeps every received symbol and every
+// recovered ID until the session ends. A node runs at most
+// MaxConcurrentSessions sessions, served and initiated together, so
+// NodeDecoderMemory bounds its decoders. Not counted here, and bounded
+// elsewhere: the cached symbol prefixes a session copies when a symbol
+// stream starts (at most cap(R) symbols per open stream), the listed IDs
+// kept for the peer's Reply pages (MaxPendingReplies), the wants a session
+// returns (a range with an estimated difference above LargeDiff goes to the
+// Striper instead), and one Message in each direction (MaxMessageBytes).
+const (
+	// DecoderBytesPerID bounds the memory a decoder keeps per recovered ID:
+	// its coded symbol and mapping iterator (to remove it from the symbols
+	// that arrive later), its entry in the set of recovered IDs and in the
+	// result. TestSessionDecoderMemory measures about 110 B on amd64.
+	DecoderBytesPerID = 200
+	// codedSymbolBytes is the in-memory size of one fingerprint.CodedSymbol:
+	// its sum, its checksum and its int64 count.
+	codedSymbolBytes = fingerprint.IDSize + fingerprint.ChecksumSize + 8
+	// SessionDecoderMemory is the most memory the decoders of one session
+	// keep: SessionSymbolBudget received symbols (1.4 MiB) and twice as many
+	// recovered IDs (6.25 MiB).
+	SessionDecoderMemory = SessionSymbolBudget*codedSymbolBytes + 2*SessionSymbolBudget*DecoderBytesPerID
+	// NodeDecoderMemory is the most memory the decoders of all the sessions
+	// of a node keep (about 122 MiB).
+	NodeDecoderMemory = MaxConcurrentSessions * SessionDecoderMemory
+)
+
 // Scheduling constants (proposal §6.1, §8.2, §8.4).
 const (
 	// StatusMinInterval is the debounce interval of Status gossip.

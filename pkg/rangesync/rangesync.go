@@ -159,8 +159,9 @@ type Service struct {
 
 	hints *hintCache // hint(R) of the symbol estimate
 
-	statusMu sync.Mutex
-	statuses map[string]Status // last Status received, by peer
+	statusMu   sync.Mutex
+	statuses   map[string]Status // last Status received, by peer
+	statusSubs []chan struct{}   // SubscribeStatus channels
 
 	statusStreams    *peerStreamLimiter
 	reconcileStreams *peerStreamLimiter

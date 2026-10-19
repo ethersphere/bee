@@ -131,7 +131,9 @@ func (r *Reconciler) nextStatusIn(local rangesync.Status) time.Duration {
 
 // gossip sends the Statuses that are due and returns how long until the next
 // one is. Until the index is built there is nothing to send; its first build
-// signals a root change.
+// signals a root change. A send that delivered a root the peer lacked (a
+// moved root, or a first contact that failed before) triggers a round, which
+// skipped the peer's session meanwhile.
 func (r *Reconciler) gossip() time.Duration {
 	r.pickMu.Lock()
 	local, err := r.svc.LocalStatus()
@@ -143,12 +145,16 @@ func (r *Reconciler) gossip() time.Duration {
 	due := r.pickDueLocked(local, r.now())
 	r.mu.Unlock()
 	r.pickMu.Unlock()
-	r.probe(due, local)
+	if r.probe(due, local) {
+		r.wakeRound()
+	}
 	return r.nextStatusIn(local)
 }
 
 // gossipLoop runs a gossip pass on every root change of the index, when a
-// round wakes it and when the next Status is due, until Close.
+// round or a changed peer Status wakes it and when the next Status is due,
+// until Close. A root change also triggers a round: the digests it compares
+// may differ now.
 func (r *Reconciler) gossipLoop(rootChanges <-chan struct{}) {
 	for {
 		wait := r.gossip()
@@ -158,7 +164,9 @@ func (r *Reconciler) gossipLoop(rootChanges <-chan struct{}) {
 		case _, ok := <-rootChanges:
 			if !ok {
 				rootChanges = nil // unsubscribed elsewhere: rely on the timer
+				continue
 			}
+			r.wakeRound()
 		case <-r.gossipWake:
 		case <-r.after(wait):
 		}

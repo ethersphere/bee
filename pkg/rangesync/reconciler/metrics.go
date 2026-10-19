@@ -24,9 +24,11 @@ type metrics struct {
 	// and the verifier delivered; IDs only listed are not counted) the
 	// verification round found per verified stripe.
 	VerificationDiff prometheus.Histogram
+	// RoundInterval is the current adaptive round interval (§8.2).
+	RoundInterval prometheus.GaugeFunc
 }
 
-func newMetrics(syncRate func() float64) metrics {
+func newMetrics(syncRate, roundInterval func() float64) metrics {
 	const subsystem = "rangesync"
 
 	return metrics{
@@ -61,9 +63,15 @@ func newMetrics(syncRate func() float64) metrics {
 			Help:      "Chunks delivered per stripe verified with a peer other than its deliverer.",
 			Buckets:   []float64{0, 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536},
 		}),
+		RoundInterval: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "round_interval_seconds",
+			Help:      "Current adaptive interval between reconciliation rounds.",
+		}, roundInterval),
 	}
 }
 
 func (m metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff}
+	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff, m.RoundInterval}
 }

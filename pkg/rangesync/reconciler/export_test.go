@@ -239,3 +239,18 @@ func (r *Reconciler) StripeWaiters(peer swarm.Address) int {
 	}
 	return 0
 }
+
+// CurrentRoundInterval returns the current round interval.
+func (r *Reconciler) CurrentRoundInterval() time.Duration { return r.currentInterval() }
+
+// RoundIntervalGauge returns the round_interval_seconds gauge.
+func (r *Reconciler) RoundIntervalGauge() float64 {
+	m := new(dto.Metric)
+	if err := r.metrics.RoundInterval.Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetGauge().GetValue()
+}
+
+// PlanStripesFor returns the plan the stripe worker would transfer rg with.
+func (r *Reconciler) PlanStripesFor(rg fingerprint.Range) []Stripe { return r.planStripes(rg) }

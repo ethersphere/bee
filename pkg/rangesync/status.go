@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -94,6 +96,35 @@ func (s *Service) SubscribeRootChange() (c <-chan struct{}, unsubscribe func()) 
 	return s.index.SubscribeRootChange()
 }
 
+// SubscribeStatus returns a channel that receives a value after a Status of
+// a peer was recorded that differs from the peer's last one (or is its
+// first), so that the reconciler can compare digests again and gossip to a
+// peer that became eligible. A repeated Status (a heartbeat) is not signaled.
+// Signals coalesce: the channel has a buffer of one and is never blocked on.
+// unsubscribe closes the channel and is safe to call more than once.
+func (s *Service) SubscribeStatus() (c <-chan struct{}, unsubscribe func()) {
+	ch := make(chan struct{}, 1)
+	var once sync.Once
+
+	s.statusMu.Lock()
+	s.statusSubs = append(s.statusSubs, ch)
+	s.statusMu.Unlock()
+
+	return ch, func() {
+		once.Do(func() {
+			s.statusMu.Lock()
+			defer s.statusMu.Unlock()
+			s.statusSubs = slices.DeleteFunc(s.statusSubs, func(o chan struct{}) bool { return o == ch })
+			close(ch)
+		})
+	}
+}
+
+// equalStatus reports whether a and b are the same Status.
+func equalStatus(a, b Status) bool {
+	return a.Root.Equal(b.Root) && a.Summary == b.Summary && a.LeafBits == b.LeafBits && a.Mapping == b.Mapping
+}
+
 // LastStatus returns the last Status received from peer, if any. It is kept
 // in memory only and forgotten when the peer disconnects.
 func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
@@ -110,7 +141,8 @@ func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
 // over the peer's rate (PeerStatusBurst, then one per PeerStatusInterval) is
 // dropped unread and counted (status_rate_limited_total): the stream is
 // reset, so the sender sees a failed send and retries later, and the peer is
-// neither disconnected nor scored.
+// neither disconnected nor scored. A recorded Status that differs from the
+// peer's last one is signaled to the SubscribeStatus subscribers.
 func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	release, ok := s.statusStreams.acquire(p.Address)
 	if !ok {
@@ -152,7 +184,16 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	// deleted on its next disconnect, and a Reconcile using it fails at
 	// NewStream because the peer is not connected.
 	s.statusMu.Lock()
+	prev, had := s.statuses[p.Address.ByteString()]
 	s.statuses[p.Address.ByteString()] = st
+	if !had || !equalStatus(prev, st) {
+		for _, ch := range s.statusSubs {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+	}
 	s.statusMu.Unlock()
 	return stream.FullClose()
 }

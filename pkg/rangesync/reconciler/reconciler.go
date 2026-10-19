@@ -30,10 +30,6 @@ const (
 	CatchUpMinDiff = rangesync.CatchUpMinDiff
 	// SyncRateWindow is the window over which SyncRate is measured.
 	SyncRateWindow = rangesync.SyncRateWindow
-	// RoundInterval is the interval of the timer-driven rounds. Status is
-	// gossiped on its own schedule (gossip.go); a round sends only the
-	// Statuses due when it runs.
-	RoundInterval = rangesync.StatusMaxInterval
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
 	// StartupGuardRate is the sentinel SyncRate reports while the start-up
@@ -90,9 +86,12 @@ type Options struct {
 	Now func() time.Time
 	// After returns a channel that receives once d has passed; time.After if
 	// nil. Tests set one that follows the fake clock of Now. It wakes the
-	// Status gossip when the next Status is due.
+	// Status gossip when the next Status is due, and runs a triggered round
+	// once the minimum round interval has passed (scheduler.go).
 	After func(d time.Duration) <-chan time.Time
-	// RoundInterval overrides RoundInterval.
+	// RoundInterval, if set, fixes the round interval: it is both the
+	// minimum and the maximum of the adaptive interval (MinRoundInterval,
+	// MaxRoundInterval). Tests set it.
 	RoundInterval time.Duration
 	// StartupGuardTimeout overrides StartupGuardTimeout.
 	StartupGuardTimeout time.Duration
@@ -121,6 +120,9 @@ type peerState struct {
 	// runs, failed records that it did not reach the peer (statusFails
 	// times in a row), resend asks for it again although unchanged, and tat
 	// is the theoretical arrival time of the sender-side rate (statusBurst).
+	// reached is the root of the last Status of ours that reached the peer
+	// (valid while sent); rounds start no session with a peer that lacks
+	// this node's current root.
 	lastSent    time.Time
 	last        rangesync.Status
 	sending     bool
@@ -128,6 +130,14 @@ type peerState struct {
 	statusFails int
 	resend      bool
 	tat         time.Time
+	reached     fingerprint.Range
+
+	// takeoverSince, if not zero, is when this node started to wait for the
+	// peer, which initiates, to run a session while their digests differ;
+	// takeoverJitter is the jitter of the wait, a fraction of one round
+	// interval (takeoverDueLocked).
+	takeoverSince  time.Time
+	takeoverJitter float64
 }
 
 // score is a peer's failure score at time at.
@@ -137,11 +147,12 @@ type score struct {
 }
 
 // Reconciler follows the topology, exchanges Status with the connected peers
-// and runs Reconcile then Fetch with every eligible peer whose digest differs
-// and whose overlay is higher than this node's. It keeps a state machine per
-// peer (§8.1, peerfsm.go): one session per peer, round or stripe, and a
-// backoff for peers that answer Busy or fail. It owns the per-peer failure
-// score (rangesync.PeerScorer) and reports the catch-up rate (storer.Syncer).
+// and runs Reconcile then Fetch in rounds (scheduler.go) with every eligible
+// peer whose digest differs and whose overlay is higher than this node's, or
+// lower and silent for too long. It keeps a state machine per peer (§8.1,
+// peerfsm.go): one session per peer, round or stripe, and a backoff for peers
+// that answer Busy or fail. It owns the per-peer failure score
+// (rangesync.PeerScorer) and reports the catch-up rate (storer.Syncer).
 type Reconciler struct {
 	overlay       swarm.Address
 	topo          Topology
@@ -149,11 +160,19 @@ type Reconciler struct {
 	logger        log.Logger
 	now           func() time.Time
 	after         func(time.Duration) <-chan time.Time
-	roundInterval time.Duration
 	guardTimeout  time.Duration
 	stripeTimeout time.Duration
 	rate          *rateWindow
 	metrics       metrics
+
+	// minInterval and maxInterval bound the adaptive round interval, whose
+	// current value (nanoseconds) is interval. slots holds a token per
+	// running session this node opened (MaxInitiatedSessions). roundWake
+	// triggers a round (wakeRound).
+	minInterval, maxInterval time.Duration
+	interval                 atomic.Int64
+	slots                    chan struct{}
+	roundWake                chan struct{}
 
 	// pickMu orders the Status snapshot (LocalStatus) of a round or a
 	// gossip pass together with its pick (pickDueLocked), so that a pick
@@ -210,8 +229,9 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.After == nil {
 		o.After = time.After
 	}
-	if o.RoundInterval <= 0 {
-		o.RoundInterval = RoundInterval
+	minInterval, maxInterval := MinRoundInterval, MaxRoundInterval
+	if o.RoundInterval > 0 {
+		minInterval, maxInterval = o.RoundInterval, o.RoundInterval
 	}
 	if o.StartupGuardTimeout <= 0 {
 		o.StartupGuardTimeout = StartupGuardTimeout
@@ -227,10 +247,13 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		logger:        logger.WithName(loggerName).Register(),
 		now:           o.Now,
 		after:         o.After,
-		roundInterval: o.RoundInterval,
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
 		rate:          newRateWindow(SyncRateWindow, o.Now),
+		minInterval:   minInterval,
+		maxInterval:   maxInterval,
+		slots:         make(chan struct{}, MaxInitiatedSessions),
+		roundWake:     make(chan struct{}, 1),
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
@@ -239,7 +262,8 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		ctx:           ctx,
 		cancel:        cancel,
 	}
-	r.metrics = newMetrics(r.SyncRate)
+	r.interval.Store(int64(minInterval))
+	r.metrics = newMetrics(r.SyncRate, func() float64 { return r.currentInterval().Seconds() })
 	return r
 }
 
@@ -250,8 +274,9 @@ func (r *Reconciler) SetService(svc Service) {
 	r.svc = svc
 }
 
-// Start subscribes to the topology and to the index's root changes and
-// starts the round and Status gossip loops. It returns immediately and is
+// Start subscribes to the topology, to the index's root changes and to the
+// peers' Status changes (when the Service signals them, statusSubscriber),
+// and starts the round and Status gossip loops. It returns immediately and is
 // safe to call once, from the storer's reserve-worker start-up; later calls
 // are no-ops. It panics when the Service is nil (a wiring bug). ctx is not
 // retained: Close stops the loops.
@@ -270,6 +295,13 @@ func (r *Reconciler) Start(_ context.Context) {
 	}
 	changes, unsubscribe := r.topo.SubscribeTopologyChange()
 	rootChanges, unsubscribeRoot := r.svc.SubscribeRootChange()
+	var (
+		statuses          <-chan struct{}
+		unsubscribeStatus = func() {}
+	)
+	if s, ok := r.svc.(statusSubscriber); ok {
+		statuses, unsubscribeStatus = s.SubscribeStatus()
+	}
 	r.wg.Add(3)
 	go func() {
 		defer r.wg.Done()
@@ -278,7 +310,8 @@ func (r *Reconciler) Start(_ context.Context) {
 	go func() {
 		defer r.wg.Done()
 		defer unsubscribe()
-		r.loop(changes)
+		defer unsubscribeStatus()
+		r.loop(changes, statuses)
 	}()
 	go func() {
 		defer r.wg.Done()
@@ -287,27 +320,10 @@ func (r *Reconciler) Start(_ context.Context) {
 	}()
 }
 
-// loop runs a round at start, every round interval and on every topology
-// change, until Close.
-func (r *Reconciler) loop(changes <-chan struct{}) {
-	ticker := time.NewTicker(r.roundInterval)
-	defer ticker.Stop()
-	r.round()
-	for {
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-ticker.C:
-			r.round()
-		case <-changes:
-			r.round()
-		}
-	}
-}
-
 // round refreshes the peer set from the topology, sends the Statuses that
-// are due (first contacts, a moved root; pickDueLocked) and starts a session
-// with every peer this node initiates with.
+// are due (first contacts, a moved root; pickDueLocked), starts a session
+// with every peer this node initiates with or takes over (scheduler.go) and
+// adapts the round interval.
 func (r *Reconciler) round() {
 	var connected []swarm.Address
 	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
@@ -413,9 +429,10 @@ func (r *Reconciler) round() {
 	// A peer that accepts our Status but never sends its own keeps
 	// exchanged false; the guard then releases only at StartupGuardTimeout
 	// (the fallback path). Its eligibility is unknown without its Status.
-	// A differing peer this node initiates with that backs off keeps its
-	// difference unresolved, and so does the guard.
-	exchanged, eligible, unresolved := true, 0, false
+	// A differing peer this node initiates with that backs off, or that
+	// lacks this node's current root, keeps its difference unresolved, and
+	// so does the guard.
+	exchanged, eligible, unresolved, differs := true, 0, false, false
 	clear(r.awaiting)
 	var candidates []swarm.Address
 	opens := make(map[string][]fingerprint.Range)
@@ -435,21 +452,27 @@ func (r *Reconciler) round() {
 		}
 		if !st.sent || !have {
 			exchanged = false
+			st.takeoverSince = time.Time{}
 			continue
 		}
 		if !isEligible(local, remote) {
+			st.takeoverSince = time.Time{}
 			continue
 		}
 		eligible++
 		if sameDigest(local, remote) {
+			st.takeoverSince = time.Time{}
 			r.fireLocked(st, eventEqualDigest)
 			continue
 		}
+		differs = true
 		if !r.initiates(p) {
 			if !st.served {
 				r.awaiting[p.ByteString()] = true
 			}
-			continue
+			if !r.takeoverDueLocked(st, now) {
+				continue
+			}
 		}
 		if st.fsm.state == stateIdle && !st.fsm.canReconcile(now) {
 			unresolved = true // backing off
@@ -457,6 +480,14 @@ func (r *Reconciler) round() {
 		}
 		// Idle and past its backoff, with no stripe session waiting for it
 		if bootstrap || st.stripeWaiters > 0 || !st.fsm.canReconcile(now) {
+			continue
+		}
+		// The peer must have this node's current root: one moved since the
+		// last Status that reached the peer may still be in flight, or
+		// deferred by the sender-side rate, and the peer would refuse the
+		// session. The gossip pass that delivers it triggers a round.
+		if !st.reached.Equal(local.Root) {
+			unresolved = true
 			continue
 		}
 		open, skip := r.radiusOpenLocked(local, remote)
@@ -478,11 +509,14 @@ func (r *Reconciler) round() {
 	}
 	r.guardArmed = exchanged && eligible > 0 && !unresolved
 	r.checkGuardLocked()
+	r.adaptInterval(differs)
 }
 
 // probe sends local to the picked peers, at most maxConcurrentProbes at
-// once, and records the outcome in the entry each was picked with.
-func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
+// once, and records the outcome in the entry each was picked with. It
+// reports whether a send delivered a root the peer did not have from this
+// node before (a first contact or a moved root).
+func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) (newRoot bool) {
 	sem := make(chan struct{}, maxConcurrentProbes)
 	var wg sync.WaitGroup
 	for _, pk := range picks {
@@ -490,7 +524,7 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 		case sem <- struct{}{}:
 		case <-r.ctx.Done():
 			wg.Wait()
-			return
+			return newRoot
 		}
 		wg.Add(1)
 		go func() {
@@ -506,7 +540,11 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 			st.sending = false
 			switch {
 			case err == nil:
+				if !st.sent || !st.reached.Equal(local.Root) {
+					newRoot = true
+				}
 				st.sent, st.failed, st.statusFails = true, false, 0
+				st.reached = local.Root
 			case errors.Is(err, rangesync.ErrProtocolUnsupported):
 				if st.fsm.state != stateProbing {
 					// a reconnect the peer set did not show: a new peer
@@ -525,6 +563,7 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) {
 		}()
 	}
 	wg.Wait()
+	return newRoot
 }
 
 // isEligible reports whether this node and a peer with status remote run
@@ -553,14 +592,24 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 
 // session runs Reconcile then Fetch with peer, whose entry st is in
 // Reconciling, then transfers the ranges the session handed to its Striper
-// (d̂ > LargeDiff) as stripes. open, if not empty, is the session's opening
-// (the old half after a radius decrease). The outcome moves st on: the
-// peer's Busy or an error back to Idle with a backoff, a cause on this node
-// (localCause) back to Idle without one, a completed session to Fetching
-// and, once its wants are fetched, to Idle.
+// (d̂ > LargeDiff) as stripes. It waits for a session slot first
+// (MaxInitiatedSessions). open, if not empty, is the session's opening (the
+// old half after a radius decrease). The outcome moves st on: the peer's Busy
+// or an error back to Idle with a backoff, a cause on this node (localCause)
+// back to Idle without one, a completed session to Fetching and, once its
+// wants are fetched, to Idle. A takeover (the peer initiates) that finds the
+// peer's session slot taken on this node found the initiator running a
+// session with this node: it goes back to Idle without a backoff and waits
+// for the initiator again.
 func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range) {
 	striper := new(StripeCollector)
-	wants, err := r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
+	release, err := r.acquireSlot(r.ctx)
+	var wants []storer.ChunkID
+	if err == nil {
+		wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
+		release()
+	}
+	takeover := !r.initiates(peer)
 
 	r.mu.Lock()
 	r.pendingReconcile--
@@ -574,6 +623,9 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 			if r.fireLocked(st, eventSessionDone) {
 				st.fetching = true
 			}
+		case takeover && errors.Is(err, rangesync.ErrPeerSessionLimit):
+			r.fireLocked(st, eventAborted)
+			st.restartTakeover(r.now())
 		case localCause(err):
 			r.fireLocked(st, eventAborted)
 		case isBusy(err):
@@ -718,11 +770,16 @@ func (r *Reconciler) Succeed(peer swarm.Address) {
 	r.markServedLocked(peer)
 }
 
-// markServedLocked records that peer ran a session with this node and
-// re-checks the start-up guard.
+// markServedLocked records that a session with peer completed (or the peer
+// listed wants in one this node served) and re-checks the start-up guard. A
+// pending takeover of the peer waits again from now: the initiator is
+// active, or this node's own takeover completed.
 func (r *Reconciler) markServedLocked(peer swarm.Address) {
 	if st, ok := r.peers[peer.ByteString()]; ok {
 		st.served = true
+		if !st.takeoverSince.IsZero() {
+			st.restartTakeover(r.now())
+		}
 	}
 	delete(r.awaiting, peer.ByteString())
 	r.checkGuardLocked()

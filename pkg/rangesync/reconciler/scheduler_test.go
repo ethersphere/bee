@@ -1,0 +1,396 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package reconciler_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+)
+
+// assertSessions checks, after letting the sessions a round started run,
+// that peer had want sessions.
+func assertSessions(t *testing.T, svc *fakeService, peer swarm.Address, want int) {
+	t.Helper()
+	if want > 0 {
+		waitFor(t, fmt.Sprintf("%d sessions", want), func() bool { return len(svc.sessionOpens(peer)) >= want })
+	}
+	settle()
+	if got := len(svc.sessionOpens(peer)); got != want {
+		t.Fatalf("%d sessions with %s, want %d", got, peer, want)
+	}
+}
+
+// TestRoundInitiatorRule: of two peers whose digests differ, the round starts
+// a session with the higher one only; the lower one initiates.
+func TestRoundInitiatorRule(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(2)
+	svc.remote[higher.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, lower, higher)
+	h.r.Round()
+	assertSessions(t, svc, higher, 1)
+	h.r.Round()
+	assertSessions(t, svc, higher, 2)
+	assertSessions(t, svc, lower, 0)
+}
+
+// TestRoundTakeover: a lower peer whose digest differs and that runs no
+// session with this node is taken over after 2 × RoundInterval + jitter
+// (jitter below one RoundInterval), not before.
+func TestRoundTakeover(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, lower)
+	ri := h.r.CurrentRoundInterval()
+	if ri != reconciler.MinRoundInterval {
+		t.Fatalf("initial round interval %v, want %v", ri, reconciler.MinRoundInterval)
+	}
+	h.r.Round() // the mismatch is seen
+	h.clock.Add(2*ri - time.Millisecond)
+	h.r.Round()
+	assertSessions(t, svc, lower, 0)
+	h.clock.Add(ri + time.Millisecond)
+	h.r.Round()
+	assertSessions(t, svc, lower, 1)
+}
+
+// TestRoundTakeoverInitiatorAlive: a session the lower peer ran with this
+// node restarts the wait, and so does a takeover answered with the peer's
+// session slot taken (the peer's own session is running), without a backoff.
+func TestRoundTakeoverInitiatorAlive(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, lower)
+	ri := h.r.CurrentRoundInterval()
+	h.r.Round()
+	h.clock.Add(2*ri - time.Second)
+	h.r.Succeed(lower) // the initiator's session with this node completed
+	h.clock.Add(2*ri - time.Millisecond)
+	h.r.Round() // past the first wait, within the restarted one
+	assertSessions(t, svc, lower, 0)
+
+	svc.set(func() { svc.reconErr[lower.ByteString()] = rangesync.ErrPeerSessionLimit })
+	h.clock.Add(2 * ri)
+	h.r.Round()
+	assertSessions(t, svc, lower, 1)
+	waitFor(t, "idle", func() bool { s, _ := h.r.PeerState(lower); return s == reconciler.StateIdle })
+	h.clock.Add(time.Second)
+	h.r.Round() // the slot was taken by the peer's session: wait again
+	assertSessions(t, svc, lower, 1)
+	h.clock.Add(3 * ri)
+	h.r.Round()
+	assertSessions(t, svc, lower, 2)
+	if s := h.r.Score(lower); s != 0 {
+		t.Fatalf("score %d", s)
+	}
+}
+
+// TestRoundTakeoverEqualDigestClears: an equal digest ends the wait; a later
+// mismatch waits again from the round that sees it.
+func TestRoundTakeoverEqualDigestClears(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(2)
+	h := newGossipHarness(t, svc, lower)
+	ri := h.r.CurrentRoundInterval()
+	h.r.Round()
+	h.clock.Add(ri)
+	svc.set(func() { svc.remote[lower.ByteString()] = status(1) })
+	h.r.Round()
+	h.clock.Add(ri)
+	svc.set(func() { svc.remote[lower.ByteString()] = status(0) })
+	h.r.Round()                          // a new mismatch
+	h.clock.Add(2*ri - time.Millisecond) // past the first mismatch's latest deadline
+	h.r.Round()
+	assertSessions(t, svc, lower, 0)
+	h.clock.Add(ri + time.Millisecond)
+	h.r.Round()
+	assertSessions(t, svc, lower, 1)
+}
+
+// TestRoundIntervalAdapts: the round interval moves toward MaxRoundInterval
+// while every digest matches and toward MinRoundInterval while differences
+// are found; the round_interval_seconds gauge follows it.
+func TestRoundIntervalAdapts(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newGossipHarness(t, svc, higher)
+	check := func(want time.Duration) {
+		t.Helper()
+		h.r.Round()
+		if got := h.r.CurrentRoundInterval(); got != want {
+			t.Fatalf("round interval %v, want %v", got, want)
+		}
+		if got := h.r.RoundIntervalGauge(); got != want.Seconds() {
+			t.Fatalf("round_interval_seconds %v, want %v", got, want.Seconds())
+		}
+	}
+	for _, want := range []time.Duration{10 * time.Second, 20 * time.Second, 30 * time.Second, 30 * time.Second} {
+		check(want)
+	}
+	svc.set(func() { svc.remote[higher.ByteString()] = status(2) })
+	for _, want := range []time.Duration{15 * time.Second, 7500 * time.Millisecond, 5 * time.Second, 5 * time.Second} {
+		check(want)
+	}
+
+	// a fixed interval does not adapt
+	fixed := reconciler.New(self, &fakeTopology{peers: []swarm.Address{higher}}, svc, log.Noop, reconciler.Options{
+		Now:           h.clock.Now,
+		After:         h.clock.After,
+		RoundInterval: time.Minute,
+	})
+	t.Cleanup(func() { _ = fixed.Close() })
+	fixed.Round()
+	if got := fixed.CurrentRoundInterval(); got != time.Minute {
+		t.Fatalf("fixed round interval %v", got)
+	}
+}
+
+// TestRoundSessionCap: a round with more differing peers than
+// MaxInitiatedSessions runs at most that many sessions at once; the others
+// wait for a slot and run once one frees.
+func TestRoundSessionCap(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.reconcileGate = make(chan struct{})
+	peers := make([]swarm.Address, 2*reconciler.MaxInitiatedSessions+3)
+	for i := range peers {
+		peers[i] = addr(0xf0, byte(i))
+		svc.remote[peers[i].ByteString()] = status(2)
+	}
+	h := newGossipHarness(t, svc, peers...)
+	h.r.Round()
+	waitFor(t, "sessions", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+	settle()
+	svc.set(func() {
+		if svc.inAll != reconciler.MaxInitiatedSessions {
+			t.Errorf("%d sessions at once, want %d", svc.inAll, reconciler.MaxInitiatedSessions)
+		}
+	})
+	if h.r.GuardReleased() {
+		t.Fatal("start-up guard released with sessions waiting for a slot")
+	}
+	close(svc.reconcileGate)
+	for _, p := range peers {
+		waitFor(t, "session", func() bool { return svc.count(svc.reconciled, p) > 0 })
+	}
+	svc.set(func() {
+		if svc.maxInAll != reconciler.MaxInitiatedSessions {
+			t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, reconciler.MaxInitiatedSessions)
+		}
+	})
+}
+
+// TestRoundSessionCapSharedWithStripes: stripe sessions take their slots
+// from the same MaxInitiatedSessions as round sessions.
+func TestRoundSessionCapSharedWithStripes(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.reconcileGate = make(chan struct{})
+	peers := make([]swarm.Address, reconciler.MaxInitiatedSessions)
+	for i := range peers {
+		peers[i] = addr(0xf0, byte(i))
+		svc.remote[peers[i].ByteString()] = status(2)
+	}
+	h := newGossipHarness(t, svc, peers...)
+	h.r.Round()
+	waitFor(t, "sessions", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+
+	striper := addr(0xf1, 0) // not followed by the reconciler
+	done := make(chan []reconciler.StripeResult, 1)
+	go func() {
+		done <- h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 1), Peers: []swarm.Address{striper}}})
+	}()
+	settle()
+	if n := len(svc.sessionOpens(striper)); n != 0 {
+		t.Fatalf("stripe session started with every slot taken (%d)", n)
+	}
+	close(svc.reconcileGate)
+	if res := <-done; res[0].Err != nil {
+		t.Fatal(res[0].Err)
+	}
+	svc.set(func() {
+		if svc.maxInAll > reconciler.MaxInitiatedSessions {
+			t.Errorf("%d sessions at once, want at most %d", svc.maxInAll, reconciler.MaxInitiatedSessions)
+		}
+	})
+}
+
+// newScheduledHarness returns a started reconciler with the default
+// (adaptive) round interval, so that only the first round runs on the
+// round timer within a test; deferred rounds follow the fake clock.
+func newScheduledHarness(t *testing.T, svc *fakeService, peers ...swarm.Address) *harness {
+	t.Helper()
+	h := &harness{
+		svc:   svc,
+		topo:  &fakeTopology{peers: peers},
+		clock: &fakeClock{now: time.Unix(1_000_000, 0)},
+	}
+	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{Now: h.clock.Now, After: h.clock.After})
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	h.r.Start(context.Background())
+	return h
+}
+
+// TestStatusChangeTriggersRound: a changed Status of a peer triggers a round,
+// MinRoundInterval after the last one.
+func TestStatusChangeTriggersRound(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newScheduledHarness(t, svc, higher)
+	waitFor(t, "first round", func() bool { s, _ := h.r.PeerState(higher); return s == reconciler.StateIdle })
+
+	svc.set(func() { svc.remote[higher.ByteString()] = status(2) })
+	svc.statusChange()
+	assertSessions(t, svc, higher, 0) // within MinRoundInterval of the first round
+	h.clock.Add(reconciler.MinRoundInterval)
+	assertSessions(t, svc, higher, 1)
+}
+
+// TestRootChangeTriggersRound: a root change of this node triggers a round,
+// so that the initiator reacts to its own new elements as its peers do.
+func TestRootChangeTriggersRound(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newScheduledHarness(t, svc, higher)
+	waitFor(t, "first round", func() bool { s, _ := h.r.PeerState(higher); return s == reconciler.StateIdle })
+
+	h.clock.Add(reconciler.MinRoundInterval)
+	svc.set(func() { svc.local = status(2) })
+	svc.rootChange()
+	assertSessions(t, svc, higher, 1)
+}
+
+// TestStatusChangeWakesGossip: a peer that becomes eligible from its side
+// gets this node's changed root summary at once, not at the heartbeat.
+func TestStatusChangeWakesGossip(t *testing.T) {
+	t.Parallel()
+
+	own := fingerprint.NewRange(addr(0x80, 0), 1)
+	withRoot := func(st rangesync.Status, root fingerprint.Range) rangesync.Status {
+		st.Root = root
+		return st
+	}
+	svc := newFakeService(withRoot(status(1), own))
+	svc.remote[higher.ByteString()] = withRoot(status(1), fingerprint.NewRange(addr(0x00, 0), 1)) // disjoint
+	h := newScheduledHarness(t, svc, higher)
+	waitFor(t, "first contact", func() bool { return svc.count(svc.sent, higher) == 1 })
+
+	h.clock.Add(reconciler.StatusMinInterval)
+	svc.set(func() { svc.local = withRoot(status(2), own) })
+	svc.rootChange() // not eligible: nothing to send
+	settle()
+	if n := svc.count(svc.sent, higher); n != 1 {
+		t.Fatalf("%d statuses to a peer that is not eligible", n)
+	}
+	svc.set(func() { svc.remote[higher.ByteString()] = withRoot(status(1), own) })
+	svc.statusChange()
+	waitFor(t, "push", func() bool { return svc.count(svc.sent, higher) == 2 })
+}
+
+// TestRoundWaitsForMovedRoot: after this node's root moved, the round starts
+// no session with a peer that does not have the new root yet (its send is in
+// flight), and starts it once the send is done.
+func TestRoundWaitsForMovedRoot(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newGossipHarness(t, svc, higher)
+	h.r.Round() // first contact, equal digests
+
+	calls := make(chan chan struct{})
+	svc.set(func() {
+		svc.sendCalls = calls
+		svc.local = selfRoot(1, 5) // the radius increased
+	})
+	h.clock.Add(time.Second)
+	gossip := make(chan struct{})
+	go func() {
+		defer close(gossip)
+		h.r.Gossip() // sends the moved root
+	}()
+	release := <-calls
+	h.r.Round()
+	assertSessions(t, svc, higher, 0)
+	close(release)
+	<-gossip
+	svc.set(func() { svc.sendCalls = nil })
+	h.r.Round()
+	assertSessions(t, svc, higher, 1)
+}
+
+// TestStripePlanAvoidsBackoff: stripes are planned without the peers that
+// back off after Busy sessions, unless they are needed to cover the range.
+func TestStripePlanAvoidsBackoff(t *testing.T) {
+	t.Parallel()
+
+	busy, ready := addr(0xf0, 1), addr(0xf0, 2)
+	svc := newFakeService(status(1))
+	svc.remote[busy.ByteString()] = status(2)
+	svc.remote[ready.ByteString()] = status(1)
+	h := newGossipHarness(t, svc, busy, ready)
+	for range 2 { // the second Busy in a row backs off
+		svc.set(func() { svc.reconErr[busy.ByteString()] = rangesync.ErrPeerBusy })
+		h.r.Round()
+		waitFor(t, "busy", func() bool { return svc.count(svc.reconciled, busy) > 0 && svc.count(svc.inSession, busy) == 0 })
+		waitFor(t, "idle", func() bool { s, _ := h.r.PeerState(busy); return s == reconciler.StateIdle })
+		svc.set(func() { svc.reconciled[busy.ByteString()] = 0 })
+	}
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	for _, st := range h.r.PlanStripesFor(root) {
+		if len(st.Peers) != 1 || !st.Peers[0].Equal(ready) {
+			t.Fatalf("stripe %s planned with %v, want only %s", st.Range, st.Peers, ready)
+		}
+	}
+
+	// the busy peer is the only one that covers the range: it is planned
+	narrow := withRootOf(status(1), fingerprint.NewRange(addr(0xf0, 0), 1))
+	svc.set(func() { svc.remote[ready.ByteString()] = narrow })
+	other := root.Child(1, 0) // the half ready does not cover
+	var planned bool
+	for _, st := range h.r.PlanStripesFor(root) {
+		if other.ContainsRange(st.Range) {
+			planned = planned || len(st.Peers) > 0
+		}
+	}
+	if !planned {
+		t.Fatal("no peer planned for the half only the busy peer covers")
+	}
+}
+
+// withRootOf returns st with root.
+func withRootOf(st rangesync.Status, root fingerprint.Range) rangesync.Status {
+	st.Root = root
+	return st
+}

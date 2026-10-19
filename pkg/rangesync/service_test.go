@@ -380,6 +380,60 @@ func TestSendStatusWith(t *testing.T) {
 	})
 }
 
+// TestSubscribeStatus: a subscriber is signaled when a peer's recorded Status
+// changes (or is its first), not when the peer repeats it, and unsubscribe
+// closes the channel.
+func TestSubscribeStatus(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t)
+	b.start(t)
+	p := newRawPeer(t, b)
+	c, unsubscribe := b.svc.SubscribeStatus()
+	send := func(count uint64) {
+		t.Helper()
+		st := rangesync.EncodeStatus(rangesync.Status{
+			Root:     fingerprint.NewRange(swarm.ZeroAddress, 0),
+			Summary:  fingerprint.Summary{Count: count},
+			LeafBits: serviceLeafBits,
+			Mapping:  fingerprint.DefaultMapperID,
+		})
+		if err := p.sendStatus(t, st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signaled := func() bool {
+		select {
+		case <-c:
+			return true
+		default:
+			return false
+		}
+	}
+
+	send(1)
+	if !signaled() {
+		t.Fatal("first status not signaled")
+	}
+	send(1)
+	if signaled() {
+		t.Fatal("repeated status signaled")
+	}
+	send(2)
+	send(3)
+	if !signaled() {
+		t.Fatal("changed status not signaled")
+	}
+	if signaled() {
+		t.Fatal("signals did not coalesce")
+	}
+	unsubscribe()
+	unsubscribe() // safe twice
+	if _, ok := <-c; ok {
+		t.Fatal("channel open after unsubscribe")
+	}
+}
+
 // connect0 lets a and b open streams to each other without a status exchange.
 func connect0(a, b *testNode) {
 	a.rec.SetProtocols(b.svc.Protocol())

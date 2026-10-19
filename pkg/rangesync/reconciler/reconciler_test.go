@@ -98,6 +98,12 @@ type fakeService struct {
 	// fetchCalls, if not nil, receives a channel from each Fetch call,
 	// which then waits until that channel is closed.
 	fetchCalls chan chan struct{}
+	// inAll and maxInAll are the ReconcileWith calls running with any peer
+	// and the most that ran at once; statusCh is the channel of
+	// SubscribeStatus (statusChange signals it).
+	inAll    int
+	maxInAll int
+	statusCh chan struct{}
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -121,6 +127,28 @@ func newFakeService(local rangesync.Status) *fakeService {
 		statuses:        make(map[string][]rangesync.Status),
 		inSession:       make(map[string]int),
 		maxInSession:    make(map[string]int),
+		statusCh:        make(chan struct{}, 1),
+	}
+}
+
+// running returns the ReconcileWith calls running with any peer.
+func (s *fakeService) running() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inAll
+}
+
+// SubscribeStatus returns statusCh; unsubscribing does nothing.
+func (s *fakeService) SubscribeStatus() (<-chan struct{}, func()) {
+	return s.statusCh, func() {}
+}
+
+// statusChange signals that a peer's Status changed, coalescing like the
+// Service.
+func (s *fakeService) statusChange() {
+	select {
+	case s.statusCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -156,9 +184,11 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 	offer, ok := s.offer[k]
 	s.inSession[k]++
 	s.maxInSession[k] = max(s.maxInSession[k], s.inSession[k])
+	s.inAll++
+	s.maxInAll = max(s.maxInAll, s.inAll)
 	delay := s.reconcileDelay
 	s.mu.Unlock()
-	defer s.set(func() { s.inSession[k]-- })
+	defer s.set(func() { s.inSession[k]--; s.inAll-- })
 	if delay > 0 {
 		select {
 		case <-time.After(delay):
