@@ -693,7 +693,11 @@ paths:
           schema:
             type: string
           required: false
-          description: Continuation token; return entries strictly after this path.
+          description: >
+            Continuation token; return entries strictly after this path. With a
+            delimiter, an `after` that is a common prefix, or a path under one,
+            resumes past every path under that prefix. The node seeks to
+            `after` rather than walking the entries before it.
         - in: query
           name: sizes
           schema:

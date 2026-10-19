@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
@@ -32,12 +31,6 @@ const (
 	// keeps an accurate view of its own page size.
 	manifestListMaxLimit = 1000000
 )
-
-// emptyManifestEntry is the reference bee's uploader stores for manifest-level
-// metadata held at RootPath (e.g. website-index-document): 32 zero bytes. Note
-// this is NOT swarm.ZeroAddress (which has nil bytes), so Address.IsZero() does
-// not match it — mirror the convention used by mantarayManifest.IterateAddresses.
-var emptyManifestEntry = swarm.NewAddress([]byte{31: 0})
 
 type ManifestListEntry struct {
 	Path      string            `json:"path"`
@@ -117,49 +110,23 @@ func (s *Service) manifestListHandler(w http.ResponseWriter, r *http.Request) {
 
 	prefix := paths.Prefix
 	resp := ManifestListResponse{Entries: []ManifestListEntry{}}
-	seenPrefix := make(map[string]struct{})
-	// marker tracks the last path fully consumed on this page; on truncation it
-	// becomes nextMarker so a resumed page starts strictly after it. It is only
-	// advanced for paths that are actually accounted for (emitted or folded into
-	// a common prefix), never for entries skipped by the `after` continuation.
+	// marker is the last path or common prefix on this page; on truncation it
+	// becomes nextMarker, and the walk for the next page seeks straight past
+	// it (past every path below it, for a common prefix).
 	var marker string
 
-	walkErr := walker.WalkEntry(ctx, prefix, func(p string, entry manifest.Entry) error {
-		// skip the synthetic root-metadata entry (empty reference); its
-		// manifest-level metadata (e.g. website-index-document) is not a file.
-		if entry.Reference().IsZero() || entry.Reference().Equal(emptyManifestEntry) {
-			return nil
-		}
-		// continuation token: only paths strictly after it are unseen.
-		if queries.After != "" && p <= queries.After {
-			return nil
-		}
-
-		if queries.Delimiter != "" {
-			rest := strings.TrimPrefix(p, prefix)
-			if idx := strings.Index(rest, queries.Delimiter); idx >= 0 {
-				cp := prefix + rest[:idx+len(queries.Delimiter)]
-				if _, dup := seenPrefix[cp]; dup {
-					// already an open common prefix — folding p in is free.
-					marker = p
-					return nil
-				}
-				if len(resp.Entries)+len(resp.CommonPrefixes) >= queries.Limit {
-					resp.Truncated = true
-					resp.NextMarker = marker
-					return manifest.ErrStopWalk
-				}
-				seenPrefix[cp] = struct{}{}
-				resp.CommonPrefixes = append(resp.CommonPrefixes, cp)
-				marker = p
-				return nil
-			}
-		}
-
+	opts := manifest.WalkEntryOptions{After: queries.After, Delimiter: queries.Delimiter}
+	walkErr := walker.WalkEntry(ctx, prefix, opts, func(p string, entry manifest.Entry) error {
 		if len(resp.Entries)+len(resp.CommonPrefixes) >= queries.Limit {
 			resp.Truncated = true
 			resp.NextMarker = marker
 			return manifest.ErrStopWalk
+		}
+		marker = p
+
+		if entry == nil {
+			resp.CommonPrefixes = append(resp.CommonPrefixes, p)
+			return nil
 		}
 
 		le := ManifestListEntry{
@@ -176,7 +143,6 @@ func (s *Service) manifestListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp.Entries = append(resp.Entries, le)
-		marker = p
 		return nil
 	})
 	if walkErr != nil {

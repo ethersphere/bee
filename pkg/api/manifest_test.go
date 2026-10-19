@@ -172,6 +172,55 @@ func TestManifestList(t *testing.T) {
 		}
 	})
 
+	t.Run("delimiter pagination", func(t *testing.T) {
+		// one item per page, so a common prefix that is resumed from must not
+		// be listed again on the next page
+		for _, tc := range []struct {
+			prefix string
+			want   []string
+		}{
+			{"", []string{"data/", "docs/", "index.html"}},
+			{"data/", []string{"data/2025/", "data/a.parquet", "data/b.parquet"}},
+		} {
+			var all []string
+			url := fmt.Sprintf("/manifest/%s/%s?delimiter=/&limit=1", ref, tc.prefix)
+			for {
+				if len(all) > len(tc.want) {
+					t.Fatalf("prefix %q: pagination does not end: %v", tc.prefix, all)
+				}
+				resp := list(t, url)
+				all = append(all, resp.CommonPrefixes...)
+				all = append(all, manifestPaths(resp)...)
+				if !resp.Truncated {
+					break
+				}
+				url = fmt.Sprintf("/manifest/%s/%s?delimiter=/&limit=1&after=%s", ref, tc.prefix, resp.NextMarker)
+			}
+			if !equalStrings(all, tc.want) {
+				t.Fatalf("prefix %q: paginated shallow listing mismatch:\n got %v\nwant %v", tc.prefix, all, tc.want)
+			}
+		}
+	})
+
+	t.Run("after any path", func(t *testing.T) {
+		resp := list(t, fmt.Sprintf("/manifest/%s/?after=data/a.parquet", ref))
+		want := []string{"data/b.parquet", "docs/readme.md", "index.html"}
+		if got := manifestPaths(resp); !equalStrings(got, want) {
+			t.Fatalf("listing after data/a.parquet mismatch:\n got %v\nwant %v", got, want)
+		}
+
+		// with a delimiter, data/ sorts before data/a.parquet, so it is passed
+		resp = list(t, fmt.Sprintf("/manifest/%s/?after=data/a.parquet&delimiter=/", ref))
+		if !equalStrings(resp.CommonPrefixes, []string{"docs/"}) || !equalStrings(manifestPaths(resp), []string{"index.html"}) {
+			t.Fatalf("shallow listing after data/a.parquet mismatch: got prefixes %v, entries %v", resp.CommonPrefixes, manifestPaths(resp))
+		}
+
+		resp = list(t, fmt.Sprintf("/manifest/%s/?after=zzz", ref))
+		if len(resp.Entries) != 0 || resp.Truncated {
+			t.Fatalf("expected an empty, untruncated listing after the last path, got %+v", resp)
+		}
+	})
+
 	t.Run("missing prefix is 404", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet,
 			fmt.Sprintf("/manifest/%s/nope/", ref), http.StatusNotFound)
