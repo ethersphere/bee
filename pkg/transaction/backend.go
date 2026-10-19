@@ -18,7 +18,7 @@ import (
 )
 
 // FeeHistorySuggestedFeeAndTips are max-fee-per-gas style estimates from eth_feeHistory over the last N blocks (by default 100)
-// Low, Market, and Aggressive are the median per-block priority fee at the 10th, 50th, and 90th reward percentiles respectively (each priority tier is floored by the configured minimum tip).
+// Low, Market, and Aggressive are the median per-block priority fee at the 10th, 50th, and 90th reward percentiles respectively.
 type FeeHistorySuggestedFeeAndTips struct {
 	LowTip        *big.Int
 	MarketTip     *big.Int

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 5.0.0
+  version: 5.1.0
   title: Common Data Types
   description: Common data structures and types used throughout the Bee API
 
@@ -1174,10 +1174,20 @@ components:
         $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
       required: false
       description: >
-        Client spend ceiling in wei. When set, fee escalation is disabled and the
-        node uses the legacy send path. When omitted, the node sends with retry
-        and escalates fees automatically. The fee-priority header is ignored while
-        this header is set.
+        Max fee per gas in wei. When omitted, the node chooses the price.
+        This endpoint does not raise the fee after the transaction is submitted.
+
+    GasPriceWithRetryParameter:
+      in: header
+      name: gas-price
+      schema:
+        $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
+      required: false
+      description: >
+        Max fee per gas in wei. When set, the node submits the transaction at
+        this price and does not raise it. When omitted, the node chooses the
+        price and raises it while the request waits. The fee-priority header
+        applies only when this header is omitted.
 
     FeePriorityParameter:
       in: header
@@ -1186,9 +1196,9 @@ components:
         $ref: "SwarmCommon.yaml#/components/schemas/FeePriority"
       required: false
       description: >
-        Starting fee tier for automatic escalation (low, market, or aggressive).
-        The node clamps the value to its configured maximum tier. Ignored when
-        gas-price is set.
+        Starting fee tier when the node chooses the price: low, market, or
+        aggressive. A tier above the node's configured maximum is lowered to
+        that maximum. Has no effect when gas-price is set.
 
     GasLimitParameter:
       in: header

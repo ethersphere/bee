@@ -371,10 +371,8 @@ func (t *transactionService) retryLoop(
 			attempts++
 
 			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonceWatch, overrides)
-			if err != nil && isNonRetryable(err) {
-				return common.Hash{}, nil, attempts, err
-			}
-
+			// Check receipt before check error: some non-retryable errors might occur after transaction was sent and executed
+			// It might have receipt
 			if receipt != nil {
 				t.logger.Info("retried transaction: receipt received", "tx", receipt.TxHash, "nonce", rs.Nonce)
 
@@ -382,6 +380,10 @@ func (t *transactionService) retryLoop(
 					return receipt.TxHash, receipt, attempts, ErrTransactionReverted
 				}
 				return receipt.TxHash, receipt, attempts, nil
+			}
+
+			if err != nil && isNonRetryable(err) {
+				return common.Hash{}, nil, attempts, err
 			}
 
 			if signedTx != nil {
@@ -517,8 +519,15 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 	case isNonRetryable(broadCastErr):
 		if errors.Is(broadCastErr, ErrUpdateRetryState) {
 			// The store write failed, but transaction may be in mempool.
-			// Start nonce tracking before stop retrying
+			// Watch nonce and wait for receipt.
 			t.watchRetryNonce(signedTx.Nonce(), nonceWatch)
+			receipt, waitErr := t.waitNonceChanged(ctx, rs, nonceWatch, t.txRetryDelay)
+			if receipt != nil {
+				return signedTx, receipt, nil
+			}
+			if errors.Is(waitErr, ErrTransactionCancelled) || errors.Is(waitErr, context.Canceled) {
+				return nil, nil, waitErr
+			}
 		}
 		return nil, nil, broadCastErr
 	case signedTx != nil:
@@ -541,7 +550,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		}
 	}
 
-	signedTx, receipt, err := t.waitNonceChanged(ctx, rs, nonceWatch, signedTx, delay)
+	receipt, err := t.waitNonceChanged(ctx, rs, nonceWatch, delay)
 	if errors.Is(broadCastErr, ErrTxMaxPriceDeferred) && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return nil, nil, broadCastErr
 	}
@@ -549,7 +558,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 }
 
 // waitNonceChanged waits up to the timeout for the monitor to signal that the nonce was mined.
-func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTransaction, nonceWatch *retryNonceWatch, signedTx *types.Transaction, timeout time.Duration) (*types.Transaction, *types.Receipt, error) {
+func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTransaction, nonceWatch *retryNonceWatch, timeout time.Duration) (*types.Receipt, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -557,13 +566,13 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 	case <-nonceWatch.minedC:
 		receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
 		if receipt != nil {
-			return nil, receipt, nil
+			return receipt, nil
 		}
-		return signedTx, nil, fmt.Errorf("wait for receipt: %w", err)
+		return nil, fmt.Errorf("wait for receipt: %w", err)
 	case err := <-nonceWatch.errC:
-		return signedTx, nil, fmt.Errorf("nonce watch: %w", err)
+		return nil, fmt.Errorf("nonce watch: %w", err)
 	case <-waitCtx.Done():
-		return signedTx, nil, fmt.Errorf("wait for nonce: %w", waitCtx.Err())
+		return nil, fmt.Errorf("wait for nonce: %w", waitCtx.Err())
 	}
 }
 
