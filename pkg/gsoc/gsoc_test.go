@@ -5,8 +5,8 @@
 package gsoc_test
 
 import (
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -25,7 +25,6 @@ func TestRegister(t *testing.T) {
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0
-		msgChan = make(chan struct{})
 
 		payload1    = []byte("Hello there!")
 		payload2    = []byte("General Kenobi. You are a bold one. Kill him!")
@@ -37,20 +36,9 @@ func TestRegister(t *testing.T) {
 		address1, _ = soc.CreateAddress(socId1, owner.Bytes())
 		address2, _ = soc.CreateAddress(socId2, owner.Bytes())
 
-		h1 = func(m []byte) {
-			h1Calls++
-			msgChan <- struct{}{}
-		}
-
-		h2 = func(m []byte) {
-			h2Calls++
-			msgChan <- struct{}{}
-		}
-
-		h3 = func(m []byte) {
-			h3Calls++
-			msgChan <- struct{}{}
-		}
+		h1 = func(*soc.SOC) { h1Calls++ }
+		h2 = func(*soc.SOC) { h2Calls++ }
+		h3 = func(*soc.SOC) { h3Calls++ }
 	)
 	_ = g.Subscribe(address1, h1)
 	_ = g.Subscribe(address2, h2)
@@ -68,8 +56,6 @@ func TestRegister(t *testing.T) {
 	// trigger soc upload on address1, check that only h1 is called
 	g.Handle(socCh1)
 
-	waitHandlerCallback(t, &msgChan, 1)
-
 	ensureCalls(t, &h1Calls, 1)
 	ensureCalls(t, &h2Calls, 0)
 
@@ -77,8 +63,6 @@ func TestRegister(t *testing.T) {
 	cleanup := g.Subscribe(address1, h3)
 
 	g.Handle(socCh1)
-
-	waitHandlerCallback(t, &msgChan, 2)
 
 	ensureCalls(t, &h1Calls, 2)
 	ensureCalls(t, &h2Calls, 0)
@@ -88,15 +72,11 @@ func TestRegister(t *testing.T) {
 
 	g.Handle(socCh1)
 
-	waitHandlerCallback(t, &msgChan, 1)
-
 	ensureCalls(t, &h1Calls, 3)
 	ensureCalls(t, &h2Calls, 0)
 	ensureCalls(t, &h3Calls, 1)
 
 	g.Handle(socCh2)
-
-	waitHandlerCallback(t, &msgChan, 1)
 
 	ensureCalls(t, &h1Calls, 3)
 	ensureCalls(t, &h2Calls, 1)
@@ -111,14 +91,55 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 	}
 }
 
-func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
-	t.Helper()
+// TestConcurrentSubscribeHandle verifies that subscriptions coming and going
+// while messages are handled is safe: Handle iterates the handlers of an
+// address without holding the lock, so a subscription ending concurrently must
+// not mutate the slice it is iterating. Run with -race to be meaningful.
+func TestConcurrentSubscribeHandle(t *testing.T) {
+	t.Parallel()
 
-	for range count {
-		select {
-		case <-*msgChan:
-		case <-time.After(1 * time.Second):
-			t.Fatal("reached timeout while waiting for handler message")
-		}
+	const (
+		goroutines = 4
+		iterations = 200
+	)
+
+	var (
+		g          = gsoc.New(log.Noop)
+		socID      = testutil.RandBytes(t, 32)
+		privKey, _ = crypto.GenerateSecp256k1Key()
+		signer     = crypto.NewDefaultSigner(privKey)
+		owner, _   = signer.EthereumAddress()
+		address, _ = soc.CreateAddress(socID, owner.Bytes())
+		noop       = func(*soc.SOC) {}
+	)
+
+	ch, _ := cac.New([]byte("Hello there!"))
+	socCh := soc.New(socID, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+
+	// a subscription that outlives the test, so that Handle always has
+	// handlers to iterate over.
+	cleanup := g.Subscribe(address, noop)
+	defer cleanup()
+
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				g.Subscribe(address, noop)()
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				g.Handle(socCh)
+			}
+		}()
 	}
+	wg.Wait()
 }

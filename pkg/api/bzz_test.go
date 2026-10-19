@@ -77,7 +77,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 		}
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
 		storerMock := mockstorer.NewWithChunkStore(store)
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: log.Noop,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -248,7 +248,7 @@ func TestBzzFiles(t *testing.T) {
 		simpleData           = []byte("this is a simple text")
 		storerMock           = mockstorer.New()
 		logger               = log.Noop
-		client, _, _, _      = newTestServer(t, testServerOptions{
+		client, _, _, _, _   = newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -694,7 +694,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 			t.Parallel()
 
 			logger := log.Noop
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer: mockstorer.New(),
 				Logger: logger,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -830,11 +830,11 @@ func TestFeedIndirection(t *testing.T) {
 
 	// first, "upload" some content for the update
 	var (
-		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")
-		logger          = log.Noop
-		storer          = mockstorer.New()
-		ctx             = context.Background()
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		updateData         = []byte("<h1>Swarm Feeds Hello World!</h1>")
+		logger             = log.Noop
+		storer             = mockstorer.New()
+		ctx                = context.Background()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -910,7 +910,7 @@ func TestFeedIndirection(t *testing.T) {
 			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
 			factory = newMockFactory(look)
 		)
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Logger: logger,
 			Feeds:  factory,
@@ -939,7 +939,7 @@ func TestFeedIndirection(t *testing.T) {
 			look    = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
 			factory = newMockFactory(look)
 		)
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Logger: logger,
 			Feeds:  factory,
@@ -960,7 +960,7 @@ func TestFeedIndirection(t *testing.T) {
 func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -1030,7 +1030,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchUnusable, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -1057,7 +1057,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -1084,7 +1084,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(),
@@ -1110,7 +1110,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
+		clientInvalidTag, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -1137,7 +1137,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientTagExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -1154,7 +1154,7 @@ func TestInvalidBzzParams(t *testing.T) {
 	t.Run("address not found", func(t *testing.T) {
 		t.Parallel()
 
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -1168,10 +1168,10 @@ func TestInvalidBzzParams(t *testing.T) {
 func TestBzzDownloadHeaders(t *testing.T) {
 	t.Parallel()
 	var (
-		data                = []byte("<h1>Swarm Hello World!</h1>")
-		logger              = log.Noop
-		storer              = mockstorer.New()
-		testServer, _, _, _ = newTestServer(t, testServerOptions{
+		data                   = []byte("<h1>Swarm Hello World!</h1>")
+		logger                 = log.Noop
+		storer                 = mockstorer.New()
+		testServer, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -1218,7 +1218,7 @@ func TestBzzDownloadHeaders(t *testing.T) {
 func TestBzzUploadRedundancyLevel(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
@@ -1284,7 +1284,7 @@ func TestBzzUploadRedundancyLevel(t *testing.T) {
 func TestBzzDownloadRedundancyLevel(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
@@ -196,29 +197,10 @@ func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier
 	return tierRange(start, t.endTier), nil
 }
 
-// broadcastTx prepares, signs, and sends a transaction.
-// When fixedNonce is nil a new nonce is allocated (first attempt);
-// otherwise the supplied nonce is reused (replacement transaction).
-func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
-	var nonce uint64
-
-	if fixedNonce != nil {
-		nonce = *fixedNonce
-	} else {
-		// The lock must be held until the transaction is broadcasted.
-		// Otherwise another transaction can take the same nonce.
-		t.lock.Lock()
-		defer t.lock.Unlock()
-
-		callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
-		var err error
-		nonce, err = t.nextNonce(callCtx)
-		cancel()
-		if err != nil {
-			return nil, fmt.Errorf("next nonce: %w", err)
-		}
-	}
-
+// sendAndRecord prepares, broadcasts and records one attempt.
+func (t *transactionService) sendAndRecord(ctx context.Context, rs *RetriedTransaction, request *TxRequest, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
+	// a nonce is not needed to prepare a transaction for broadcast,
+	// so this is done outside the mutex.
 	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
 	gasLimit, err := t.estimateGasLimit(callCtx, request)
 	cancel()
@@ -231,8 +213,7 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		return nil, fmt.Errorf("suggest gas fee: %w", err)
 	}
 
-	tx := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     nonce,
+	txData := &types.DynamicFeeTx{
 		ChainID:   t.chainID,
 		To:        request.To,
 		Value:     request.Value,
@@ -240,21 +221,57 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		GasFeeCap: gasFeeCap,
 		GasTipCap: gasTipCap,
 		Data:      request.Data,
-	})
+	}
 
-	signedTx, err := t.signer.SignTx(tx, t.chainID)
+	if rs.NonceAssigned {
+		txData.Nonce = rs.Nonce
+	} else {
+		// The nonce is not yet known: this is the first broadcast, or every previous attempt failed.
+		// Hold the lock until the transaction is written to disk for following case:
+		// 1. Transactions are sent in parallel.
+		// 2. Transaction A has reached node A's mempool, but it is not stored on our disk yet.
+		// 3. nextNonce for transaction B is served by node B, which does not know about A. On disk still no info about tx A.
+		// 4. Transaction B receives the same nonce as A, and the two transactions race onchain.
+		t.lock.Lock()
+		defer t.lock.Unlock()
+
+		callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
+		nonce, err := t.nextNonce(callCtx)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("next nonce: %w", err)
+		}
+		txData.Nonce = nonce
+	}
+
+	signedTx, err := t.broadcastTx(ctx, txData, tier)
+	if err != nil {
+		if isNonceTooLow(err) || isReplacementUnderpriced(err) || isNonRetryable(err) || signedTx == nil {
+			return signedTx, err
+		}
+		// any other error occurred, transaction may be is in mempool
+	}
+	if persistErr := t.persistReplaceTx(signedTx, rs, request.Description); persistErr != nil {
+		return signedTx, fmt.Errorf("%w: %w", ErrUpdateRetryState, persistErr)
+	}
+	return signedTx, err
+}
+
+// broadcastTx signs and sends a prepared transaction.
+func (t *transactionService) broadcastTx(ctx context.Context, txData *types.DynamicFeeTx, tier feeTier) (*types.Transaction, error) {
+	signedTx, err := t.signer.SignTx(types.NewTx(txData), t.chainID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
 	}
 
 	t.logger.Debug("retried transaction: broadcast",
 		"tx", signedTx.Hash(),
-		"nonce", nonce,
+		"nonce", signedTx.Nonce(),
 		"tier", tier.String(),
-		"gas_tip_cap", tx.GasTipCap(),
-		"gas_fee_cap", tx.GasFeeCap(),
+		"gas_tip_cap", signedTx.GasTipCap(),
+		"gas_fee_cap", signedTx.GasFeeCap(),
 	)
-	callCtx, cancel = context.WithTimeout(ctx, rpcCallTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
 	err = t.backend.SendTransaction(callCtx, signedTx)
 	cancel()
 	if err != nil {
@@ -308,8 +325,8 @@ func (t *transactionService) persistReplaceTx(signedTx *types.Transaction, rs *R
 }
 
 type retryNonceWatch struct {
-	doneC <-chan struct{}
-	errC  <-chan error
+	minedC <-chan struct{} // closed once the nonce is mined; nil until a watch exists
+	errC   <-chan error
 }
 
 // sendWithRetry runs the broadcast loop.
@@ -346,27 +363,15 @@ func (t *transactionService) sendWithRetry(
 func (t *transactionService) retryLoop(
 	ctx context.Context, request *TxRequest,
 	rs *RetriedTransaction, nonceWatch *retryNonceWatch,
-	previousTip, previousFeeCap *big.Int, tiers []feeTier,
-	overrides *RetryOverrides,
+	previousTip, previousFeeCap *big.Int, tiers []feeTier, 	overrides *RetryOverrides,
 ) (common.Hash, *types.Receipt, int, error) {
-	var (
-		nonce    *uint64
-		attempts int // track total number of attempts for metrics
-	)
+	var attempts int // track total number of attempts for metrics
 	for _, tier := range tiers {
-		for k := 0; k < t.attemptsPerTier; {
-			if rs.NonceAssigned {
-				nonce = &rs.Nonce
-			}
-
-			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonce, nonceWatch, overrides)
-			if errors.Is(err, ErrTxMaxPriceDeferred) {
-				t.logger.Debug("retried transaction: attempt deferred until max price bypass", "nonce", rs.Nonce, "tier", tier.String(), "error", err)
-				continue
-			}
+		for k := 0; k < t.attemptsPerTier; k++ {
 			attempts++
-			k++
-			if err != nil && (isNonRetryable(err) || isNonceTooLow(err)) {
+
+			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonceWatch, overrides)
+			if err != nil && isNonRetryable(err) {
 				return common.Hash{}, nil, attempts, err
 			}
 
@@ -407,18 +412,18 @@ func (t *transactionService) finishRetry(rs *RetriedTransaction, attempt int, te
 		t.clearRetrySession(rs, txHash)
 	case errors.Is(terminateTxErr, ErrTransactionCancelled):
 		t.clearRetrySession(rs, common.Hash{})
-	case nonceWatch.doneC != nil:
+	case nonceWatch.minedC != nil:
 		t.waitForPendingRetry(rs, nonceWatch)
 	}
 	t.retryMetrics.RecordRetryComplete(attempt, terminateTxErr)
 }
 
 func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatch) {
-	if watch.doneC != nil {
+	if watch.minedC != nil {
 		return
 	}
-	doneC, errC := t.monitor.WatchNonce(nonce)
-	watch.doneC = doneC
+	minedC, errC := t.monitor.WatchNonce(nonce)
+	watch.minedC = minedC
 	watch.errC = errC
 }
 
@@ -428,64 +433,96 @@ func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatc
 //  2. The mempool has not learned that yet and accepts a replacement with hash B.
 //  3. The nonce watch learns that the nonce was mined.
 //  4. A lookup of only the latest hash returns no receipt, so the transaction would be marked cancelled even though it was executed.
-func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *RetriedTransaction) *types.Receipt {
+//
+// When no receipt is found, a lookup error other than ethereum.NotFound is returned: an
+// unavailable RPC must not be mistaken for a transaction that was never mined.
+func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *RetriedTransaction) (*types.Receipt, error) {
+	var lookupErr error
 	hashes := rs.allHashes()
 	for i := len(hashes) - 1; i >= 0; i-- {
-		if ctx.Err() != nil {
-			return nil
-		}
 		callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
-		receipt, _ := t.backend.TransactionReceipt(callCtx, hashes[i])
+		receipt, err := t.backend.TransactionReceipt(callCtx, hashes[i])
 		cancel()
 		if receipt != nil {
-			return receipt
+			return receipt, nil
+		}
+		if err == nil || errors.Is(err, ethereum.NotFound) {
+			continue
+		}
+		// check if the parent context ended, or only this one call timed out
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		lookupErr = fmt.Errorf("receipt %s: %w", hashes[i], err)
+	}
+	if lookupErr != nil {
+		return nil, lookupErr
+	}
+	return nil, ErrReceiptNotFound
+}
+
+// pollReceiptAfterNonceMined looks the session receipt up after its nonce was mined.
+// The RPC node that serves receipts can lag behind the one that reported the nonce, so the
+// session is cancelled only when no transaction of it has a receipt and the nonce was used
+// cancellationDepth blocks ago. RPC errors never cancel the session.
+func (t *transactionService) pollReceiptAfterNonceMined(ctx context.Context, rs *RetriedTransaction) (*types.Receipt, error) {
+	var minedAt uint64
+	for {
+		receipt, err := t.receiptForRetryHashes(ctx, rs)
+		if receipt != nil {
+			return receipt, nil
+		}
+		switch {
+		case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
+			return nil, err
+		case errors.Is(err, ErrReceiptNotFound):
+			if head, err := t.backend.BlockNumber(ctx); err == nil {
+				if minedAt == 0 {
+					minedAt = head
+				} else if head >= minedAt+t.cancellationDepth {
+					return nil, ErrTransactionCancelled
+				}
+			}
+		default:
+			t.logger.Debug("retried transaction: receipt lookup failed", "nonce", rs.Nonce, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(t.receiptPollInterval):
 		}
 	}
-	return nil
 }
 
 // attempt performs a single broadcast+wait cycle: broadcast, persist state, wait for receipt.
-func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip, previousFeeCap *big.Int, tier feeTier, nonce *uint64, nonceWatch *retryNonceWatch, overrides *RetryOverrides) (*types.Transaction, *types.Receipt, error) {
-	replaced := true
-
-	signedTx, broadCastErr := t.broadcastTx(ctx, request, nonce, tier, previousTip, previousFeeCap, overrides)
-	if broadCastErr != nil {
-		switch {
-		case isNonceTooLow(broadCastErr):
-			// Nonce was already used
-			if receipt := t.receiptForRetryHashes(ctx, rs); receipt != nil {
-				// Our transaction was mined between attempts, receipt found by one of known hashes.
-				return nil, receipt, nil
-			}
-			// Another tx used same nonce and was mined.
-			return nil, nil, broadCastErr
-		case isReplacementUnderpriced(broadCastErr):
-			// Bumped gas fee cap and gas tip cap wasn't enough to make mempool replace transaction
-			t.logger.Debug("retried transaction: replacement underpriced",
-				"tx", signedTx.Hash(),
-				"nonce", signedTx.Nonce(),
-				"gas_tip_cap", signedTx.GasTipCap(),
-				"gas_fee_cap", signedTx.GasFeeCap(),
-			)
-			replaced = false
-		case isNonRetryable(broadCastErr):
-			return nil, nil, broadCastErr
-		case signedTx == nil:
-			// Any other error occurred, but it is not fatal. Transaction from previous attempt still in mempool.
-			replaced = false
+func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip, previousFeeCap *big.Int, tier feeTier, nonceWatch *retryNonceWatch, overrides *RetryOverrides) (*types.Transaction, *types.Receipt, error) {
+	signedTx, broadCastErr := t.sendAndRecord(ctx, rs, request, tier, previousTip, previousFeeCap, overrides)
+	switch {
+	case isNonceTooLow(broadCastErr):
+		// The node reports the nonce as already mined. Wait for the receipt now:
+		// a receipt that has not landed yet must not fail the call.
+		receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
+		if receipt != nil {
+			return nil, receipt, nil
 		}
-	}
-
-	if replaced {
-		// save successful attempt on disk
-		persistErr := t.persistReplaceTx(signedTx, rs, request.Description)
-
-		// monitor nonce in any case
+		return nil, nil, err
+	case isReplacementUnderpriced(broadCastErr):
+		// Bumped gas fee cap and gas tip cap wasn't enough to make mempool replace transaction
+		t.logger.Debug("retried transaction: replacement underpriced",
+			"tx", signedTx.Hash(),
+			"nonce", signedTx.Nonce(),
+			"gas_tip_cap", signedTx.GasTipCap(),
+			"gas_fee_cap", signedTx.GasFeeCap(),
+		)
+	case isNonRetryable(broadCastErr):
+		if errors.Is(broadCastErr, ErrUpdateRetryState) {
+			// The store write failed, but transaction may be in mempool.
+			// Start nonce tracking before stop retrying
+			t.watchRetryNonce(signedTx.Nonce(), nonceWatch)
+		}
+		return nil, nil, broadCastErr
+	case signedTx != nil:
 		t.watchRetryNonce(signedTx.Nonce(), nonceWatch)
-
-		if persistErr != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrUpdateRetryState, persistErr)
-		}
 	}
 
 	delay := t.txRetryDelay
@@ -493,8 +530,9 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		delay = overrides.RetryDelay(t.txRetryDelay)
 	}
 
-	if nonceWatch.doneC == nil {
-		// Rare case: no successful broadcast yet, nothing to monitor. Wait to avoid spamming attempts.
+	if nonceWatch.minedC == nil {
+		// Rare case: no successful broadcast yet (RPC is unavailable), nothing to monitor.
+		// Wait to avoid spamming attempts.
 		select {
 		case <-ctx.Done():
 			return nil, nil, fmt.Errorf("wait to broadcast: %w", ctx.Err())
@@ -516,12 +554,12 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 	defer cancel()
 
 	select {
-	case <-nonceWatch.doneC:
-		if receipt := t.receiptForRetryHashes(waitCtx, rs); receipt != nil {
+	case <-nonceWatch.minedC:
+		receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
+		if receipt != nil {
 			return nil, receipt, nil
 		}
-		// Another tx used same nonce and was mined.
-		return signedTx, nil, ErrTransactionCancelled
+		return signedTx, nil, fmt.Errorf("wait for receipt: %w", err)
 	case err := <-nonceWatch.errC:
 		return signedTx, nil, fmt.Errorf("nonce watch: %w", err)
 	case <-waitCtx.Done():
@@ -534,15 +572,17 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWatch *retryNonceWatch) {
 	t.wg.Go(func() {
 		select {
-		case <-nonceWatch.doneC:
-			if receipt := t.receiptForRetryHashes(t.ctx, rs); receipt != nil {
+		case <-nonceWatch.minedC:
+			receipt, err := t.pollReceiptAfterNonceMined(t.ctx, rs)
+			switch {
+			case receipt != nil:
 				t.logger.Info("pending retried transaction confirmed", "tx", receipt.TxHash, "nonce", rs.Nonce)
 				t.clearRetrySession(rs, receipt.TxHash)
-			} else {
+			case errors.Is(err, ErrTransactionCancelled):
+				// any other error means the node is stopping; the session is resumed after restart.
 				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 				t.clearRetrySession(rs, common.Hash{})
 			}
-
 		case err := <-nonceWatch.errC:
 			if errors.Is(err, ErrTransactionCancelled) {
 				t.logger.Warning("pending retried transaction cancelled", "tx", rs.CurrentHash, "nonce", rs.Nonce)
@@ -550,7 +590,9 @@ func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWa
 			} else if !errors.Is(err, ErrMonitorClosed) {
 				t.logger.Error(err, "waiting for pending retried transaction failed", "tx", rs.CurrentHash, "nonce", rs.Nonce)
 			}
+			return
 		case <-t.ctx.Done():
+			return
 		}
 	})
 }
@@ -586,6 +628,9 @@ func containsNormalized(haystack, needle string) bool {
 }
 
 func isNonRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
 	if errors.Is(err, ErrTransactionReverted) ||
 		errors.Is(err, ErrTransactionCancelled) ||
 		errors.Is(err, ErrSignTransaction) ||
@@ -666,11 +711,9 @@ func (t *transactionService) resumeRetryTransactions() error {
 	for nonce, rs := range entries {
 		if confirmed > nonce {
 			t.logger.Debug("resume retried transaction: skipping already confirmed transaction", "nonce", nonce)
-			if receipt := t.receiptForRetryHashes(t.ctx, &rs); receipt != nil {
-				t.clearRetrySession(&rs, receipt.TxHash)
-			} else {
-				t.clearRetrySession(&rs, common.Hash{})
-			}
+			minedC := make(chan struct{})
+			close(minedC)
+			t.waitForPendingRetry(&rs, &retryNonceWatch{minedC: minedC})
 			continue
 		}
 

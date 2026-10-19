@@ -294,7 +294,7 @@ func TestSameChunkAddress(t *testing.T) {
 		size1 := r.Size()
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 7))
-		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 8))
+		ch2 := swarm.NewChunk(ch1.Address(), ch1.Data()).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 8))
 		err := r.Put(ctx, ch1)
 		if err != nil {
 			t.Fatal(err)
@@ -386,7 +386,7 @@ func TestSameChunkAddress(t *testing.T) {
 		batch = postagetesting.MustNewBatch()
 		ch1 = chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
 		batch = postagetesting.MustNewBatch()
-		ch2 = swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 6))
+		ch2 = swarm.NewChunk(ch1.Address(), ch1.Data()).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 6))
 		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
 			t.Fatalf("expected chunk addresses to be the same")
 		}

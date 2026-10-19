@@ -7,6 +7,7 @@ package store
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file"
@@ -72,6 +73,9 @@ func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 }
 
 func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
+	if len(chunkData) < swarm.SpanSize {
+		return nil, nil, fmt.Errorf("chunk data shorter than span: %w", swarm.ErrInvalidChunk)
+	}
 	decryptedSpan, err := encryption.NewSpanEncryption(key).Decrypt(chunkData[:swarm.SpanSize])
 	if err != nil {
 		return nil, nil, err

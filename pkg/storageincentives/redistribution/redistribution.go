@@ -123,8 +123,8 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasLimit:             c.gasLimit,
-		MinEstimatedGasLimit: minEstimatedGasLimit,
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
@@ -150,8 +150,8 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasLimit:             c.gasLimit,
-		MinEstimatedGasLimit: minEstimatedGasLimit,
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
@@ -172,8 +172,8 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasLimit:             c.gasLimit,
-		MinEstimatedGasLimit: minEstimatedGasLimit,
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}

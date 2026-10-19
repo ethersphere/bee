@@ -119,6 +119,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 
 	chunkType := storage.ChunkType(chunk)
+	if chunkType == swarm.ChunkTypeUnspecified {
+		return fmt.Errorf("chunk type unspecified: %w", storage.ErrInvalidChunk)
+	}
 
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 

@@ -200,7 +200,7 @@ func TestReplayStopsBelowMaxBlock(t *testing.T) {
 	}
 	filterer := snapshot.NewSnapshotLogFilterer(log.Noop, newMockSnapshotGetter(makeSnapshotData(logs)))
 
-	l := listener.New(nil, log.Noop, filterer, common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second)
+	l := listener.New(nil, log.Noop, filterer, common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, listener.DefaultBlockPage)
 	t.Cleanup(func() { _ = l.Close() })
 
 	rec := &blockRecorder{blocks: make(chan uint64, 8)}

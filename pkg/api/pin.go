@@ -237,9 +237,20 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Checking all pins reads every pinned chunk, so only one such check
+	// may run at a time.
+	fullScan := querie.Ref.IsZero()
+	if fullScan && !s.pinIntegrityFullScan.CompareAndSwap(false, true) {
+		jsonhttp.TooManyRequests(w, "pin integrity check of all pins already running")
+		return
+	}
+
 	out := make(chan storer.PinStat)
 
 	safe.Go(logger, "pin-integrity-check", func() {
+		if fullScan {
+			defer s.pinIntegrityFullScan.Store(false)
+		}
 		s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
 	})
 

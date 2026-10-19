@@ -50,6 +50,8 @@ var (
 	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")
 	// ErrUpdateRetryState is returned when persisting send-with-retry state fails.
 	ErrUpdateRetryState = errors.New("update transaction retry state")
+	// ErrReceiptNotFound is returned when none of the known transaction hashes has a receipt.
+	ErrReceiptNotFound = errors.New("receipt not found")
 )
 
 const (
@@ -58,10 +60,12 @@ const (
 	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
 	MinGasLimit            = 21_000     // Minimum gas for any transaction
 	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
-	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
-
+	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
 	// DefaultSendWithRetryDelay is the default wait for a receipt before escalating fees in SendWithRetry.
 	DefaultSendWithRetryDelay = 1 * time.Minute
+
+	// defaultReceiptPollInterval is three blocks of a 5s chain. InitChain sets the real block time.
+	defaultReceiptPollInterval = 15 * time.Second
 )
 
 // TransactionsRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
@@ -71,6 +75,12 @@ type TransactionsRetryConfig struct {
 	StartTier       string
 	EndTier         string
 	MaxTxPrice      *big.Int
+
+	// CancellationDepth is how many blocks ago the nonce of a retried transaction must have
+	// been used before the transaction is cancelled for lack of a receipt.
+	CancellationDepth uint64
+	// ReceiptPollInterval is the pause between receipt lookups once the nonce is mined.
+	ReceiptPollInterval time.Duration
 }
 
 // normalizeServiceRetryConfig fills zero fields with package defaults.
@@ -80,6 +90,9 @@ func normalizeServiceRetryConfig(c TransactionsRetryConfig) TransactionsRetryCon
 	}
 	if c.AttemptsPerTier <= 0 {
 		c.AttemptsPerTier = defaultAttemptsPerTier
+	}
+	if c.ReceiptPollInterval <= 0 {
+		c.ReceiptPollInterval = defaultReceiptPollInterval
 	}
 	return c
 }
@@ -165,6 +178,9 @@ type transactionService struct {
 	endTier         feeTier
 	maxTxPrice      *big.Int
 
+	cancellationDepth   uint64
+	receiptPollInterval time.Duration
+
 	retryMetrics RetryMetricsRecorder
 }
 
@@ -203,22 +219,24 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 	)
 
 	t := &transactionService{
-		ctx:              ctx,
-		cancel:           cancel,
-		logger:           logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
-		backend:          backend,
-		signer:           signer,
-		sender:           senderAddress,
-		store:            store,
-		chainID:          chainID,
-		monitor:          monitor,
-		fallbackGasLimit: fallbackGasLimit,
-		txRetryDelay:     rc.RetryDelay,
-		attemptsPerTier:  rc.AttemptsPerTier,
-		startTier:        startTier,
-		endTier:          endTier,
-		maxTxPrice:       rc.MaxTxPrice,
-		retryMetrics:     retryMetricsFromBackend(backend),
+		ctx:                 ctx,
+		cancel:              cancel,
+		logger:              logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
+		backend:             backend,
+		signer:              signer,
+		sender:              senderAddress,
+		store:               store,
+		chainID:             chainID,
+		monitor:             monitor,
+		fallbackGasLimit:    fallbackGasLimit,
+		txRetryDelay:        rc.RetryDelay,
+		attemptsPerTier:     rc.AttemptsPerTier,
+		startTier:           startTier,
+		endTier:             endTier,
+		maxTxPrice:          rc.MaxTxPrice,
+		cancellationDepth:   rc.CancellationDepth,
+		receiptPollInterval: rc.ReceiptPollInterval,
+		retryMetrics:        retryMetricsFromBackend(backend),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {

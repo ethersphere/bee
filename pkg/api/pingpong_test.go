@@ -38,7 +38,7 @@ func TestPingpong(t *testing.T) {
 		return rtt, nil
 	})
 
-	ts, _, _, _ := newTestServer(t, testServerOptions{
+	ts, _, _, _, _ := newTestServer(t, testServerOptions{
 		Pingpong: pingpongService,
 	})
 
@@ -78,7 +78,7 @@ func TestPingpong(t *testing.T) {
 func Test_pingpongHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string

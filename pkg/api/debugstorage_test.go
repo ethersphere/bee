@@ -34,7 +34,7 @@ func TestDebugStorage(t *testing.T) {
 			},
 		}
 
-		ts, _, _, _ := newTestServer(t, testServerOptions{
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: mockstorer.NewWithDebugInfo(want),
 		})
 
