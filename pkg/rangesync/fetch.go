@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -53,10 +54,10 @@ var errNoStampValidator = errors.New("rangesync: no stamp validator")
 
 // FetchResult is the outcome of FetchWithResult. Every ID passed is in at
 // most one of its parts; the IDs in none were not requested for a cause that
-// says nothing about the peer: outside the storage radius, in the reserve
-// already (a delivery included, the cross protocol duplicates), not granted
-// because the want set or the peer's share of it is full, or not looked at
-// because the fetch ended with an error.
+// says nothing about the peer and needs nothing more: outside the storage
+// radius, in the reserve already (found before or right after the claim, or
+// at delivery: the cross protocol duplicates), not granted because the want
+// set is closed, or not looked at because the fetch ended with an error.
 type FetchResult struct {
 	// Stored is the number of chunks stored.
 	Stored int
@@ -70,10 +71,17 @@ type FetchResult struct {
 	// claim (wantset.Held), through another peer or this one. The peer is
 	// another source of them should that claim end without the chunk.
 	Held []storer.ChunkID
+	// Deferred are the IDs not stored for a cause on this node that may
+	// pass: the want set, or the peer's share of it, was full
+	// (wantset.Full, wantset.PeerFull), or the stamp validator failed for a
+	// cause other than the stamp (a batch store error, stampRejected). They
+	// say nothing about the peer; request them again later.
+	Deferred []storer.ChunkID
 	// Rejected is the number of IDs rejected: delivered with a stamp the
-	// stamp validator rejected or older than the one the reserve holds
-	// (storage.ErrOverwriteNewerChunk), or not requested because they were
-	// rejected within RejectTTL. They are not requested again until then.
+	// stamp validator rejected (stampRejected) or older than the one the
+	// reserve holds (storage.ErrOverwriteNewerChunk), or not requested
+	// because they were rejected within RejectTTL. They are not requested
+	// again until then.
 	Rejected int
 }
 
@@ -90,7 +98,10 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 //
 // Before each Want it drops the IDs outside the storage radius, the IDs the
 // reserve holds already, the IDs rejected within RejectTTL and the IDs the
-// want set does not grant; when none remains no stream is opened. The claims
+// want set does not grant, and, once claimed, the IDs another fetch stored
+// meanwhile (during the fetch limiter wait); when none remains no stream is
+// opened. While a fetch holds the claim on an ID no other fetch requests
+// it, so a chunk is delivered twice only after a claim expired. The claims
 // of an ID end with Done when it was stored, with Reject when it was
 // rejected, and with Release otherwise, on every return. The node-wide fetch
 // rate (Options.FetchRate) is waited for before the IDs of each Want are
@@ -101,9 +112,11 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // was not requested (or delivered twice), does not decode or is neither a
 // valid CAC nor a valid SOC is a violation: the stream is reset, the peer is
 // disconnected, the failure is reported to the PeerScorer and the error wraps
-// ErrInvalidMessage. A delivery whose stamp the stamp validator rejects, or
-// whose stamp is older than the one the reserve holds, is dropped without
-// penalty and its ID rejected for RejectTTL (wantset.Set.Reject). Requested
+// ErrInvalidMessage. A delivery whose stamp the stamp validator rejects
+// (stampRejected), or whose stamp is older than the one the reserve holds,
+// is dropped without penalty and its ID rejected for RejectTTL
+// (wantset.Set.Reject); one the validator fails for another cause is
+// dropped without penalty and deferred. Requested
 // IDs the peer does not deliver are not an error. A chunk that is in the
 // reserve when it would be stored is counted as a cross protocol duplicate
 // and not stored again.
@@ -126,7 +139,10 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 		if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
 			return res, fmt.Errorf("fetch limiter: %w", err)
 		}
-		claimed := s.claim(peer, cands, &res)
+		claimed, err := s.claim(peer, cands, &res)
+		if err != nil {
+			return res, err
+		}
 		if len(claimed) == 0 {
 			continue
 		}
@@ -174,25 +190,73 @@ func (s *Service) wantCandidates(ids []storer.ChunkID, res *FetchResult) (cands 
 	return cands, ids, nil
 }
 
-// claim claims cands for peer and returns the granted IDs. It records the IDs
-// held by another claim and the rejected ones in res.
-func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID, res *FetchResult) map[fingerprint.ID]struct{} {
+// claim claims cands for peer and returns the granted IDs that the reserve
+// does not hold. It records the IDs held by another claim, the deferred and
+// the rejected ones in res.
+//
+// The reserve is checked again once an ID is claimed: the candidates were
+// checked before the fetch limiter wait, during which another fetch may have
+// claimed, stored and ended its claim on the ID. A claim ends (Done) only
+// after its chunk is stored, so an ID claimed and not in the reserve is
+// requested by no other fetch until this claim ends or expires. On error the
+// claims made are released.
+func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID, res *FetchResult) (map[fingerprint.ID]struct{}, error) {
 	claimed := make(map[fingerprint.ID]struct{}, len(cands))
 	for _, id := range cands {
 		r := s.wantSet.Claim(id, peer)
 		s.metrics.WantClaims.WithLabelValues(claimLabel(r)).Inc()
 		switch r {
 		case wantset.Granted:
+			has, err := s.store.ReserveHasID(id.Address(), id.StampHash())
+			if err != nil {
+				s.wantSet.Release(id, peer)
+				for c := range claimed {
+					s.wantSet.Release(c, peer)
+				}
+				return nil, fmt.Errorf("reserve has id: %w", err)
+			}
+			if has {
+				s.wantSet.Done(id)
+				s.metrics.FetchSkipped.WithLabelValues("held").Inc()
+				continue
+			}
 			claimed[id] = struct{}{}
 			continue
 		case wantset.Held:
 			res.Held = append(res.Held, chunkID(id))
+		case wantset.Full, wantset.PeerFull:
+			res.Deferred = append(res.Deferred, chunkID(id))
 		case wantset.Rejected:
 			res.Rejected++
 		}
 		s.metrics.FetchSkipped.WithLabelValues(r.String()).Inc()
 	}
-	return claimed
+	return claimed, nil
+}
+
+// stampRejected reports whether err, an error of the stamp validator
+// (postage.ValidStamp), is about the stamp itself, which the ID includes, so
+// that it holds for every delivery of the ID: an unknown or expired batch
+// (postage.ErrNotFound), a stamp that does not match the chunk or the batch
+// (address, bucket, index, owner) or a signature of the wrong length. Other
+// errors, a batch store failure among them, may pass. A signature that fails
+// recovery is deterministic too but has no sentinel; it is treated as one
+// that may pass.
+func stampRejected(err error) bool {
+	for _, target := range []error{
+		postage.ErrNotFound,
+		postage.ErrInvalidChunkAddress,
+		postage.ErrBucketMismatch,
+		postage.ErrInvalidIndex,
+		postage.ErrOwnerMismatch,
+		crypto.ErrInvalidLength,
+		errNoStampValidator,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // chunkID returns the storer.ChunkID of id, without a batch ID.
@@ -328,10 +392,15 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 
 	chunk, err := s.validStamp(swarm.NewChunk(addr, d.Data).WithStamp(stamp))
 	if err != nil {
-		s.wantSet.Reject(id)
-		res.Rejected++
 		s.metrics.DeliveryRejected.Inc()
 		s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", addr)
+		if stampRejected(err) {
+			s.wantSet.Reject(id)
+			res.Rejected++
+			return nil
+		}
+		s.wantSet.Release(id, peer)
+		res.Deferred = append(res.Deferred, chunkID(id))
 		return nil
 	}
 

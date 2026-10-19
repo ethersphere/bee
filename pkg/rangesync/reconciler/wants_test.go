@@ -49,6 +49,8 @@ type wantService struct {
 	// callGate, if not nil, receives a channel from each fetch, which then
 	// waits until that channel is closed before it claims.
 	callGate chan chan struct{}
+	// afterFetch, if not nil, is called after each fetch with its peer.
+	afterFetch func(peer swarm.Address)
 	// claimed, by peer, is closed when a fetch from the peer first claims.
 	claimed map[string]chan struct{}
 	// stored holds the IDs stored; deliveries the peers that delivered
@@ -106,6 +108,17 @@ func (s *wantService) claimSignal(peer swarm.Address) <-chan struct{} {
 }
 
 func (s *wantService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (rangesync.FetchResult, error) {
+	res, err := s.fetchWithResult(ctx, peer, ids)
+	s.wmu.Lock()
+	hook := s.afterFetch
+	s.wmu.Unlock()
+	if hook != nil {
+		hook(peer)
+	}
+	return res, err
+}
+
+func (s *wantService) fetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (rangesync.FetchResult, error) {
 	var (
 		res     rangesync.FetchResult
 		granted []storer.ChunkID
@@ -139,6 +152,8 @@ func (s *wantService) FetchWithResult(ctx context.Context, peer swarm.Address, i
 			granted = append(granted, c)
 		case wantset.Held:
 			res.Held = append(res.Held, c)
+		case wantset.Full, wantset.PeerFull:
+			res.Deferred = append(res.Deferred, c)
 		case wantset.Rejected:
 			res.Rejected++
 		}
@@ -183,6 +198,26 @@ func (s *wantService) FetchWithResult(ctx context.Context, peer swarm.Address, i
 		res.Stored++
 	}
 	return res, nil
+}
+
+// storedBy records id as stored by another fetch, which ends its claim.
+func (s *wantService) storedBy(id storer.ChunkID) {
+	s.wmu.Lock()
+	s.stored[fpID(id)] = true
+	s.wmu.Unlock()
+	s.ws.Done(fpID(id))
+}
+
+// onFirstFetch calls f once, after the first fetch from peer.
+func (s *wantService) onFirstFetch(peer swarm.Address, f func()) {
+	var once sync.Once
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	s.afterFetch = func(p swarm.Address) {
+		if p.Equal(peer) {
+			once.Do(f)
+		}
+	}
 }
 
 // delivered returns the peers that delivered id.
@@ -411,9 +446,12 @@ func TestWantSetRetryLeftPeer(t *testing.T) {
 	assertDelivered(t, svc, x)
 }
 
-// TestWantSetRetryWindow: a peer denied x more than the claim deadline ago is
-// no longer a source of it (§7.8: known this round).
-func TestWantSetRetryWindow(t *testing.T) {
+// TestWantSetRetryLongFetch: the source of x recorded while B1's fetch held
+// its claim is kept until that fetch's result arrives, however long the
+// fetch runs (results come per fetch, which may outlast the claim
+// deadline): x is retried from B2 although B2 was denied it more than the
+// claim deadline ago.
+func TestWantSetRetryLongFetch(t *testing.T) {
 	t.Parallel()
 
 	x := testChunkID(1)
@@ -431,12 +469,45 @@ func TestWantSetRetryWindow(t *testing.T) {
 	waitClosed(t, "B1 claimed", b1Claimed)
 	close(gate)
 	waitFor(t, "B2 denied x", func() bool { return len(svc.fetchesFrom(higher2)) == 1 })
-	h.clock.Add(rangesync.ClaimDeadline)
+	h.clock.Add(2 * rangesync.ClaimDeadline)
+	if n := h.r.SourceIDs(); n != 1 {
+		t.Fatalf("%d source IDs while B1's fetch runs, want 1", n)
+	}
 	close(stall)
-	waitFor(t, "B1 fetch failed", func() bool { return svc.ws.Len() == 0 })
+	waitDelivered(t, svc, x)
+	assertDelivered(t, svc, x, higher2)
+}
+
+// TestWantSetSourcesPruned: once no fetch that started before a denial is
+// running, its source is dropped the claim deadline after the denial.
+func TestWantSetSourcesPruned(t *testing.T) {
+	t.Parallel()
+
+	x, z := testChunkID(1), testChunkID(3)
+	svc := newWantService(status(1))
+	svc.lists(higher, x)
+	svc.lists(higher2, x, z)
+	b1Claimed := svc.claimSignal(higher)
+	pause := make(chan struct{})
+	svc.pause[higher.ByteString()] = pause
+	gate := make(chan struct{})
+	svc.set(func() { svc.peerGate[higher2.ByteString()] = gate })
+	h := newWantHarness(t, svc, higher, higher2)
+	h.r.Start(context.Background())
+
+	waitClosed(t, "B1 claimed", b1Claimed)
+	close(gate)
+	waitDelivered(t, svc, z)
+	close(pause)
+	waitDelivered(t, svc, x)
+	waitFor(t, "fetches done", func() bool { return svc.ws.Len() == 0 })
 	settle()
-	if n := len(svc.fetchesFrom(higher2)); n != 1 {
-		t.Fatalf("%d fetches from B2, want 1", n)
+	if n := h.r.SourceIDs(); n != 1 {
+		t.Fatalf("%d source IDs within the window, want 1", n)
+	}
+	h.clock.Add(rangesync.ClaimDeadline)
+	if n := h.r.SourceIDs(); n != 0 {
+		t.Fatalf("%d source IDs after the window, want 0", n)
 	}
 }
 
@@ -486,9 +557,10 @@ func TestWantSetCatchUpRetry(t *testing.T) {
 }
 
 // TestStripeWithheldUndeliveredOnly: a stripe is withheld only when its peer
-// did not deliver IDs requested from it. IDs another fetch's claim held and
-// IDs rejected within RejectTTL are listed but not requested, and do not make
-// the stripe fail (T3.2 withholding false positives).
+// did not deliver IDs requested from it. An ID another fetch's claim held,
+// which that fetch then stored, and an ID rejected within RejectTTL are
+// listed but not requested from the peer, and do not make the stripe fail
+// (T3.2 withholding false positives); rejected IDs count as done.
 func TestStripeWithheldUndeliveredOnly(t *testing.T) {
 	t.Parallel()
 
@@ -502,12 +574,9 @@ func TestStripeWithheldUndeliveredOnly(t *testing.T) {
 		if r := svc.ws.Claim(fpID(ids[0]), lower); r != wantset.Granted { // a round fetch holds it
 			t.Fatal(r)
 		}
+		svc.onFirstFetch(higher, func() { svc.storedBy(ids[0]) }) // and stores it
 		svc.ws.Reject(fpID(ids[1]))
-		r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
-		t.Cleanup(func() {
-			_ = r.Close()
-			_ = svc.ws.Close()
-		})
+		r := newStripeReconciler(t, svc)
 		res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
 		if got := r.StripesTotal("reassigned"); got != 0 {
 			t.Fatalf("stripes reassigned %v", got)
@@ -519,8 +588,8 @@ func TestStripeWithheldUndeliveredOnly(t *testing.T) {
 	if res.Err != nil {
 		t.Fatalf("stripe failed: %v", res.Err)
 	}
-	if res.Listed != 4 || res.Stored != 2 || res.Undelivered != 0 {
-		t.Fatalf("listed %d, stored %d, undelivered %d, want 4, 2, 0", res.Listed, res.Stored, res.Undelivered)
+	if res.Listed != 4 || res.Stored != 2 || res.Undelivered != 0 || res.Deferred != 0 {
+		t.Fatalf("listed %d, stored %d, undelivered %d, deferred %d, want 4, 2, 0, 0", res.Listed, res.Stored, res.Undelivered, res.Deferred)
 	}
 
 	res = transfer(t, ids[3])
@@ -532,18 +601,149 @@ func TestStripeWithheldUndeliveredOnly(t *testing.T) {
 	}
 }
 
+// newStripeReconciler returns a reconciler over svc that is not started, for
+// stripe transfers, with a short stripe retry interval.
+func newStripeReconciler(t *testing.T, svc *wantService) *reconciler.Reconciler {
+	t.Helper()
+	r := reconciler.New(self, nil, svc, log.Noop, reconciler.Options{})
+	r.SetStripeRetryInterval(time.Millisecond)
+	t.Cleanup(func() {
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+	return r
+}
+
+// TestStripeDeferred: a stripe whose IDs the want set does not grant (held
+// by another fetch's claim that does not end, the peer's share full, the set
+// full) does not complete: it ends with ErrStripeDeferred after it asked
+// for them again, is restarted with the same peer within maxStripeRestarts,
+// and blames nobody. Before T4.4 fix round 1 such a stripe was done.
+func TestStripeDeferred(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x, y := testChunkID(1), testChunkID(2)
+	fill := func(n int, peer func(i int) swarm.Address) func(t *testing.T, ws *wantset.Set) {
+		return func(t *testing.T, ws *wantset.Set) {
+			t.Helper()
+			for i := range n {
+				id := testChunkID(0)
+				id.StampHash[1], id.StampHash[2], id.StampHash[3] = 0xff, byte(i>>8), byte(i)
+				if r := ws.Claim(fpID(id), peer(i)); r != wantset.Granted {
+					t.Fatal(r)
+				}
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		fill func(t *testing.T, ws *wantset.Set)
+	}{
+		{name: "held", fill: func(t *testing.T, ws *wantset.Set) {
+			t.Helper()
+			if r := ws.Claim(fpID(x), lower); r != wantset.Granted {
+				t.Fatal(r)
+			}
+		}},
+		{name: "peer full", fill: fill(wantset.MaxClaimsPerPeer, func(int) swarm.Address { return higher })},
+		{name: "full", fill: fill(wantset.MaxClaims, func(i int) swarm.Address { return addr(0x30, byte(i/wantset.MaxClaimsPerPeer)) })},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := newWantService(status(1))
+			svc.lists(higher, x)
+			if tc.name == "held" {
+				svc.lists(higher, x, y) // y is delivered, x is held
+			}
+			tc.fill(t, svc.ws)
+			r := newStripeReconciler(t, svc)
+			res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+			if !errors.Is(res.Err, reconciler.ErrStripeDeferred) || errors.Is(res.Err, reconciler.ErrStripeWithheld) {
+				t.Fatalf("got %v, want %v", res.Err, reconciler.ErrStripeDeferred)
+			}
+			if res.Deferred != 1 || res.Undelivered != 0 {
+				t.Fatalf("deferred %d, undelivered %d, want 1, 0", res.Deferred, res.Undelivered)
+			}
+			if n := len(svc.sessionOpens(higher)); n != 1+reconciler.MaxStripeRestarts {
+				t.Fatalf("%d sessions with the peer, want %d (restarted with it)", n, 1+reconciler.MaxStripeRestarts)
+			}
+			if got := r.Score(higher); got != 0 {
+				t.Fatalf("peer score %d, want 0", got)
+			}
+			if got := r.StripesTotal("done"); got != 0 {
+				t.Fatalf("stripes done %v", got)
+			}
+			if v := r.VerifyStripes(context.Background(), []reconciler.StripeResult{res})[0]; !errors.Is(v.Err, reconciler.ErrStripeNotDone) {
+				t.Fatalf("verification of a deferred stripe: %v", v.Err)
+			}
+		})
+	}
+}
+
+// TestStripeDeferredResolved: an ID held by another fetch's claim that ends
+// without the chunk is asked for again and fetched from the stripe peer; a
+// stripe peer that holds the claim itself (its own fetch of IDs this node
+// listed to it) and then withholds the ID is found withholding.
+func TestStripeDeferredResolved(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x := testChunkID(1)
+	for _, tc := range []struct {
+		name   string
+		holder swarm.Address
+		hold   bool // the stripe peer withholds x
+	}{
+		{name: "foreign claim released", holder: lower},
+		{name: "own claim, withheld", holder: higher, hold: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := newWantService(status(1))
+			svc.lists(higher, x)
+			if tc.hold {
+				svc.withholds(higher, x)
+			}
+			if r := svc.ws.Claim(fpID(x), tc.holder); r != wantset.Granted {
+				t.Fatal(r)
+			}
+			svc.onFirstFetch(higher, func() { svc.ws.Release(fpID(x), tc.holder) })
+			r := newStripeReconciler(t, svc)
+			res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+			if n := len(svc.sessionOpens(higher)); n != 1 {
+				t.Fatalf("%d sessions, want 1 (resolved within the attempt)", n)
+			}
+			if tc.hold {
+				if !errors.Is(res.Err, reconciler.ErrStripeWithheld) || res.Undelivered != 1 {
+					t.Fatalf("err %v, undelivered %d, want %v, 1", res.Err, res.Undelivered, reconciler.ErrStripeWithheld)
+				}
+				return
+			}
+			if res.Err != nil || res.Stored != 1 || res.Deferred != 0 {
+				t.Fatalf("err %v, stored %d, deferred %d", res.Err, res.Stored, res.Deferred)
+			}
+			assertDelivered(t, svc, x, higher)
+		})
+	}
+}
+
 // TestVerifyStripesUndeliveredOnly: a verifier is scored for withholding only
 // for IDs requested from it and not delivered, not for IDs rejected within
-// RejectTTL or held by another fetch's claim.
+// RejectTTL. A verification whose IDs the want set does not grant is
+// incomplete (ErrStripeDeferred) and blames nobody.
 func TestVerifyStripesUndeliveredOnly(t *testing.T) {
 	t.Parallel()
 
 	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
-	verify := func(t *testing.T, withheld int) (*harness, reconciler.VerifyResult) {
+	verify := func(t *testing.T, withheld int, held bool) (*harness, reconciler.VerifyResult) {
 		t.Helper()
 		other := addr(0xf1, 0)
 		svc := newWantService(status(1))
 		h := newWantHarness(t, svc, higher, other)
+		h.r.SetStripeRetryInterval(time.Millisecond)
 		// equal digests: no round sessions, only the verification's
 		svc.remote[higher.ByteString()] = status(1)
 		svc.remote[other.ByteString()] = status(1)
@@ -552,13 +752,13 @@ func TestVerifyStripesUndeliveredOnly(t *testing.T) {
 			ids[i] = testChunkID(byte(i))
 		}
 		svc.lists(other, ids...)
-		// 2 × VerifyMinDiff are rejected or held by another fetch, more
-		// than the tolerance; withheld of the rest are not delivered
-		for _, id := range ids[:reconciler.VerifyMinDiff] {
+		// 2 × VerifyMinDiff are rejected, more than the tolerance; withheld
+		// of the rest are not delivered
+		for _, id := range ids[:2*reconciler.VerifyMinDiff] {
 			svc.ws.Reject(fpID(id))
 		}
-		for _, id := range ids[reconciler.VerifyMinDiff : 2*reconciler.VerifyMinDiff] {
-			if r := svc.ws.Claim(fpID(id), lower); r != wantset.Granted {
+		if held {
+			if r := svc.ws.Claim(fpID(ids[len(ids)-1]), lower); r != wantset.Granted {
 				t.Fatal(r)
 			}
 		}
@@ -568,13 +768,16 @@ func TestVerifyStripesUndeliveredOnly(t *testing.T) {
 
 		res := reconciler.StripeResult{Range: root, Peer: higher, PeerStored: 1000, Tried: []swarm.Address{higher}}
 		v := h.r.VerifyStripes(context.Background(), []reconciler.StripeResult{res})[0]
-		if v.Err != nil || !v.Verifier.Equal(other) {
-			t.Fatalf("verifier %s, err %v", v.Verifier, v.Err)
+		if !v.Verifier.Equal(other) {
+			t.Fatalf("verifier %s", v.Verifier)
+		}
+		if !held && v.Err != nil {
+			t.Fatalf("verification: %v", v.Err)
 		}
 		return h, v
 	}
 
-	h, v := verify(t, 0)
+	h, v := verify(t, 0, false)
 	if v.Diff != 3*reconciler.VerifyMinDiff+1 || v.Stored != reconciler.VerifyMinDiff+1 || v.Undelivered != 0 {
 		t.Fatalf("diff %d, stored %d, undelivered %d", v.Diff, v.Stored, v.Undelivered)
 	}
@@ -585,18 +788,26 @@ func TestVerifyStripesUndeliveredOnly(t *testing.T) {
 		t.Fatalf("deliverer score %d, want 0", got)
 	}
 
-	h, v = verify(t, reconciler.VerifyMinDiff)
+	h, v = verify(t, reconciler.VerifyMinDiff, false)
 	if v.Undelivered != reconciler.VerifyMinDiff {
 		t.Fatalf("undelivered %d, want %d", v.Undelivered, reconciler.VerifyMinDiff)
 	}
 	if got := h.r.Score(v.Verifier); got != 0 {
 		t.Fatalf("verifier score %d at the tolerance, want 0", got)
 	}
-	h, v = verify(t, reconciler.VerifyMinDiff+1)
+	h, v = verify(t, reconciler.VerifyMinDiff+1, false)
 	if v.Undelivered != reconciler.VerifyMinDiff+1 {
 		t.Fatalf("undelivered %d, want %d", v.Undelivered, reconciler.VerifyMinDiff+1)
 	}
 	if got := h.r.Score(v.Verifier); got != 1 {
 		t.Fatalf("verifier score %d above the tolerance, want 1", got)
+	}
+
+	h, v = verify(t, 0, true)
+	if !errors.Is(v.Err, reconciler.ErrStripeDeferred) {
+		t.Fatalf("got %v, want %v", v.Err, reconciler.ErrStripeDeferred)
+	}
+	if h.r.Score(v.Verifier) != 0 || h.r.Score(higher) != 0 {
+		t.Fatalf("scores verifier %d, deliverer %d, want 0", h.r.Score(v.Verifier), h.r.Score(higher))
 	}
 }

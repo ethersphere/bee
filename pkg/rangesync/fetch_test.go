@@ -277,11 +277,7 @@ func TestFetchInvalidStamp(t *testing.T) {
 	}
 	assertStored(t, a, false, ids[0])
 	assertStored(t, a, true, ids[1])
-	// the rejected ID is not claimed again within RejectTTL (T4.4)
-	assertNoClaims(t, a, ids[1])
-	if !a.svc.WantSet().IsRejected(fpID(ids[0])) {
-		t.Fatal("rejected ID not in the rejected cache")
-	}
+	assertNoClaims(t, a, ids...)
 	assertNotScored(t, a, b.addr)
 }
 

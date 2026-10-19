@@ -31,7 +31,8 @@ type metrics struct {
 	FetchSkipped *prometheus.CounterVec
 	// Delivered counts fetched chunks that were stored.
 	Delivered prometheus.Counter
-	// DeliveryRejected counts fetched chunks whose stamp was rejected.
+	// DeliveryRejected counts fetched chunks the stamp validator failed:
+	// rejected (the stamp is invalid) or deferred (another cause).
 	DeliveryRejected prometheus.Counter
 	// CrossProtocolDuplicates counts fetched chunks that were in the
 	// reserve already when they would be stored.
@@ -171,7 +172,7 @@ func newMetrics(rejected func() float64) metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "fetch_rejected_total",
-			Help:      "Fetched chunks dropped because their stamp is invalid.",
+			Help:      "Fetched chunks dropped because the stamp validator failed.",
 		}),
 		CrossProtocolDuplicates: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

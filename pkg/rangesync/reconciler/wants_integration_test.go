@@ -7,7 +7,7 @@ package reconciler_test
 import (
 	"bytes"
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
@@ -348,7 +349,7 @@ func TestRejectedNotRefetchedEachRound(t *testing.T) {
 			} else {
 				o.validStamp = func(ch swarm.Chunk) (swarm.Chunk, error) {
 					if ch.Address().Equal(old.Address()) {
-						return nil, errors.New("batch expired")
+						return nil, fmt.Errorf("batchstore get: %w", postage.ErrNotFound) // batch expired
 					}
 					return ch, nil
 				}

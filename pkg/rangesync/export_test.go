@@ -62,6 +62,13 @@ func (s *Service) SetWantSet(ws *wantset.Set) {
 	s.wantSet = ws
 }
 
+// DrainFetchLimiter takes the burst of the node-wide fetch limiter, so that
+// the next fetch waits for its tokens. It reports whether the burst was
+// taken.
+func (s *Service) DrainFetchLimiter() bool {
+	return s.fetchLimiter.Allow(fetchKey, MaxWantIDs)
+}
+
 // WantClaims returns the want_claims counter of result.
 func (s *Service) WantClaims(result string) float64 {
 	return counterValue(s.metrics.WantClaims.WithLabelValues(result))

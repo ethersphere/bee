@@ -7,12 +7,17 @@ package rangesync_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -30,11 +35,12 @@ func assertWantClaims(t *testing.T, n *testNode, want map[string]float64) {
 	}
 }
 
-// rejectAddr returns a stamp validator that rejects the chunk at bad.
+// rejectAddr returns a stamp validator that rejects the stamp of the chunk
+// at bad, as postage.ValidStamp does for an unknown or expired batch.
 func rejectAddr(bad swarm.Address) func(swarm.Chunk) (swarm.Chunk, error) {
 	return func(ch swarm.Chunk) (swarm.Chunk, error) {
 		if ch.Address().Equal(bad) {
-			return nil, errors.New("invalid stamp")
+			return nil, fmt.Errorf("batchstore get: %w, %w", storage.ErrNotFound, postage.ErrNotFound)
 		}
 		return ch, nil
 	}
@@ -305,4 +311,216 @@ func TestFetchExpiredClaim(t *testing.T) {
 	res := <-done
 	assertChunkIDs(t, res.Undelivered, ids...)
 	assertWantClaims(t, a, map[string]float64{"granted": 1, "expired": 1, "late": 0})
+}
+
+// TestFetchClaimRechecksReserve checks the reserve check after the claim
+// (§7.8, fetched once): while a fetch from B2 waits for the fetch limiter, a
+// fetch from B1 claims x, stores it and ends its claim. B2's claim is then
+// granted, but x is not requested again: no Want, no second delivery and no
+// cross protocol duplicate.
+func TestFetchClaimRechecksReserve(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(1)
+	checked := make(chan struct{})
+	var once sync.Once
+	a := newTestNodeOpts(t, nodeOpts{
+		fetchRate: 2, // a token every 500 ms once the burst is gone
+		hasHook:   func(swarm.Address) { once.Do(func() { close(checked) }) },
+	})
+	b2 := newTestNode(t, chs...)
+	connect0(a, b2)
+	if !a.svc.DrainFetchLimiter() {
+		t.Fatal("fetch limiter burst not taken")
+	}
+
+	ids := idsOf(t, chs...)
+	done := fetchAsync(a, b2.addr, ids)
+	select {
+	case <-checked: // x is a candidate: B2's fetch waits for the limiter
+	case <-time.After(5 * time.Second):
+		t.Fatal("no reserve check")
+	}
+	b1 := swarm.RandAddress(t)
+	if r := a.svc.WantSet().Claim(fpID(ids[0]), b1); r != wantset.Granted {
+		t.Fatalf("claim through B1: %v", r)
+	}
+	if err := a.store.ReservePutter().Put(context.Background(), chs[0]); err != nil {
+		t.Fatal(err)
+	}
+	a.svc.WantSet().Done(fpID(ids[0]))
+
+	res := <-done
+	if res.Stored != 0 || len(res.Undelivered) != 0 || len(res.Held) != 0 || len(res.Deferred) != 0 {
+		t.Fatalf("%+v", res)
+	}
+	if _, err := a.rec.Records(b2.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName); !errors.Is(err, streamtest.ErrRecordsNotFound) {
+		t.Fatalf("x requested from B2 after B1 stored it: %v", err)
+	}
+	if d := a.svc.CrossProtocolDuplicates(); d != 0 {
+		t.Fatalf("cross protocol duplicates %v, want 0", d)
+	}
+	assertWantClaims(t, a, map[string]float64{"granted": 1})
+	assertNoClaims(t, a)
+}
+
+// fillIDs returns n distinct IDs for filling a want set.
+func fillIDs(n int) []fingerprint.ID {
+	ids := make([]fingerprint.ID, n)
+	for i := range ids {
+		ids[i][0], ids[i][1], ids[i][2] = 0xee, byte(i>>8), byte(i)
+	}
+	return ids
+}
+
+// TestFetchWantSetFull checks the IDs the want set does not grant because it,
+// or the peer's share of it, is full: they are Deferred, not requested, and
+// counted in want_claims{peer_full} and {full}. A closed want set grants
+// nothing either (want_claims{closed}).
+func TestFetchWantSetFull(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		fill     func(t *testing.T, ws *wantset.Set, peer swarm.Address)
+		deferred bool
+	}{
+		{name: "peer_full", deferred: true, fill: func(t *testing.T, ws *wantset.Set, peer swarm.Address) {
+			t.Helper()
+			for _, id := range fillIDs(wantset.MaxClaimsPerPeer) {
+				if r := ws.Claim(id, peer); r != wantset.Granted {
+					t.Fatal(r)
+				}
+			}
+		}},
+		{name: "full", deferred: true, fill: func(t *testing.T, ws *wantset.Set, _ swarm.Address) {
+			t.Helper()
+			for i, id := range fillIDs(wantset.MaxClaims) {
+				if r := ws.Claim(id, testPeerN(i/wantset.MaxClaimsPerPeer)); r != wantset.Granted {
+					t.Fatal(r)
+				}
+			}
+		}},
+		{name: "closed", fill: func(t *testing.T, ws *wantset.Set, _ swarm.Address) {
+			t.Helper()
+			if err := ws.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chs := validChunks(1)
+			a := newTestNode(t)
+			b := newTestNode(t, chs...)
+			connect0(a, b)
+			tc.fill(t, a.svc.WantSet(), b.addr)
+
+			ids := idsOf(t, chs...)
+			res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.deferred {
+				assertChunkIDs(t, res.Deferred, ids...)
+			} else if len(res.Deferred) != 0 {
+				t.Fatalf("deferred %v", res.Deferred)
+			}
+			if res.Stored != 0 || len(res.Undelivered) != 0 || len(res.Held) != 0 || res.Rejected != 0 {
+				t.Fatalf("%+v", res)
+			}
+			if _, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName); !errors.Is(err, streamtest.ErrRecordsNotFound) {
+				t.Fatalf("fetch stream opened: %v", err)
+			}
+			assertWantClaims(t, a, map[string]float64{tc.name: 1, "granted": 0})
+		})
+	}
+}
+
+// testPeerN returns a distinct overlay for i.
+func testPeerN(i int) swarm.Address {
+	b := make([]byte, swarm.HashSize)
+	b[0], b[1] = 0x77, byte(i)
+	return swarm.NewAddress(b)
+}
+
+// TestFetchStampCheckFailure checks that only stamp validator errors about
+// the stamp itself reject the ID for RejectTTL. Any other error (a batch
+// store failure) releases the claim and defers the ID, which a later fetch
+// requests again; neither is the peer's fault.
+func TestFetchStampCheckFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		err    error
+		reject bool
+	}{
+		{name: "unknown batch", err: fmt.Errorf("batchstore get: %w, %w", storage.ErrNotFound, postage.ErrNotFound), reject: true},
+		{name: "invalid chunk address", err: postage.ErrInvalidChunkAddress, reject: true},
+		{name: "bucket mismatch", err: postage.ErrBucketMismatch, reject: true},
+		{name: "invalid index", err: postage.ErrInvalidIndex, reject: true},
+		{name: "owner mismatch", err: postage.ErrOwnerMismatch, reject: true},
+		{name: "signature length", err: crypto.ErrInvalidLength, reject: true},
+		{name: "batch store failure", err: errors.New("leveldb: closed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chs := validChunks(1)
+			var mu sync.Mutex
+			fail := true
+			a := newTestNodeOpts(t, nodeOpts{validStamp: func(ch swarm.Chunk) (swarm.Chunk, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				if fail {
+					fail = false // once
+					return nil, tc.err
+				}
+				return ch, nil
+			}})
+			b := newTestNode(t, chs...)
+			connect0(a, b)
+
+			ids := idsOf(t, chs...)
+			res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := a.svc.WantSet().IsRejected(fpID(ids[0])); got != tc.reject {
+				t.Fatalf("rejected %v, want %v", got, tc.reject)
+			}
+			if tc.reject {
+				if res.Rejected != 1 || len(res.Deferred) != 0 {
+					t.Fatalf("%+v", res)
+				}
+			} else {
+				if res.Rejected != 0 || len(res.Undelivered) != 0 {
+					t.Fatalf("%+v", res)
+				}
+				assertChunkIDs(t, res.Deferred, ids...)
+			}
+			if l := a.svc.WantSet().Len(); l != 0 {
+				t.Fatalf("want set holds %d claims", l)
+			}
+
+			// a later fetch requests it again only when it was not rejected
+			res, err = a.svc.FetchWithResult(context.Background(), b.addr, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wants := 1
+			if !tc.reject {
+				wants = 2
+				if res.Stored != 1 {
+					t.Fatalf("stored %d on the second fetch, want 1", res.Stored)
+				}
+			}
+			if n := len(sentWants(t, a, b.addr)); n != wants {
+				t.Fatalf("%d wants, want %d", n, wants)
+			}
+			assertNotScored(t, a, b.addr)
+		})
+	}
 }

@@ -97,16 +97,30 @@ type nodeOpts struct {
 	// putHook, if not nil, is called by the reserve's Put before it stores
 	// a chunk; an error fails the Put.
 	putHook func(swarm.Chunk) error
+	// hasHook, if not nil, is called after each ReserveHasID of the
+	// service with the address looked up.
+	hasHook func(swarm.Address)
+	// fetchRate is Options.FetchRate.
+	fetchRate int
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
 type radiusStore struct {
 	*mockstorer.ReserveStore
 	outside func(swarm.Address) bool
+	hasHook func(swarm.Address)
 }
 
 func (s radiusStore) IsWithinStorageRadius(addr swarm.Address) bool {
 	return s.outside == nil || !s.outside(addr)
+}
+
+func (s radiusStore) ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error) {
+	has, err := s.ReserveStore.ReserveHasID(addr, stampHash)
+	if s.hasHook != nil {
+		s.hasHook(addr)
+	}
+	return has, err
 }
 
 func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode {
@@ -129,11 +143,12 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	if o.streamer != nil {
 		streamer = o.streamer(n.rec)
 	}
-	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside, hasHook: o.hasHook}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:       n.scorer,
 		Wants:        n.addWants,
 		LeafBits:     serviceLeafBits,
 		FetchTimeout: o.fetchTimeout,
+		FetchRate:    o.fetchRate,
 	})
 	tb.Cleanup(func() {
 		if err := n.svc.Close(); err != nil {

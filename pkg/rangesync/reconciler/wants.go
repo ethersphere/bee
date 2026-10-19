@@ -20,8 +20,10 @@ import (
 
 const (
 	// sourceWindow is how long a peer that was denied an ID stays a source
-	// of it (§7.8, "known this round"): the claim deadline, after which the
-	// peer's own next session claims the ID again if it is still missing.
+	// of it after its last denial (§7.8, "known this round") when no fetch
+	// that started before the denial is still running: the claim deadline,
+	// after which the peer's own next session claims the ID again if it is
+	// still missing.
 	sourceWindow = rangesync.ClaimDeadline
 	// maxSourceIDs bounds the IDs wantSources keeps: as many as the want set
 	// holds claims. A denied ID has an active claim when it is recorded.
@@ -44,28 +46,36 @@ type fetchOutcome struct {
 	// undelivered is the number of IDs requested from the peer that it did
 	// not deliver; without a resultFetcher, every ID not stored.
 	undelivered int
+	// pending are the IDs the want set did not grant (another fetch held
+	// the claim, or the set was full) or whose stamp check failed for a
+	// cause that may pass: neither stored nor the peer's fault yet.
+	pending []storer.ChunkID
 }
 
 // fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
 // source of the IDs another fetch's claim held (the want set denied them),
 // and retries the IDs peer did not deliver from their other sources (retry).
-// The retries of a catch-up fetch are catch-up fetches.
+// The retries of a catch-up fetch are catch-up fetches. The fetch is
+// registered as running while it lasts, so that the sources recorded while
+// it holds its claims are kept until its result arrives (wantSources).
 func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, catchUp bool) (fetchOutcome, error) {
 	rf, ok := r.svc.(resultFetcher)
 	if !ok {
 		n, err := r.svc.Fetch(ctx, peer, ids)
 		return fetchOutcome{stored: n, undelivered: len(ids) - n}, err
 	}
+	end := r.sources.begin(r.now())
+	defer end()
 	res, err := rf.FetchWithResult(ctx, peer, ids)
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, res.Undelivered, catchUp)
-	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered)}, err
+	pending := append(slices.Clip(res.Held), res.Deferred...)
+	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending}, err
 }
 
 // retry fetches ids, which failed did not deliver (or delivered invalid, or
 // whose fetch failed), from other peers known to hold them: the peers the
-// want set denied them while failed's claim held them, within sourceWindow
-// (wantSources). Each ID goes to the first such peer that is still
+// want set denied them while failed's claim held them (wantSources). Each ID goes to the first such peer that is still
 // connected, other than failed, and is dropped from its sources. The IDs of
 // one peer are fetched in a goroutine of their own, one retry fetch per peer
 // at a time, so that retries add at most one fetch stream per peer. A retry's
@@ -105,16 +115,26 @@ func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp b
 // wantSources is the id → peers map of §7.8: for each ID the want set denied
 // a fetch because another fetch held its claim, the peers of the denied
 // fetches, which are known to hold the ID. When the claim's fetch fails to
-// deliver the ID, retry requests it from one of them. An ID is kept for
-// sourceWindow after it was first denied, at most maxSourceIDs IDs (the
-// oldest are dropped first). It is safe for concurrent use.
+// deliver the ID, retry requests it from one of them.
+//
+// Results arrive per fetch, which may run longer than the claim deadline
+// (up to LargeDiff IDs at the fetch rate), so an ID is kept for
+// sourceWindow after its last denial, and also while any fetch that started
+// before that denial is running (begin): the claim's fetch started before
+// the denial, so its sources outlive it. At most maxSourceIDs IDs are kept,
+// the oldest dropped first. It is safe for concurrent use.
 type wantSources struct {
 	mu    sync.Mutex
 	byID  map[fingerprint.ID]*list.Element // values are *sourceEntry
-	order *list.List                       // oldest first
+	order *list.List                       // by last denial, oldest first
+	// running holds the start of each running fetch (begin), by sequence
+	// number.
+	running map[uint64]time.Time
+	next    uint64
 }
 
-// sourceEntry holds the peers denied one ID, in the order they were denied.
+// sourceEntry holds the peers denied one ID, in the order they were denied,
+// and the time of its last denial.
 type sourceEntry struct {
 	id    fingerprint.ID
 	at    time.Time
@@ -128,7 +148,33 @@ type retryBatch struct {
 }
 
 func newWantSources() *wantSources {
-	return &wantSources{byID: make(map[fingerprint.ID]*list.Element), order: list.New()}
+	return &wantSources{
+		byID:    make(map[fingerprint.ID]*list.Element),
+		order:   list.New(),
+		running: make(map[uint64]time.Time),
+	}
+}
+
+// begin registers a fetch that started at now; end, called once, ends it.
+func (w *wantSources) begin(now time.Time) (end func()) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := w.next
+	w.next++
+	w.running[n] = now
+	return func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		delete(w.running, n)
+	}
+}
+
+// len drops the IDs no longer kept at now and returns the number kept.
+func (w *wantSources) len(now time.Time) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.prune(now)
+	return len(w.byID)
 }
 
 // add records peer as a source of ids, which the want set denied it at now.
@@ -146,6 +192,8 @@ func (w *wantSources) add(now time.Time, peer swarm.Address, ids []storer.ChunkI
 			if !slices.ContainsFunc(se.peers, peer.Equal) {
 				se.peers = append(se.peers, peer)
 			}
+			se.at = now
+			w.order.MoveToBack(e)
 			continue
 		}
 		if w.order.Len() >= maxSourceIDs {
@@ -199,11 +247,21 @@ func (w *wantSources) take(now time.Time, failed swarm.Address, ids []storer.Chu
 	return out
 }
 
-// prune drops the IDs first denied sourceWindow or more before now. w.mu
-// must be held.
+// prune drops the IDs last denied sourceWindow or more before now and
+// before the start of every running fetch. w.mu must be held.
 func (w *wantSources) prune(now time.Time) {
+	var (
+		oldest  time.Time
+		running bool
+	)
+	for _, start := range w.running {
+		if !running || start.Before(oldest) {
+			oldest, running = start, true
+		}
+	}
 	for e := w.order.Front(); e != nil; e = w.order.Front() {
-		if now.Sub(e.Value.(*sourceEntry).at) < sourceWindow {
+		at := e.Value.(*sourceEntry).at
+		if now.Sub(at) < sourceWindow || (running && !at.Before(oldest)) {
 			return
 		}
 		w.remove(e)
