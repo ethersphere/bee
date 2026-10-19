@@ -157,7 +157,7 @@ the implementer (otherwise every task conflicts on this list).
 - [ ] T2.8 (deferred, before mainnet) Cross-architecture determinism vectors
 
 **Phase 3**
-- [ ] T3.1 Bootstrap detection and stripe planner
+- [x] T3.1 Bootstrap detection and stripe planner
 - [ ] T3.2 Striped transfer with pipelined paging/fetch and reassignment
 - [ ] T3.3 Verification round
 - [ ] T3.4 Radius decrease / increase handling
