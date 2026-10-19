@@ -80,7 +80,7 @@ func TestManifestList(t *testing.T) {
 	t.Parallel()
 
 	storer := mockstorer.New()
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: storer,
 		Logger: log.Noop,
 	})
