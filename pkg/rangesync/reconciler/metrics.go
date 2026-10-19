@@ -20,8 +20,9 @@ type metrics struct {
 	// Stripes counts stripe transfers by result: done, reassigned or
 	// timeout.
 	Stripes *prometheus.CounterVec
-	// VerificationDiff is the number of differences (IDs this node lacked)
-	// the verification round found per verified stripe.
+	// VerificationDiff is the number of differences (chunks this node lacked
+	// and the verifier delivered; IDs only listed are not counted) the
+	// verification round found per verified stripe.
 	VerificationDiff prometheus.Histogram
 }
 
@@ -57,7 +58,7 @@ func newMetrics(syncRate func() float64) metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "verification_diff",
-			Help:      "Differences found per stripe verified with a peer other than its deliverer.",
+			Help:      "Chunks delivered per stripe verified with a peer other than its deliverer.",
 			Buckets:   []float64{0, 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536},
 		}),
 	}

@@ -148,3 +148,107 @@ func TestRoundBootstrapVerifies(t *testing.T) {
 	// both halves verified, each with the peer that did not deliver it
 	waitFor(t, "verification", func() bool { return h.r.VerificationDiffCount() >= 2 })
 }
+
+// TestVerifyStripesLyingVerifier: a verifier that lists IDs it does not
+// deliver cannot get an honest deliverer scored; the verifier is scored for
+// withholding instead.
+func TestVerifyStripesLyingVerifier(t *testing.T) {
+	t.Parallel()
+
+	h, other := verifyHarness(t, 100, 50)
+	h.svc.mu.Lock()
+	h.svc.withhold[other.ByteString()] = true
+	h.svc.mu.Unlock()
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || v.Diff != 50 || v.Stored != 0 {
+		t.Fatalf("diff %d, stored %d, err %v", v.Diff, v.Stored, v.Err)
+	}
+	if got := h.r.Score(higher); got != 0 {
+		t.Fatalf("deliverer score %d, want 0", got)
+	}
+	if got := h.r.Score(other); got != 1 {
+		t.Fatalf("verifier score %d, want 1", got)
+	}
+}
+
+// TestVerifyStripesReassignedTolerance: the tolerance of a reassigned
+// stripe is based on what its last deliverer stored, not on what every
+// peer that worked on the stripe stored.
+func TestVerifyStripesReassignedTolerance(t *testing.T) {
+	t.Parallel()
+
+	first := addr(0xe1, 0)
+	h, other := verifyHarness(t, 100, 6)
+	h.svc.mu.Lock()
+	h.svc.wants[first.ByteString()] = 1000
+	h.svc.withholdN[first.ByteString()] = 1 // stores 999 of 1000: withheld
+	h.svc.mu.Unlock()
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{first, higher}}})
+	if res[0].Err != nil || !res[0].Peer.Equal(higher) || res[0].PeerStored != 100 {
+		t.Fatalf("peer %s, peer stored %d, err %v", res[0].Peer, res[0].PeerStored, res[0].Err)
+	}
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || !v.Verifier.Equal(other) {
+		t.Fatalf("verifier %s, err %v", v.Verifier, v.Err)
+	}
+	if got := h.r.Score(higher); got != 1 {
+		t.Fatalf("deliverer score %d, want 1", got)
+	}
+}
+
+// TestVerifyStripesExcludesTried: a peer that already worked on the stripe
+// (here withheld it before it was reassigned) is not chosen as verifier.
+func TestVerifyStripesExcludesTried(t *testing.T) {
+	t.Parallel()
+
+	first := addr(0xe1, 0)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.remote[first.ByteString()] = status(2)
+	svc.wants[higher.ByteString()] = 10
+	svc.wants[first.ByteString()] = 10
+	svc.withhold[first.ByteString()] = true
+	h := newHarness(t, svc, higher, first)
+	waitFor(t, "status", func() bool { return svc.count(svc.sent, first) > 0 && svc.count(svc.sent, higher) > 0 })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{first, higher}}})
+	if res[0].Err != nil || !res[0].Peer.Equal(higher) || len(res[0].Tried) != 2 {
+		t.Fatalf("peer %s, tried %v, err %v", res[0].Peer, res[0].Tried, res[0].Err)
+	}
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if !errors.Is(v.Err, reconciler.ErrNoVerifier) {
+		t.Fatalf("verifier %s, got %v, want %v", v.Verifier, v.Err, reconciler.ErrNoVerifier)
+	}
+}
+
+// TestVerifyStripesCanceled: a verification canceled while it fetches ends
+// with the context's error and scores nobody.
+func TestVerifyStripesCanceled(t *testing.T) {
+	t.Parallel()
+
+	h, other := verifyHarness(t, 100, 50)
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	h.svc.mu.Lock()
+	h.svc.fetchGate = make(chan struct{}) // never opened
+	h.svc.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan reconciler.VerifyResult)
+	go func() { done <- h.r.VerifyStripes(ctx, res)[0] }()
+	waitFor(t, "verification session", func() bool {
+		return slices.ContainsFunc(h.svc.sessionOpens(other), func(o []fingerprint.Range) bool { return len(o) == 1 && o[0].Equal(root) })
+	})
+	cancel()
+	v := <-done
+	if !errors.Is(v.Err, context.Canceled) {
+		t.Fatalf("got %v, want %v", v.Err, context.Canceled)
+	}
+	if h.r.Score(higher) != 0 || h.r.Score(other) != 0 {
+		t.Fatalf("scores %d, %d, want 0", h.r.Score(higher), h.r.Score(other))
+	}
+}

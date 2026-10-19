@@ -72,6 +72,11 @@ type StripeResult struct {
 	// Listed is the number of IDs the peer listed that this node did not
 	// hold; Stored the number of chunks stored.
 	Listed, Stored int
+	// PeerStored is the number of chunks Peer itself stored (over its
+	// restarts); Stored also counts the peers the stripe was reassigned
+	// from. Tried is every peer that worked on the stripe, Peer included.
+	PeerStored int
+	Tried      []swarm.Address
 	// Err is nil when the stripe is done: the session completed and every
 	// listed ID went through Fetch. It wraps ErrStripeTimeout on timeout
 	// and is ErrNoStripePeer for a stripe with no peer. A failed stripe can
@@ -192,7 +197,11 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 	next := st.Peers
 	peer, ok := r.nextStripePeer(st.Range, &next, tried)
 	for reassigns, restarts := 0, 0; ok; {
-		tried[peer.ByteString()] = true
+		if !tried[peer.ByteString()] {
+			tried[peer.ByteString()] = true
+			total.Tried = append(total.Tried, peer)
+			total.PeerStored = 0
+		}
 		release, err := locks.acquire(ctx, peer)
 		if err != nil {
 			total.Err = err
@@ -203,6 +212,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		total.Peer = peer
 		total.Listed += res.Listed
 		total.Stored += res.Stored
+		total.PeerStored += res.Stored
 		total.Err = res.Err
 		if res.Err == nil && res.Stored < res.Listed {
 			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d: %w", st.Range, peer, res.Stored, res.Listed, ErrStripeWithheld)
