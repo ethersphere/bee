@@ -91,6 +91,9 @@ type nodeOpts struct {
 	fetchTimeout time.Duration
 	// streamErr is the recorder's stream error; nil: none.
 	streamErr func(swarm.Address, string, string, string) error
+	// streamer, if not nil, wraps the recorder the service opens streams
+	// with.
+	streamer func(p2p.StreamerDisconnecter) p2p.StreamerDisconnecter
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -119,7 +122,11 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 		recOpts = append(recOpts, streamtest.WithStreamError(o.streamErr))
 	}
 	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(recOpts...))
-	n.svc = rangesync.New(n.rec, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	var streamer p2p.StreamerDisconnecter = n.rec
+	if o.streamer != nil {
+		streamer = o.streamer(n.rec)
+	}
+	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:       n.scorer,
 		Wants:        n.addWants,
 		LeafBits:     serviceLeafBits,
@@ -302,6 +309,75 @@ func TestStatusProtocolUnsupported(t *testing.T) {
 	if !errors.Is(err, rangesync.ErrProtocolUnsupported) {
 		t.Fatalf("got %v, want %v", err, rangesync.ErrProtocolUnsupported)
 	}
+}
+
+// resetOnCloseStreamer opens streams whose FullClose reports that the peer
+// reset the stream, as libp2p's does when the peer dropped a Status unread.
+type resetOnCloseStreamer struct{ p2p.StreamerDisconnecter }
+
+var errPeerReset = errors.New("stream reset by peer")
+
+func (s resetOnCloseStreamer) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	st, err := s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+	if err != nil {
+		return nil, err
+	}
+	return resetOnCloseStream{st}, nil
+}
+
+type resetOnCloseStream struct{ p2p.Stream }
+
+func (s resetOnCloseStream) FullClose() error {
+	_ = s.Stream.FullClose()
+	return errPeerReset
+}
+
+// TestSendStatusPeerReset: a Status the peer reset (for example, one over its
+// rate) is reported as not sent, so that the sender retries it.
+func TestSendStatusPeerReset(t *testing.T) {
+	t.Parallel()
+
+	a := newTestNodeOpts(t, nodeOpts{streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+		return resetOnCloseStreamer{s}
+	}})
+	b := newTestNode(t)
+	a.start(t)
+	b.start(t)
+	connect0(a, b)
+	if err := a.svc.SendStatus(context.Background(), b.addr); !errors.Is(err, errPeerReset) {
+		t.Fatalf("SendStatus: got %v, want %v", err, errPeerReset)
+	}
+	st, err := a.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.svc.SendStatusWith(context.Background(), b.addr, st); !errors.Is(err, errPeerReset) {
+		t.Fatalf("SendStatusWith: got %v, want %v", err, errPeerReset)
+	}
+}
+
+// TestSendStatusWith: SendStatusWith sends exactly the given Status, not the
+// current one.
+func TestSendStatusWith(t *testing.T) {
+	t.Parallel()
+
+	a := newTestNode(t, stampedChunks(t, 3)...)
+	b := newTestNode(t)
+	a.start(t)
+	b.start(t)
+	connect0(a, b)
+	st, err := a.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Summary.Count = 42 // not the current summary
+	if err := a.svc.SendStatusWith(context.Background(), b.addr, st); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "status", func() bool {
+		got, ok := b.svc.LastStatus(a.addr)
+		return ok && got.Summary.Count == 42
+	})
 }
 
 // connect0 lets a and b open streams to each other without a status exchange.

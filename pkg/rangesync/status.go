@@ -40,16 +40,24 @@ func (s *Service) LocalStatus() (Status, error) {
 	}, nil
 }
 
-// SendStatus sends this node's Status to peer on a status stream. It fails
-// with an error wrapping fingerprint.ErrBusy until the index is built. When
-// to send is the caller's decision (Phase 4 gossips on root changes and as a
-// heartbeat). When the peer does not support the protocol the error wraps
-// ErrProtocolUnsupported.
-func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error) {
+// SendStatus sends this node's current Status (LocalStatus) to peer, as
+// SendStatusWith does. It fails with an error wrapping fingerprint.ErrBusy
+// until the index is built.
+func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) error {
 	st, err := s.LocalStatus()
 	if err != nil {
 		return err
 	}
+	return s.SendStatusWith(ctx, peer, st)
+}
+
+// SendStatusWith sends st, a Status this node got from LocalStatus, to peer
+// on a status stream. When to send is the caller's decision (the reconciler
+// gossips on root changes and as a heartbeat). It reports a send as done only
+// once the peer closed the stream: a peer that dropped the Status (over its
+// rate, or invalid) resets it, and the error says so. When the peer does not
+// support the protocol the error wraps ErrProtocolUnsupported.
+func (s *Service) SendStatusWith(ctx context.Context, peer swarm.Address, st Status) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, StatusStreamName)
@@ -62,8 +70,12 @@ func (s *Service) SendStatus(ctx context.Context, peer swarm.Address) (err error
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-		} else {
-			_ = stream.FullClose()
+			return
+		}
+		// FullClose waits for the peer to close its side: EOF if it read the
+		// Status, an error if it reset the stream.
+		if cerr := stream.FullClose(); cerr != nil {
+			err = fmt.Errorf("close status stream: %w", cerr)
 		}
 	}()
 	m := EncodeStatus(st)
