@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
@@ -386,5 +387,63 @@ func TestNetStore(t *testing.T) {
 			}
 			return db, err
 		})
+	})
+}
+
+// TestDirectUploadStopsOnError verifies that once a chunk fails a direct
+// upload, the upload stops: later chunks are not pushed and the next put
+// returns the error.
+func TestDirectUploadStopsOnError(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		chunks := chunktesting.GenerateTestRandomChunks(2)
+
+		lstore, err := storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var pushed []swarm.Address
+		quit := make(chan struct{})
+		defer func() {
+			close(quit)
+			if err := lstore.Close(); err != nil {
+				t.Errorf("close: %v", err)
+			}
+			// leveldb waits up to a second for its memory pool on close
+			time.Sleep(time.Second)
+		}()
+		go func() {
+			for {
+				select {
+				case op := <-lstore.PusherFeed():
+					pushed = append(pushed, op.Chunk.Address())
+					op.Err <- pushsync.ErrNoPush
+				case <-quit:
+					return
+				}
+			}
+		}()
+
+		session := lstore.DirectUpload()
+
+		if err := session.Put(context.Background(), chunks[0]); err != nil {
+			t.Fatalf("session.Put(...): unexpected error: %v", err)
+		}
+		synctest.Wait()
+
+		if err := session.Put(context.Background(), chunks[1]); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("session.Put(...): got %v, want %v", err, pushsync.ErrNoPush)
+		}
+		synctest.Wait()
+
+		if len(pushed) != 1 || !pushed[0].Equal(chunks[0].Address()) {
+			t.Fatalf("pushed %v, want only %s", pushed, chunks[0].Address())
+		}
+
+		if err := session.Done(chunks[1].Address()); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("session.Done(): got %v, want %v", err, pushsync.ErrNoPush)
+		}
 	})
 }

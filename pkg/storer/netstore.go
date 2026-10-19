@@ -33,7 +33,16 @@ func (db *DB) DirectUpload() PutterSession {
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-				db.directUploadLimiter <- struct{}{}
+				// the upload has already failed: stop it here instead of
+				// pushing the rest of its chunks
+				if egCtx.Err() != nil {
+					return context.Cause(egCtx)
+				}
+				select {
+				case db.directUploadLimiter <- struct{}{}:
+				case <-egCtx.Done():
+					return context.Cause(egCtx)
+				}
 				eg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload", func() (err error) {
 					defer func() { <-db.directUploadLimiter }()
 
