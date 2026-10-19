@@ -252,3 +252,24 @@ func TestVerifyStripesCanceled(t *testing.T) {
 		t.Fatalf("scores %d, %d, want 0", h.r.Score(higher), h.r.Score(other))
 	}
 }
+
+// TestVerifyStripesVerifierShortfallTolerated: a verifier that delivers all
+// but one listed chunk (rejected, or claimed by another session) is not
+// scored: the verifier gets the deliverer's tolerance.
+func TestVerifyStripesVerifierShortfallTolerated(t *testing.T) {
+	t.Parallel()
+
+	h, other := verifyHarness(t, 100, 50)
+	h.svc.mu.Lock()
+	h.svc.withholdN[other.ByteString()] = 1
+	h.svc.mu.Unlock()
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || v.Diff != 50 || v.Stored != 49 {
+		t.Fatalf("diff %d, stored %d, err %v", v.Diff, v.Stored, v.Err)
+	}
+	if got := h.r.Score(other); got != 0 {
+		t.Fatalf("verifier score %d, want 0", got)
+	}
+}

@@ -67,9 +67,10 @@ type VerifyResult struct {
 // 1/verifyDiffRatio of what the deliverer stored) is reported to the
 // PeerScorer as a failure of the deliverer (§9 stripe withholding); only
 // chunks the verifier delivered count, so a verifier cannot get a
-// deliverer scored by listing IDs it does not have. A verifier that stored
-// fewer chunks than it listed is scored itself (withholding). A stripe with
-// no peer other than those that worked on it is not verified (ErrNoVerifier): verifying with
+// deliverer scored by listing IDs it does not have. A verifier whose
+// shortfall (listed minus stored) is above the same tolerance (of what it
+// listed) is scored itself (withholding). A stripe with no peer other than
+// those that worked on it is not verified (ErrNoVerifier): verifying with
 // the deliverer could not find what it withheld. The verifications run
 // like a transfer: one session per peer at a time, peers in parallel; they
 // count as catch-up (SyncRate). The results are in the order of results.
@@ -141,7 +142,7 @@ func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifie
 		// an incomplete verification says nothing about the deliverer
 		return v
 	}
-	if v.Stored < v.Diff {
+	if v.Diff-v.Stored > max(verifyMinDiff, v.Diff/verifyDiffRatio) {
 		r.Fail(verifier, fmt.Errorf("stripe %s: verifier stored %d of %d: %w", res.Range, v.Stored, v.Diff, ErrVerifierWithheld))
 	}
 	r.metrics.VerificationDiff.Observe(float64(v.Stored))
