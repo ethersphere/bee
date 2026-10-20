@@ -36,6 +36,26 @@ func (st *peerState) wakeLocked() {
 	}
 }
 
+// resetLocked gives the peer of st a new machine, in Probing: the peer
+// reconnected unseen by the peer set, or it is eligible again after it was
+// dropped. The round session, round fetch and stripe sessions of the old
+// machine that still run belong to the old connection: they end without
+// moving the new machine (currentLocked), as for a peer that left and came
+// back with a new entry. The stripe sessions waiting for the peer are woken.
+// r.mu must be held.
+func (st *peerState) resetLocked() {
+	st.fsm = newPeerFSM()
+	st.gen++
+	st.wakeLocked()
+}
+
+// currentLocked reports whether st is still the entry of peer and gen its
+// machine's generation: a session, fetch or stripe that started with them
+// may move the machine. r.mu must be held.
+func (r *Reconciler) currentLocked(peer swarm.Address, st *peerState, gen uint64) bool {
+	return r.peers[peer.ByteString()] == st && st.gen == gen
+}
+
 // trackPeersLocked follows the topology's connected peers: a new peer gets a
 // machine in Probing, a peer that left fires eventDisconnected and is
 // forgotten, and an Unsupported peer that shows a Status it had not sent at
@@ -64,7 +84,7 @@ func (r *Reconciler) trackPeersLocked(connected []swarm.Address) {
 		// disconnect), shows such a reconnect: follow the new connection
 		// from a first contact.
 		if have && st.fsm.state == stateUnsupported && !st.sending && (!st.verdictHave || !equalStatus(remote, st.verdict)) {
-			st.fsm = newPeerFSM()
+			st.resetLocked()
 			st.sent, st.lastSent = false, time.Time{}
 			r.logger.Debug("peer speaks rangesync after a reconnect", "peer_address", p)
 		}
@@ -100,7 +120,7 @@ func (r *Reconciler) admitLocked(local rangesync.Status, connected []swarm.Addre
 func (r *Reconciler) admitPeerLocked(p swarm.Address, st *peerState, local, remote rangesync.Status, have bool) {
 	exchanged := st.sent && have
 	if st.fsm.state == stateRemoved && (!exchanged || isEligible(local, remote)) {
-		st.fsm = newPeerFSM()
+		st.resetLocked()
 	}
 	if !exchanged {
 		return
@@ -169,11 +189,12 @@ func (r *Reconciler) acquireStripe(ctx context.Context, peer swarm.Address) (rel
 		case stateIdle, stateFetching:
 			unwait()
 			r.fireLocked(st, eventStripe)
+			gen := st.gen
 			r.mu.Unlock()
 			return func() {
 				r.mu.Lock()
 				defer r.mu.Unlock()
-				if r.peers[k] == st {
+				if r.currentLocked(peer, st, gen) {
 					r.fireLocked(st, eventStripeDone)
 				}
 			}, nil

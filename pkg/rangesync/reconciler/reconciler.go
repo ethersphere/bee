@@ -108,9 +108,13 @@ type Options struct {
 
 // peerState is what the reconciler keeps for a connected peer.
 type peerState struct {
-	fsm    peerFSM // the peer's state machine (§8.1, peerfsm.go)
-	sent   bool    // a Status of ours reached the peer
-	served bool    // the peer started a session with this node (Succeed or Wants)
+	fsm peerFSM // the peer's state machine (§8.1, peerfsm.go)
+	// gen counts the machines the entry has had (resetLocked). A session,
+	// fetch or stripe moves the machine only while gen is the one it started
+	// with (currentLocked).
+	gen    uint64
+	sent   bool // a Status of ours reached the peer
+	served bool // the peer started a session with this node (Succeed or Wants)
 	// stripeWaiters counts the stripe sessions waiting for the peer to leave
 	// Reconciling or Striped (acquireStripe); rounds start no session with
 	// it meanwhile. idle, if not nil, is closed when it does, or leaves.

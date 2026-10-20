@@ -354,9 +354,10 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 		r.fireLocked(st, eventReconcile)
 		r.pendingReconcile++
 		r.wg.Add(1)
+		gen := st.gen
 		go func() {
 			defer r.wg.Done()
-			r.session(p, st, opens[p.ByteString()], local.Root, now)
+			r.session(p, st, gen, opens[p.ByteString()], local.Root, now)
 		}()
 	}
 	r.guardArmed = exchanged && eligible > 0 && !unresolved
@@ -380,10 +381,12 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 }
 
 // session runs Reconcile then Fetch with peer, whose entry st is in
-// Reconciling, then transfers the ranges the session handed to its Striper
-// (d̂ > LargeDiff) as stripes. It waits for a session slot first
-// (MaxInitiatedSessions), then rechecks the round's decision, made at
-// decided with this node's root root (recheckSession). open, if not empty,
+// Reconciling with machine generation gen, then transfers the ranges the
+// session handed to its Striper (d̂ > LargeDiff) as stripes. It waits for a
+// session slot first (MaxInitiatedSessions), then rechecks the round's
+// decision, made at decided with this node's root root (recheckSession).
+// Once the peer has another entry or machine (currentLocked) neither the
+// session nor its fetch moves the peer's machine. open, if not empty,
 // is the session's opening (the old half after a radius decrease). The
 // outcome moves st on: the peer's Busy or an error back to Idle with a
 // backoff, a cause on this node (localCause) or a stale decision back to Idle
@@ -393,12 +396,12 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // back to Idle without a backoff. A takeover (the peer initiates) that finds
 // so, or is answered Busy, found the initiator alive: it also waits for the
 // initiator again.
-func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range, root fingerprint.Range, decided time.Time) {
+func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open []fingerprint.Range, root fingerprint.Range, decided time.Time) {
 	striper := new(StripeCollector)
 	release, err := r.acquireSlot(r.ctx)
 	var wants []storer.ChunkID
 	if err == nil {
-		if err = r.recheckSession(peer, st, root, decided); err == nil {
+		if err = r.recheckSession(peer, st, gen, root, decided); err == nil {
 			wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
 		}
 		release()
@@ -414,7 +417,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	if err == nil && (len(wants) > 0 || len(striper.Ranges()) > 0) {
 		r.foundDiff = true
 	}
-	if r.peers[peer.ByteString()] == st { // not left meanwhile
+	if r.currentLocked(peer, st, gen) { // neither left nor reconnected meanwhile
 		switch {
 		case err == nil:
 			r.fireLocked(st, eventSessionDone)
@@ -457,7 +460,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
 	r.fetch(peer, wants, catchUp)
 	r.mu.Lock()
-	if r.peers[peer.ByteString()] == st {
+	if r.currentLocked(peer, st, gen) {
 		r.fireLocked(st, eventFetched) // during a stripe session the peer stays Striped
 	}
 	r.mu.Unlock()
@@ -472,12 +475,13 @@ var errStaleSession = errors.New("reconciler: session decision stale")
 
 // recheckSession reports errStaleSession unless the decision of the round that
 // started the session with peer, made at decided with this node's root root,
-// still holds once the session has its slot: st is the peer's current entry
-// and in Reconciling, this node's root is still root and reached the peer,
+// still holds once the session has its slot: st is the peer's current entry,
+// with the machine of generation gen, in Reconciling, this node's root is
+// still root and reached the peer,
 // the peer's Status is known and its digest still differs, and, for a
 // takeover, the initiator ran no session with this node since. The session
 // may have waited minutes for its slot.
-func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, root fingerprint.Range, decided time.Time) error {
+func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, gen uint64, root fingerprint.Range, decided time.Time) error {
 	local, err := r.svc.LocalStatus()
 	if err != nil {
 		return err
@@ -486,7 +490,7 @@ func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, root fing
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	switch {
-	case r.peers[peer.ByteString()] != st, st.fsm.state != stateReconciling:
+	case !r.currentLocked(peer, st, gen), st.fsm.state != stateReconciling:
 	case !have, !local.Root.Equal(root), !st.reached.Equal(local.Root):
 	case sameDigest(local, remote):
 	case !r.initiates(peer) && st.takeoverSince.After(decided):

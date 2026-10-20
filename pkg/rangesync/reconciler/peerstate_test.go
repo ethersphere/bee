@@ -723,3 +723,183 @@ func TestPeerStateReadmittedBackoff(t *testing.T) {
 		t.Fatal("re-admitted peer still backing off")
 	}
 }
+
+// reconnectUnseen makes peer reconnect twice between two rounds, unseen by
+// the peer set: a heartbeat finds it without rangesync (a new machine, then
+// Unsupported), and it then shows status, a Status it had not sent at that
+// verdict, so the next round gives it another new machine.
+func reconnectUnseen(t *testing.T, h *harness, peer swarm.Address, status rangesync.Status) {
+	t.Helper()
+	h.svc.set(func() { h.svc.unsupported[peer.ByteString()] = true })
+	h.clock.Add(reconciler.StatusMaxInterval)
+	h.r.Gossip()
+	if got := peerState(h.r, peer); got != reconciler.StateUnsupported {
+		t.Fatalf("state %v after the heartbeat, want %v", got, reconciler.StateUnsupported)
+	}
+	h.svc.set(func() {
+		delete(h.svc.unsupported, peer.ByteString())
+		h.svc.remote[peer.ByteString()] = status
+	})
+}
+
+// TestPeerStateResetIgnoresStaleRuns: a peer that reconnects unseen gets a
+// new machine; the round session, round fetch and stripe session of the old
+// one that still run end without moving the new machine.
+func TestPeerStateResetIgnoresStaleRuns(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+
+	// The old round fetch ends while the new machine's round fetch runs:
+	// the peer stays Fetching, so no session starts before the new fetch
+	// ends.
+	t.Run("stale fetch", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = status(11)
+		svc.wants[higher.ByteString()] = 3
+		// each completed session hands this range to its Striper, which is
+		// registered once the session's fetch is recorded
+		svc.offer[higher.ByteString()] = root.Child(1, 0)
+		calls := make(chan chan struct{})
+		svc.fetchCalls = calls
+		h := newGossipHarness(t, svc, higher)
+		h.r.Round()
+		oldFetch := <-calls
+		reconnectUnseen(t, h, higher, status(12))
+		h.r.Round()
+		newFetch := <-calls
+		if got := peerState(h.r, higher); got != reconciler.StateFetching {
+			t.Fatalf("state %v during the new fetch, want %v", got, reconciler.StateFetching)
+		}
+
+		close(oldFetch)
+		waitFor(t, "old fetch recorded", func() bool { return h.r.StripeRegistry() == 1 })
+		if got := peerState(h.r, higher); got != reconciler.StateFetching || !h.r.PeerFetching(higher) {
+			t.Fatalf("state %v (fetching %v) after the old fetch ended, want %v", got, h.r.PeerFetching(higher), reconciler.StateFetching)
+		}
+		h.r.Round()
+		if n := len(svc.sessionOpens(higher)); n != 2 {
+			t.Fatalf("%d sessions, want 2: one started during the new fetch", n)
+		}
+		close(newFetch)
+		waitState(t, h.r, higher, reconciler.StateIdle)
+	})
+
+	// The old round session is answered Busy while the new machine's
+	// session runs: no backoff, and no second session with the peer.
+	t.Run("stale session", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = status(11)
+		oldGate, newGate := make(chan struct{}), make(chan struct{})
+		svc.peerGate[higher.ByteString()] = oldGate
+		h := newGossipHarness(t, svc, higher)
+		h.r.Round()
+		waitFor(t, "old session", func() bool { return len(svc.sessionOpens(higher)) == 1 })
+		svc.set(func() {
+			svc.peerGate[higher.ByteString()] = newGate
+			svc.busyN[higher.ByteString()] = 1 // the old session's answer
+		})
+		reconnectUnseen(t, h, higher, status(12))
+		h.r.Round()
+		waitFor(t, "new session", func() bool { return len(svc.sessionOpens(higher)) == 2 })
+
+		close(oldGate)
+		waitFor(t, "old session recorded", func() bool { return h.r.SessionsTotal("busy") == 1 })
+		if got := peerState(h.r, higher); got != reconciler.StateReconciling {
+			t.Fatalf("state %v after the old session ended, want %v", got, reconciler.StateReconciling)
+		}
+		if n := h.r.PeerFailures(higher); n != 0 {
+			t.Fatalf("backoff streak %d from the old session, want 0", n)
+		}
+		h.r.Round()
+		if n := len(svc.sessionOpens(higher)); n != 2 {
+			t.Fatalf("%d sessions, want 2: one started during the new session", n)
+		}
+		close(newGate)
+		waitState(t, h.r, higher, reconciler.StateIdle)
+	})
+
+	// The old round session gets its slot after the new machine started
+	// one: it is stale and does not run, so only one session runs with the
+	// peer.
+	t.Run("stale session waiting for its slot", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		blockers := make([]swarm.Address, 0, reconciler.MaxInitiatedSessions+1) // and higher, later
+		gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
+		for i := range gates {
+			p := addr(0xf1, byte(i))
+			blockers = append(blockers, p)
+			gates[i] = make(chan struct{})
+			svc.peerGate[p.ByteString()] = gates[i]
+			svc.remote[p.ByteString()] = status(11)
+		}
+		t.Cleanup(func() {
+			for _, g := range gates[1:] {
+				close(g)
+			}
+		})
+		svc.remote[higher.ByteString()] = status(11)
+		h := newGossipHarness(t, svc, blockers...)
+		h.r.Round()
+		waitFor(t, "slots taken", func() bool { return svc.running() == len(blockers) })
+		h.topo.setPeers(append(blockers, higher)...)
+		h.r.Round() // the old session waits for a slot
+		waitState(t, h.r, higher, reconciler.StateReconciling)
+		reconnectUnseen(t, h, higher, status(12))
+		h.r.Round() // the new session waits behind it
+		waitState(t, h.r, higher, reconciler.StateReconciling)
+
+		close(gates[0])
+		waitFor(t, "stale session", func() bool { return h.r.SessionsTotal("stale") == 1 })
+		waitState(t, h.r, higher, reconciler.StateIdle)
+		if n := len(svc.sessionOpens(higher)); n != 1 {
+			t.Fatalf("%d sessions with the peer, want 1 (the new machine's)", n)
+		}
+	})
+
+	// The old stripe session ends while a new one holds the peer: the peer
+	// stays Striped.
+	t.Run("stale stripe", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = status(10) // equal digest: no round session
+		oldGate, newGate := make(chan struct{}), make(chan struct{})
+		svc.peerGate[higher.ByteString()] = oldGate
+		h := newGossipHarness(t, svc, higher)
+		h.r.Round()
+		waitState(t, h.r, higher, reconciler.StateIdle)
+		stripe := []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}}
+		oldCtx, cancelOld := context.WithCancel(context.Background())
+		oldDone := make(chan struct{})
+		go func() {
+			defer close(oldDone)
+			h.r.TransferStripes(oldCtx, stripe)
+		}()
+		waitFor(t, "old stripe session", func() bool { return len(svc.sessionOpens(higher)) == 1 })
+		svc.set(func() {
+			svc.peerGate[higher.ByteString()] = newGate
+			svc.local = status(12)
+		})
+		reconnectUnseen(t, h, higher, status(12))
+		h.r.Round()
+		waitState(t, h.r, higher, reconciler.StateIdle)
+		newDone := make(chan struct{})
+		go func() {
+			defer close(newDone)
+			h.r.TransferStripes(context.Background(), stripe)
+		}()
+		waitFor(t, "new stripe session", func() bool { return len(svc.sessionOpens(higher)) == 2 })
+
+		cancelOld()
+		<-oldDone
+		if got := peerState(h.r, higher); got != reconciler.StateStriped {
+			t.Fatalf("state %v after the old stripe ended, want %v", got, reconciler.StateStriped)
+		}
+		close(newGate)
+		<-newDone
+		waitState(t, h.r, higher, reconciler.StateIdle)
+	})
+}

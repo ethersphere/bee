@@ -219,8 +219,7 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) (newRoot 
 			case errors.Is(err, rangesync.ErrProtocolUnsupported):
 				if st.fsm.state != stateProbing {
 					// a reconnect the peer set did not show: a new peer
-					st.fsm = newPeerFSM()
-					st.wakeLocked()
+					st.resetLocked()
 				}
 				r.fireLocked(st, eventUnsupported)
 				st.verdict, st.verdictHave = r.svc.LastStatus(pk.peer)
