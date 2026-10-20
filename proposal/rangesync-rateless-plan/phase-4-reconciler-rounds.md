@@ -2102,6 +2102,192 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   (the teardown order, `errSimClosed`) and `neighborhood_test.go`. There is no production,
   `pkg/node`, `pkg/p2p`, `go.mod` or proto change. Single runs: `TestNeighborhoodTeardown` 4.1 s
   (two runs), `TestNeighborhoodConverges` 0.75 s (two parallel subtests), the others as in round 2.
+- **(T4.6 part 2) The analytical model: `srep_model_test.go` (package `rangesync_test`, test-only).**
+  An SREPSim-style model of a neighborhood: it follows the protocol's decisions and message sizes,
+  not bytes on a stream, so a run of the steady mode takes 10–100 ms and G6 can sweep it. What is
+  Monte Carlo and what is closed form:
+  - *The decoder, Monte Carlo over the real code* (`srepDecodeTable`). For a difference of d IDs,
+    random IDs are encoded with the FloatMapper and fed to `fingerprint.Decoder` one symbol at a
+    time; the threshold K is the symbol count at `Done`. A batch of n symbols decodes if and only if
+    n ≥ K (peeling more symbols never recovers fewer IDs), so the K samples are the decode-success
+    distribution of every batch size. 128 draws per d in the default run, 1000 with `-tags=sim`.
+    T2.6's benchmark reports only quantiles at six sizes, so the table is drawn here; it matches
+    T2.6 (p50 16 at d = 10, 68 at d = 45) and §13's band (`TestSREPDecodeTable`).
+  - *A session, closed form given K* (`srepParams.stream`, `sessionCost`, `srepWire`). The first
+    batch max(`MinBatch`, ⌈`BatchFactor` · d̂⌉ + 2) with d̂ = max(|cA − cB|, hint(R), 1), then `More`s
+    up to `GrowthFactor` × the symbols received, within cap(R) and `SessionSymbolBudget`. Sizes are
+    the delimited encodings of the wire encoders, which `bytes_metadata` counts
+    (`TestSREPWireSizes`), with each symbol's count varint at its expected length from the binomial
+    count (`TestSREPSymbolBytes`, against `AppendSymbolData`: 81 B per symbol at the harness's
+    counts, 82 B for a large reserve). Averaging over K gives a stream's expected cost and its `More`
+    distribution.
+  - *The neighborhood, discrete events* (`srepSim`, `srepParams.run`). Per node: the Index's
+    debounce, Status gossip on the per-peer schedule, rounds (triggers deferred to
+    `MinRoundInterval`, the adaptive timer, the round's Statuses sent before its sessions), the
+    initiator rule and the takeover, `MaxInitiatedSessions` slots with the recheck (stale), one
+    session at a time per pair, the session's legs as the harness has them (the open, the
+    Fingerprint, the Symbols, a round trip per `More`, the Items, the empty answer, the close),
+    hint(R) recorded by both sides, the claims and the fetch's legs. Each stream's threshold is drawn
+    from the table for the session's true n_Δ.
+  - `srepParams.ideal` is §7.8's closed form with the real decoder: synchronous rounds of
+    `MinRoundInterval`, each pair once on the round's snapshot, d binomial with q = 2p(N − p) /
+    (N(N − 1)), the count estimate |2X − d|, and hint(R) the previous round's d. Its oracle (a stream
+    that stops at K, §4.3.7's cost) is a floor that no batch constant can beat. The pullsync baselines
+    are `srepPullsyncACB1`, `srepPullsync78` and `srepPullsyncWire` (below).
+  - Parameters (`srepParams`): N, p, the schedule (the harness's batches, or Poisson at `Rate`),
+    `Delay`, `BatchFactorTenths`, `GrowthFactor`, `MinBatch`, `NoHints`, `NoClaims`, the gossip and
+    round intervals, the slots, and `Base` and `Root` (counts and sizes). `srepParamsOf(simOptions)`
+    takes the harness's options.
+  - Not modeled: the node session cap and the peer session limit (Busy and `session_limit`, a
+    handful per run at N = 17), a takeover colliding with the initiator's own session, the
+    served-wants fetcher's queue, splits and item exchanges (counted as `Outside`: 0 in every run,
+    production sizes included), Items pages past the first, the rate limits and the Status sender's
+    GCRA, and, as in the harness, the fetch limiters and bandwidth.
+- **(T4.6 part 2) At Delay 0 a message leg takes a microsecond.** The harness runs the calls of one
+  instant concurrently in real time, one goroutine hand-off per leg, so they progress in step: every
+  session of a round reads the indexes before any of them ends and fetches. The model's first
+  version ran the legs of one instant in a random order, which let a fetch land before a concurrent
+  session's read. n_Δ per upload then fell below p(N − p) (14.8 against the harness's 18.3 at N = 9,
+  44.9 against 51.7 at N = 17), and the zero-difference share rose to 20–24% (harness 5–7%). With
+  `srepInstant` = 1 µs per leg the step order holds (18.0 against 18.3 at N = 9), and the times move
+  by microseconds. Events of one instant still run in a random order.
+- **(T4.6 part 2) Validation: the model against the harness, 32 rows, all within tolerance.**
+  `TestSREPModelVsHarness` (`-tags=sim`) runs the harness's steady mode (`steadyOptions`: 480
+  uploads, ~15 per second) for N = 9 and 17 at Delay 0, 50 and 200 ms with hint(R) and at 50 ms
+  without, 3 seeds each and one run after another, and the model with the same options, 10 seeds.
+  The model's mean must lie within 10% of the harness's for the share of the modeled pullsync, the
+  symbols per difference and n_Δ per upload, within 15% for the median n_Δ per session, and within
+  1 s for the mean and the longest batch convergence. It ran with the current constants and, in
+  scratch worktrees with the constant changed (and `FirstBatch` for `BatchFactor`), with each G6
+  candidate. All 4 × 8 rows are within tolerance. Share of the modeled pullsync (%), hint(R) on,
+  Delay 0 / 50 / 200 ms:
+
+  | constants | N = 9 model | N = 9 harness | N = 17 model | N = 17 harness |
+  |---|---|---|---|---|
+  | now | 78 / 78 / 74 | 79 / 76 / 75 | 61 / 63 / 65 | 64 / 61 / 65 |
+  | `GrowthFactor` 2 | 58 / 59 / 59 | 60 / 59 / 60 | 48 / 50 / 50 | 48 / 49 / 52 |
+  | `BatchFactor` 2.0 | 67 / 69 / 72 | 67 / 72 / 73 | 62 / 63 / 64 | 63 / 62 / 63 |
+  | both | 59 / 61 / 62 | 62 / 63 / 65 | 52 / 54 / 54 | 52 / 52 / 56 |
+
+  Without hint(R) at 50 ms (model / harness): now 81 / 82 and 59 / 60, `GrowthFactor` 2 60 / 60 and
+  45 / 45, `BatchFactor` 2.0 81 / 83 and 59 / 60, both 60 / 60 and 45 / 45. The other figures agree
+  as closely, for example now at 50 ms (model / harness, N = 9 and N = 17): symbols per difference
+  3.10 / 3.01 and 3.56 / 3.38; `More`s per upload 0.25 / 0.24 and 0.90 / 0.88 (without the hint
+  0.82 / 0.83 and 2.39 / 2.46); Status 46 and 175 B and Want 421 and 985 B per upload (equal);
+  sessions per upload 0.48 / 0.47 and 1.81 / 1.75; batch convergence 3.40 / 3.40 s and
+  3.71 / 3.75 s, the longest 5.80 / 5.83 s and 6.22 / 6.35 s; no duplicate. Discrepancies, none
+  past its tolerance:
+  - N = 17 at Delay 0: n_Δ per upload 48.3–48.4 against the harness's 51.4–52.8 (−6 to −9%), its
+    median 25 against 28. The harness's goroutines are not fully in step: some fetches land before a
+    concurrent session's read and expose the chunk again. The model is a lower bound of n_Δ at
+    Delay 0; at 50 ms it matches (49.5 / 49.7).
+  - N = 17 symbols per difference: with hint(R) the model is 0.05–0.27 higher (2–10%; both at
+    Delay 0 2.90 / 2.64), which partly offsets the n_Δ above in bytes. Without the hint the two agree
+    within 0.03, so the gap is in the hints; those of the second wave of sessions (below) are the
+    likely place. Not traced further.
+  - The zero-difference share (not checked): the model's mean is 0–3 points above the harness's,
+    with overlapping spreads (N = 9 at 50 ms 7.0% (1.4–12.2) against 3.7% (0–8.1)). An equal session
+    costs ~45 B, under 0.3% of the bytes.
+  - Harness repeatability: N = 17 at Delay 0 with seeds 1–3 measured 61.7%, 65.9% and 63.6% in
+    three runs, as round 3 warned.
+- **(T4.6 part 2 → G6) The comparison table: model, harness, §7.8 and pullsync.** At the steady
+  load (median `pairwise_diff` 40 at N = 9 and 27 at N = 17, AC-B1's reference load), Delay 50 ms,
+  hint(R) on. Metadata per upload as a share of AC-B1's pullsync baseline, N(N − 1) × 102 B; model
+  10 seeds, harness 3 seeds; "ideal" is §7.8's closed form with the real decoder (`srepParams.ideal`,
+  n_Δ = p(N − p)):
+
+  | | N = 9 | N = 17 |
+  |---|---|---|
+  | pullsync, AC-B1 (102 B per offer; the base of every share) | 7.34 KB | 27.7 KB |
+  | pullsync, §7.8 (100 B per offer) | 7.2 KB | 27.2 KB |
+  | pullsync on the wire (104 B per Offer entry + pages, 15.4 uploads/s) | 8.0 KB (1.09×) | 30.2 KB (1.09×) |
+  | §7.8's rangesync (symbols only) | 2.0–2.5 KB (27–34%) | 4.6–5.9 KB (17–21%) |
+  | ideal with the oracle (1.52–1.60 symbols per difference) | 46% | 30% |
+  | now: ideal / model / harness | 78% / 79% (5.9 KB) / 76% | 52% / 63% (17.6 KB) / 61% |
+  | `GrowthFactor` 2 | 58% / 60% / 59% | 38% / 49% / 49% |
+  | `BatchFactor` 2.0 | 63% / 69% / 72% | 45% / 63% / 62% |
+  | both | 59% / 61% / 63% | 39% / 53% / 52% |
+
+  The model across Delay 0–200 ms (means of 10 seeds), N = 9 and N = 17: now 74–79% and 62–65%,
+  `GrowthFactor` 2 59–60% and 48–50%, `BatchFactor` 2.0 66–73% and 62–64%, both 59–62% and 52–54%;
+  without the hint 81–82% and 58–61%, 60% and 43–45%, 80–81% and 57–63%, 60% and 43–45%. The ideal is
+  within 0–10 points of the model at N = 9 and 10–19 points below it at N = 17, where n_Δ per upload
+  exceeds p(N − p) (below). What else the model says, current constants at 50 ms, N = 9 / N = 17:
+  - Bytes per upload: symbols 4.8 / 14.4 KB, the decoder's Items listing 644 / 1945 B, Want 421 /
+    985 B, Status 46 / 175 B, opening Fingerprints 20 / 80 B, `More`s 2 / 8 B.
+  - Symbols per difference 3.1–3.2 / 3.5–3.6 (§7.8: 1.35–1.72); per stream p10 1.6, p50 2.2 / 3.1,
+    p90 6.0. The distribution is bimodal: a stream decodes in its first batch or takes a ×4 `More`.
+  - Round trips per decoded session (open and close counted) 4.5–4.6: 57–59% of the streams need no
+    `More` and 31% one; `More`s per upload 0.25 / 0.89 (0.82 / 2.4 without the hint).
+  - n_Δ per upload 18.2 / 49.5 against p(N − p) = 18 / 42. The excess at N = 17 comes from the
+    initiated-session slots: with a slot per peer (16) it falls to 44.0 and the share to 53% (now)
+    and 40% (`GrowthFactor` 2) (Follow-ups).
+  - Duplicates: none with claims, in every model and harness run. Without claims (`NoClaims`) the
+    model counts 11.9 duplicate deliveries per upload at N = 9 and 20.3 at N = 17 (the synchronous
+    bound (N − p)(p − 1) is 12 and 28).
+  - Time to convergence of a batch (the harness's schedule): mean 3.4 / 3.7 s, longest 5.8 / 6.2 s
+    at 50 ms; at Delay 0 a mean of 2.55 s and a longest of 5.0 s for both N; at 200 ms 5.1 and 8.2 s
+    (N = 9), 6.1 and 9.9 s (N = 17). With Poisson uploads
+    at 15.4/s an upload converges in 3.0–3.1 s on average. pullsync's fill latency is ~250 ms
+    (`pageTimeout`) plus the Offer, Want and Delivery legs.
+  - Upload rate (Poisson, 50 ms; 2, 5, 15.4 and 50 uploads/s): now 98 / 90 / 79 / 64% at N = 9
+    and 76 / 69 / 62 / 55% at N = 17; `GrowthFactor` 2 78 / 69 / 60 / 53% and 65 / 56 / 49 / 44%.
+    The median n_Δ per session is 5 / 12 / 38 / 125 and 3 / 8 / 25 / 82, so the reference load
+    (≥ 20) starts near 8 uploads/s at N = 9 and 12–13 at N = 17.
+  - p = 2 and 4 give 67% and 86% at N = 9, 56% and 67% at N = 17 with the current constants.
+    `MinBatch` 2 or 8 moves the share by at most a point at the reference load. Production sizes (a
+    2^20 reserve, so cap(R) = `RootSymbols` and 82 B symbols, and a root of radius 10) are within a
+    point of the harness's sizes, and no stream reaches cap(R).
+- **(T4.6 part 2) AC-B1 per configuration: no candidate passes at N = 9.** AC-B1
+  (acceptance-criteria.md from T6.0, on master, not on this branch): rangesync's metadata per new
+  chunk at most 50% of pullsync's (`bee_pullsync_chunks_offered` × 102 B) at the reference load.
+  Model and harness agree:
+  - now: 74–82% at N = 9 and 58–66% at N = 17; fails both.
+  - `GrowthFactor` 2: 58–60% at N = 9, fails; 47.5–52% at N = 17, on the line (passes at Delay 0
+    and 50 ms, fails at 200 ms).
+  - `BatchFactor` 2.0: 66–73% and 62–64%; fails both, with no gain at N = 17.
+  - both: 59–65% and 52–56%; fails both.
+  - `GrowthFactor` 2 without the hint reaches 43–45% at N = 17, with 4 `More`s per upload (3.4×
+    the round trips).
+  - The floor, the oracle (1.5–1.6 symbols per difference in one batch), is 46% at N = 9 and 30%
+    at N = 17. At N = 9 the Items listing, the Want IDs and the Status already cost 1.13 KB per
+    upload, 15% of pullsync, so the symbols must stay below ~1.7 per difference, which only the
+    oracle reaches (Follow-ups).
+- **(T4.6 part 2) Correction: with an exact estimate a first batch decodes 73–91% of the time, not
+  half.** This supersedes, in "(T4.6 part 1 fix round 1, High) The serving side of a decoded stream
+  records hint(R)", "what remains is `FirstBatch` = 1.6 d + 2, which sits at the median of the
+  symbols a difference d needs, so about half the streams miss" and its "about 0.5 × 1.6 + 0.5 × 6.4
+  ≈ 4 symbols per difference". With d̂ = d the first batch lies above the median threshold (d = 45:
+  74 symbols against T2.6's p50 68 and p90 79): it decodes in 73% (d = 20), 85% (45) and 91% (80) of
+  the streams, at 3.09, 2.38 and 2.04 symbols per difference (`TestSREPSessionCost`). The steady state
+  costs more because its estimates miss. The count estimate |cA − cB| is about √d (counts alone:
+  3.3–3.6 symbols per difference), and hint(R) is the previous round's difference, a Poisson-noisy
+  estimate of this one (ideal with the hint: 3.15 at N = 9, 3.45 at N = 17). A miss costs a
+  ×`GrowthFactor` `More`: with 2, the counts alone cost 2.1–2.3 and an exact estimate 1.8–2.2.
+  `BatchFactor` 2.0 decodes 95–100% of exact first batches for d ≥ 20, but against noisy hints it
+  spends the extra symbols in every stream, which is why it gains little at N = 17.
+- **(T4.6 part 2) The pullsync baseline is AC-B1's N(N − 1) × 102 B.** Every share above uses it, as
+  the harness does, not §7.8's 100 B. On the wire an Offer entry is 104 B (the pb.Chunk and its
+  framing), and each page adds its Get, Offer header and Want (~20 B). A live page holds the chunks
+  of a bin that arrive less than `pageTimeout` (250 ms) apart: e^(−μ · 0.25 s) pages per chunk at a
+  bin rate μ, and a node's bins get λ/2, λ/4, …. So `srepPullsyncWire` gives 1.04–1.19× the baseline
+  from 50 down to 2 uploads/s, 1.09× at the steady load. AC-B1's measured baseline (T6.1) is
+  `bee_pullsync_chunks_offered` × 102 B, and the offers can only exceed N(N − 1) per upload (re-offers
+  after a reconnect), so the shares here bound the measured ones from above; against pullsync's
+  bytes on the wire they would be 4–16% lower (8% at the steady load).
+- **(T4.6 part 2) Scope, tests and wall times.** Test-only, in `pkg/rangesync`: `srep_model_test.go`
+  (the model), `srep_model_check_test.go` (default build) and `srep_model_sim_test.go` (`-tags=sim`),
+  and in `neighborhood_sim_test.go` the harness reports `more_requests_total` per node
+  (`simNodeResult.MoreRequests`, from the existing `export_test.go` accessor). There is no
+  production, `export_test.go`, `pkg/node`, `pkg/p2p`, `go.mod` or proto change, no new parser of
+  peer input and no `*_fuzz_test.go`. Tests and single-run wall times:
+  - default: `TestSREPModel` 2.0 s and `TestSREPIdeal` 2.0 s (in parallel), `TestSREPSessionCost`
+    and `TestSREPDecodeTable` 0.2 s, `TestSREPWireSizes` and `TestSREPSymbolBytes` 0.04 s,
+    `TestSREPFirstBatch`, `TestSREPStream` and `TestSREPPullsync` < 0.01 s; 2.1 s together;
+  - `-tags=sim`: `TestSREPModelVsHarness` 100–145 s per constant set (24 harness runs, one after
+    another; 105 s with the current constants), `TestSREPModelG6` 62 s.
+  - `-count=5 -cpu=1,2,4`: the `TestSREP*` tests 35 s, the neighborhood tests (with the harness
+    change) 67 s, all passing.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2988,3 +3174,66 @@ _(sessions append here)_
      CI timeout, optionally skip under `-short`.
   5. Nit: the "bound from above" AC-B1 claim needs measured pullsync ≥ 102 B per offer (what the
      harness counts), not 100 B.
+- **(T4.6 part 2 → proposal §7.8) Figures the model corrects (for the proposal text; not edited
+  here).**
+  - "~1.35–1.72 coded symbols" per difference is the oracle's cost (the model: 1.72 at d = 4, 1.61 at
+    20, 1.52 at 45, 1.47 at 80, so §4.3.7 holds). With request-driven batches and the current
+    constants a steady-state stream costs 3.0–3.6 (`GrowthFactor` 2: 2.2–2.6), bimodal per stream
+    (p50 2.2–3.1, p90 6.0).
+  - "only (has, lacks) pairs carry it: p·(N − p)" holds at N = 9 (18.2 per upload against 18). N = 17
+    carries 48–55 (+15–31%): the lowest overlays open their sessions in two waves of
+    `MaxInitiatedSessions` = 8, and the second wave meets peers that fetched from the first.
+  - "≈ 110–140 B" and the totals "N = 9 ~2.0–2.5 KB, N = 17 ~4.6–5.9 KB": 5.6–5.9 KB and 16.8–17.7 KB
+    with the constants (`GrowthFactor` 2: 4.4 and 13.9 KB). The table counts only symbols. It omits
+    the decoder's Items listing (70 B per ID only the decoder holds, ~35 B per difference: 0.64 and
+    1.9 KB per upload), the Want IDs ((N − p) × 70 B: 0.42 and 0.99 KB) and the Status gossip (one
+    per neighbor per `StatusMinInterval` under load: 46 and 175 B per upload at 15 uploads/s). Even
+    with the oracle's symbols the totals are 3.4 and 8.3 KB, 46% and 30% of pullsync, not 28–35%
+    and 17–22%.
+  - "Today ~7.2 KB / ~27 KB": 7.34 and 27.7 KB with AC-B1's 102 B per offer; on the wire 8.0 and
+    30.2 KB at 15 uploads/s.
+  - "Fill latency: one round (`RoundInterval`, adaptive 5–30 s)": under load the round triggers keep
+    every node on one 5 s grid, so an upload converges within about one `MinRoundInterval` plus ~12
+    legs (mean 3.4–3.7 s, longest 5.8–6.3 s at 50 ms). The adaptive interval matters only on a quiet
+    network (bound 15 s, part 1).
+  - "A per-round fixed overhead of `MinBatch` symbols (~330 B)" holds (4 × 81–82 B and the
+    framing). "The per-difference cost doesn't depend on guessing the difference size" holds only for
+    the oracle: the guess sets the overshoot (Decisions, "(T4.6 part 2) Correction: with an exact
+    estimate a first batch decodes 73–91% of the time").
+- **(T4.6 part 2 → T6.0) AC-B1's prediction.** acceptance-criteria.md's "28–35% at N = 9, 17–22% at
+  N = 17 (symbols only), ~33–40% and ~21–26% with Want IDs" repeats §7.8. The model's floor with the
+  listing, the Want IDs and the Status is 46% and 30% (the oracle), and the current constants give
+  74–82% and 58–66%. Re-base the prediction on the model or on part 3's measurement.
+- **(T4.6 part 2 → G6) What can bring AC-B1 within reach.**
+  - N = 17: `GrowthFactor` 2 is on the line (47.5–52%). More initiated slots remove the second wave:
+    with a slot per peer the model gives 53% (now) and 40% (`GrowthFactor` 2), and the convergence
+    does not change (3.4 against 3.7 s). The model caps neither the served sessions
+    (`MaxConcurrentSessions`) nor answers Busy, so this is a bound, not a design. This extends "(T4.3)
+    Initiated-session share (T4.6)": the waves do not slow convergence, but they expose differences
+    again. Part 3 should measure it with the harness (`MaxInitiatedSessions` is a constant: an option
+    or a scratch edit).
+  - N = 9: no constant reaches 50%. The floor is 46%, and it needs at most ~1.7 symbols per
+    difference. Options: a better first-batch estimate (the model tests variants cheaply, e.g. a
+    margin on hint(R), or hint(R) plus the count difference), a cheaper decoder listing, or AC-B1
+    re-based at N = 9 (against pullsync's wire bytes, 1.09×, or a higher threshold).
+  - The hint trades bytes for round trips: with `GrowthFactor` 2 it costs 4–5 points at N = 17 (49%
+    against 44–45%) and saves 70% of the `More`s (1.2 against 4.0 per upload). G6 should weigh the
+    two with `Delay` set (Q3).
+- **(T4.6 part 2) `FirstBatch` does not read `BatchFactor`.** `FirstBatch` computes ⌈1.6 d⌉ as
+  (16d + 9) / 10, and nothing reads the constant `BatchFactor`, so changing it alone changes neither
+  the protocol nor the harness (part 1's `BatchFactor` runs needed `FirstBatch` edited too).
+  `TestSREPFirstBatch` fails if the two disagree. Whoever implements G6's decision should derive
+  `FirstBatch` from the constant (a production change, not made here).
+- **(T4.6 part 2 → part 3) The model as part 3's predictor.** Part 3 can sweep with `TestSREPModelG6`
+  and measure with the harness only the rows G6 needs (`TestSREPModelVsHarness` in a scratch copy
+  with the constant changed; the model follows the compiled constants through `srepCompiled`). The
+  model leaves to the harness: Busy and the session limits, churn and stalls, splits, bootstraps and
+  stripes, radius changes, expired-batch skew (Q7), and everything on the real clock. Part 3 should
+  also re-check the two gaps left at N = 17: the harness's n_Δ 7–9% above the model's at Delay 0, and
+  the model's symbols per difference 3–10% above the harness's.
+- **(T4.6 part 2) Tests to run with `-race` on CI.** The model runs in the test goroutine, apart from
+  the decode table's mutex, so `-race` matters only for the harness change (`MoreRequests`, read with
+  the other counters). New: `TestSREPFirstBatch`, `TestSREPWireSizes`, `TestSREPSymbolBytes`,
+  `TestSREPStream`, `TestSREPDecodeTable`, `TestSREPSessionCost`, `TestSREPPullsync`,
+  `TestSREPIdeal`, `TestSREPModel`; changed through the harness: every neighborhood test. They ran
+  with `-count=5 -cpu=1,2,4` instead.
