@@ -570,6 +570,18 @@ _(sessions append here — T2.0 recommendation; T2.6 cache sizes; T2.8 cross-arc
     (More parts sent), `streams_exhausted_total{level=root|level1|bucket|deep}`; reuse
     `decode_corruption_total`. Fed from `SessionStats` at session end.
 
+- **(T4.6 part 1 fix rounds 1–2) The serving side records hint(R) too.** This supersedes, in the T2.4
+  entry's *Hints* bullet, "Only the decoding side records; the deciding side of the next session
+  reads it", and, in the T2.6 entry, "A responder-side hint ... so not added", and it closes the
+  "(T2.4) Low estimates cost round trips" follow-up's responder-side question. In the steady state the
+  lower overlay initiates and decodes, so the side that decides (the responder) never had a hint
+  and every root stream started at `MinBatch` or the count estimate. The serving side of a decoded
+  stream now records min(n_Δ from the decoder's listing and the two counts, the symbols it sent) for
+  (peer, R) once the listing ends (`inStream.servedHint`); nothing changes on the wire. Measured at
+  a steady load in the T4.6 harness, it cuts the round trips per decoded session from 5.4–5.8 to 4.5
+  (the open and the close counted) for about the same bytes; the `GrowthFactor` / `BatchFactor`
+  question goes to G6 (phase-4 Follow-ups, T4.6 part 1 fix round 2).
+
 ## Follow-ups
 _(sessions append here)_
 - **T2.4 (from T2.3).** `Local.Symbols`' scan (`scanIDs` → `ReserveIterateAddr`) takes no context

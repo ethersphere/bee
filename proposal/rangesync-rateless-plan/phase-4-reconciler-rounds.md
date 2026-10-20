@@ -1981,6 +1981,75 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   `TestSessionSymbolsDifferenceListed`, `TestSessionSymbolsHints` and
   `TestSessionSymbolsServedHintBound` < 0.05 s, `TestProtocolServedHint` 0.07 s.
 
+- **(T4.6 part 1 fix round 2, Medium) The harness's `FullClose` waits for the remote's close, as
+  bee's does.** This supersedes, in "(T4.6 part 1 fix round 1, Medium 2) The harness models a
+  one-way latency", the timings "a session of k round trips then takes 2k × `Delay` after its open
+  (an equal one 1, a decoded one without a `More` 2, each `More` one more), a Status send 2 ×
+  `Delay`", and "None of them waits for the remote" in `simEnd`'s comment. pkg/p2p/libp2p's
+  `FullClose` closes its writes and then reads until the remote's EOF (`closeDeadline` 30 s; bytes
+  instead are `errExpectedEof`, both reset the stream). Every rangesync path ends with it: the Status
+  sender (it reports a send as done only once the peer closed), the round's session (the round calls
+  `ReconcileWith` without a `Wants` callback, so its wants come back only after the close) and the
+  holder's fetch handler. The harness returned at once. Now `simEnd.FullClose` closes its writes,
+  waits parked for the remote's end of the writes (`simPipe.awaitEOF`) and resets the stream on
+  bytes (`errSimExpectedEOF`), a reset, or `simCloseDeadline` = 30 s on the clock
+  (`errSimCloseTimeout`; the clock's timers can now be stopped, so a wait that ends leaves no step
+  behind). With `Delay` D a Status send takes 4D, an equal session 6D, a decoded one without a
+  `More` 8D (the open, three round trips, the close's round trip) and 2D more per `More`, and a
+  fetch that stored a chunk 4D with its first Delivery at 4D (the holder closes first, so the
+  requester's close returns at once). `TestNeighborhoodDelay`'s floors are now Status ≥ 4D,
+  sessions ≥ 6D, a fetch that stored ≥ 4D with its first Delivery at exactly 4D, and one that only
+  opened ≥ 2D (reset without a Want); reverting the wait fails them (Status 2D, sessions 4D).
+  `TestSimStream` covers the wait, bytes instead of the close, and the deadline.
+  - Effect: at 100 ms and N = 5, the sessions per run fell from 80 to 40 and the zero-difference
+    ones from 40 to 0 (the cause was not traced; a session's wants and its node's root change now
+    come a round trip later). The round-1 remark that zero-difference sessions rise with `Delay`
+    was measured with the immediate close (Follow-ups). The `Delay` 0 runs are unchanged in
+    simulated time (the remote closes in the same instant).
+  - Round trips per decoded session at the steady load (below), counting the open and the close:
+    4.5 with the hint, 5.4–5.8 without; a `More` is a quarter of a no-`More` session, not a third.
+- **(T4.6 part 1 fix round 2, Low 3) The harness's tests check what part 3 reads.**
+  - `assertNeighborhoodWithin` now checks the samples: an exact one's difference equals what its
+    decoders recovered, no side recovers more IDs than symbols it received, `exactDiffsFrom` has one
+    sample per completed session, and `symbolsPerDifference` is at least 1. `TestProtocolConverges`
+    checks that the exact samples hold the true n_Δ: one on the decoding side for every size resolved
+    by symbol streams (both sides at 0), none for 100% (an empty side, item lists), none or one for
+    4k (item exchanges at the leaves unless every level-1 stream decodes, which depends on the
+    random IDs). Mutations that mark every sample exact, count both sides of an equal session, or
+    drop the first-arrival time fail them.
+  - `simSpan` now separates `Wait` (a fetch's wait for one of the peer's slots, which happens
+    before the service runs it) from `Duration`, and records `Streams` (opened, from a `simCall` in
+    the call's context, which pkg/rangesync passes on to `NewStream`), `Stored` and `FirstDelivery`
+    (the first Delivery's arrival on the fetch streams, from the service's start).
+  - First-chunk latency: `FirstDelivery` is the open, the Want and one Delivery leg, 4D. The holder
+    writes all Deliveries of a Want in one instant and the pipe has no bandwidth, so they all arrive
+    with the first, and the holder's delivery limiter and the requester's fetch limiter wait on the
+    real clock (no simulated time). Part 3 can read the latency to the first chunk from
+    `FirstDelivery`, but needs a bandwidth model (per connection, since streams share it) to time the
+    spread of a large Want or a catch-up.
+- **(T4.6 part 1 fix round 2, Low 2) AC-B1 in the harness: a modeled baseline, and a steady mode.**
+  The harness divides `bytes_metadata` by N(N − 1) × 102 B per upload, the pullsync cost §7.8
+  models (every node offered each upload by each of its N − 1 peers), not a measured pullsync.
+  `logNeighborhood` now says "modeled" and logs the bytes received next to those sent: AC-B1 counts
+  received bytes, and in the closed mesh every byte one node sends another receives, so the two sums
+  are equal once the run is quiet (they were in every run). `steadyOptions(nodes, seed)` is the
+  steady mode the review used, 24 batches of 20 uploads 1.3 s apart (~15 per second), so that
+  sessions see a stream rather than separate bursts; `TestNeighborhoodSteady` runs it at N = 9 with
+  50 ms (invariants and bounds as `TestNeighborhoodDelay`; 79% of the modeled pullsync, 3.1 s). Part
+  3 should measure AC-B1 in this mode. §7.8's prediction counts only the symbols; the decoder's
+  `Items` listing of the IDs only it holds (~70 B each, in about half of the p(N − p) pairs) adds
+  about 9 points at N = 9 and 5 at N = 17 (the review's figures), as do the `Want` IDs AC-B1 already
+  mentions.
+- **(T4.6 part 1 fix round 2, Low 1) `simOptions.NoHints`.** G6 needs the hint on and off at a
+  steady rate. `export_test.go`'s `DisableHints` sets the service's hint cache to nil, and
+  `sessionConfig` (production, `reconcile.go`) gives a session no `Hints` then; a node never has a
+  nil cache. `TestProtocolServedHint` has a "no hints" case (both first batches `MinBatch`).
+- **(T4.6 part 1 fix round 2) Scope, tests and wall times.** Production: the nil check in
+  `sessionConfig`. Test hooks: `DisableHints` (new). There is no `pkg/node`, `pkg/p2p`, `go.mod` or
+  proto change, no libp2p import and no new parser of peer input. Single runs:
+  `TestNeighborhoodDelay` 2.1 s, `TestNeighborhoodSteady` 3.1 s (skipped with `-short`), the others
+  as in round 1.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -2792,3 +2861,50 @@ _(sessions append here)_
   - changed: `TestSessionSymbolsHints`, `TestNeighborhoodRoundBounds`, and through the harness
     (parking, fetch slots, resets) `TestNeighborhoodConverges` and `TestNeighborhoodSREP`.
   - `Settle` is now 150 ms under the race detector; raise it further if a convergence bound fails.
+- **(T4.6 part 1 fix round 2 → part 3, G6) The symbol overshoot: the growth step, with and without
+  the hint.** This supersedes the title and the table of "(T4.6 part 1 fix round 1 → part 3, G6)
+  The symbol overshoot is `GrowthFactor`'s, not the hint's": the title overstated it (the hint
+  shifts bytes by a few points either way), and the table was measured in bursts with a `FullClose`
+  that did not wait. At the steady load (`steadyOptions`, 50 ms, 3 seeds; symbols per difference,
+  share of the modeled pullsync, round trips per decoded session counting the open and the close):
+
+  | constants | N = 9 | N = 17 |
+  |---|---|---|
+  | now (`BatchFactor` 1.6, `GrowthFactor` 4), hint | 3.05, 77%, 4.6 | 3.37, 61%, 4.5 |
+  | now, no hint | 3.27, 82%, 5.8 | 3.28, 59%, 5.4 |
+  | `GrowthFactor` 2, hint | 2.18, 59%, 4.8 | 2.50, 48%, 4.7 |
+  | `GrowthFactor` 2, no hint | 2.20, 60%, 7.2 | 2.29, 44%, 6.4 |
+  | `BatchFactor` 2.0, hint | 2.78, 71%, 4.4 | 3.35, 61%, 4.4 |
+  | `BatchFactor` 2.0, no hint | 3.34, 83%, 5.8 | 3.31, 59%, 5.4 |
+  | both, hint | 2.34, 62%, 4.6 | 2.80, 53%, 4.6 |
+
+  The review measured the same at a steady ~15 uploads per second: 62% of pullsync with the hint
+  and 60% without, and 1067 against 2363 `More`s. Bytes are about even and the hint cuts the `More`
+  round trips by 55–70% (0.86 against 2.45 per upload at N = 17 here), so it gates nothing. Only `GrowthFactor` 2 brings N = 17 under 50%; N = 9
+  stays near 60% in every row (its n_Δ per upload is above p(N − p), and the decoder's listing adds
+  ~9 points, Decisions). G6 should sweep these with the hint on and off (`simOptions.NoHints`) at a
+  steady rate and decide the round trips against the bytes with `Delay` set.
+- **(T4.6 part 1 fix round 2) The hint LRU: stale entries and a cheaper flush.** This extends
+  "(T4.6 part 1 fix round 1 → TF/hardening) One peer can flush the hint LRU". (1) Entries have no
+  age: a hint from a large difference long ago sizes the next first batch of that (peer, range)
+  until a newer decode replaces it; only LRU eviction ages them. (2) The serving-side record makes a
+  flush cheaper: the peer opens with up to `MaxParts` (1024) disjoint ranges, this node serves a
+  stream for each (scan-path ones up to `MaxScansPerMessage`, 64, per Message), and each one the
+  peer "decodes" with any listing records a hint here, without this node decoding anything. Both
+  cost only performance (first batches from the count estimate, or one oversized batch); an age
+  limit and a per-peer share would bound them.
+- **(T4.6 part 1 fix round 2) Correction: zero-difference sessions under `Delay`.** This supersedes
+  "With `Delay` 50–100 ms the share of such sessions rises (half of the sessions at N = 5 and 9)"
+  in "(T4.6 part 1 fix round 1) Correction: zero-difference sessions": that was measured with the
+  harness's immediate `FullClose`. With the wait (Decisions, round 2) N = 5 at 100 ms has none and
+  the steady N = 9 run 24 of 456 samples.
+- **(T4.6 part 1 fix round 2 → part 3) What `Spans` can time.** Sessions in round trips (open, one
+  per message pair, the close), the gap between a Status and the session it triggers, a fetch's slot
+  wait (`Wait`) and its first Delivery (`FirstDelivery`, 4D). Not the spread of a Want's Deliveries
+  (no bandwidth model; they arrive together), nor anything on the real clock (round 1's list).
+- **(T4.6 part 1 fix round 2) Tests to run with `-race` on CI.** This extends the round-1 list;
+  they ran with `-count=10 -cpu=1,2,4` instead.
+  - new: `TestNeighborhoodSteady`;
+  - changed: `TestNeighborhoodDelay`, `TestSimStream`, `TestProtocolServedHint`,
+    `TestProtocolConverges`, and through the harness (`FullClose`, sample checks)
+    `TestNeighborhoodConverges` and `TestNeighborhoodSREP`.
