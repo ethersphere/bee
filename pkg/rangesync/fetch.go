@@ -121,7 +121,8 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // ErrInvalidMessage. A delivery whose stamp the stamp validator rejects
 // (stampRejected), or whose stamp is older than the one the reserve holds,
 // is dropped without penalty and its ID rejected for RejectTTL
-// (wantset.Set.Reject); one the validator fails for another cause is
+// (wantset.Set.RejectFrom: against the peer's share of the rejected cache);
+// one the validator fails for another cause is
 // dropped without penalty and reported Unverified. Requested
 // IDs the peer does not deliver are not an error. A chunk that is in the
 // reserve when it would be stored is counted as a cross protocol duplicate
@@ -420,7 +421,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		// A signature that does not recover is the stamp's fault too, and
 		// postage.ValidStamp returns the raw recovery error for it.
 		if stampRejected(err) || !signatureRecovers(addr, stamp) {
-			s.wantSet.Reject(id)
+			s.wantSet.RejectFrom(id, peer)
 			res.Rejected++
 			return nil
 		}
@@ -465,7 +466,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 			// a newer stamp of the chunk is held: do not fetch this one
 			// again for RejectTTL
 			s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk_address", addr)
-			s.wantSet.Reject(id)
+			s.wantSet.RejectFrom(id, peer)
 			res.Rejected++
 			return nil
 		}

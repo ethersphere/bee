@@ -204,6 +204,39 @@ func TestFetchRejectedNotRefetched(t *testing.T) {
 	}
 }
 
+// TestFetchRejectedShare checks that each peer's rejected deliveries count
+// against its own share of the rejected cache (wantset.Set.RejectFrom), so
+// that a peer that delivers many IDs this node rejects pushes out its own
+// rejections, not those of other peers.
+func TestFetchRejectedShare(t *testing.T) {
+	t.Parallel()
+
+	const junk = 6
+	rejectAll := func(swarm.Chunk) (swarm.Chunk, error) {
+		return nil, fmt.Errorf("batchstore get: %w, %w", storage.ErrNotFound, postage.ErrNotFound)
+	}
+	chs := validChunks(1 + junk)
+	a := newTestNodeOpts(t, nodeOpts{validStamp: rejectAll})
+	b := newTestNode(t, chs[1:]...)
+	c := newTestNode(t, chs[0])
+
+	connect0(a, c) // a's streams go to c
+	if res, err := a.svc.FetchWithResult(context.Background(), c.addr, idsOf(t, chs[0])); err != nil || res.Rejected != 1 {
+		t.Fatalf("fetch from c: %+v, %v", res, err)
+	}
+	connect0(a, b) // and now to b
+	if res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs[1:]...)); err != nil || res.Rejected != junk {
+		t.Fatalf("fetch from b: %+v, %v", res, err)
+	}
+	ws := a.svc.WantSet()
+	if got, want := ws.RejectedBy(b.addr), junk; got != want {
+		t.Fatalf("rejected through b: %d, want %d", got, want)
+	}
+	if got, want := ws.RejectedBy(c.addr), 1; got != want {
+		t.Fatalf("rejected through c: %d, want %d", got, want)
+	}
+}
+
 // TestFetchRejectTTL checks that a rejected ID is requested again once the
 // reject TTL has passed.
 func TestFetchRejectTTL(t *testing.T) {

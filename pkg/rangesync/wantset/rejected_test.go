@@ -434,3 +434,162 @@ func TestConcurrentReject(t *testing.T) {
 	}
 	checkRejectedLen(t, s, n)
 }
+
+// TestRejectFrom_PeerShare checks the per-peer share of the rejected cache: a
+// peer that holds its share drops its own oldest rejection, so it cannot
+// push out the rejections of other peers once there; rejecting an ID again
+// moves it to the new peer's share; Reject counts against no share; and the
+// cache's own bound still drops the oldest rejection.
+func TestRejectFrom_PeerShare(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxRejected = 6
+		share       = 3
+	)
+	c := newClock()
+	s := wantset.NewWithRejectShare(testDeadline, testRejectTTL, maxRejected, share, c.Now)
+	t.Cleanup(func() { _ = s.Close() })
+
+	s.RejectFrom(testID(100), testPeer(2))
+	s.RejectFrom(testID(101), testPeer(2))
+	for i := range 20 { // peer 1 floods its own IDs
+		s.RejectFrom(testID(i), testPeer(1))
+	}
+	checkRejectedLen(t, s, 2+share)
+	for i := range 20 {
+		checkRejected(t, s, i, i >= 20-share)
+	}
+	checkRejected(t, s, 100, true)
+	checkRejected(t, s, 101, true)
+	checkRejectedBy(t, s, 1, share)
+	checkRejectedBy(t, s, 2, 2)
+
+	// 100 moves to peer 1's share, whose oldest (17) is dropped
+	s.RejectFrom(testID(100), testPeer(1))
+	checkRejected(t, s, 17, false)
+	checkRejectedLen(t, s, 2+share-1)
+	s.RejectFrom(testID(102), testPeer(2))
+	s.RejectFrom(testID(103), testPeer(2))
+	checkRejected(t, s, 101, true) // peer 2 holds 101, 102 and 103
+	checkRejectedLen(t, s, maxRejected)
+
+	// unattributed: the cache's bound drops the oldest (101)
+	s.Reject(testID(30))
+	checkRejectedLen(t, s, maxRejected)
+	checkRejected(t, s, 101, false)
+	checkRejected(t, s, 30, true)
+	checkRejectedBy(t, s, 2, 2)
+
+	// expired rejections leave the share
+	c.Advance(testRejectTTL)
+	checkRejectedBy(t, s, 1, 0)
+	checkRejectedBy(t, s, 2, 0)
+}
+
+func checkRejectedBy(t *testing.T, s *wantset.Set, peer, want int) {
+	t.Helper()
+	if got := s.RejectedBy(testPeer(peer)); got != want {
+		t.Fatalf("RejectedBy(peer %d) = %d, want %d", peer, got, want)
+	}
+}
+
+// TestReject_DefaultShare checks the per-peer share of New.
+func TestReject_DefaultShare(t *testing.T) {
+	t.Parallel()
+
+	s := wantset.New(testDeadline, testRejectTTL)
+	t.Cleanup(func() { _ = s.Close() })
+	s.RejectFrom(testID(-1), testPeer(2))
+	for i := range wantset.MaxRejected {
+		s.RejectFrom(testID(i), testPeer(1))
+	}
+	checkRejectedLen(t, s, 1+wantset.MaxRejectedPerPeer)
+	checkRejected(t, s, -1, true)
+	checkRejected(t, s, wantset.MaxRejected-wantset.MaxRejectedPerPeer-1, false)
+	checkRejected(t, s, wantset.MaxRejected-wantset.MaxRejectedPerPeer, true)
+}
+
+// TestModelRejectShare drives the rejected cache and a reference model with
+// the same random rejections, attributed (RejectFrom) or not (Reject), and
+// expiries, and checks that they agree on every ID.
+func TestModelRejectShare(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxRejected = 10
+		share       = 4
+		ids         = 30
+		peers       = 4
+		ops         = 20000
+	)
+	c := newClock()
+	s := wantset.NewWithRejectShare(testDeadline, testRejectTTL, maxRejected, share, c.Now)
+	t.Cleanup(func() { _ = s.Close() })
+	rnd := rand.New(rand.NewPCG(5, 6))
+
+	type entry struct {
+		id, peer int // peer -1: Reject
+		expires  time.Time
+	}
+	var model []entry // oldest first
+	drop := func(i int) { model = append(model[:i], model[i+1:]...) }
+	find := func(match func(entry) bool) int {
+		for i, e := range model {
+			if match(e) {
+				return i
+			}
+		}
+		return -1
+	}
+	reject := func(id, peer int, now time.Time) {
+		for len(model) > 0 && !now.Before(model[0].expires) {
+			drop(0)
+		}
+		if i := find(func(e entry) bool { return e.id == id }); i >= 0 {
+			drop(i)
+		}
+		if peer >= 0 {
+			n := 0
+			for _, e := range model {
+				if e.peer == peer {
+					n++
+				}
+			}
+			if n >= share {
+				drop(find(func(e entry) bool { return e.peer == peer }))
+			}
+		}
+		if len(model) >= maxRejected {
+			drop(0)
+		}
+		model = append(model, entry{id: id, peer: peer, expires: now.Add(testRejectTTL)})
+	}
+
+	for op := range ops {
+		i, p := rnd.IntN(ids), rnd.IntN(peers+1)-1
+		now := c.Now()
+		switch k := rnd.IntN(10); {
+		case k < 6:
+			reject(i, p, now)
+			if p < 0 {
+				s.Reject(testID(i))
+			} else {
+				s.RejectFrom(testID(i), testPeer(p))
+			}
+		case k < 7:
+			c.Advance(time.Duration(rnd.Int64N(int64(testRejectTTL / 20))))
+		default:
+			for len(model) > 0 && !now.Before(model[0].expires) {
+				drop(0)
+			}
+			for id := range ids {
+				want := find(func(e entry) bool { return e.id == id }) >= 0
+				if got := s.IsRejected(testID(id)); got != want {
+					t.Fatalf("op %d: IsRejected(id %d) = %v, want %v", op, id, got, want)
+				}
+			}
+			checkRejectedLen(t, s, len(model))
+		}
+	}
+}
