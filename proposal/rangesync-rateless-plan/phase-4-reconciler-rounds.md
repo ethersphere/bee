@@ -1291,6 +1291,82 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   for fetches that started before it, not after). The additive identifier is
   `rangesync.FetchResult.OutsideRoot`.
 
+- **(T4.5 part 2b fix round 3, Medium 1) A fetch stream that fails to open is charged as a reset.**
+  This supersedes fix round 2's (Medium 1) list of what is never charged, which left out the stream
+  open: `fetch` returned the `NewStream` error before `stalled`. By then the Want has taken its fetch
+  rate and holds its claims. A peer that reset the headers exchange, stalled it for libp2p's
+  `HeadersRWTimeout` (10 s, below `FetchTimeout`, 15 s), or served no fetch stream, held up to 500
+  claims and about 100 IDs/s of fetch rate per Sybil, with neither a stall violation nor a charge.
+  A verifier escaped its own rule the same way, since `verifyStripe` does not judge a verification
+  that ends with an error. A failed open now goes through `stalled`, like a failed read:
+  - this node ending the fetch (its context, `Close`) is not charged;
+  - the fetch timeout is a stall violation (the headers exchange outlasts it only when
+    `HeadersRWTimeout` is set at or above `FetchTimeout`);
+  - `p2p.ErrPeerNotFound` is not charged. libp2p returns it when the peer has no connection, or its
+    connection is no longer up, which can be before the disconnect hook clears the peer's Status;
+  - any other failure, while the peer has a Status, takes a token of the reset budget
+    (`chargeReset`). Past the budget it is a violation.
+
+  Honest transient failures cannot spend the budget. The requester opens at most
+  `maxFetchStreamsOut = 2` fetch streams to a peer and holds the slot across the open, so one
+  transient failure (a stream reset on the peer's side, a dial race) fails at most two opens or
+  streams and takes at most two of the four tokens. The fetches queued behind them open after it.
+  Two such events back to back cost nothing, and the budget refills one event per two minutes. A
+  peer that fails every open (for example its inbound stream limit is full) is disconnected after
+  the budget, as one that resets every stream already was; its connection is of no use for fetching
+  then. A verifier's fetch is a `FetchWithResult` like any other, so a verifier whose open fails is
+  charged. `verifyStripe` still does not judge it (`v.Err` is set), as with any reset: judging the
+  released IDs would score honest transient failures. One cause is not excluded: this node's own
+  resource manager refusing the stream (`network.ErrResourceLimitExceeded`, at 10,000 outbound
+  streams). rangesync sees only `p2p.Streamer`, which has no sentinel for it, so such a node charges
+  every peer it fetches from, and disconnects those with more than four failed opens in a minute.
+  It heals itself (the disconnects free streams, scores decay); see Follow-ups.
+- **(T4.5 part 2b fix round 3, Low 2) The root-move excuse covers more than 500 IDs; not capped.**
+  This corrects fix round 2's (Medium 2) "A move excuses at most the Wants in flight when the peer's
+  Status arrives: at most `maxFetchStreamsOut × MaxWantIDs = 500` IDs per peer per 10 min". The end
+  judgment excuses every moved missing ID of a call that started before the move, and `sf.missing`
+  accumulates over all of the call's Wants, so the Wants that ended before the move are excused too.
+  Before the move, the judgment after each Want keeps the junk below half of the IDs requested. After
+  it, the excused IDs no longer count, so the rest of the call may be junk up to half of the whole
+  call. The worst case moves halfway through: 49% junk before the move (excused), then only junk,
+  about 75% in all instead of 50%. For a `LargeDiff` call (65,536 IDs) that is about 16,000 IDs per
+  `rootExcuseInterval` beyond the half that is unscored anyway, about 27 IDs/s per Sybil. Several
+  calls running at the move each add theirs, within the fetch rate the peer gets. A cap is not
+  honest-safe: a real radius step drops half of the peer's root, so an honest fetch can miss half of
+  what it listed. No code change.
+- **(T4.5 part 2b fix round 3, Low 3) A violation marks the peer only while it has a Status, and is
+  reported once.** This extends fix round 2's (Low 3) violation marks. Both callers
+  (`initiatorViolation`, `violation`) marked and scored unconditionally. So a second stalled Want
+  whose deadline fell after the disconnect hook scored again, and its mark exempted the reconnected
+  peer from the shortfall rules and the reset budget for up to `violationGrace`. Now
+  `Service.markViolation`:
+  - marks the peer only while it has a Status, then calls `forgetIfGone`;
+  - reports whether the peer was marked already. The caller then skips `Fail`; it still resets the
+    stream and disconnects the peer.
+
+  A violation of a peer without a Status (for example a responder-side one from a peer that never
+  sent a Status) is scored, each time. A second violation in the hook's latency window, after the
+  hook cleared the mark, is scored once more (at most one per stream in flight). That is accepted.
+  The recreated-Status race is accepted too: `handleStatus` can record a Status after the disconnect
+  hook (T4.1). It hides the disconnect from `forgetIfGone`, so what the rules record in that window
+  carries into the next connection until the peer's next disconnect or until it expires: a mark
+  after `violationGrace` (1 min), missing IDs and an offense after `shortfallWindow` (10 min), reset
+  charges at one per `fetchResetInterval`. Only a mark helps the peer (up to 1 min unjudged). It
+  needs a Status recorded in the microseconds between the handler's read and its record, exactly
+  when the hook runs, and then a second violation (a stall) before the streams of the closed
+  connection fail. Each attempt costs a scored violation and a reconnect. Handling it with a connect
+  hook would change the wiring.
+- **(T4.5 part 2b fix round 3, Low 4) Tests and docs.** `judgeShortfall`, `chargeReset` and
+  `markViolation` read the clock after `LastStatus`, so a test clock can land the disconnect between
+  their look at the Status and their record. `TestFetchForgetIfGone` does that for a reset charge,
+  missing IDs and a violation mark; each fails with a no-op `forgetIfGone`.
+  `TestFetchShortfallAfterPeerViolation` pins `violationGrace` to one minute (a fetch one second
+  before it is not judged). `followup-fuzzing.md`'s part 2b line states the current rules. New
+  tests: `TestFetchStreamOpenCharged` (from the review's PoC: a reset or stalled headers exchange,
+  no fetch handler), `TestFetchStreamOpenHonest` (a peer that is gone, this node's cancellations and
+  `Close`, transient failures), `TestFetchForgetIfGone`, `TestViolationMarks`. There is no new
+  exported identifier, and no `pkg/node`, `go.mod` or proto change.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1779,3 +1855,45 @@ _(sessions append here)_
     `TestFetchSkipsOutsidePeerRoot`.
   - `pkg/rangesync/reconciler`, new: `TestVerifyStripesVerifierOutsideRoot`. Re-run:
     `TestVerifyStripes*`, `TestStripeBadSignatures*`.
+- **(T4.5 part 2b fix round 3) Resolved: the round-3 review's Medium 1, Low 2 (the figure), Low 3
+  and Low 4.** See the Decisions log.
+- **(T4.5 part 2b fix round 3) Junk a peer can still have fetched unscored, per Sybil.** This
+  replaces fix round 2's entry of the same name.
+  - Fresh junk under `blatantMinIDs` (64) IDs per fetch: up to 63 IDs per served session (one per
+    `PeerSessionInterval`, 2.5 s), about 25 IDs/s, plus up to 63 per session of the rounds this node
+    starts (one per peer per round, rounds at least `MinRoundInterval`, 5 s, apart), about 12.6 IDs/s,
+    which round 2 left out. About 38 IDs/s in all, some 3.8% of `DefaultFetchRate`. It is the largest
+    share left (round 2, Low 1, not fixed).
+  - Root moves: about 16,000 IDs per 10 min for a `LargeDiff` call, about 27 IDs/s (round 2 said
+    500 IDs per 10 min; see the Decisions log, round 3 Low 2).
+  - Resets, now including stream opens that fail: 4 Wants, then one Want (250 IDs) per minute, about
+    4 IDs/s. Before round 3 a peer that failed every open had about 100 IDs/s.
+  - Fresh junk under half of each larger fetch: the peer must fill the rest with chunks this node
+    lacks.
+  - Unknown-batch junk: T4.6.
+  - A violation mark carried over by the recreated-Status race: up to 1 min unjudged per disconnect,
+    not reachable on demand (Decisions log, round 3 Low 3).
+
+  The bounded rows add up to about 70 IDs/s per Sybil, some 7% of `DefaultFetchRate`. Round 2's note
+  on testnet still applies.
+- **(T4.5 part 2b fix round 3 → p2p) This node's own stream limit charges its peers.** When this
+  node's libp2p resource manager refuses an outbound stream (`network.ErrResourceLimitExceeded`, at
+  10,000 outbound streams), every fetch stream open fails, and each is charged to the peer as a reset
+  (Decisions log, round 3 Medium 1). A `pkg/p2p` sentinel for a refusal on this node's side would let
+  `fetch` skip the charge. Out of scope here (no `pkg/p2p` change).
+- **(T4.5 part 2b fix round 3; orchestrator request) Per-peer fetch credit (before testnet).** A
+  peer's share of the fetch rate would refill only with chunks it delivered. A peer that lists junk
+  then runs out of fetch rate whatever path it uses (small fresh junk, root moves, resets and failed
+  opens, unknown-batch junk), so this would bound every junk-lister path at once and could replace
+  the shortfall heuristics (blatant, relisted, the root-move excuse, the reset budget). Not
+  implemented. To settle first: the initial credit of a new or reconnected peer (Sybils reconnect),
+  catch-up fetches (a bootstrap fetches from few peers at full rate), and how it composes with the
+  node-wide fetch limiter and the `SyncRate` guard.
+- **(T4.5 part 2b fix round 3) Tests to run with `-race` on CI.** These ran with
+  `-count=20 -cpu=1,2,4` instead, and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchStreamOpenCharged`, `TestFetchStreamOpenHonest`,
+    `TestFetchForgetIfGone`, `TestViolationMarks`. Changed: `TestFetchShortfallAfterPeerViolation`.
+    Re-run, because `fetch`, `initiatorViolation`, `violation`, `judgeShortfall` and `chargeReset`
+    changed: `TestFetch*`, `TestStatus*`, `TestReconcile*`.
+  - `pkg/rangesync/reconciler`, re-run, because a fetch whose stream fails to open may now end a
+    violation: `TestStripe*`, `TestVerifyStripes*`, `TestSREP*`, `TestWantSet*`, `TestRadius*`.
