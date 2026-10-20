@@ -150,12 +150,14 @@ type StripeResult struct {
 // see a slow fetch as an idle initiator and end the session, which fails the
 // stripe (a restart lists only what is still missing).
 func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []StripeResult {
-	return r.transferStripes(ctx, stripes, nil)
+	return r.transferStripes(ctx, stripes, nil, false)
 }
 
 // transferStripes is TransferStripes; started, if not nil, is called once,
 // when the first wants of any stripe arrive or when the transfer ends.
-func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, started func()) []StripeResult {
+// bootstrap marks the transfer of a bootstrap: its stripes keep their peer's
+// stripe lock while they wait to ask again (peerLocks.keep).
+func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, started func(), bootstrap bool) []StripeResult {
 	r.mu.Lock()
 	r.catchUpFetches++
 	r.mu.Unlock()
@@ -187,6 +189,7 @@ func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, star
 		byPeer[k] = append(byPeer[k], i)
 	}
 	locks := newPeerLocks()
+	locks.keep = bootstrap
 	var wg sync.WaitGroup
 	for _, k := range order {
 		wg.Add(1)
@@ -203,11 +206,18 @@ func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, star
 
 // peerLocks serializes the stripe sessions with each peer (one session per
 // peer), and the fetches that follow them, when a reassigned stripe moves to
-// a peer that has stripes of its own. A stripe frees its peer's lock while
-// it waits to ask again for IDs the want set held (resolvePending).
+// a peer that has stripes of its own, or verifications share a verifier. A
+// stripe frees its peer's lock while it waits to ask again for IDs the want
+// set held (resolvePending), unless keep is set: a verification or a
+// bootstrap's stripe keeps it, so that the stripes queued on the peer do not
+// run their whole attempts while its own clock runs. Verifications do not
+// restart, so a timed-out one would leave its deliverer unverified, and
+// during a bootstrap rounds start no session, so the release buys them
+// nothing.
 type peerLocks struct {
 	mu    sync.Mutex
 	locks map[string]*peerLock
+	keep  bool
 }
 
 // peerLock is the lock of one peer; refs counts its holder and waiters, and
@@ -387,7 +397,8 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // It is one attempt of runStripe; started is called with the first wants.
 // It takes the peer's lock in locks first (one stripe session per peer), and
 // holds it, and the peer in Striped (acquireStripe), until it ends, except
-// while it waits to ask again for IDs the want set held (resolvePending).
+// while it waits to ask again for IDs the want set held (resolvePending):
+// then it frees the Striped state, and the lock unless locks.keep.
 // It holds a stripe slot (MaxStripeSessions) and a session slot
 // (MaxInitiatedSessions) while its session runs, and frees both while it
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
@@ -565,14 +576,17 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 // outcome to res and returns the IDs still pending, the unverified count
 // and the error of a failed fetch.
 //
-// While it waits between passes it releases hold, the peer's lock in locks
-// and its Striped state, so that round sessions and other stripes' sessions
-// with the peer run meanwhile, and takes both again for the next pass. It
-// holds no slot. The stripe clock runs throughout, so the timeout bounds the
-// waits and the passes alike.
+// While it waits between passes it releases the peer's Striped state in
+// hold, and the peer's lock in locks unless locks.keep, so that round
+// sessions and other stripes' sessions with the peer run meanwhile, and
+// takes them again for the next pass. It holds no slot. The stripe clock
+// runs throughout, so the timeout bounds the waits and the passes alike.
 func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, peer swarm.Address, locks *peerLocks, hold *peerHold, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
 	for pass := 0; len(pending) > 0 && pass < maxPendingPasses; pass++ {
-		hold.release()
+		hold.releaseStripe()
+		if !locks.keep {
+			hold.releaseLock()
+		}
 		select {
 		case <-ctx.Done():
 		case <-r.after(r.stripeRetry):
@@ -616,21 +630,34 @@ type peerHold struct {
 
 // release frees what h holds: the Striped state, then the lock.
 func (h *peerHold) release() {
+	h.releaseStripe()
+	h.releaseLock()
+}
+
+// releaseStripe frees the Striped state, if h holds it.
+func (h *peerHold) releaseStripe() {
 	if h.unstripe != nil {
 		h.unstripe()
 		h.unstripe = nil
 	}
+}
+
+// releaseLock frees the lock, if h holds it.
+func (h *peerHold) releaseLock() {
 	if h.unlock != nil {
 		h.unlock()
 		h.unlock = nil
 	}
 }
 
-// holdPeer takes peer's lock in locks, then moves the peer to Striped, into
-// h, waiting for each until ctx ends; on an error h holds nothing.
+// holdPeer takes peer's lock in locks, unless h holds it, then moves the
+// peer to Striped, into h, waiting for each until ctx ends; on an error h
+// holds nothing.
 func (r *Reconciler) holdPeer(ctx context.Context, locks *peerLocks, peer swarm.Address, h *peerHold) (err error) {
-	if h.unlock, err = locks.acquire(ctx, peer); err != nil {
-		return err
+	if h.unlock == nil {
+		if h.unlock, err = locks.acquire(ctx, peer); err != nil {
+			return err
+		}
 	}
 	if h.unstripe, err = r.acquireStripe(ctx, peer); err != nil {
 		h.release()
@@ -856,7 +883,7 @@ func (r *Reconciler) stripeWorker() {
 			if job.ctx != nil {
 				ctx = job.ctx
 			}
-			results := r.transferStripes(ctx, r.planStripes(job.rg), job.started)
+			results := r.transferStripes(ctx, r.planStripes(job.rg), job.started, job.bootstrap)
 			// the verification round, before leaving bootstrap (§7.4)
 			r.VerifyStripes(ctx, results)
 			failed := len(results) == 0 // defensive: PlanStripes returns at least one stripe

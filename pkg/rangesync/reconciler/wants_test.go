@@ -976,6 +976,169 @@ func TestStripeReaskClockCheckedAfterPeerWait(t *testing.T) {
 	}
 }
 
+// TestStripeReaskRetakesLock: a stripe takes its peer's stripe lock back
+// before it asks again, so it does not fetch from the peer while a stripe
+// reassigned to the peer holds the lock (here in its session).
+func TestStripeReaskRetakesLock(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x := testChunkID(1)
+	p, other := addr(0xf1, 0), addr(0xf1, 1) // not followed: only the lock orders them
+	const retry = 7 * time.Second
+	svc := newWantService(status(1))
+	svc.lists(p, x)
+	if r := svc.ws.Claim(fpID(x), lower); r != wantset.Granted {
+		t.Fatal(r)
+	}
+	otherGate, pGate := make(chan struct{}), make(chan struct{})
+	svc.peerGate[other.ByteString()] = otherGate
+	svc.reconErr[other.ByteString()] = errors.New("stream reset")
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	w := newStripeWaits(clock, retry, true)
+	r := reconciler.New(self, &fakeTopology{}, svc, log.Noop, reconciler.Options{Now: clock.Now, After: w.after})
+	r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		w.close()
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+
+	done := make(chan []reconciler.StripeResult, 1)
+	go func() {
+		done <- r.TransferStripes(context.Background(), []reconciler.Stripe{
+			{Range: root.Child(1, 0), Peers: []swarm.Address{p}},
+			{Range: root.Child(1, 1), Peers: []swarm.Address{other, p}},
+		})
+	}()
+	wait := w.recv(t) // x was held: the first stripe waits to ask again
+	svc.set(func() { svc.peerGate[p.ByteString()] = pGate })
+	close(otherGate) // the other stripe fails and moves to p, where its session holds the lock
+	waitFor(t, "other stripe's session with p", func() bool { return len(svc.sessionOpens(p)) == 2 })
+	wait <- clock.Now()
+	settle()
+	if n := len(svc.fetchesFrom(p)); n != 1 {
+		t.Fatalf("%d fetches from p, want 1: the stripe asked again while another held the peer's lock", n)
+	}
+
+	svc.ws.Release(fpID(x), lower)
+	close(pGate)
+	for i, res := range <-done {
+		if res.Err != nil || !res.Peer.Equal(p) {
+			t.Fatalf("stripe %d from %s: %v", i, res.Peer, res.Err)
+		}
+	}
+	assertDelivered(t, svc, x, p)
+}
+
+// TestVerifyStripesShareVerifierReask: verifications that share their one
+// verifier all complete when the first waits to ask it again for an ID the
+// want set held: a verification keeps the verifier's stripe lock while it
+// waits, so the others' sessions, whose time runs on the shared clock, do
+// not run its timeout out (verifications do not restart, and a timed-out one
+// leaves its deliverer unverified).
+func TestVerifyStripesShareVerifierReask(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x := testChunkID(1)
+	deliverer, verifier := addr(0xe1, 0), addr(0xe2, 0)
+	const (
+		retry   = 7 * time.Second
+		timeout = 15 * time.Minute
+		session = 10 * time.Minute // each verification session's time
+	)
+	svc := newWantService(status(1))
+	svc.remote[deliverer.ByteString()] = status(1) // equal digests: no round sessions
+	svc.remote[verifier.ByteString()] = status(1)
+	svc.lists(verifier, x)
+	if r := svc.ws.Claim(fpID(x), lower); r != wantset.Granted {
+		t.Fatal(r)
+	}
+	svc.onFirstFetch(verifier, func() { svc.ws.Release(fpID(x), lower) })
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	svc.sessionHook = func(peer swarm.Address, _ int) {
+		if peer.Equal(verifier) {
+			clock.Add(session)
+		}
+	}
+	w := newStripeWaits(clock, retry, true)
+	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{deliverer, verifier}}, svc, log.Noop, reconciler.Options{Now: clock.Now, After: w.after, StripeTimeout: timeout})
+	r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		w.close()
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+	r.Round()
+	waitAdmitted(t, r, deliverer, verifier)
+
+	results := make([]reconciler.StripeResult, 3)
+	for i := range results {
+		results[i] = reconciler.StripeResult{Range: root.Child(2, uint64(i)), Peer: deliverer, PeerStored: 1000, Tried: []swarm.Address{deliverer}}
+	}
+	done := make(chan []reconciler.VerifyResult, 1)
+	go func() { done <- r.VerifyStripes(context.Background(), results) }()
+	wait := w.recv(t) // the first verification waits to ask again
+	settle()          // the others would take the verifier's lock now if it were free
+	wait <- clock.Now()
+	select {
+	case vs := <-done:
+		for i, v := range vs {
+			if v.Err != nil || !v.Verifier.Equal(verifier) {
+				t.Fatalf("verification %d with %s: %v", i, v.Verifier, v.Err)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("verifications did not end")
+	}
+	assertDelivered(t, svc, x, verifier)
+	if r.Score(deliverer) != 0 || r.Score(verifier) != 0 {
+		t.Fatalf("scores deliverer %d, verifier %d, want 0", r.Score(deliverer), r.Score(verifier))
+	}
+}
+
+// TestBootstrapStripeKeepsLockReask: during a bootstrap a stripe that waits
+// to ask its peer again keeps the peer's stripe lock, so a stripe reassigned
+// to the peer waits for it off its own clock (rounds start no session during
+// a bootstrap, so releasing the lock would buy them nothing).
+func TestBootstrapStripeKeepsLockReask(t *testing.T) {
+	t.Parallel()
+
+	x := testChunkID(1)
+	d1, d2 := addr(0xe1, 0), addr(0xe2, 0)
+	const retry = 7 * time.Second
+	svc := newWantService(status(0)) // empty: a bootstrap, one stripe per peer
+	svc.remote[d1.ByteString()] = status(10)
+	svc.remote[d2.ByteString()] = status(10)
+	svc.lists(d1, x)
+	svc.reconErr[d2.ByteString()] = errors.New("stream reset") // its stripe moves to d1
+	if r := svc.ws.Claim(fpID(x), lower); r != wantset.Granted {
+		t.Fatal(r)
+	}
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	w := newStripeWaits(clock, retry, true)
+	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{d1, d2}}, svc, log.Noop, reconciler.Options{Now: clock.Now, After: w.after})
+	r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		w.close()
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+	r.Start(context.Background())
+
+	wait := w.recv(t) // a stripe with d1 waits to ask again
+	waitFor(t, "d2's stripe session", func() bool { return len(svc.sessionOpens(d2)) == 1 })
+	settle() // the stripe moved to d1 would run its session now if the lock were free
+	if n := len(svc.sessionOpens(d1)); n != 1 {
+		t.Fatalf("%d sessions with d1, want 1: a stripe ran while another waited to ask again", n)
+	}
+	svc.ws.Release(fpID(x), lower)
+	wait <- clock.Now()
+	waitFor(t, "the moved stripe's session", func() bool { return len(svc.sessionOpens(d1)) == 2 })
+	assertDelivered(t, svc, x, d1)
+}
+
 // TestVerifyStripesUndeliveredOnly: a verifier is scored for withholding only
 // for IDs requested from it and not delivered, not for IDs rejected within
 // RejectTTL. A verification whose IDs the want set does not grant is

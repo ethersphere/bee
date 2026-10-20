@@ -90,6 +90,7 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 
 	out := make([]VerifyResult, len(results))
 	locks := newPeerLocks()
+	locks.keep = true // a verification keeps its verifier's lock across asks
 	statuses, ready := r.stripePeers()
 	var wg sync.WaitGroup
 	for i, res := range results {
