@@ -72,9 +72,10 @@ type VerifyResult struct {
 // shortfall (IDs requested from it and not delivered; not the IDs the want
 // set did not grant or whose stamp was rejected) is above the same
 // tolerance (of what it listed) is scored itself (withholding). A stripe
-// with no peer other than those that worked on it is not verified
-// (ErrNoVerifier): verifying with the deliverer could not find what it
-// withheld. The verifications run
+// with no peer other than those that ran a session of it (StripeResult.Tried)
+// is not verified (ErrNoVerifier): verifying with the deliverer could not
+// find what it withheld. A peer that only answered Busy to the stripe may
+// verify it. The verifications run
 // like a transfer: one session per peer at a time, peers in parallel; they
 // count as catch-up (SyncRate). The results are in the order of results.
 func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) []VerifyResult {
@@ -115,8 +116,8 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 }
 
 // verifier returns the peer to verify res with: a peer of statuses whose
-// root covers the stripe, other than the deliverer and every peer that
-// worked on the stripe (res.Tried), of those in ready (not backing off) if
+// root covers the stripe, other than the deliverer and every peer that ran a
+// session of the stripe (res.Tried), of those in ready (not backing off) if
 // any, lowest failure score first.
 func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (swarm.Address, bool) {
 	for _, peers := range [][]PeerStatus{ready, statuses} {

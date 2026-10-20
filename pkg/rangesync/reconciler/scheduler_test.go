@@ -1052,7 +1052,7 @@ func TestStripeBusyReassigns(t *testing.T) {
 	svc.busyN[a.ByteString()] = 1 << 30
 	h := newStripeHarness(t, svc, time.Hour, time.Millisecond)
 	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}})[0]
-	if res.Err != nil || !res.Peer.Equal(b) || len(res.Tried) != 2 {
+	if res.Err != nil || !res.Peer.Equal(b) || len(res.Tried) != 1 { // a only answered Busy
 		t.Fatalf("stripe from %s (tried %v): %v; want done by %s", res.Peer, res.Tried, res.Err, b)
 	}
 	if got := h.r.StripesTotal("reassigned"); got != 1 {

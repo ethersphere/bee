@@ -7,8 +7,10 @@ package reconciler_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -223,6 +225,65 @@ func TestVerifyStripesExcludesTried(t *testing.T) {
 	v := h.r.VerifyStripes(context.Background(), res)[0]
 	if !errors.Is(v.Err, reconciler.ErrNoVerifier) {
 		t.Fatalf("verifier %s, got %v, want %v", v.Verifier, v.Err, reconciler.ErrNoVerifier)
+	}
+}
+
+// TestVerifyStripesBusyOnlyPeer: a peer that only answered Busy to a stripe
+// (it was then reassigned) ran no session of it, so it is not in Tried and
+// may verify the stripe; it is not blamed.
+func TestVerifyStripesBusyOnlyPeer(t *testing.T) {
+	t.Parallel()
+
+	busy, deliverer := addr(0xe1, 0), addr(0xe2, 0)
+	svc := newFakeService(status(1))
+	svc.remote[busy.ByteString()] = status(1) // equal digests: no round sessions
+	svc.remote[deliverer.ByteString()] = status(1)
+	svc.wants[deliverer.ByteString()] = 10
+	svc.busyN[busy.ByteString()] = reconciler.MaxStripeBusyRetries + 1 // every answer of one attempt
+	h := newStripeHarness(t, svc, time.Hour, time.Millisecond)
+	h.topo.setPeers(busy, deliverer)
+	h.r.Round()
+	waitAdmitted(t, h.r, busy, deliverer)
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{busy, deliverer}}})
+	if res[0].Err != nil || !res[0].Peer.Equal(deliverer) {
+		t.Fatalf("peer %s, err %v", res[0].Peer, res[0].Err)
+	}
+	if len(res[0].Tried) != 1 || !res[0].Tried[0].Equal(deliverer) {
+		t.Fatalf("tried %v, want only %s", res[0].Tried, deliverer)
+	}
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || !v.Verifier.Equal(busy) {
+		t.Fatalf("verifier %s, err %v; want %s", v.Verifier, v.Err, busy)
+	}
+	if s := h.r.Score(busy); s != 0 {
+		t.Fatalf("score of the Busy peer %d", s)
+	}
+
+	// a peer whose session listed IDs ran one, even if it then ended Busy
+	// (here this node's index) and the peer answered only Busy after it
+	svc2 := newFakeService(status(1))
+	svc2.remote[busy.ByteString()] = status(1)
+	svc2.remote[deliverer.ByteString()] = status(1)
+	svc2.wants[busy.ByteString()] = 3
+	svc2.withhold[busy.ByteString()] = true
+	svc2.sessionErrAfter[busy.ByteString()] = fmt.Errorf("index: %w", fingerprint.ErrBusy)
+	svc2.sessionHook = func(p swarm.Address, n int) {
+		if n == 2 {
+			svc2.set(func() { svc2.busyN[p.ByteString()] = reconciler.MaxStripeBusyRetries + 1 })
+		}
+	}
+	h2 := newStripeHarness(t, svc2, time.Hour, time.Millisecond)
+	h2.topo.setPeers(busy, deliverer)
+	h2.r.Round()
+	waitAdmitted(t, h2.r, busy, deliverer)
+	res = h2.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{busy, deliverer}}})
+	if res[0].Err != nil || !res[0].Peer.Equal(deliverer) || len(res[0].Tried) != 2 {
+		t.Fatalf("peer %s, tried %v, err %v; want done by %s, both tried", res[0].Peer, res[0].Tried, res[0].Err, deliverer)
+	}
+	if v, ok := h2.r.VerifierFor(res[0]); ok {
+		t.Fatalf("verifier %s, a peer that ran a session of the stripe", v)
 	}
 }
 

@@ -112,7 +112,10 @@ type StripeResult struct {
 	Deferred int
 	// PeerStored is the number of chunks Peer itself stored (over its
 	// restarts); Stored also counts the peers the stripe was reassigned
-	// from. Tried is every peer that worked on the stripe, Peer included.
+	// from. Tried is every peer that ran a session of the stripe, Peer
+	// included once it did: a peer that only answered Busy, or whose
+	// attempts ended before a session, is left out, so that it may still
+	// verify the stripe.
 	PeerStored int
 	Tried      []swarm.Address
 	// Err is nil when the stripe is done: the session completed, every
@@ -121,6 +124,10 @@ type StripeResult struct {
 	// ErrNoStripePeer for a stripe with no peer. A failed stripe can be
 	// transferred again: its session lists only the IDs still missing.
 	Err error
+
+	// ran reports that an attempt ran a session with Peer: it was answered
+	// other than Busy, or listed IDs.
+	ran bool
 }
 
 // TransferStripes transfers stripes (§7.4): for each, it opens a session
@@ -274,10 +281,12 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 	for reassigns, restarts, localRestarts := 0, 0, 0; ok; {
 		if !tried[peer.ByteString()] {
 			tried[peer.ByteString()] = true
-			total.Tried = append(total.Tried, peer)
 			total.PeerStored = 0
 		}
 		res := r.transferStripe(ctx, st.Range, peer, locks, started)
+		if res.ran && !slices.ContainsFunc(total.Tried, peer.Equal) {
+			total.Tried = append(total.Tried, peer)
+		}
 		total.Peer = peer
 		total.Listed += res.Listed
 		total.Stored += res.Stored
@@ -472,6 +481,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		clock.expireIfDue()
 		lastLocal = nil
 		if !isBusy(err) {
+			res.ran = true
 			break
 		}
 		if localBusy(err) {
@@ -510,6 +520,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	}
 	close(queue)
 	<-fetched
+	res.ran = res.ran || res.Listed > 0 // a session that listed IDs ran, even if it then ended Busy
 	if fetchErr == nil && err == nil && ctx.Err() == nil && len(pending) > 0 {
 		pending, unverified, fetchErr = r.resolvePending(ctx, clock, peer, locks, hold, pending, unverified, &res)
 	}
