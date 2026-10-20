@@ -7,6 +7,7 @@ package rangesync_test
 import (
 	"context"
 	"slices"
+	"sync"
 	"testing"
 
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
@@ -124,7 +125,8 @@ func restamped(chs []swarm.Chunk) []swarm.Chunk {
 // streamtest for differences of 0, 1, 20, 1k, 4k and 100% (an empty side)
 // and a hidden difference (equal counts at every level), checks that each
 // side learns exactly the IDs it lacks, that message and byte counts stay
-// within the Meyer bounds plus an allowance for symbol streams, and that the metrics match the wire. For the
+// within the Meyer bounds plus an allowance for symbol streams, that the metrics match the wire, and
+// that the decoding side's exact sample (SessionSample.Exact) is the true n_Δ. For the
 // small differences the wants are fetched and both reserves end with the
 // union; a second session then finds the sets equal.
 func TestProtocolConverges(t *testing.T) {
@@ -139,14 +141,17 @@ func TestProtocolConverges(t *testing.T) {
 		// fetch fetches the wants with valid chunks (the delivery rate is
 		// limited to 250 chunks per second per peer)
 		fetch bool
+		// items: the session ends in item exchanges, not symbol streams
+		// alone; maybeItems: it may, depending on the random IDs
+		items, maybeItems bool
 	}{
 		{name: "0", common: 4096, fetch: true},
 		{name: "1", common: 4096, onlyA: 1, fetch: true},
 		{name: "20", common: 4096, onlyA: 10, onlyB: 10, fetch: true},
 		{name: "hidden", common: 4096, onlyA: 10, hidden: true, fetch: true},
 		{name: "1k", common: 4096, onlyA: 500, onlyB: 500},
-		{name: "4k", common: 4096, onlyA: 2048, onlyB: 2048},
-		{name: "100%", onlyB: 4096},
+		{name: "4k", common: 4096, onlyA: 2048, onlyB: 2048, maybeItems: true},
+		{name: "100%", onlyB: 4096, items: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -165,6 +170,17 @@ func TestProtocolConverges(t *testing.T) {
 			setB := append(append([]swarm.Chunk{}, common...), onlyB...)
 			a := newTestNode(t, setA...)
 			b := newTestNode(t, setB...)
+			var (
+				mu      sync.Mutex
+				samples []rangesync.SessionSample
+			)
+			for _, n := range []*testNode{a, b} {
+				n.svc.OnSession(func(ss rangesync.SessionSample) {
+					mu.Lock()
+					defer mu.Unlock()
+					samples = append(samples, ss)
+				})
+			}
 			a.start(t)
 			b.start(t)
 			connect(t, a, b)
@@ -180,8 +196,37 @@ func TestProtocolConverges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sent, received := reconcileMessages(t, a, b.addr)
+			sent, received := reconcileMessages(t, a, b.addr) // waits for b's handler
 			assertChunkIDs(t, wants, idsOf(t, onlyB...)...)
+			// The exact samples (SessionSample.Exact) hold n_Δ, all of it
+			// recovered by their decoders. A session resolved by symbol
+			// streams alone has one, on the decoding side (both sides when
+			// there is no difference); one that ends in item exchanges (100%:
+			// an empty side; 4k: at the leaves, unless every level-1 stream
+			// decodes) has none.
+			nDelta := uint64(len(onlyA) + len(onlyB))
+			wantExact := 0
+			if !tc.items {
+				wantExact = 1
+				if nDelta == 0 {
+					wantExact = 2
+				}
+			}
+			mu.Lock()
+			exact := 0
+			for _, ss := range samples {
+				if !ss.Exact {
+					continue
+				}
+				exact++
+				if ss.Difference != nDelta || ss.Recovered != nDelta {
+					t.Errorf("exact sample (initiator %v): difference %d, recovered %d, want %d", ss.Initiator, ss.Difference, ss.Recovered, nDelta)
+				}
+			}
+			mu.Unlock()
+			if exact != wantExact && (!tc.maybeItems || exact != 0) {
+				t.Errorf("%d exact samples, want %d", exact, wantExact)
+			}
 			assertChunkIDs(t, b.responderWants(a.addr), idsOf(t, onlyA...)...)
 
 			// cost within the Meyer bounds
@@ -257,44 +302,61 @@ func TestProtocolConverges(t *testing.T) {
 // d̂ = 1), as in the steady state, where the lower overlay always initiates
 // and decodes. The responder's first symbol batch is MinBatch in the first
 // session and FirstBatch(20) in the second, from the hint it recorded when
-// the initiator decoded its stream.
+// the initiator decoded its stream; MinBatch again with hints disabled
+// (DisableHints, simOptions.NoHints).
 func TestProtocolServedHint(t *testing.T) {
 	t.Parallel()
 
-	common := stampedChunks(t, 300)
-	onlyA := stampedChunks(t, 10)
-	a := newTestNode(t, append(slices.Clone(common), onlyA...)...)
-	b := newTestNode(t, append(slices.Clone(common), restamped(onlyA)...)...)
-	a.start(t)
-	b.start(t)
-	connect(t, a, b)
+	for _, tc := range []struct {
+		name  string
+		hints bool
+		want  []uint64
+	}{
+		{"hints", true, []uint64{rangesync.MinBatch, rangesync.FirstBatch(20)}},
+		{"no hints", false, []uint64{rangesync.MinBatch, rangesync.MinBatch}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			common := stampedChunks(t, 300)
+			onlyA := stampedChunks(t, 10)
+			a := newTestNode(t, append(slices.Clone(common), onlyA...)...)
+			b := newTestNode(t, append(slices.Clone(common), restamped(onlyA)...)...)
+			if !tc.hints {
+				a.svc.DisableHints()
+				b.svc.DisableHints()
+			}
+			a.start(t)
+			b.start(t)
+			connect(t, a, b)
 
-	for i, want := range []uint64{rangesync.MinBatch, rangesync.FirstBatch(20)} {
-		wants, err := a.svc.Reconcile(context.Background(), b.addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(wants) != 10 {
-			t.Fatalf("session %d: %d wants, want 10", i, len(wants))
-		}
-		records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.ReconcileStreamName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(records) != i+1 {
-			t.Fatalf("%d reconcile streams, want %d", len(records), i+1)
-		}
-		first := uint64(0)
-		for _, m := range readMessages(t, records[i].Out()) {
-			for _, p := range m.GetParts() {
-				if p.GetSymbols() != nil && first == 0 {
-					first = uint64(len(parseSymbols(t, p.GetSymbols())))
+			for i, want := range tc.want {
+				wants, err := a.svc.Reconcile(context.Background(), b.addr)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(wants) != 10 {
+					t.Fatalf("session %d: %d wants, want 10", i, len(wants))
+				}
+				records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.ReconcileStreamName)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(records) != i+1 {
+					t.Fatalf("%d reconcile streams, want %d", len(records), i+1)
+				}
+				first := uint64(0)
+				for _, m := range readMessages(t, records[i].Out()) {
+					for _, p := range m.GetParts() {
+						if p.GetSymbols() != nil && first == 0 {
+							first = uint64(len(parseSymbols(t, p.GetSymbols())))
+						}
+					}
+				}
+				if first != want {
+					t.Fatalf("session %d: first batch of %d symbols, want %d", i, first, want)
 				}
 			}
-		}
-		if first != want {
-			t.Fatalf("session %d: first batch of %d symbols, want %d", i, first, want)
-		}
+		})
 	}
 }
 

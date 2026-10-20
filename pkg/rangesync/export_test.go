@@ -296,6 +296,11 @@ func (s *Service) DisablePeerRateLimits() {
 	s.statusDrops = ratelimit.New(time.Nanosecond, math.MaxInt32)
 }
 
+// DisableHints makes the service's sessions run without hint(R), so that the
+// count estimate alone sizes their first symbol batches. It must be called
+// before the service is used.
+func (s *Service) DisableHints() { s.hints = nil }
+
 // SessionSample is what one side of a completed session reports to
 // OnSession.
 type SessionSample struct {

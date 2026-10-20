@@ -80,7 +80,8 @@ import (
 // than 16 writes ahead of its reader (TestFetchManyWants), which a fetch of
 // more than 16 chunks does. The two ends of a stream are paired through a
 // header that a Headler of the wrapped protocol echoes. A reset reaches the
-// remote as a reset (errSimReset), not as the end of the stream. With Delay,
+// remote as a reset (errSimReset), not as the end of the stream, and a
+// FullClose waits for the remote's close, as libp2p's does. With Delay,
 // a stream open costs one round trip (the headers exchange), and every byte,
 // close and reset reaches the other end Delay later; there is no bandwidth
 // limit and no jitter.
@@ -124,11 +125,18 @@ type simOptions struct {
 	Settle time.Duration
 	// Delay is the one-way latency of every stream, on the clock (default 0:
 	// none): the bytes one end writes, the end of its writes and a reset
-	// reach the other end Delay after they happened (simPipe). A message
-	// exchange then takes 2 × Delay, so the run times sessions by their
-	// round trips and fetches by their Want and Delivery legs (Spans). The
-	// fetch rate limits and the fetch timeout stay on the real clock.
+	// reach the other end Delay after they happened (simPipe), and a stream
+	// open is a round trip. A message exchange then takes 2 × Delay, so the
+	// run times calls by their legs (Spans): a Status send 4 × Delay (the
+	// open, the Status, the handler's close), a session its open, a round
+	// trip per pair of messages and its close's round trip (6 × Delay at the
+	// least), and a fetch its open, Want and Delivery legs. The fetch rate
+	// limits and the fetch timeout stay on the real clock.
 	Delay time.Duration
+	// NoHints runs every service without hint(R) (DisableHints): the first
+	// symbol batch then comes from the count estimate alone, as for G6's
+	// sweep with the hint on and off.
+	NoHints bool
 	// MinRoundInterval and MaxRoundInterval override the bounds of the
 	// adaptive round interval (reconciler.Options); zero keeps
 	// reconciler.MinRoundInterval and MaxRoundInterval.
@@ -138,6 +146,14 @@ type simOptions struct {
 	// wants, clock).
 	Reconciler func(*reconciler.Options)
 	Service    func(*rangesync.Options)
+}
+
+// steadyOptions returns the options of a steady-state run of nodes nodes
+// with p = 3: 24 batches of 20 uploads 1.3 s apart, about 15 uploads per
+// second, so that sessions see the load of a steady stream rather than of
+// separate bursts (AC-B1's reference load is a steady rate).
+func steadyOptions(nodes int, seed uint64) simOptions {
+	return simOptions{Nodes: nodes, Replication: 3, Seed: seed, Batches: 24, BatchSize: 20, BatchInterval: 1300 * time.Millisecond}
 }
 
 func (o simOptions) withDefaults() simOptions {
@@ -255,11 +271,32 @@ type simSpan struct {
 	Kind string // "reconcile", "fetch" or "status"
 	Node int
 	Peer swarm.Address
-	// At is when the call started, after the start of the run, and Duration
-	// how long it took: with simOptions.Delay, its message legs (a session
-	// of k round trips takes 2(k+1) × Delay with its open).
-	At, Duration time.Duration
-	Err          error
+	// At is when the reconciler made the call, after the start of the run;
+	// Wait is how long a fetch waited for one of the peer's fetch slots
+	// (simNode.fetchSlot) before the service ran it, and Duration how long
+	// the service then took: with simOptions.Delay, its message legs (a
+	// session takes its open, a round trip per pair of messages and the
+	// FullClose's round trip).
+	At, Wait, Duration time.Duration
+	// Streams counts the streams the call opened and Stored the chunks a
+	// fetch stored. FirstDelivery is the time from the service's start to
+	// the arrival of a fetch's first Delivery, 0 without one: with Delay
+	// the open, the Want and the Delivery legs. All Deliveries of a Want
+	// arrive in one instant (there is no bandwidth limit, and the holder's
+	// delivery limiter runs on the real clock), so the first is the last.
+	Streams, Stored int
+	FirstDelivery   time.Duration
+	Err             error
+}
+
+// simCallKey is the context key of the simCall of a reconciler's call into
+// its service; the service passes the context on to the streams it opens.
+type simCallKey struct{}
+
+// simCall collects the streams one call opened.
+type simCall struct {
+	mu      sync.Mutex
+	streams []*simPair
 }
 
 // simSample is one pairwise_diff sample: when and by which node it was
@@ -485,6 +522,9 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 	accept := func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
 	n.svc = rangesync.New(&simStreamer{StreamerDisconnecter: n.rec, n: n}, n.store, a, nil, nil, accept, log.Noop, so)
 	n.svc.DisablePeerRateLimits()
+	if o.NoHints {
+		n.svc.DisableHints()
+	}
 	n.svc.OnSession(func(ss rangesync.SessionSample) { nb.sample(n, ss) })
 	n.r.SetService(&simService{Service: n.svc, n: n})
 	if err := n.svc.Start(); err != nil {
@@ -1004,68 +1044,85 @@ func (s *simService) SubscribeRootChange() (<-chan struct{}, func()) {
 	return s.n.root, func() {}
 }
 
-// call counts a call of kind to peer in flight; the returned function, given
-// the call's error, ends it and records its span.
-func (s *simService) call(kind string, peer swarm.Address) (done func(error)) {
+// call counts a call of kind to peer in flight, which the reconciler made at
+// entered, and returns its context, which collects the streams it opens; the
+// returned function, given what a fetch stored and the call's error, ends it
+// and records its span.
+func (s *simService) call(ctx context.Context, kind string, peer swarm.Address, entered time.Time) (context.Context, func(stored int, err error)) {
 	nb := s.n.nb
 	end := nb.call()
-	at := nb.clock.Now()
-	return func(err error) {
+	started := nb.clock.Now()
+	c := new(simCall)
+	return context.WithValue(ctx, simCallKey{}, c), func(stored int, err error) {
 		now := nb.clock.Now()
+		sp := simSpan{Kind: kind, Node: s.n.i, Peer: peer, At: entered.Sub(nb.start), Wait: started.Sub(entered), Duration: now.Sub(started), Stored: stored, Err: err}
+		c.mu.Lock()
+		sp.Streams = len(c.streams)
+		for _, p := range c.streams {
+			if first := p.toInitiator.firstArrival(); p.stream == rangesync.FetchStreamName && !first.IsZero() {
+				if d := first.Sub(started); sp.FirstDelivery == 0 || d < sp.FirstDelivery {
+					sp.FirstDelivery = d
+				}
+			}
+		}
+		c.mu.Unlock()
 		nb.mu.Lock()
-		nb.spans = append(nb.spans, simSpan{Kind: kind, Node: s.n.i, Peer: peer, At: at.Sub(nb.start), Duration: now.Sub(at), Err: err})
+		nb.spans = append(nb.spans, sp)
 		nb.mu.Unlock()
 		end()
 	}
 }
 
 func (s *simService) SendStatusWith(ctx context.Context, peer swarm.Address, st rangesync.Status) (err error) {
-	done := s.call("status", peer)
-	defer func() { done(err) }()
+	ctx, done := s.call(ctx, "status", peer, s.n.nb.clock.Now())
+	defer func() { done(0, err) }()
 	return s.Service.SendStatusWith(ctx, peer, st)
 }
 
 func (s *simService) ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) (_ []storer.ChunkID, err error) {
-	done := s.call("reconcile", peer)
-	defer func() { done(err) }()
 	nb := s.n.nb
 	now := nb.clock.Now()
+	ctx, done := s.call(ctx, "reconcile", peer, now)
+	defer func() { done(0, err) }()
 	nb.mu.Lock()
 	nb.sessions = append(nb.sessions, now)
 	nb.mu.Unlock()
 	return s.Service.ReconcileWith(ctx, peer, opts)
 }
 
-func (s *simService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (_ int, err error) {
+func (s *simService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (n int, err error) {
+	entered := s.n.nb.clock.Now()
 	release, err := s.n.fetchSlot(ctx, peer)
 	if err != nil {
 		return 0, err
 	}
 	defer release()
-	done := s.call("fetch", peer)
-	defer func() { done(err) }()
+	ctx, done := s.call(ctx, "fetch", peer, entered)
+	defer func() { done(n, err) }()
 	return s.Service.Fetch(ctx, peer, ids)
 }
 
-func (s *simService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (_ rangesync.FetchResult, err error) {
+func (s *simService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res rangesync.FetchResult, err error) {
+	entered := s.n.nb.clock.Now()
 	release, err := s.n.fetchSlot(ctx, peer)
 	if err != nil {
 		return rangesync.FetchResult{}, err
 	}
 	defer release()
-	done := s.call("fetch", peer)
-	defer func() { done(err) }()
+	ctx, done := s.call(ctx, "fetch", peer, entered)
+	defer func() { done(res.Stored, err) }()
 	return s.Service.FetchWithResult(ctx, peer, ids)
 }
 
-func (s *simService) FetchWithProgress(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, stored func()) (_ rangesync.FetchResult, err error) {
+func (s *simService) FetchWithProgress(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, stored func()) (res rangesync.FetchResult, err error) {
+	entered := s.n.nb.clock.Now()
 	release, err := s.n.fetchSlot(ctx, peer)
 	if err != nil {
 		return rangesync.FetchResult{}, err
 	}
 	defer release()
-	done := s.call("fetch", peer)
-	defer func() { done(err) }()
+	ctx, done := s.call(ctx, "fetch", peer, entered)
+	defer func() { done(res.Stored, err) }()
 	return s.Service.FetchWithProgress(ctx, peer, ids, stored)
 }
 
@@ -1142,6 +1199,11 @@ func (s *simStreamer) NewStream(ctx context.Context, addr swarm.Address, _ p2p.H
 		toHandler:   newSimPipe(nb, false),
 		toInitiator: newSimPipe(nb, stream == rangesync.FetchStreamName),
 	}
+	if c, ok := ctx.Value(simCallKey{}).(*simCall); ok {
+		c.mu.Lock()
+		c.streams = append(c.streams, pair)
+		c.mu.Unlock()
+	}
 	id := strconv.FormatUint(nb.pairSeq.Add(1), 10)
 	nb.pairs.Store(id, pair)
 	nb.mu.Lock()
@@ -1178,15 +1240,28 @@ func (nb *simNeighborhood) handlerEnd(s p2p.Stream) p2p.Stream {
 	return &simEnd{Stream: s, in: pair.toHandler, out: pair.toInitiator}
 }
 
-// errSimReset is what a read or a write of a stream that the other end reset
-// returns (libp2p's network.ErrReset, which pkg/rangesync does not import).
-var errSimReset = errors.New("sim: stream reset")
+// Errors of the harness's streams: errSimReset is what a read or a write of
+// a stream that the other end reset returns (libp2p's network.ErrReset,
+// which pkg/rangesync does not import); errSimExpectedEOF and
+// errSimCloseTimeout are what FullClose returns when bytes arrive instead of
+// the remote's end of the writes, and when that does not arrive within
+// simCloseDeadline (libp2p's errExpectedEof and its read deadline).
+var (
+	errSimReset        = errors.New("sim: stream reset")
+	errSimExpectedEOF  = errors.New("sim: read on full close: expected eof")
+	errSimCloseTimeout = errors.New("sim: full close deadline exceeded")
+)
+
+// simCloseDeadline bounds FullClose's wait for the remote's end of the
+// writes, on the clock: libp2p's closeDeadline.
+const simCloseDeadline = 30 * time.Second
 
 // simEnd is one end of a stream. Close ends this end's writes: the remote
-// reads the bytes written, then io.EOF. FullClose also ends this end's reads,
-// and the remote's writes fail. Reset ends both directions: this end's reads
-// and writes, and the remote's, fail with errSimReset, and the remote does not
-// read the bytes it has not read yet. None of them waits for the remote. With
+// reads the bytes written, then io.EOF. FullClose also waits for the remote's
+// end of the writes, then ends this end's reads, and the remote's writes fail.
+// Reset ends both directions: this end's reads and writes, and the remote's,
+// fail with errSimReset, and the remote does not read the bytes it has not
+// read yet. Close and Reset do not wait for the remote. With
 // simOptions.Delay, the remote reads the bytes, the end of the writes and the
 // reset Delay after they happened; its writes fail at once. The embedded
 // streamtest stream gives the headers and the version, and is closed with
@@ -1230,14 +1305,26 @@ func (e *simEnd) Close() error {
 	return nil
 }
 
+// FullClose ends this end's writes and then, as libp2p's FullClose
+// (pkg/p2p/libp2p/stream.go), waits for the remote's end of the writes: it
+// returns once that arrives, or resets the stream and returns an error when
+// bytes arrive instead (or are unread), the remote resets the stream, or
+// simCloseDeadline passes on the clock. The wait is parked.
 func (e *simEnd) FullClose() error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.closed {
+		e.mu.Unlock()
 		return streamtest.ErrStreamClosed
 	}
 	e.closed = true
+	e.mu.Unlock()
 	e.out.closeWrite(false)
+	if err := e.in.awaitEOF(simCloseDeadline); err != nil {
+		e.out.closeWrite(true)
+		e.in.closeRead(errSimReset, errSimReset)
+		_ = e.Stream.Reset()
+		return err
+	}
 	e.in.closeRead(io.EOF, streamtest.ErrStreamClosed)
 	_ = e.Stream.FullClose()
 	return nil
@@ -1272,6 +1359,7 @@ type simPipe struct {
 	mu      sync.Mutex
 	cond    sync.Cond
 	buf     []byte       // arrived, unread
+	first   time.Time    // when the first bytes arrived
 	pending []simArrived // written, on the way (delay)
 	due     time.Time    // the latest arrival time scheduled
 	eof     bool         // arrived: the writer closed
@@ -1355,6 +1443,9 @@ func (p *simPipe) arriveLocked(a simArrived) {
 	case a.eof:
 		p.eof = true
 	default:
+		if p.first.IsZero() {
+			p.first = p.nb.clock.Now()
+		}
 		p.buf = append(p.buf, a.data...)
 	}
 	p.wakeLocked()
@@ -1405,11 +1496,62 @@ func (p *simPipe) read(b []byte) (int, error) {
 	}
 }
 
+// awaitEOF waits, parked, until the writer's end of the writes arrives
+// (FullClose). It returns errSimExpectedEOF if bytes arrive first or are
+// unread, errSimReset on a reset, the reader's own close error, or
+// errSimCloseTimeout once d passed on the clock.
+func (p *simPipe) awaitEOF(d time.Duration) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var stop func()
+	defer func() {
+		if stop != nil {
+			stop()
+		}
+	}()
+	timedOut := false
+	for {
+		switch {
+		case p.reset:
+			return errSimReset
+		case len(p.buf) > 0:
+			return errSimExpectedEOF
+		case p.eof:
+			return nil
+		case p.rerr != nil:
+			if errors.Is(p.rerr, io.EOF) {
+				return nil // the harness closed the stream
+			}
+			return p.rerr
+		case timedOut:
+			return errSimCloseTimeout
+		}
+		if stop == nil {
+			stop = p.nb.clock.AfterFunc(d, func() {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				timedOut = true
+				p.wakeLocked()
+			})
+		}
+		p.parked++
+		p.nb.parked.Add(1)
+		p.cond.Wait() // wakeLocked counted it as working again
+	}
+}
+
 // kept returns every byte written to a pipe that keeps them.
 func (p *simPipe) kept() []byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return slices.Clone(p.all)
+}
+
+// firstArrival returns when the first bytes arrived, zero if none did.
+func (p *simPipe) firstArrival() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.first
 }
 
 // size returns the number of bytes written to the pipe.
@@ -1420,12 +1562,13 @@ func (p *simPipe) size() int {
 }
 
 // simTimer is a pending timer of a simClock: a channel to send the time on,
-// or a function to call.
+// or a function to call. A stopped timer is dropped without firing.
 type simTimer struct {
-	at  time.Time
-	seq uint64
-	c   chan time.Time
-	f   func()
+	at      time.Time
+	seq     uint64
+	c       chan time.Time
+	f       func()
+	stopped bool
 }
 
 type simTimers []*simTimer
@@ -1472,27 +1615,39 @@ func (c *simClock) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
-// AfterFunc calls f on the harness goroutine once d has passed on the clock.
-func (c *simClock) AfterFunc(d time.Duration, f func()) {
-	c.schedule(d, nil, f)
+// AfterFunc calls f on the harness goroutine once d has passed on the clock,
+// unless stop was called before.
+func (c *simClock) AfterFunc(d time.Duration, f func()) (stop func()) {
+	tm := c.schedule(d, nil, f)
+	return func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		tm.stopped = true
+	}
 }
 
-func (c *simClock) schedule(d time.Duration, ch chan time.Time, f func()) {
+func (c *simClock) schedule(d time.Duration, ch chan time.Time, f func()) *simTimer {
+	tm := &simTimer{c: ch, f: f}
 	c.mu.Lock()
 	if d <= 0 && ch != nil {
 		ch <- c.now
 	} else {
 		c.seq++
-		heap.Push(&c.timers, &simTimer{at: c.now.Add(d), seq: c.seq, c: ch, f: f})
+		tm.at, tm.seq = c.now.Add(d), c.seq
+		heap.Push(&c.timers, tm)
 	}
 	c.mu.Unlock()
 	c.touch()
+	return tm
 }
 
-// next returns the time of the earliest pending timer.
+// next returns the time of the earliest pending timer that was not stopped.
 func (c *simClock) next() (time.Time, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	for len(c.timers) > 0 && c.timers[0].stopped {
+		heap.Pop(&c.timers)
+	}
 	if len(c.timers) == 0 {
 		return time.Time{}, false
 	}
@@ -1511,6 +1666,10 @@ func (c *simClock) advance(t time.Time) {
 			return
 		}
 		tm := heap.Pop(&c.timers).(*simTimer)
+		if tm.stopped {
+			c.mu.Unlock()
+			continue
+		}
 		if tm.at.After(c.now) {
 			c.now = tm.at
 		}

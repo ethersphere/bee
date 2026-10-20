@@ -150,14 +150,17 @@ func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts Re
 // sessionConfig returns the Config of a session with peer in scope, where
 // local is this node's Status and remote the peer's.
 func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote Status) Config {
-	return Config{
+	cfg := Config{
 		Scope:      scope,
 		Local:      s.local,
 		PeerCount:  remote.Summary.Count,
 		Status:     local,
 		PeerStatus: remote,
-		Hints:      s.hints.peer(peer),
 	}
+	if s.hints != nil { // nil only in simulations that run without hints
+		cfg.Hints = s.hints.peer(peer)
+	}
+	return cfg
 }
 
 // acquireSession takes a node-wide session token and the session slot of

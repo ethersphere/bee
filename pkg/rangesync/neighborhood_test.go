@@ -123,11 +123,21 @@ func TestNeighborhoodRoundBounds(t *testing.T) {
 
 // TestNeighborhoodDelay runs the simulation with a one-way stream latency on
 // the clock. Time passes in a call only by its message legs (the fetch limits
-// and timeouts are on the real clock): a stream open is one round trip, a
-// completed session at least one more (the opening and its answer) and one
-// per further pair of messages, a Status send one leg and a fetch's Want and
-// deliveries one leg each. Uploads still converge within the bound plus the
-// legs of the slowest chain of Status, session and fetch.
+// and timeouts are on the real clock). A stream open is one round trip, and a
+// FullClose waits for the remote's end of the writes, as libp2p's does:
+//   - a Status send: the open, the Status, and the handler's close after it
+//     read it: 4 legs;
+//   - a session: the open, a round trip per pair of messages (at least the
+//     opening and its answer), and the closes: the initiator closes once it
+//     handled the responder's last Message and its call returns when the
+//     responder's close arrives, a round trip later; so at least 6 legs, and
+//     a decoded stream without a More 8;
+//   - a fetch that stored a chunk: the open, the Want and the Deliveries, at
+//     least 4 legs, the first Delivery exactly at the fourth; the holder
+//     closes first, so the requester's close returns at once.
+//
+// Uploads still converge within the bound plus the legs of the slowest chain
+// of Status, session and fetch.
 func TestNeighborhoodDelay(t *testing.T) {
 	t.Parallel()
 
@@ -135,22 +145,32 @@ func TestNeighborhoodDelay(t *testing.T) {
 	o := simOptions{Nodes: 5, Replication: 3, Seed: 5, Delay: delay}
 	res := runNeighborhood(t, o)
 	logNeighborhood(t, o, res)
-	// the chain: a Status (the open and one leg), a session that decodes
-	// after up to 3 Mores (the open, the opening and the symbols, the items
-	// and the end, a round trip per More) and a fetch (the open, the Want and
-	// the deliveries)
-	assertNeighborhoodWithin(t, o, res, convergenceBound+(3+(6+2*3)+4)*delay)
+	// the chain: a Status read by the lacker (the open and one leg), a
+	// session that decodes after up to 3 Mores (the open, the opening and
+	// the symbols, the items and the end, a round trip per More, the closes)
+	// and a fetch (the open, the Want and the deliveries)
+	assertNeighborhoodWithin(t, o, res, convergenceBound+(3+(8+2*3)+4)*delay)
 	kinds := make(map[string]int)
 	for _, sp := range res.Spans {
 		if sp.Err != nil {
 			continue
 		}
 		kinds[sp.Kind]++
-		if sp.Duration%delay != 0 {
-			t.Errorf("%s took %v, not a multiple of the delay %v", sp.Kind, sp.Duration, delay)
+		if sp.Duration%delay != 0 || sp.Wait%delay != 0 {
+			t.Errorf("%s waited %v and took %v, not multiples of the delay %v", sp.Kind, sp.Wait, sp.Duration, delay)
+		}
+		least := map[string]time.Duration{"status": 4 * delay, "reconcile": 6 * delay}[sp.Kind]
+		switch {
+		case sp.Kind == "fetch" && sp.Stored > 0:
+			least = 4 * delay
+			if sp.FirstDelivery != 4*delay {
+				t.Errorf("fetch of %d chunks: first delivery after %v, want %v", sp.Stored, sp.FirstDelivery, 4*delay)
+			}
+		case sp.Kind == "fetch" && sp.Streams > 0:
+			least = 2 * delay // the open; reset without a Want when nothing was left to claim
 		}
 		// a fetch whose IDs were all held or claimed opens no stream
-		if least := map[string]time.Duration{"status": 2 * delay, "reconcile": 4 * delay}[sp.Kind]; sp.Duration < least {
+		if sp.Duration < least {
 			t.Errorf("%s took %v, want at least %v", sp.Kind, sp.Duration, least)
 		}
 		if sp.Kind == "reconcile" && sp.Duration%(2*delay) != 0 {
@@ -161,6 +181,28 @@ func TestNeighborhoodDelay(t *testing.T) {
 		if kinds[kind] == 0 {
 			t.Errorf("no completed %s call", kind)
 		}
+	}
+}
+
+// TestNeighborhoodSteady runs the simulation at a steady rate
+// (steadyOptions: 24 batches of 20 uploads 1.3 s apart, ~15 uploads per
+// second, the load AC-B1 measures) with a 50 ms latency: the batches overlap,
+// and each still converges within the bound plus the legs of
+// TestNeighborhoodDelay's chain.
+func TestNeighborhoodSteady(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("24 batches")
+	}
+
+	const delay = 50 * time.Millisecond
+	o := steadyOptions(9, 9)
+	o.Delay = delay
+	res := runNeighborhood(t, o)
+	logNeighborhood(t, o, res)
+	assertNeighborhoodWithin(t, o, res, convergenceBound+(3+(8+2*3)+4)*delay)
+	if got := len(res.Batches); got != 24 {
+		t.Fatalf("%d batches, want 24", got)
 	}
 }
 
@@ -214,17 +256,61 @@ func TestSimStream(t *testing.T) {
 			t.Fatalf("write after the remote's close: %v", err)
 		}
 	})
-	t.Run("full close", func(t *testing.T) {
+	// fullClose runs a.FullClose in a goroutine, once it is parked.
+	fullClose := func(nb *simNeighborhood, a *simEnd) <-chan error {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- a.FullClose() }()
+		parked(nb, 1)
+		return done
+	}
+	t.Run("full close waits for the remote's close", func(t *testing.T) {
 		t.Parallel()
-		_, a, b := newEnds(0)
-		if err := a.FullClose(); err != nil {
-			t.Fatal(err)
-		}
+		nb, a, b := newEnds(0)
+		done := fullClose(nb, a)
 		if got := <-read(b); got != io.EOF.Error() {
 			t.Fatalf("read %q, want EOF", got)
 		}
+		select {
+		case err := <-done:
+			t.Fatalf("full close returned %v before the remote closed", err)
+		default:
+		}
+		if err := b.FullClose(); err != nil { // a's end of the writes is there
+			t.Fatalf("remote's full close: %v", err)
+		}
+		if err := <-done; err != nil {
+			t.Fatalf("full close: %v", err)
+		}
+		parked(nb, 0)
 		if _, err := b.Write([]byte("y")); !errors.Is(err, streamtest.ErrStreamClosed) {
-			t.Fatalf("write after the remote's full close: %v", err)
+			t.Fatalf("write after the full closes: %v", err)
+		}
+	})
+	t.Run("full close gets bytes instead", func(t *testing.T) {
+		t.Parallel()
+		nb, a, b := newEnds(0)
+		done := fullClose(nb, a)
+		if _, err := b.Write([]byte("y")); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; !errors.Is(err, errSimExpectedEOF) {
+			t.Fatalf("full close: %v, want %v", err, errSimExpectedEOF)
+		}
+		if got := <-read(b); got != errSimReset.Error() {
+			t.Fatalf("remote read %q, want %v", got, errSimReset)
+		}
+	})
+	t.Run("full close deadline", func(t *testing.T) {
+		t.Parallel()
+		nb, a, b := newEnds(0)
+		done := fullClose(nb, a)
+		nb.clock.advance(nb.clock.Now().Add(simCloseDeadline))
+		if err := <-done; !errors.Is(err, errSimCloseTimeout) {
+			t.Fatalf("full close: %v, want %v", err, errSimCloseTimeout)
+		}
+		if got := <-read(b); got != errSimReset.Error() {
+			t.Fatalf("remote read %q, want %v", got, errSimReset)
 		}
 	})
 	t.Run("reset", func(t *testing.T) {
@@ -356,6 +442,21 @@ func assertNeighborhoodWithin(t *testing.T, o simOptions, res *simResult, bound 
 	if sum < 2*float64(stored) {
 		t.Errorf("pairwise_diff samples sum to %v, want at least twice the %d chunks fetched", sum, stored)
 	}
+	// what each side reported (SessionSample): an exact side's difference is
+	// what its decoders recovered, a decoder recovers at most one ID per
+	// symbol received, and each completed session has one exact sample (the
+	// decoding side, or the initiator of a session with no difference)
+	for _, sm := range res.PairwiseDiff {
+		if ss := sm.Session; sm.At >= res.Batches[0].At && (ss.Exact && ss.Difference != ss.Recovered || ss.Recovered > ss.SymbolsReceived) {
+			t.Errorf("node %d at %v: sample %+v", sm.Node, sm.At, ss)
+		}
+	}
+	if exact := res.exactDiffsFrom(res.Batches[0].At); float64(len(exact)) != res.Sessions["ok"] {
+		t.Errorf("%d exact pairwise_diff samples, want one per completed session (%v)", len(exact), res.Sessions["ok"])
+	}
+	if spd, symbols := res.symbolsPerDifference(res.Batches[0].At); symbols == 0 || spd < 1 {
+		t.Errorf("%d symbols, %v per difference", symbols, spd)
+	}
 	// the histogram the node exposes (Service.Metrics) holds the same samples
 	exposed := 0
 	for _, n := range res.Nodes {
@@ -379,10 +480,11 @@ func logNeighborhood(t *testing.T, o simOptions, res *simResult) {
 	for _, b := range res.Batches {
 		conv = append(conv, fmt.Sprintf("%v/%d", b.Convergence, b.Rounds))
 	}
-	var meta, chunks float64
+	var meta, metaIn, chunks float64
 	deliveries := 0
 	for _, n := range res.Nodes {
 		meta += n.MetadataOut
+		metaIn += n.MetadataIn
 		chunks += n.ChunksOut
 		deliveries += n.Deliveries
 	}
@@ -394,8 +496,11 @@ func logNeighborhood(t *testing.T, o simOptions, res *simResult) {
 			zero++
 		}
 	}
-	// pullsync: every node is offered each upload by each of its N - 1 peers,
-	// ~102 B per offer (AC-B1)
+	// AC-B1's baseline, modeled, not measured: under pullsync every node is
+	// offered each upload by each of its N - 1 peers, ~102 B per offer.
+	// AC-B1 counts the bytes received; in the closed mesh every byte sent is
+	// received, so the sum of bytes_metadata{in} equals that of {out} once
+	// the run is quiet (both are logged).
 	pullsync := float64(o.Nodes*(o.Nodes-1)) * 102
 	perStream := make([]string, 0, len(res.StreamBytes))
 	for _, name := range slices.Sorted(maps.Keys(res.StreamBytes)) {
@@ -403,8 +508,8 @@ func logNeighborhood(t *testing.T, o simOptions, res *simResult) {
 	}
 	exact := res.exactDiffsFrom(res.Batches[0].At)
 	spd, symbols := res.symbolsPerDifference(res.Batches[0].At)
-	t.Logf("N=%d p=%d: convergence/rounds per batch %v; %d deliveries, %d duplicates; metadata %.0f B per upload (%.0f%% of pullsync's ~%.0f B), chunk bytes %.0f B per upload; stream bytes per upload: %s",
-		o.Nodes, o.Replication, conv, deliveries, res.Duplicates, meta/uploads, 100*meta/uploads/pullsync, pullsync, chunks/uploads, strings.Join(perStream, ", "))
+	t.Logf("N=%d p=%d: convergence/rounds per batch %v; %d deliveries, %d duplicates; metadata %.0f B per upload sent, %.0f received (%.0f%% of a modeled pullsync's ~%.0f B), chunk bytes %.0f B per upload; stream bytes per upload: %s",
+		o.Nodes, o.Replication, conv, deliveries, res.Duplicates, meta/uploads, metaIn/uploads, 100*metaIn/uploads/pullsync, pullsync, chunks/uploads, strings.Join(perStream, ", "))
 	t.Logf("sessions %v; pairwise_diff %d samples (%d zero), p50 %v, p99 %v, exact side %d samples, p50 %v, p99 %v; %d symbols, %.2f per difference; last session %v after convergence; %d steps, %v",
 		res.Sessions, len(diffs), zero, quantile(diffs, 0.5), quantile(diffs, 0.99), len(exact), quantile(exact, 0.5), quantile(exact, 0.99),
 		symbols, spd, res.LastSession, res.Steps, res.Wall.Round(time.Millisecond))
