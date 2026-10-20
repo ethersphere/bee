@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -519,4 +521,87 @@ func exchangeStatus(t *testing.T, a *roundNode, b *stripeNode) {
 		_, ba := a.svc.LastStatus(b.addr)
 		return ab && ba
 	})
+}
+
+// TestSyncRateCatchUpStoring (T4.5 part 2c fix round 2) is the honest side
+// of the catch-up grace, over a real service: a catch-up that stores chunks
+// keeps SyncRate above 0 past the grace, however slowly it stores, because
+// each chunk counts towards the rate when it is stored, not when the fetch
+// returns. A catch-up that stops storing for longer than the window reads 0,
+// although its fetch is still in flight, and rises again once it stores.
+//
+// The session listed CatchUpMinDiff IDs, of which this node lacks missing:
+// streamtest's streams deadlock when a reader lags many writes behind.
+func TestSyncRateCatchUpStoring(t *testing.T) {
+	t.Parallel()
+
+	const missing = 6
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	chs := chunktesting.GenerateTestRandomChunks(reconciler.CatchUpMinDiff)
+	var puts atomic.Int64
+	gate := make(chan struct{})
+	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{
+		now:           clock.Now,
+		roundInterval: time.Hour,
+		chunks:        chs[missing:],
+		putHook: func(swarm.Chunk) error {
+			if puts.Add(1) == 2 {
+				<-gate // the second chunk waits
+			}
+			return nil
+		},
+	})
+	var once sync.Once
+	open := func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(open) // before the node's cleanup, which waits for the fetch
+	bAddr := addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, chs...)
+	a.routes[b.addr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.Start(context.Background())
+	clock.Add(reconciler.StartupGuardTimeout) // no neighbor: the guard ends at its timeout
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v before the catch-up", got)
+	}
+
+	ids := make([]storer.ChunkID, len(chs))
+	for i, ch := range chs {
+		ids[i] = chunkIDOf(t, ch)
+	}
+	a.r.Wants(b.addr, ids) // a session a served listed them
+	waitFor(t, "first chunk stored", func() bool { return puts.Load() == 2 })
+	clock.Add(10 * reconciler.CatchUpGrace)
+	if got := a.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v past the grace while storing, want at least %v", got, reconciler.StartupGuardRate)
+	}
+	clock.Add(reconciler.SyncRateWindow)
+	if got := a.r.SyncRate(); got <= 0 {
+		t.Fatalf("sync rate %v within the window of the last chunk", got)
+	}
+	clock.Add(reconciler.SyncRateWindow + time.Second)
+	if n := a.r.CatchUpFetches(); n != 1 {
+		t.Fatalf("%d catch-up fetches in flight, want 1", n)
+	}
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v with nothing stored for two windows, want 0", got)
+	}
+
+	open()
+	waitFor(t, "catch-up done", func() bool { return a.r.CatchUpFetches() == 0 })
+	for _, ch := range chs {
+		if !a.has(t, ch) {
+			t.Fatalf("chunk %s not stored", ch.Address())
+		}
+	}
+	if got := a.r.SyncRate(); got <= 0 {
+		t.Fatalf("sync rate %v after the catch-up stored", got)
+	}
+	clock.Add(2*reconciler.SyncRateWindow + time.Second)
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v past the window, want 0", got)
+	}
+	if score := a.r.Score(b.addr); score != 0 {
+		t.Fatalf("peer scored %d", score)
+	}
 }

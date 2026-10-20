@@ -86,8 +86,11 @@ func (r *Reconciler) CatchUpFetches() int {
 	return r.catchUpFetches
 }
 
-// MaxServedPending is maxServedPending.
-const MaxServedPending = maxServedPending
+// MaxServedPending is maxServedPending; CatchUpGrace is catchUpGrace.
+const (
+	MaxServedPending = maxServedPending
+	CatchUpGrace     = catchUpGrace
+)
 
 // StripeRanges returns the registered stripe ranges, in order.
 func (r *Reconciler) StripeRanges() []fingerprint.Range {

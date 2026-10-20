@@ -140,10 +140,13 @@ type StripeResult struct {
 // and the node-wide fetch limiter of the Service. The stripes of one peer
 // run one after another (one session per peer), those of different peers in
 // parallel. Each stripe is bounded by the stripe timeout. The results are in
-// the order of stripes. The stored chunks count towards SyncRate, and the
-// whole transfer counts as a catch-up in flight (SyncRate reports at least
-// StartupGuardRate), including its session phases: a stripe exists only for
-// a large difference, so the node is catching up from the first page on.
+// the order of stripes. The stored chunks count towards SyncRate as they are
+// stored, and the whole transfer counts as a catch-up fetch in flight,
+// including its session phases: a stripe exists only for a large difference,
+// so the node is catching up from the first page on. A transfer the stripe
+// worker runs holds SyncRate at least at StartupGuardRate through its
+// registered range; one that is not registered only within the catch-up
+// grace or while the rate is above 0 (SyncRate).
 //
 // Backpressure: the wants of a stripe are queued in at most stripeQueue
 // Message batches. While the queue is full the session's goroutine blocks in
@@ -162,11 +165,11 @@ func (r *Reconciler) TransferStripes(ctx context.Context, stripes []Stripe) []St
 // stripe lock while they wait to ask again (peerLocks.keep).
 func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, started func(), bootstrap bool) []StripeResult {
 	r.mu.Lock()
-	r.catchUpFetches++
+	r.addCatchUpLocked(1)
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
-		r.catchUpFetches--
+		r.addCatchUpLocked(-1)
 		r.mu.Unlock()
 	}()
 	var startOnce sync.Once
@@ -473,9 +476,6 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			res.outsideRoot += out.outsideRoot
 			pending = append(pending, out.pending...)
 			unverified += out.unverified
-			if out.stored > 0 {
-				r.rate.Add(out.stored)
-			}
 			if err != nil {
 				fetchErr = fmt.Errorf("fetch: %w", err)
 				cancel(nil) // end the session
@@ -615,9 +615,6 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 		res.Undelivered += out.undelivered
 		res.outsideRoot += out.outsideRoot
 		unverified += out.unverified
-		if out.stored > 0 {
-			r.rate.Add(out.stored)
-		}
 		if err != nil {
 			return out.pending, unverified, fmt.Errorf("fetch: %w", err)
 		}

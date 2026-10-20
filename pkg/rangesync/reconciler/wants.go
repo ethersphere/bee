@@ -40,6 +40,16 @@ type resultFetcher interface {
 
 var _ resultFetcher = (*rangesync.Service)(nil)
 
+// progressFetcher is implemented by a Service whose fetches report each
+// chunk they store as they store it (*rangesync.Service). With it, the
+// chunks of a catch-up fetch count towards SyncRate as they are stored;
+// without it, when the fetch returns.
+type progressFetcher interface {
+	FetchWithProgress(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, stored func()) (rangesync.FetchResult, error)
+}
+
+var _ progressFetcher = (*rangesync.Service)(nil)
+
 // fetchOutcome is what one fetch from a peer achieved.
 type fetchOutcome struct {
 	stored int // chunks stored
@@ -66,16 +76,32 @@ type fetchOutcome struct {
 // and retries the IDs peer did not deliver from their other sources (retry).
 // The retries of a catch-up fetch are catch-up fetches. The fetch is
 // registered as running while it lasts, so that the sources recorded while
-// it holds its claims are kept until its result arrives (wantSources).
+// it holds its claims are kept until its result arrives (wantSources). The
+// chunks a catch-up fetch stores count towards SyncRate (countCatchUp), as
+// they are stored with a progressFetcher.
 func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, catchUp bool) (fetchOutcome, error) {
 	rf, ok := r.svc.(resultFetcher)
 	if !ok {
 		n, err := r.svc.Fetch(ctx, peer, ids)
+		if catchUp {
+			r.countCatchUp(n)
+		}
 		return fetchOutcome{stored: n, undelivered: len(ids) - n}, err
 	}
 	end := r.sources.begin(r.now())
 	defer end()
-	res, err := rf.FetchWithResult(ctx, peer, ids)
+	var (
+		res rangesync.FetchResult
+		err error
+	)
+	if pf, ok := r.svc.(progressFetcher); ok && catchUp {
+		res, err = pf.FetchWithProgress(ctx, peer, ids, func() { r.countCatchUp(1) })
+	} else {
+		res, err = rf.FetchWithResult(ctx, peer, ids)
+		if catchUp {
+			r.countCatchUp(res.Stored)
+		}
+	}
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, res.Undelivered, catchUp)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
@@ -105,7 +131,7 @@ func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp b
 	}
 	for _, b := range r.sources.take(r.now(), failed, ids, known) {
 		if catchUp {
-			r.catchUpFetches++ // the caller's fetch is still counted
+			r.addCatchUpLocked(1) // the caller's fetch is still counted
 		}
 		r.wg.Add(1)
 		go func() {

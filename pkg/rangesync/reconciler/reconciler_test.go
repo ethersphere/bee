@@ -685,6 +685,9 @@ func TestTimerTriggersRounds(t *testing.T) {
 	waitFor(t, "several sessions", func() bool { return svc.count(svc.reconciled, higher) >= 3 })
 }
 
+// TestSyncRateLargeCatchUp: a catch-up fetch in flight that has stored
+// nothing yet holds SyncRate above 0 within the catch-up grace, and not past
+// it (T4.5 part 2c fix round 2); its stored chunks count once stored.
 func TestSyncRateLargeCatchUp(t *testing.T) {
 	t.Parallel()
 
@@ -695,9 +698,14 @@ func TestSyncRateLargeCatchUp(t *testing.T) {
 	h := newHarness(t, svc, higher)
 
 	waitFor(t, "guard released", h.r.GuardReleased)
+	waitFor(t, "catch-up fetch", func() bool { return h.r.CatchUpFetches() == 1 })
 	// a catch-up fetch is in flight and nothing was counted yet
 	if got := h.r.SyncRate(); got <= 0 {
 		t.Fatalf("sync rate %v during catch-up, want > 0", got)
+	}
+	h.clock.Add(2 * reconciler.CatchUpGrace)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v past the catch-up grace with nothing stored, want 0", got)
 	}
 	close(svc.fetchGate)
 	waitFor(t, "fetch", func() bool { return svc.count(svc.fetched, higher) > 0 })

@@ -520,7 +520,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open
 	r.pendingReconcile--
 	catchUp := err == nil && len(wants) >= CatchUpMinDiff
 	if catchUp {
-		r.catchUpFetches++
+		r.addCatchUpLocked(1)
 	}
 	if err == nil && (len(wants) > 0 || len(striper.Ranges()) > 0) {
 		r.foundDiff = true

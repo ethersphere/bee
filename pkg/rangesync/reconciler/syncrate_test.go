@@ -5,6 +5,7 @@
 package reconciler_test
 
 import (
+	"context"
 	"encoding/binary"
 	"slices"
 	"sync/atomic"
@@ -335,4 +336,132 @@ func TestSyncRateRadiusHalfAttemptsBounded(t *testing.T) {
 	if got := h.r.RadiusAttempts(); got != reconciler.MaxRadiusAttempts {
 		t.Fatalf("attempts %d, want %d", got, reconciler.MaxRadiusAttempts)
 	}
+}
+
+// sybil returns the overlay of the i-th stalling peer.
+func sybil(i int) swarm.Address { return addr(0x20, byte(i)) }
+
+// assertStallsCannotHold starts stalling catch-up fetches on h (start starts
+// one from peer, waits until it is in flight and returns the function that
+// ends it, storing nothing) and checks that they hold SyncRate above 0 for
+// at most CatchUpGrace in all: the first within the grace, then none of
+// them over half an hour of the fake clock, staggered, at most four in
+// flight, from new overlays and from earlier ones again (reconnects).
+func assertStallsCannotHold(t *testing.T, h *harness, start func(peer swarm.Address) (end func())) {
+	t.Helper()
+	zero := func(when string) {
+		t.Helper()
+		if got := h.r.SyncRate(); got != 0 {
+			t.Fatalf("sync rate %v %s, want 0 (%d catch-up fetches in flight)", got, when, h.r.CatchUpFetches())
+		}
+	}
+	zero("before any catch-up")
+	ends := []func(){start(sybil(0))}
+	for _, d := range []time.Duration{0, reconciler.CatchUpGrace / 2} {
+		h.clock.Add(d)
+		if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+			t.Fatalf("sync rate %v within the grace, want at least %v", got, reconciler.StartupGuardRate)
+		}
+	}
+	h.clock.Add(reconciler.CatchUpGrace)
+	zero("past the grace")
+
+	const step = 5 * time.Second
+	for i := 1; i <= int(30*time.Minute/step); i++ {
+		// sybil(i % 8) last stalled 8 steps ago and ended since
+		ends = append(ends, start(sybil(i%8)))
+		zero("as a new stall starts")
+		h.clock.Add(step)
+		zero("while stalls are in flight")
+		if len(ends) > 3 {
+			ends[0]()
+			ends = ends[1:]
+			waitFor(t, "stall ended", func() bool { return h.r.CatchUpFetches() == len(ends) })
+			zero("after a stall ended")
+		}
+	}
+	for _, end := range ends {
+		end()
+	}
+	waitFor(t, "stalls ended", func() bool { return h.r.CatchUpFetches() == 0 })
+	zero("after the stalls")
+}
+
+// TestSyncRateStallingPeers (T4.5 part 2c fix round 2): catch-up fetches
+// that store nothing hold SyncRate above 0 for at most CatchUpGrace in all,
+// node-wide. Peers that stall their fetches, new peers (Sybils with new
+// overlays) and peers that come back (reconnects) do not renew the grace,
+// however they stagger their fetches; only a chunk that a catch-up stores
+// does. Before, each catch-up fetch in flight held SyncRate at
+// StartupGuardRate until it ended: a stalled probe for the fetch timeout.
+func TestSyncRateStallingPeers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stalled opens", func(t *testing.T) {
+		t.Parallel()
+
+		// each fetch waits until the test ends it, then fails storing
+		// nothing, as a fetch whose stream open stalls
+		svc := newFakeService(status(1))
+		svc.fetchCalls = make(chan chan struct{})
+		svc.fetchErr = errStalled
+		h := newHarness(t, svc) // no neighbor: the guard holds until its timeout
+		h.clock.Add(reconciler.StartupGuardTimeout)
+		start := func(peer swarm.Address) func() {
+			h.r.Wants(peer, distinctChunkIDs(reconciler.CatchUpMinDiff))
+			release := <-svc.fetchCalls
+			return func() { close(release) }
+		}
+		assertStallsCannotHold(t, h, start)
+
+		// a catch-up that stores chunks refills the grace once
+		svc.set(func() { svc.fetchErr = nil })
+		h.r.Wants(addr(0x30, 0), distinctChunkIDs(reconciler.CatchUpMinDiff))
+		close(<-svc.fetchCalls) // stores every ID
+		waitFor(t, "catch-up stored", func() bool { return h.r.CatchUpFetches() == 0 })
+		if got := h.r.SyncRate(); got <= 0 {
+			t.Fatalf("sync rate %v after a catch-up stored", got)
+		}
+		pastWindow(h)
+		if got := h.r.SyncRate(); got != 0 {
+			t.Fatalf("sync rate %v past the window", got)
+		}
+		svc.set(func() { svc.fetchErr = errStalled })
+		end := start(sybil(0))
+		if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+			t.Fatalf("sync rate %v within the refilled grace", got)
+		}
+		h.clock.Add(reconciler.CatchUpGrace + reconciler.CatchUpGrace/2)
+		if got := h.r.SyncRate(); got != 0 {
+			t.Fatalf("sync rate %v past the refilled grace", got)
+		}
+		end()
+	})
+
+	t.Run("held wants", func(t *testing.T) {
+		t.Parallel()
+
+		// each fetch claims its IDs and holds them until the test ends it,
+		// then they are Undelivered, as a peer that holds its Wants
+		svc := newWantService(status(1))
+		h := newWantHarness(t, svc)
+		h.r.Start(context.Background())
+		h.clock.Add(time.Second) // past the start-up guard
+		start := func(peer swarm.Address) func() {
+			ids := distinctChunkIDs(reconciler.CatchUpMinDiff)
+			svc.lists(peer, ids...)
+			stall := make(chan struct{})
+			svc.wmu.Lock()
+			svc.stall[peer.ByteString()] = stall
+			svc.wmu.Unlock()
+			claimed := svc.claimSignal(peer)
+			h.r.Wants(peer, ids)
+			waitClosed(t, "claims", claimed)
+			return func() { close(stall) }
+		}
+		assertStallsCannotHold(t, h, start)
+		if n := svc.ws.Len(); n != 0 {
+			t.Fatalf("%d claims held after the stalls", n)
+		}
+	})
 }

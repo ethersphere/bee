@@ -82,11 +82,11 @@ type VerifyResult struct {
 // count as catch-up (SyncRate). The results are in the order of results.
 func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) []VerifyResult {
 	r.mu.Lock()
-	r.catchUpFetches++
+	r.addCatchUpLocked(1)
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
-		r.catchUpFetches--
+		r.addCatchUpLocked(-1)
 		r.mu.Unlock()
 	}()
 

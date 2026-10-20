@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -83,6 +84,45 @@ func TestFetchWithResult(t *testing.T) {
 	assertWantClaims(t, a, map[string]float64{"granted": 4, "denied": 1, "expired": 0, "late": 0})
 	if l := a.svc.WantSet().Len(); l != 1 {
 		t.Fatalf("want set holds %d claims, want 1 (the foreign one)", l)
+	}
+	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchWithProgress (T4.5 part 2c fix round 2) checks that
+// FetchWithProgress reports each chunk it stores as it stores it: once per
+// chunk counted in Stored, before the next one is stored, and not for the
+// IDs not delivered or rejected.
+func TestFetchWithProgress(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(6)
+	var (
+		reported atomic.Int64
+		atPut    []int64 // reported when each Put started
+	)
+	// 0..3: stored; 4: not held by b; 5: stamp rejected
+	a := newTestNodeOpts(t, nodeOpts{
+		validStamp: rejectAddr(chs[5].Address()),
+		putHook: func(swarm.Chunk) error {
+			atPut = append(atPut, reported.Load())
+			return nil
+		},
+	})
+	b := newTestNode(t, chs[0], chs[1], chs[2], chs[3], chs[5])
+	connect0(a, b)
+
+	ids := idsOf(t, chs...)
+	res, err := a.svc.FetchWithProgress(context.Background(), b.addr, ids, func() { reported.Add(1) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stored != 4 || reported.Load() != 4 || len(atPut) != 4 {
+		t.Fatalf("stored %d, reported %d, puts %d, want 4, 4, 4", res.Stored, reported.Load(), len(atPut))
+	}
+	for i, n := range atPut {
+		if n != int64(i) {
+			t.Fatalf("put %d started with %d chunks reported, want %d", i, n, i)
+		}
 	}
 	assertNotScored(t, a, b.addr)
 }

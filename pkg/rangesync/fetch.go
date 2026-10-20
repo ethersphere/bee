@@ -187,7 +187,15 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // calls fail at once, unscored and without a claim, and then one open probes
 // the peer. A call also fails at once while maxFetchWaiters others wait for
 // the peer's stream slots.
-func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
+func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (FetchResult, error) {
+	return s.FetchWithProgress(ctx, peer, ids, nil)
+}
+
+// FetchWithProgress is FetchWithResult that also reports each chunk it
+// stores as it stores it: stored, if not nil, is called once per chunk
+// counted in FetchResult.Stored, right after the chunk was stored, on the
+// fetch's goroutine. It must not block, and must not call the Service.
+func (s *Service) FetchWithProgress(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, stored func()) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.ctx, cancel) // Close ends the fetch
@@ -214,7 +222,7 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 		if len(cands) == 0 {
 			continue
 		}
-		if err := s.want(ctx, peer, cands, &res, &sf); err != nil {
+		if err := s.want(ctx, peer, cands, &res, &sf, stored); err != nil {
 			return res, err
 		}
 		// a blatant shortfall ends the fetch now
@@ -228,13 +236,14 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 // want requests cands from peer in one Want: it takes one of the peer's
 // fetch stream slots (maxFetchStreamsOut), opens the stream, waits for the
 // fetch rate, claims cands and fetches the claimed IDs on the stream,
-// recording the peer's shortfall in sf. The open comes before the fetch rate
-// and the claims, so that an open that fails or stalls spends neither and is
-// not charged to the peer; the waits come before the claims, so that they
-// cannot outlast them. The slot is held from the open to the stream's end.
-// While the peer's opens back off (openGate), it fails at once, before and
-// after the wait for the slot.
-func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall) error {
+// recording the peer's shortfall in sf and calling stored, if not nil, for
+// each chunk stored. The open comes before the fetch rate and the claims, so
+// that an open that fails or stalls spends neither and is not charged to the
+// peer; the waits come before the claims, so that they cannot outlast them.
+// The slot is held from the open to the stream's end. While the peer's opens
+// back off (openGate), it fails at once, before and after the wait for the
+// slot.
+func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall, stored func()) error {
 	if !s.opens.allowed(peer, s.now) {
 		return errOpenBackoff
 	}
@@ -262,7 +271,7 @@ func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerpr
 		_ = stream.Reset()
 		return nil
 	}
-	return s.fetch(ctx, peer, stream, claimed, res, sf)
+	return s.fetch(ctx, peer, stream, claimed, res, sf, stored)
 }
 
 // openFetchStream opens a fetch stream to peer within fetchTimeout, through
@@ -488,13 +497,14 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 // and handles the deliveries until the peer closes the stream, recording the
 // peer's shortfall in sf: the Want's IDs as requested, those still
 // undelivered when the peer closed the stream as missing, and the stamps
-// invalid on every node. A holder that has not finished within fetchTimeout
+// invalid on every node. It calls stored, if not nil, for each chunk stored
+// (deliver). A holder that has not finished within fetchTimeout
 // of the claims is a violation, judged only while the peer has a Status
 // (the rules judge no peer that disconnected). A stream that fails with
 // claimed IDs undelivered takes one of the peer's fetch resets
 // (chargeReset), past which it is a violation; this node ending the fetch
 // does not. Every claim in claimed is ended before it returns.
-func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stream, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
+func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stream, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall, stored func()) (err error) {
 	// claimed holds the IDs not delivered yet
 	defer func() {
 		for id := range claimed {
@@ -558,7 +568,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stre
 			return stalled(fmt.Errorf("read delivery: %w", err))
 		}
 		s.metrics.BytesChunks.WithLabelValues(dirIn).Add(float64(wireSize(&d)))
-		err := s.deliver(ctx, peer, claimed, &d, res, sf)
+		err := s.deliver(ctx, peer, claimed, &d, res, sf, stored)
 		if errors.Is(err, ErrInvalidMessage) {
 			return s.initiatorViolation(peer, err)
 		}
@@ -581,10 +591,10 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stre
 // deliver validates one Delivery against the claimed IDs and stores it. The
 // rules are those of pullsync.Sync (pkg/pullsync/pullsync.go), re-implemented
 // here. It removes the delivered ID from claimed, ends its claim and records
-// the outcome in res, and a stamp invalid on every node in sf. A delivery
-// whose claim had expired is counted late (want_claims). A violation wraps
-// ErrInvalidMessage.
-func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult, sf *shortfall) error {
+// the outcome in res, and a stamp invalid on every node in sf. A chunk it
+// stores is reported to stored, if not nil. A delivery whose claim had
+// expired is counted late (want_claims). A violation wraps ErrInvalidMessage.
+func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult, sf *shortfall, stored func()) error {
 	if len(d.Address) != swarm.HashSize {
 		return invalid("delivery address of %d bytes", len(d.Address))
 	}
@@ -673,6 +683,9 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()
 	res.Stored++
+	if stored != nil {
+		stored()
+	}
 	return nil
 }
 

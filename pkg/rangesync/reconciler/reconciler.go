@@ -34,9 +34,11 @@ const (
 	SyncRateWindow = rangesync.SyncRateWindow
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
-	// StartupGuardRate is the sentinel SyncRate reports while the start-up
-	// guard holds, and while a catch-up fetch is in flight but no chunk was
-	// counted in the window yet.
+	// StartupGuardRate is the least SyncRate reports while the start-up
+	// guard holds, while a range is registered for a striped transfer or a
+	// radius decrease's new half waits for one, and while a catch-up fetch
+	// is in flight and a chunk a catch-up stored is in the window or the
+	// catch-up grace holds (SyncRate).
 	StartupGuardRate = 1.0
 
 	// ScoreThreshold is the failure score above which a peer is
@@ -217,7 +219,10 @@ type Reconciler struct {
 	// node yet; the start-up guard holds while it is not empty.
 	awaiting         map[string]bool
 	pendingReconcile int // sessions whose Reconcile has not returned
-	catchUpFetches   int // catch-up fetches in flight
+	// catchUpFetches counts the catch-up fetches in flight (addCatchUpLocked);
+	// grace is what is left of their catch-up grace (graceBudget).
+	catchUpFetches int
+	grace          graceBudget
 	// servedFetches holds, per peer whose served sessions' fetcher runs
 	// (fetchServed), the wants queued for it.
 	servedFetches map[string]*servedQueue
@@ -297,6 +302,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
+		grace:         graceBudget{left: catchUpGrace},
 		servedFetches: make(map[string]*servedQueue),
 		stripeWake:    make(chan struct{}, 1),
 		gossipWake:    make(chan struct{}, 1),
@@ -385,24 +391,21 @@ func isEligible(local, remote rangesync.Status) bool {
 }
 
 // fetch fetches ids from peer (fetchFrom: IDs the peer does not deliver are
-// retried from other peers known to hold them) and counts the stored chunks
-// towards SyncRate when catchUp. The caller incremented catchUpFetches for a
-// catch-up fetch.
+// retried from other peers known to hold them; the stored chunks count
+// towards SyncRate when catchUp). The caller counted a catch-up fetch in
+// flight (addCatchUpLocked), which fetch ends.
 func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	if catchUp {
 		defer func() {
 			r.mu.Lock()
-			r.catchUpFetches--
+			r.addCatchUpLocked(-1)
 			r.mu.Unlock()
 		}()
 	}
 	if len(ids) == 0 {
 		return
 	}
-	out, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
-	if catchUp && out.stored > 0 {
-		r.rate.Add(out.stored)
-	}
+	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
 	if err != nil {
 		r.logger.Debug("fetch", "peer_address", peer, "error", err)
 	}
@@ -433,7 +436,7 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 	}
 	r.servedFetches[peer.ByteString()] = &servedQueue{seen: make(map[fingerprint.ID]struct{})}
 	if catchUp {
-		r.catchUpFetches++
+		r.addCatchUpLocked(1)
 	}
 	r.wg.Add(1)
 	go func() {
@@ -480,11 +483,7 @@ func (q *servedQueue) add(ids []storer.ChunkID, catchUp bool) {
 func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	k := peer.ByteString()
 	for {
-		out, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
-		if catchUp && out.stored > 0 {
-			r.rate.Add(out.stored)
-		}
-		if err != nil {
+		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp); err != nil {
 			r.logger.Debug("fetch", "peer_address", peer, "error", err)
 		}
 		r.mu.Lock()
@@ -496,11 +495,11 @@ func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catch
 		} else {
 			q.ids, q.seen, q.catchUp = nil, make(map[fingerprint.ID]struct{}), false
 			if nextCatchUp {
-				r.catchUpFetches++
+				r.addCatchUpLocked(1)
 			}
 		}
 		if catchUp {
-			r.catchUpFetches--
+			r.addCatchUpLocked(-1)
 		}
 		r.mu.Unlock()
 		if done {
@@ -527,30 +526,61 @@ func (r *Reconciler) checkGuardLocked() {
 }
 
 // SyncRate returns the rate, in chunks per second over SyncRateWindow, of
-// chunks fetched by sessions that resolved at least CatchUpMinDiff wants.
+// chunks stored by catch-up work: sessions that resolved at least
+// CatchUpMinDiff wants, striped transfers and their verification. A chunk
+// counts when it is stored, not when its fetch returns, so a catch-up that
+// stores chunks keeps the rate above 0 while it lasts and for the window
+// after.
+//
 // Until the first Status exchange with every eligible connected peer has
 // completed and any catch-up it triggered has started (sessions this node
 // initiates have resolved their difference, and every eligible peer with a
 // differing digest that initiates has run a session with this node), or until
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
-// eligible neighbor the guard holds until the timeout. While a catch-up
-// fetch is in flight, or a range is registered for a striped transfer
-// (queued, transferring or being verified), or a radius decrease's new half
-// waits for its transfer (at most radiusHold), it is at least
-// StartupGuardRate.
+// eligible neighbor the guard holds until the timeout. While a range is
+// registered for a striped transfer (queued, transferring or being verified),
+// or a radius decrease's new half waits for its transfer (at most
+// radiusHold), it is at least StartupGuardRate.
+//
+// A catch-up fetch in flight raises it to StartupGuardRate only while the
+// rate is above 0 (a catch-up stored a chunk within the window) or the
+// catch-up grace holds: catchUpGrace in all while no catch-up stores a
+// chunk, node-wide (graceBudget). So fetches that store nothing, a peer's
+// stalled opens or held Wants, cannot hold it above 0 past the grace,
+// however many peers start them.
 func (r *Reconciler) SyncRate() float64 {
 	if !r.started.Load() {
 		return StartupGuardRate
 	}
 	r.mu.Lock()
-	inFlight := r.catchUpFetches > 0 || len(r.stripeRegistry) > 0 || r.radiusHoldLocked()
-	guard := r.guardHoldsLocked(r.now())
+	now := r.now()
+	catchUp := r.catchUpFetches > 0
+	hold := len(r.stripeRegistry) > 0 || r.radiusHoldLocked() || r.guardHoldsLocked(now) || catchUp && r.grace.holds(now)
 	r.mu.Unlock()
 	rt := r.rate.Rate()
-	if (guard || inFlight) && rt < StartupGuardRate {
+	if (hold || catchUp && rt > 0) && rt < StartupGuardRate {
 		return StartupGuardRate
 	}
 	return rt
+}
+
+// addCatchUpLocked adds delta to the catch-up fetches in flight; the
+// catch-up grace drains while there is one. r.mu must be held.
+func (r *Reconciler) addCatchUpLocked(delta int) {
+	r.catchUpFetches += delta
+	r.grace.drain(r.now(), r.catchUpFetches > 0)
+}
+
+// countCatchUp counts n chunks a catch-up stored towards SyncRate and
+// refills the catch-up grace.
+func (r *Reconciler) countCatchUp(n int) {
+	if n <= 0 {
+		return
+	}
+	r.rate.Add(n)
+	r.mu.Lock()
+	r.grace.refill(r.now())
+	r.mu.Unlock()
 }
 
 // Fail implements rangesync.PeerScorer: it raises the failure score of peer
