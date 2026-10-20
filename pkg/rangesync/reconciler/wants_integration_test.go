@@ -607,3 +607,89 @@ func TestSyncRateCatchUpStoring(t *testing.T) {
 		t.Fatalf("peer scored %d", score)
 	}
 }
+
+// gatedFetchOpens is a streamer whose first fetch stream open waits until
+// release is closed; entered is closed when it starts.
+type gatedFetchOpens struct {
+	p2p.StreamerDisconnecter
+	entered, release chan struct{}
+	first            sync.Once
+}
+
+func (g *gatedFetchOpens) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream == rangesync.FetchStreamName {
+		first := false
+		g.first.Do(func() { first = true })
+		if first {
+			close(g.entered)
+			select {
+			case <-g.release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+	return g.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+}
+
+// TestWantsServedChurn (T4.5 part 2c fix round 2) is honest churn in the
+// sessions this node serves: a peer lists IDs in one session and again in
+// the next, which completes while this node's fetch of the first list runs;
+// meanwhile the peer evicted them, so it delivers none. The IDs of the
+// running batch are not queued again, so the peer is asked for them once
+// and not scored: asked again, it would leave them missing again, which
+// counts as junk listed again (the shortfall rules), an offense, and a
+// second one within the shortfall window disconnects it.
+func TestWantsServedChurn(t *testing.T) {
+	t.Parallel()
+
+	gate := &gatedFetchOpens{entered: make(chan struct{}), release: make(chan struct{})}
+	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{
+		roundInterval: time.Hour,
+		streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+			gate.StreamerDisconnecter = s
+			return gate
+		},
+	})
+	var once sync.Once
+	release := func() { once.Do(func() { close(gate.release) }) }
+	t.Cleanup(release)
+	sentinel := chunktesting.GenerateTestRandomChunk()
+	bAddr := addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, sentinel)
+	a.routes[b.addr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.Start(context.Background())
+
+	evicted := make([]storer.ChunkID, 10) // above the shortfall tolerance
+	isEvicted := make(map[string]bool, len(evicted))
+	for i := range evicted {
+		evicted[i] = chunkIDOf(t, chunktesting.GenerateTestRandomChunk())
+		isEvicted[evicted[i].Address.ByteString()] = true
+	}
+	a.r.Wants(b.addr, evicted)
+	waitClosed(t, "the first fetch's open", gate.entered)
+	a.r.Wants(b.addr, evicted)                                  // the next session listed them again
+	a.r.Wants(b.addr, []storer.ChunkID{chunkIDOf(t, sentinel)}) // fetched after them
+	release()
+	waitFor(t, "the sentinel", func() bool { return a.has(t, sentinel) })
+
+	asked := 0
+	for _, want := range a.wantsTo(t, b.addr) {
+		for _, id := range want {
+			if isEvicted[id.ByteString()] {
+				asked++
+			}
+		}
+	}
+	if asked != len(evicted) {
+		t.Fatalf("the evicted IDs were asked for %d times in all, want %d (once each)", asked, len(evicted))
+	}
+	if score := a.r.Score(b.addr); score != 0 {
+		t.Fatalf("peer scored %d", score)
+	}
+	if a.rec.IsDisconnected(b.addr) {
+		t.Fatal("peer disconnected")
+	}
+}

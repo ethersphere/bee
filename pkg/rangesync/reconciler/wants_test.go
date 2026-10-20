@@ -1306,6 +1306,43 @@ func TestWantsServedFetcher(t *testing.T) {
 	noFetch("after its queue drained")
 }
 
+// TestWantsServedBatchesNotRequeued (T4.5 part 2c fix round 2): the wants
+// of a peer's served sessions that the running batch, or the batch before
+// it, asked for are not queued again, so that the peer is not asked twice
+// for an ID it may have evicted meanwhile (TestWantsServedChurn).
+func TestWantsServedBatchesNotRequeued(t *testing.T) {
+	t.Parallel()
+
+	svc := newWantService(status(1))
+	calls := make(chan chan struct{})
+	svc.callGate = calls
+	h := newWantHarness(t, svc)
+	h.r.Start(context.Background())
+	x, y, z := distinctChunkIDs(5), distinctChunkIDs(5), distinctChunkIDs(5)
+	cat := func(lists ...[]storer.ChunkID) []storer.ChunkID { return slices.Concat(lists...) }
+
+	h.r.Wants(lower, x)
+	release := <-calls // x runs
+	h.r.Wants(lower, cat(x, y))
+	close(release)
+	release = <-calls // y runs; x was the batch before
+	h.r.Wants(lower, cat(x, y, z))
+	close(release)
+	close(<-calls) // z
+	waitFor(t, "three fetches", func() bool { return len(svc.fetchesFrom(lower)) == 3 })
+	got := svc.fetchesFrom(lower)
+	for i, want := range [][]storer.ChunkID{x, y, z} {
+		if !slices.EqualFunc(got[i], want, func(a, b storer.ChunkID) bool { return a.Address.Equal(b.Address) }) {
+			t.Fatalf("fetch %d asked for %d IDs, want the %d of its batch only", i, len(got[i]), len(want))
+		}
+	}
+	select {
+	case <-calls:
+		t.Fatal("a fourth fetch")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 // stallFetchOpens is a streamer whose fetch stream opens wait until the
 // test ends them, then fail (a peer that stalls each headers exchange for as
 // long as it likes and then resets it), or until their context ends. Each

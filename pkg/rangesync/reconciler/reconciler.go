@@ -417,7 +417,8 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 // it is a no-op before Start and after Close. One fetcher per peer fetches
 // the wants of its served sessions (fetchServed): wants listed while it runs
 // are queued, merged without duplicates, at most maxServedPending of them
-// (the next sessions list the rest again), and fetched next.
+// (the next sessions list the rest again), and fetched next. Wants of the
+// running batch and of the one before are not queued.
 func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 	if !r.started.Load() || len(ids) == 0 {
 		return
@@ -434,7 +435,7 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 		q.add(ids, catchUp)
 		return
 	}
-	r.servedFetches[peer.ByteString()] = &servedQueue{seen: make(map[fingerprint.ID]struct{})}
+	r.servedFetches[peer.ByteString()] = &servedQueue{seen: idSet(ids)}
 	if catchUp {
 		r.addCatchUpLocked(1)
 	}
@@ -450,8 +451,13 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 const maxServedPending = wantset.MaxClaimsPerPeer
 
 // servedQueue holds the wants of a peer's served sessions listed while its
-// fetcher runs: ids, without duplicates (seen), and whether one of the lists
-// merged into them counts towards SyncRate (catchUp). r.mu guards it.
+// fetcher runs: ids, and whether one of the lists merged into them counts
+// towards SyncRate (catchUp). seen holds the IDs queued, those of the
+// running batch and those of the batch before, none of which is queued
+// again: the peer was or is being asked for them. Asked again, an ID it
+// evicted meanwhile would be left missing twice, which the shortfall rules
+// count as junk listed again (honest churn: a session that completed while
+// the batch ran listed it before the eviction). r.mu guards it.
 type servedQueue struct {
 	ids     []storer.ChunkID
 	seen    map[fingerprint.ID]struct{}
@@ -475,6 +481,21 @@ func (q *servedQueue) add(ids []storer.ChunkID, catchUp bool) {
 	}
 }
 
+// idSet returns the set of the IDs in lists.
+func idSet(lists ...[]storer.ChunkID) map[fingerprint.ID]struct{} {
+	n := 0
+	for _, ids := range lists {
+		n += len(ids)
+	}
+	set := make(map[fingerprint.ID]struct{}, n)
+	for _, ids := range lists {
+		for _, c := range ids {
+			set[fingerprint.NewID(c.Address, c.StampHash)] = struct{}{}
+		}
+	}
+	return set
+}
+
 // fetchServed is the fetcher of peer's served sessions: it fetches ids
 // (fetchFrom), then the wants queued meanwhile, one batch at a time, until
 // none is queued or Close. A batch that counts towards SyncRate (catchUp;
@@ -493,7 +514,7 @@ func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catch
 		if done {
 			delete(r.servedFetches, k)
 		} else {
-			q.ids, q.seen, q.catchUp = nil, make(map[fingerprint.ID]struct{}), false
+			q.ids, q.seen, q.catchUp = nil, idSet(ids, next), false
 			if nextCatchUp {
 				r.addCatchUpLocked(1)
 			}
