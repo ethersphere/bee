@@ -202,8 +202,9 @@ func (r *Reconciler) transferStripes(ctx context.Context, stripes []Stripe, star
 }
 
 // peerLocks serializes the stripe sessions with each peer (one session per
-// peer) when a reassigned stripe moves to a peer that has stripes of its
-// own.
+// peer), and the fetches that follow them, when a reassigned stripe moves to
+// a peer that has stripes of its own. A stripe frees its peer's lock while
+// it waits to ask again for IDs the want set held (resolvePending).
 type peerLocks struct {
 	mu    sync.Mutex
 	locks map[string]*peerLock
@@ -269,10 +270,10 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 // maxStripeRestarts) = 36 attempts, each of at most StripeTimeout on its
 // stripe clock (9 h at the defaults), of which at most 1 + maxStripeRestarts
 // + maxStripeReassign = 12 (3 h) when only this node holds them up. Not on
-// the stripe clock, per attempt: the wait for its slots before the clock
-// starts, and its waits to retry the peer's Busy, at most
-// maxStripeBusyRetries of stripeRetryInterval plus the wait for the slots
-// again.
+// the stripe clock, per attempt: the wait for the peer's stripe lock and for
+// the slots before the clock starts, and the waits to retry the peer's Busy,
+// at most maxStripeBusyRetries of stripeRetryInterval plus the wait for the
+// slots again.
 func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks, started func()) StripeResult {
 	total := StripeResult{Range: st.Range}
 	tried := make(map[string]bool)

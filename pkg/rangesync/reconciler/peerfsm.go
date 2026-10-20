@@ -191,7 +191,8 @@ func transition(s fsmState, e fsmEvent) (fsmState, bool) {
 const (
 	// sessionBackoffBase is the wait before the next session with a peer
 	// after its second Busy or failed session in a row; each further one
-	// doubles it. The first is retried by the next round.
+	// doubles it. The first is retried by the next round, which runs at
+	// least MinRoundInterval after the last (scheduler.go).
 	sessionBackoffBase = rangesync.MinRoundInterval
 	// maxSessionBackoff bounds the wait of a peer that stays Busy or keeps
 	// failing; it is still retried that often.
