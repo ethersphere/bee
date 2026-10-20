@@ -173,6 +173,7 @@ type Service struct {
 	statusStreams    *peerStreamLimiter
 	reconcileStreams *peerStreamLimiter
 	fetchStreams     *peerStreamLimiter
+	fetchStreamsOut  *peerSlots         // maxFetchStreamsOut, requester side
 	peerSessions     *peerStreamLimiter // MaxConcurrentSessionsPerPeer
 	sessions         chan struct{}      // MaxConcurrentSessions tokens
 
@@ -244,6 +245,7 @@ func New(
 		statusStreams:    newPeerStreamLimiter(maxPeerStatusStreams),
 		reconcileStreams: newPeerStreamLimiter(maxPeerReconcileStreams),
 		fetchStreams:     newPeerStreamLimiter(maxPeerFetchStreams),
+		fetchStreamsOut:  newPeerSlots(maxFetchStreamsOut),
 		peerSessions:     newPeerStreamLimiter(MaxConcurrentSessionsPerPeer),
 		sessions:         make(chan struct{}, MaxConcurrentSessions),
 		ctx:              ctx,

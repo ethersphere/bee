@@ -49,7 +49,10 @@ func (s *Service) Local() Local {
 	return s.local
 }
 
-const MaxPeerFetchStreams = maxPeerFetchStreams
+const (
+	MaxPeerFetchStreams = maxPeerFetchStreams
+	MaxFetchStreamsOut  = maxFetchStreamsOut
+)
 
 var ErrStreamLimitExceeded = errStreamLimitExceeded
 

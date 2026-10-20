@@ -5,6 +5,7 @@
 package rangesync
 
 import (
+	"context"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -67,4 +68,55 @@ func (l *peerStreamLimiter) clear(peer swarm.Address) {
 	l.mu.Lock()
 	delete(l.pools, peer.ByteString())
 	l.mu.Unlock()
+}
+
+// peerSlots bounds the concurrent outgoing streams of one kind per peer:
+// acquire waits for one of limit slots of the peer. A peer's pool is
+// forgotten once no stream holds or waits for one of its slots, so the pools
+// of peers that left do not pile up.
+type peerSlots struct {
+	mu    sync.Mutex
+	limit int
+	pools map[string]*slotPool
+}
+
+// slotPool is the pool of one peer; refs counts its holders and waiters.
+type slotPool struct {
+	c    chan struct{}
+	refs int
+}
+
+func newPeerSlots(limit int) *peerSlots {
+	return &peerSlots{limit: limit, pools: make(map[string]*slotPool)}
+}
+
+// acquire takes one of the peer's slots, waiting for one until ctx ends, and
+// returns the release function, which must be called once.
+func (l *peerSlots) acquire(ctx context.Context, peer swarm.Address) (release func(), err error) {
+	key := peer.ByteString()
+	l.mu.Lock()
+	pool, ok := l.pools[key]
+	if !ok {
+		pool = &slotPool{c: make(chan struct{}, l.limit)}
+		l.pools[key] = pool
+	}
+	pool.refs++
+	l.mu.Unlock()
+	unref := func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if pool.refs--; pool.refs == 0 {
+			delete(l.pools, key)
+		}
+	}
+	select {
+	case pool.c <- struct{}{}:
+		return func() {
+			<-pool.c
+			unref()
+		}, nil
+	case <-ctx.Done():
+		unref()
+		return nil, context.Cause(ctx)
+	}
 }

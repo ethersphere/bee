@@ -28,8 +28,16 @@ import (
 const (
 	// maxPeerFetchStreams is the maximum number of concurrent incoming fetch
 	// streams per peer. A requester with MaxClaimsPerPeer claims has at most
-	// four Wants of MaxWantIDs outstanding.
+	// four Wants of MaxWantIDs outstanding, and this node's own requests at
+	// most maxFetchStreamsOut.
 	maxPeerFetchStreams = 4
+	// maxFetchStreamsOut is the maximum number of concurrent fetch streams
+	// this node opens to one peer, whatever fetches them (round sessions,
+	// stripes, retries, the wants of served sessions): one fewer than the
+	// peer's limit, so that a stream whose handler has not returned on the
+	// peer yet (as for maxPeerStatusStreams) leaves an honest requester
+	// within it.
+	maxFetchStreamsOut = maxPeerFetchStreams - 1
 
 	// handleMaxChunksPerSecond is the number of chunks per second the fetch
 	// handler delivers to one peer, the same budget as pullsync's handler.
@@ -109,10 +117,13 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // no stream is opened. While a fetch holds the claim on an ID no other fetch
 // requests it, so a chunk is delivered twice only after a claim expired. The
 // claims of an ID end with Done when it was stored, with Reject when it was
-// rejected, and with Release otherwise, on every return. The node-wide fetch
-// rate (Options.FetchRate) is waited for before the IDs of each Want are
-// claimed. A holder that has not finished within Options.FetchTimeout of the
-// Want is a violation. Close ends a running fetch.
+// rejected, and with Release otherwise, on every return. Before the IDs of
+// each Want are claimed, it waits for one of the fetch streams this node
+// opens to peer (at most maxFetchStreamsOut at once, one fewer than the
+// peer's own limit, whatever runs the fetches), then for the node-wide fetch
+// rate (Options.FetchRate). A holder that has not finished within
+// Options.FetchTimeout of the Want is a violation. Close ends a running
+// fetch.
 //
 // Deliveries are validated as pullsync.Sync validates them. A delivery that
 // was not requested (or delivered twice), does not decode or is neither a
@@ -142,22 +153,34 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 		if len(cands) == 0 {
 			continue
 		}
-		// wait before claiming, so that the wait cannot outlast the claims
-		if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
-			return res, fmt.Errorf("fetch limiter: %w", err)
-		}
-		claimed, err := s.claim(peer, cands, &res)
-		if err != nil {
-			return res, err
-		}
-		if len(claimed) == 0 {
-			continue
-		}
-		if err := s.fetch(ctx, peer, claimed, &res); err != nil {
+		if err := s.want(ctx, peer, cands, &res); err != nil {
 			return res, err
 		}
 	}
 	return res, nil
+}
+
+// want requests cands from peer in one Want: it takes one of the peer's
+// fetch stream slots (maxFetchStreamsOut), then waits for the fetch rate,
+// claims cands and fetches the claimed IDs. The waits come before the
+// claims, so that they cannot outlast them.
+func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult) error {
+	release, err := s.fetchStreamsOut.acquire(ctx, peer)
+	if err != nil {
+		return fmt.Errorf("fetch stream slot: %w", err)
+	}
+	defer release()
+	if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
+		return fmt.Errorf("fetch limiter: %w", err)
+	}
+	claimed, err := s.claim(peer, cands, res)
+	if err != nil {
+		return err
+	}
+	if len(claimed) == 0 {
+		return nil
+	}
+	return s.fetch(ctx, peer, claimed, res)
 }
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of

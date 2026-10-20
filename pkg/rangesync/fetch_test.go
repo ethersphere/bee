@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -309,6 +310,91 @@ func delivery(t *testing.T, ch swarm.Chunk) *pb.Delivery {
 		t.Fatal(err)
 	}
 	return &pb.Delivery{Address: ch.Address().Bytes(), Data: ch.Data(), Stamp: st}
+}
+
+// TestFetchStreamsPerPeer checks the requester side's cap on its concurrent
+// fetch streams to one peer: fetches from every source (round, stripe,
+// retry, served sessions' wants) run through FetchWithResult, and however
+// many run at once, at most MaxFetchStreamsOut streams to the peer are open,
+// below the peer's own limit (MaxPeerFetchStreams), whose handler would
+// disconnect this node past it. Then every fetch completes, and none of
+// them hits the peer's limit.
+func TestFetchStreamsPerPeer(t *testing.T) {
+	t.Parallel()
+
+	if rangesync.MaxFetchStreamsOut >= rangesync.MaxPeerFetchStreams {
+		t.Fatalf("requester cap %d not below the peer's limit %d", rangesync.MaxFetchStreamsOut, rangesync.MaxPeerFetchStreams)
+	}
+	const fetches = 2 * rangesync.MaxPeerFetchStreams
+	chs := validChunks(fetches + 1)
+	a := newTestNode(t)
+	b := newTestNode(t, chs...)
+
+	// b's own fetch handler, held at a gate that counts the streams
+	var inFlight, peak atomic.Int32
+	gate := make(chan struct{})
+	spec := b.svc.Protocol()
+	for i := range spec.StreamSpecs {
+		if spec.StreamSpecs[i].Name != rangesync.FetchStreamName {
+			continue
+		}
+		handle := spec.StreamSpecs[i].Handler
+		spec.StreamSpecs[i].Handler = func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+			n := inFlight.Add(1)
+			for m := peak.Load(); n > m && !peak.CompareAndSwap(m, n); m = peak.Load() {
+			}
+			<-gate
+			defer inFlight.Add(-1)
+			return handle(ctx, p, s)
+		}
+	}
+	a.rec.SetProtocols(spec)
+	b.rec.SetProtocols(a.svc.Protocol())
+
+	ids := idsOf(t, chs[:fetches]...)
+	errs := make(chan error, fetches)
+	for _, id := range ids {
+		go func() {
+			_, err := a.svc.Fetch(context.Background(), b.addr, []storer.ChunkID{id})
+			errs <- err
+		}()
+	}
+	waitFor(t, "streams at the cap", func() bool { return inFlight.Load() >= rangesync.MaxFetchStreamsOut })
+	time.Sleep(50 * time.Millisecond) // more streams, if uncapped, arrive meanwhile
+	if got := peak.Load(); got > rangesync.MaxFetchStreamsOut {
+		t.Fatalf("%d fetch streams open to the peer at once, want at most %d", got, rangesync.MaxFetchStreamsOut)
+	}
+	// the fetches that wait for a stream hold no claims
+	if l := a.svc.WantSet().Len(); l != rangesync.MaxFetchStreamsOut {
+		t.Fatalf("want set holds %d claims, want %d (the open streams' only)", l, rangesync.MaxFetchStreamsOut)
+	}
+	// a fetch whose context ends while it waits returns, having claimed nothing
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	extra := idsOf(t, chs[fetches])
+	if _, err := a.svc.FetchWithResult(ctx, b.addr, extra); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("fetch waiting for a stream: got %v, want %v", err, context.DeadlineExceeded)
+	}
+	if a.svc.WantSet().HeldBy(fpID(extra[0]), b.addr) {
+		t.Fatal("a fetch that waited for a stream left its claim")
+	}
+	close(gate)
+	for range fetches {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertStored(t, a, true, ids...)
+	records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range records {
+		if err := r.Err(); err != nil {
+			t.Fatalf("peer's fetch handler: %v", err)
+		}
+	}
+	assertNotScored(t, a, b.addr)
 }
 
 func TestFetchViolations(t *testing.T) {
