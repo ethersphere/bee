@@ -413,6 +413,7 @@ func TestFetchClaimRechecksReserve(t *testing.T) {
 		t.Fatalf("cross protocol duplicates %v, want 0", d)
 	}
 	assertWantClaims(t, a, map[string]float64{"granted": 1})
+	assertFetchSkipped(t, a, map[string]float64{"in_reserve": 1, "held": 0})
 	assertNoClaims(t, a)
 }
 

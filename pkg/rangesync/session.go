@@ -816,22 +816,6 @@ func (s *Session) capExclusions() {
 	}
 }
 
-// pendingReplies reports the state kept for answers to the peer's Reply
-// pages: the intervals with an exclusion list, the IDs in those lists, and
-// all pending intervals.
-func (s *Session) pendingReplies() (withExclusion, excludedIDs, intervals int) {
-	for _, a := range s.answers {
-		for _, iv := range a.intervals {
-			if len(iv.excl) > 0 {
-				withExclusion++
-			}
-			excludedIDs += len(iv.excl)
-		}
-		intervals += len(a.intervals)
-	}
-	return withExclusion, excludedIDs, intervals
-}
-
 // Upper bounds of the encoded size of the parts a Session emits, including
 // the framing of the part inside its Message (tag and length varint, at most
 // 1 + 3 bytes, once for the Part in the Message and once for the kind in the

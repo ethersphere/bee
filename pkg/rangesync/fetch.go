@@ -56,6 +56,11 @@ const (
 
 	// fetchKey is the key of the node-wide fetch limiter.
 	fetchKey = ""
+
+	// skippedInReserve is the fetch_skipped_total reason of an ID the
+	// reserve holds already. The want set's refusals use their own names
+	// (wantset.Result.String): an ID another fetch's claim holds is "held".
+	skippedInReserve = "in_reserve"
 )
 
 // errNoStampValidator rejects every delivery of a Service created without a
@@ -276,7 +281,7 @@ func (s *Service) wantCandidates(peer swarm.Address, ids []storer.ChunkID, res *
 			return nil, nil, fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
 		}
 		if has {
-			s.metrics.FetchSkipped.WithLabelValues("held").Inc()
+			s.metrics.FetchSkipped.WithLabelValues(skippedInReserve).Inc()
 			continue
 		}
 		id := fingerprint.NewID(c.Address, c.StampHash)
@@ -342,7 +347,7 @@ func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID, res *FetchRe
 			}
 			if has {
 				s.wantSet.Done(id)
-				s.metrics.FetchSkipped.WithLabelValues("held").Inc()
+				s.metrics.FetchSkipped.WithLabelValues(skippedInReserve).Inc()
 				continue
 			}
 			claimed[id] = struct{}{}

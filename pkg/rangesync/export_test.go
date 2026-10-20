@@ -18,7 +18,16 @@ import (
 // pages: the intervals that keep an exclusion list, the IDs in those lists,
 // and all pending intervals.
 func (s *Session) PendingReplies() (withExclusion, excludedIDs, intervals int) {
-	return s.pendingReplies()
+	for _, a := range s.answers {
+		for _, iv := range a.intervals {
+			if len(iv.excl) > 0 {
+				withExclusion++
+			}
+			excludedIDs += len(iv.excl)
+		}
+		intervals += len(a.intervals)
+	}
+	return withExclusion, excludedIDs, intervals
 }
 
 // CacheCapacity returns the length of the cached prefix of the stream of r
@@ -79,6 +88,11 @@ func (s *Service) DrainFetchLimiter() bool {
 // them, and reports whether it did.
 func (s *Service) TakeFetchTokens(n int) bool {
 	return s.fetchLimiter.Allow(fetchKey, n)
+}
+
+// FetchSkipped returns the fetch_skipped_total counter of reason.
+func (s *Service) FetchSkipped(reason string) float64 {
+	return counterValue(s.metrics.FetchSkipped.WithLabelValues(reason))
 }
 
 // WantClaims returns the want_claims counter of result.

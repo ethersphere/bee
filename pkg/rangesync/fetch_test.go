@@ -197,6 +197,17 @@ func TestFetchSkipsHeld(t *testing.T) {
 	if len(wants) != 1 || len(wants[0].IDs) != 1 || !bytes.Equal(wants[0].IDs[0].Address, ids[1].Address.Bytes()) {
 		t.Fatalf("wants %v", wants)
 	}
+	assertFetchSkipped(t, a, map[string]float64{"in_reserve": 1, "held": 0})
+}
+
+// assertFetchSkipped checks the fetch_skipped_total counters of n by reason.
+func assertFetchSkipped(t *testing.T, n *testNode, want map[string]float64) {
+	t.Helper()
+	for reason, v := range want {
+		if got := n.svc.FetchSkipped(reason); got != v {
+			t.Errorf("fetch_skipped_total{reason=%q} = %v, want %v", reason, got, v)
+		}
+	}
 }
 
 func TestFetchSkipsOutOfRadius(t *testing.T) {
@@ -255,6 +266,7 @@ func TestFetchSkipsClaimed(t *testing.T) {
 	if l := a.svc.WantSet().Len(); l != 1 {
 		t.Fatalf("want set holds %d claims, want 1", l)
 	}
+	assertFetchSkipped(t, a, map[string]float64{"held": 1, "in_reserve": 0})
 }
 
 func TestFetchInvalidStamp(t *testing.T) {
