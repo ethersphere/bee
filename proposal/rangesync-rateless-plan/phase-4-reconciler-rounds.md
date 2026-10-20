@@ -1488,6 +1488,81 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   peer input; `followup-fuzzing.md` gains a line for the changed invariants of the T1.10 target.
   `Local.Symbols` cancellation stays a follow-up (not trivial), and so does the per-peer fetch credit.
 
+- **(T4.5 part 2c fix round 1, High) A failed fetch open backs off the peer's opens; served
+  sessions' fetches share one fetcher per peer; waiting fetches are bounded.** This supersedes the
+  part 2c item 1 entry's "What a failed open costs now" where it says the open costs nothing but its
+  stream slot: it is still never charged or scored, but it now backs off. The review's attack: a peer
+  starts a served session every 2.5 s (`PeerSessionInterval`), each listing the same 256 or more junk
+  IDs, and stalls every fetch open up to the fetch timeout. Nothing was claimed, so the queued calls
+  never merged; nothing was scored; calls arrived at about 0.4/s while two slots drained about 0.2/s,
+  and each queued call held a catch-up fetch, so `SyncRate` stayed at 1 and `isFullySynced` false
+  (storage incentives off, no radius decrease). The fix:
+  - *Open backoff* (`openGate`). An open that fails or times out backs off the peer's opens for
+    `openBackoffBase = 5s`, doubling with each failed probe up to `maxOpenBackoff = 5min`. While it
+    runs, the peer's fetch calls fail at once (`errOpenBackoff`), before they wait for a stream slot
+    and again after, without a claim or a score. Once it ends, one open probes the peer at a time; an
+    open that succeeds ends the backoff, and a disconnect clears it. Opens in flight when the first
+    fails count with it, so one transient failure is one backoff of 5 s. An open this node ends, or one
+    that finds the peer gone (`p2p.ErrPeerNotFound`), does not back off, and a failure recorded for a
+    peer whose Status is gone meanwhile is cleared (the disconnect hook may have run first). The gate
+    reads the clock only for a peer it backs off.
+  - *One fetcher per peer for served sessions* (`fetchServed`). The wants that sessions this node
+    served list while the peer's fetcher runs are queued, merged without duplicates and capped at
+    `maxServedPending = MaxClaimsPerPeer` (the next sessions list the rest again), and fetched as one
+    batch after it. A catch-up batch counts towards `SyncRate` while it runs, the queue does not, and
+    the next batch is counted before the last one's count ends. This resolves "(T4.5 part 2b) One
+    wants fetcher per peer" for served sessions; retries already run one at a time per peer.
+  - *Waiters* are bounded per peer: past `maxFetchWaiters = 16` calls waiting for the peer's stream
+    slots, a call fails at once (`errFetchQueueFull`). Honest fetches from one peer are fewer: a round
+    fetch, one retry, the served fetcher, and the stripe sessions.
+
+  Against the attack, the peer now has at most one catch-up fetch in flight, opened once per backoff,
+  and the batches in between fail in microseconds. What remains is the probe: it may stall for the
+  fetch timeout (15 s) while its batch counts, so the peer can hold `SyncRate` at 1 for 15 s per
+  backoff, about 5% of the time once the backoff has reached its maximum (after about five minutes),
+  more before that, and k such neighbors up to about k times that (Follow-ups). Honest-safety: a peer
+  whose inbound streams stay full is still neither scored nor disconnected; its fetches resume at most
+  `maxOpenBackoff` after its streams free up, and other peers serve the IDs meanwhile. A transient
+  failure costs that peer's fetches 5 s: round and served fetches fail (their IDs come back with the
+  next session), and stripes are reassigned unscored. This node's own resource refusal backs off the
+  peer's opens too, since rangesync can no longer tell it apart (Low 1). That is not the reconciler's
+  session backoff nor a score, and opening fewer streams is the right reaction to it, but it delays
+  that peer's fetches by up to `maxOpenBackoff` after this node recovers (Follow-ups).
+- **(T4.5 part 2c fix round 1, Low 1) No `ErrLocal` for this node's resource refusal.** This
+  supersedes the part 2c item 2 entry. Its "the reconciler's `localCause` (no backoff) and stripes" was
+  wrong: fetch errors never reach `localCause`, which judges session errors only, and stripes'
+  `localBusy` ignores `ErrLocal`, so the wrap changed no behavior. The wrap and the
+  `github.com/libp2p/go-libp2p/core/network` import are gone; no package outside `pkg/p2p` imports it.
+  The read of the error chain stands (this node's refusal wraps `network.ErrResourceLimitExceeded`,
+  the peer's is a reset) for a `pkg/p2p` sentinel (Follow-ups).
+- **(T4.5 part 2c fix round 1, Low 2) Nested initiators are taken over at once during start-up.**
+  Since item 6, the wide side of an in-sync nested pair runs no session, so on the narrow side the
+  initiator's `awaiting` entry cleared only at the narrow side's own takeover, 60 to 90 s later, and
+  `SyncRate` stayed at 1.0 that much longer after a restart (up to `StartupGuardTimeout`). Now, while
+  the start-up guard holds, a peer that initiates, has not run a session with this node and whose
+  digest is not comparable over the session root is taken over at once. This narrows, for that case
+  only, the T4.3 fix round 2 rule that a peer with another root is taken over after
+  `2 × MaxRoundInterval + jitter`. It costs one session per such peer at start-up, which the wide side
+  ran before item 6. Once the peer has run a session with this node (`Succeed`, `served`) or the guard
+  is released, the usual wait applies. If the wide side starts at the same time, the existing
+  collision rules apply. Clearing `awaiting` instead was rejected: the narrow side cannot compare the
+  digests, so it would release the guard without knowing it is in sync.
+- **(T4.5 part 2c fix round 1, Low 3) Tests.** `TestFetchInboundFullNotDisconnected` now holds every
+  open for the fetch timeout and asserts each neighbor's backoff on the fake clock (at most seven
+  opens in five minutes, then a fetch once the streams free up). The High: `TestFetchStalledOpensBackOff`
+  (the review's PoC: 80 arrivals, at most 12 calls in flight, at most two opens, no claim, no score;
+  59 in flight and growing before the fix) and `TestWantsStalledOpens` (the reconciler over a real
+  service: at most one catch-up fetch in flight, one open, the count ends with the sessions). Also new:
+  `TestFetchStreamWaitersBounded`, `TestFetchBackoffSlotsBusy`, `TestOpenGate`, `TestWantsServedFetcher`,
+  `TestStartupGuardNestedInitiator`. Changed by design: `TestFetchStreamOpenNotCharged` (each open is a
+  probe after the last backoff; adds this node's resource limit, and `TestFetchStreamOpenLocalLimit`
+  is gone), `TestFetchStreamOpenHeld` (the backoff between held opens), `TestFetchStreamOpenHonest`
+  (a transient failure backs off for `OpenBackoffBase`; a peer that is gone and this node's
+  cancellations do not; a disconnect during a failing open leaves no backoff),
+  `TestSyncRateSteadyStateUploads` (distinct IDs, as served wants now merge duplicates).
+- **(T4.5 part 2c fix round 1) Contracts and scope.** Unchanged as in part 2c. No exported identifier
+  is added; the new errors are unexported. There is no `pkg/node`, `go.mod` or proto change.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -2096,3 +2171,24 @@ _(sessions append here)_
     digest comparison and the stripe registry changed: `TestRound*`, `TestSessionRecheck*`,
     `TestRadius*`, `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestSREP*`,
     `TestWantSet*`, `TestPeerState*`.
+- **(T4.5 part 2c fix round 1) Resolved: the review's High and Lows 1 to 3.** See the Decisions log.
+  This also resolves "(T4.5 part 2b) One wants fetcher per peer" for the fetches of served sessions.
+- **(T4.5 part 2c fix round 1) A probe can still hold `SyncRate` up part of the time.** A peer that
+  stalls every fetch open holds its coalesced catch-up batch in flight for the fetch timeout once per
+  open backoff: about 5% of the time at `maxOpenBackoff`, more in its first minutes, and k such
+  neighbors add up. Counting a fetch as catch-up only once its Want went out (a hook from rangesync),
+  or a shorter open timeout than `FetchTimeout`, would close it.
+- **(T4.5 part 2c fix round 1 → p2p) A sentinel for this node's own resource refusal.** Low 1 dropped
+  the `ErrLocal` classification, which needed `github.com/libp2p/go-libp2p/core/network`. A `pkg/p2p`
+  sentinel would let a refused fetch open skip the per-peer open backoff (or back off node-wide), and
+  serves "(T4.5 part 2c) Session and Status opens refused by this node's resource manager" too.
+- **(T4.5 part 2c fix round 1) Tests to run with `-race` on CI.** These ran with `-count=20 -cpu=1,2,4`
+  instead, and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchStalledOpensBackOff`, `TestFetchStreamWaitersBounded`,
+    `TestFetchBackoffSlotsBusy`, `TestOpenGate`. Changed: `TestFetchInboundFullNotDisconnected`,
+    `TestFetchStreamOpenNotCharged`, `TestFetchStreamOpenHeld`, `TestFetchStreamOpenHonest`. Re-run,
+    because `want` and the open changed: `TestFetch*`.
+  - `pkg/rangesync/reconciler`, new: `TestWantsServedFetcher`, `TestWantsStalledOpens`,
+    `TestStartupGuardNestedInitiator`. Changed: `TestSyncRateSteadyStateUploads`. Re-run, because
+    `Wants` and the round's takeover changed: `TestStartupGuard*`, `TestSyncRate*`, `TestRound*`,
+    `TestWantSet*`, `TestSREP*`, `TestDualMode*`, `TestResponderWantsFetched`.
