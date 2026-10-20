@@ -1516,12 +1516,13 @@ func TestTransactionSendAndWait(t *testing.T) {
 	recipient := common.HexToAddress("0xabcd")
 	chainID := big.NewInt(5)
 
-	// newService estimates every call at estimatedGas, delivers receipts in
-	// send order and records the gas limit of every sent transaction.
+	// newService estimates every call at estimatedGas, records the gas limit
+	// of every sent transaction and delivers receipts[nonce] to whoever
+	// watches a transaction: both the caller of WaitForReceipt and the
+	// pending-transaction watcher that Send starts in the background.
 	newService := func(t *testing.T, estimatedGas uint64, receipts []types.Receipt) (transaction.Service, *[]uint64) {
 		t.Helper()
 		var sentGas []uint64
-		mined := 0
 		store := storemock.NewStateStore()
 		testutil.CleanupCloser(t, store)
 
@@ -1553,12 +1554,11 @@ func TestTransactionSendAndWait(t *testing.T) {
 			chainID,
 			monitormock.New(
 				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-					if mined >= len(receipts) {
-						return nil, nil, fmt.Errorf("no receipt prepared for send %d", mined+1)
+					if nonce >= uint64(len(receipts)) {
+						return nil, nil, fmt.Errorf("no receipt prepared for nonce %d", nonce)
 					}
-					receipt := receipts[mined]
+					receipt := receipts[nonce]
 					receipt.TxHash = txHash
-					mined++
 					receiptC := make(chan types.Receipt, 1)
 					receiptC <- receipt
 					return receiptC, nil, nil
