@@ -225,10 +225,10 @@ func TestRangesyncOnlyGoroutines(t *testing.T) {
 func pullsyncPeer(t *testing.T, pages ...[]swarm.Chunk) *pullsync.Syncer {
 	t.Helper()
 	var (
-		opts  []mockstorer.Option
 		binID uint64
 		size  int
 	)
+	opts := make([]mockstorer.Option, 0, 2*len(pages))
 	for _, page := range pages {
 		offers := make([]*storer.BinC, len(page))
 		for i, ch := range page {
