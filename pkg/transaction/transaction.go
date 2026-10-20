@@ -42,6 +42,9 @@ var (
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
 	ErrTxMaxPriceExceeded  = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	// ErrTxMaxPriceDeferred is returned by an attempt that exceeds the maximum tx price
+	// before the bypass block set by overrides option.
+	ErrTxMaxPriceDeferred = errors.New("transaction retry: exceeds maximum tx price, bypass not yet allowed")
 	// ErrSignTransaction is returned when signing a transaction fails.
 	ErrSignTransaction      = errors.New("sign transaction")
 	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")
@@ -127,7 +130,8 @@ type Service interface {
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see transaction_with_retry.go.
-	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
+	// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+	SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.

@@ -103,7 +103,10 @@ func TestAgent(t *testing.T) {
 				backend := &mockchainBackend{
 					limit: tc.limit,
 					limitCallback: func() {
-						wait <- struct{}{}
+						select {
+						case wait <- struct{}{}:
+						default:
+						}
 					},
 					incrementBy: tc.incrementBy,
 					block:       tc.blocksPerRound,
@@ -209,7 +212,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -248,7 +254,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -292,7 +301,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -338,7 +350,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -383,7 +398,10 @@ func TestAgentParticipationToggle(t *testing.T) {
 			backend := &mockchainBackend{
 				limit: limit,
 				limitCallback: func() {
-					wait <- struct{}{}
+					select {
+					case wait <- struct{}{}:
+					default:
+					}
 				},
 				incrementBy: 1,
 				block:       blocksPerRound,
@@ -434,6 +452,115 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
+// Claim receives no bypass options unless the node setting is enabled. When it is,
+// bypass starts DelayBlocks into the claim phase, and a delay past the last claim block is clamped to it.
+func TestAgentClaimPriceBypass(t *testing.T) {
+	t.Parallel()
+
+	const (
+		blocksPerPhase   = uint64(3)
+		claimPhaseBlocks = winningAgentBlocksPerRound - 2*blocksPerPhase
+	)
+
+	tests := []struct {
+		name      string
+		bypass    storageincentives.ClaimMaxPriceBypass
+		wantNil   bool
+		wantDelay uint64
+	}{
+		{
+			name:    "disabled by default",
+			wantNil: true,
+		},
+		{
+			name:      "enabled after the configured delay",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: 1},
+			wantDelay: 1,
+		},
+		{
+			name:      "delay on the last claim block is kept",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: claimPhaseBlocks - 1},
+			wantDelay: claimPhaseBlocks - 1,
+		},
+		{
+			name:      "delay equal to the claim phase is clamped to its last block",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: claimPhaseBlocks},
+			wantDelay: claimPhaseBlocks - 1,
+		},
+		{
+			name:      "delay above the claim phase is clamped to its last block",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: 100},
+			wantDelay: claimPhaseBlocks - 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				_, contract := runWinningAgent(t, nil, withClaimPriceBypass(tc.bypass))
+
+				claims := contract.getClaims()
+				if len(claims) == 0 {
+					t.Fatal("expected a claim")
+				}
+				claim := claims[0]
+				if tc.wantNil {
+					if claim.hasOpts {
+						t.Fatal("bypass is disabled, claim must not receive options")
+					}
+					return
+				}
+				if !claim.hasOpts {
+					t.Fatal("bypass is enabled, claim must receive options")
+				}
+				phaseOffset := 2*blocksPerPhase + tc.wantDelay
+				if got := claim.opts.BypassFromBlock; got < phaseOffset || (got-phaseOffset)%winningAgentBlocksPerRound != 0 {
+					t.Fatalf("got BypassFromBlock %d, want a round start plus %d blocks", got, phaseOffset)
+				}
+			})
+		})
+	}
+}
+
+const winningAgentBlocksPerRound = uint64(9)
+
+// runWinningAgent runs an agent that wins every round until the chain mock stops.
+func runWinningAgent(t *testing.T, claimErr error, opts ...serviceOption) (*storageincentives.Agent, *mockContract) {
+	t.Helper()
+
+	const radius = uint8(8)
+	wait := make(chan struct{}, 1)
+	backend := &mockchainBackend{
+		limit: 12 * winningAgentBlocksPerRound,
+		limitCallback: func() {
+			select {
+			case wait <- struct{}{}:
+			default:
+			}
+		},
+		incrementBy: 1,
+		block:       winningAgentBlocksPerRound,
+		balance:     big.NewInt(4_000_000_000),
+	}
+	contract := &mockContract{
+		t:              t,
+		expectedRadius: radius,
+		salt:           testutil.RandBytes(t, swarm.HashSize),
+		winner:         true,
+		claimErr:       claimErr,
+	}
+	agent, err := createService(t, swarm.RandAddress(t), backend, contract, winningAgentBlocksPerRound, 3, radius, 0, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, agent)
+
+	<-wait
+	synctest.Wait()
+	return agent, contract
+}
+
 func waitUntilStatus(t *testing.T, agent *storageincentives.Agent, pred func(*storageincentives.Status) bool) {
 	t.Helper()
 
@@ -459,13 +586,18 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+	opts ...serviceOption,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
+	var deps serviceDeps
+	for _, opt := range opts {
+		opt(&deps)
+	}
+
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
-	}),
-	)
+	}))
 	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context, uint64) (bool, error) {
 		return false, nil
 	}))
@@ -493,7 +625,18 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
+		deps.bypass,
 	)
+}
+
+type serviceDeps struct {
+	bypass storageincentives.ClaimMaxPriceBypass
+}
+
+type serviceOption func(*serviceDeps)
+
+func withClaimPriceBypass(bypass storageincentives.ClaimMaxPriceBypass) serviceOption {
+	return func(d *serviceDeps) { d.bypass = bypass }
 }
 
 type mockchainBackend struct {
@@ -568,6 +711,16 @@ type mockContract struct {
 	isPlayingCount  int
 	beforeIsPlaying func()
 	beforeCommit    func()
+	salt            []byte
+	winner          bool
+	claimErr        error
+	claims          []claimRecord
+}
+
+// claimRecord is what the agent handed to Claim.
+type claimRecord struct {
+	opts    redistribution.ClaimOpts
+	hasOpts bool
 }
 
 // getCalls returns a snapshot of the calls list
@@ -599,7 +752,7 @@ func (m *mockContract) playingCount() int {
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
-	return nil, nil
+	return m.salt, nil
 }
 
 func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {
@@ -619,14 +772,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, isWinnerCall)
-	return false, nil
+	return m.winner, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(_ context.Context, _ redistribution.ChunkInclusionProofs, opts *redistribution.ClaimOpts) (common.Hash, error) {
+	var record claimRecord
+	if opts != nil {
+		record = claimRecord{opts: *opts, hasOpts: true}
+	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return common.Hash{}, nil
+	m.claims = append(m.claims, record)
+	return common.Hash{}, m.claimErr
+}
+
+func (m *mockContract) getClaims() []claimRecord {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return append([]claimRecord(nil), m.claims...)
 }
 
 func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {

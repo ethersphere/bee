@@ -36,6 +36,7 @@ type metrics struct {
 
 	SendWithRetryAttemptsPerTransaction prometheus.Histogram
 	SendWithRetryOutcomesTotal          *prometheus.CounterVec
+	SendWithRetryMaxPriceBypassTotal    prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -170,6 +171,12 @@ func newMetrics() metrics {
 			Name:      "outcomes_total",
 			Help:      "Finished SendWithRetry invocations by outcome.",
 		}, []string{"result"}),
+		SendWithRetryMaxPriceBypassTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: retrySubsystem,
+			Name:      "max_price_bypass_total",
+			Help:      "SendWithRetry attempts priced above the max tx price because the max price bypass was active.",
+		}),
 	}
 }
 
@@ -178,6 +185,10 @@ func (m *metrics) RecordRetryComplete(broadcastAttempts int, err error) {
 	if broadcastAttempts > 0 {
 		m.SendWithRetryAttemptsPerTransaction.Observe(float64(broadcastAttempts))
 	}
+}
+
+func (m *metrics) RecordMaxPriceBypass() {
+	m.SendWithRetryMaxPriceBypassTotal.Inc()
 }
 
 func (b *wrappedBackend) Metrics() []prometheus.Collector {

@@ -184,7 +184,7 @@ func (r *RedistributionState) SetLastSelectedRound(round uint64) {
 	r.save()
 }
 
-// AddFee sets the internal node status
+// AddFee adds the fee of a mined redistribution transaction to the node total.
 func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	fee, err := r.txService.TransactionFee(ctx, txHash)
 	if err != nil {

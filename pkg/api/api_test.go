@@ -722,6 +722,7 @@ func createRedistributionAgentService(
 		tranService,
 		&mockHealth{},
 		log.Noop,
+		storageincentives.ClaimMaxPriceBypass{},
 	)
 }
 
@@ -772,7 +773,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs, *redistribution.ClaimOpts) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)

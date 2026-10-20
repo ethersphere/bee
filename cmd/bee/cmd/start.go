@@ -323,6 +323,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
+		ClaimPriceBypass:              c.config.GetBool(optionNameClaimPriceBypass),
+		ClaimPriceBypassBlocks:        c.config.GetUint64(optionNameClaimPriceBypassBlocks),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
