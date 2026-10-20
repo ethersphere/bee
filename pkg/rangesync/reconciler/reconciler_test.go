@@ -840,6 +840,44 @@ func TestStartupGuardLowerPeerInitiates(t *testing.T) {
 	waitFor(t, "guard released", h2.r.GuardReleased)
 }
 
+// TestStartupGuardNestedInitiator: a lower peer whose root contains this
+// node's initiates, and its side compares the digests over this node's root,
+// so it may find them equal and never start a session. While the start-up
+// guard holds, this node takes it over at once, so that the guard does not
+// wait for the takeover; once the session completed (Succeed) it waits for
+// the takeover as usual. Once the guard is released, a new such peer is not
+// taken over at once.
+func TestStartupGuardNestedInitiator(t *testing.T) {
+	t.Parallel()
+
+	other, late := addr(0x11, 0), addr(0x12, 0) // initiate against self too
+	svc := newFakeService(selfRoot(1, 5))
+	for _, p := range []swarm.Address{lower, other, late} {
+		svc.remote[p.ByteString()] = selfRoot(0, 10) // contains this node's root
+	}
+	h := newHarness(t, svc, lower, other)
+	waitFor(t, "takeovers at start-up", func() bool { return len(svc.sessionOpens(lower)) > 0 && len(svc.sessionOpens(other)) > 0 })
+	h.r.Succeed(lower) // rangesync reports the completed session
+	waitState(t, h.r, lower, reconciler.StateIdle)
+	n := len(svc.sessionOpens(lower))
+	settle()
+	if m := len(svc.sessionOpens(lower)); m != n {
+		t.Fatalf("%d more sessions after the peer ran one, want the takeover wait", m-n)
+	}
+	if h.r.GuardReleased() {
+		t.Fatal("guard released while a nested initiator has not run a session")
+	}
+	h.r.Succeed(other)
+	waitFor(t, "guard released", h.r.GuardReleased)
+
+	h.topo.setPeers(lower, other, late)
+	waitState(t, h.r, late, reconciler.StateIdle)
+	settle()
+	if m := len(svc.sessionOpens(late)); m != 0 {
+		t.Fatalf("%d sessions with a new nested initiator after the guard, want the takeover wait", m)
+	}
+}
+
 func TestStartupGuardNoPeers(t *testing.T) {
 	t.Parallel()
 

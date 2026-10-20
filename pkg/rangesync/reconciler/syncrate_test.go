@@ -5,6 +5,9 @@
 package reconciler_test
 
 import (
+	"encoding/binary"
+	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,11 +98,11 @@ func TestSyncRateSteadyStateUploads(t *testing.T) {
 	svc.wants[higher.ByteString()] = 3
 	h := newHarness(t, svc, higher, lower)
 	waitFor(t, "status", func() bool { return svc.count(svc.sent, lower) > 0 })
-	h.r.Wants(lower, make([]storer.ChunkID, 5)) // lower served a session
+	h.r.Wants(lower, distinctChunkIDs(5)) // lower served a session
 	waitFor(t, "guard released", h.r.GuardReleased)
 
 	for range 20 {
-		h.r.Wants(lower, make([]storer.ChunkID, 5))
+		h.r.Wants(lower, distinctChunkIDs(5))
 		time.Sleep(10 * time.Millisecond)
 		if got := h.r.SyncRate(); got != 0 {
 			t.Fatalf("sync rate %v in steady state", got)
@@ -109,6 +112,22 @@ func TestSyncRateSteadyStateUploads(t *testing.T) {
 	if got := h.r.SyncRate(); got != 0 {
 		t.Fatalf("sync rate %v in steady state", got)
 	}
+}
+
+// chunkIDSeq numbers the IDs of distinctChunkIDs.
+var chunkIDSeq atomic.Uint32
+
+// distinctChunkIDs returns n ChunkIDs that differ from each other and from
+// every other ID it returned (served wants are merged without duplicates).
+func distinctChunkIDs(n int) []storer.ChunkID {
+	ids := make([]storer.ChunkID, n)
+	for i := range ids {
+		a := make([]byte, swarm.HashSize)
+		binary.BigEndian.PutUint32(a[2:], chunkIDSeq.Add(1))
+		a[0] = 0x66
+		ids[i] = storer.ChunkID{Address: swarm.NewAddress(a), StampHash: slices.Clone(a)}
+	}
+	return ids
 }
 
 // reserveWorker is the reserve worker's radius decision (pkg/storer

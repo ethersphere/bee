@@ -386,7 +386,13 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 			if !st.served {
 				r.awaiting[p.ByteString()] = true
 			}
-			if !r.takeoverDueLocked(st, now, local.Root.Equal(remote.Root)) {
+			// While the start-up guard holds, a peer that has not run a
+			// session with this node and whose digest is not comparable is
+			// taken over at once: its initiator side may compare the digests
+			// over this node's root, find them equal and never start, and
+			// the guard waits for the peer (awaiting).
+			urgent := !known && !st.served && r.guardHoldsLocked(now)
+			if !urgent && !r.takeoverDueLocked(st, now, local.Root.Equal(remote.Root)) {
 				continue
 			}
 		}

@@ -17,15 +17,14 @@
 // end with their work: one per session this node opens (at most one per
 // peer, which also fetches the session's wants), three per stripe peer (its
 // transfers, their fetch and the stripe clock while it runs), at most
-// maxConcurrentProbes for Status sends, one per fetch of the wants a peer
-// listed in a session this node served, and one per batch of retries. The
-// last two are not bounded per peer: a peer serves at most one session at a
-// time, at its session rate (rangesync.PeerSessionBurst, then one per
-// rangesync.PeerSessionInterval), and its retries run one fetch at a time,
-// so they queue up while the node-wide fetch rate drains less than the peers
-// list. What they open is bounded per peer all the same: every fetch waits
-// for one of the fetch streams rangesync opens to the peer (half the peer's
-// own limit) before it claims any ID. So streams are
+// maxConcurrentProbes for Status sends, one per peer for the wants listed in
+// the sessions this node served (fetchServed, which queues the wants listed
+// meanwhile), and one per batch of retries. Retry batches are not bounded per
+// peer: a peer's retries run one fetch at a time, so they queue up while the
+// node-wide fetch rate drains less than the peers list. What they open is
+// bounded per peer all the same: every fetch waits for one of the fetch
+// streams rangesync opens to the peer (half the peer's own limit) before it
+// claims any ID, and rangesync bounds the fetches that wait. So streams are
 // O(neighbors), and so are goroutines while the fetches keep up, where the
 // puller runs workers per peer and bin.
 package reconciler

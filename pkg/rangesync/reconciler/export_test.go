@@ -79,6 +79,16 @@ func (r *Reconciler) VerificationDiffCount() uint64 {
 	return m.GetHistogram().GetSampleCount()
 }
 
+// CatchUpFetches returns the catch-up fetches in flight.
+func (r *Reconciler) CatchUpFetches() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.catchUpFetches
+}
+
+// MaxServedPending is maxServedPending.
+const MaxServedPending = maxServedPending
+
 // StripeRanges returns the registered stripe ranges, in order.
 func (r *Reconciler) StripeRanges() []fingerprint.Range {
 	r.mu.Lock()

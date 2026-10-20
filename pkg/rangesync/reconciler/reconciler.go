@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -217,7 +218,10 @@ type Reconciler struct {
 	awaiting         map[string]bool
 	pendingReconcile int // sessions whose Reconcile has not returned
 	catchUpFetches   int // catch-up fetches in flight
-	startedAt        time.Time
+	// servedFetches holds, per peer whose served sessions' fetcher runs
+	// (fetchServed), the wants queued for it.
+	servedFetches map[string]*servedQueue
+	startedAt     time.Time
 	// stripeRegistry holds the ranges queued for or in a striped transfer;
 	// stripeQueue the queued ones, in order, for the stripe worker that
 	// stripeWake wakes.
@@ -293,6 +297,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
+		servedFetches: make(map[string]*servedQueue),
 		stripeWake:    make(chan struct{}, 1),
 		gossipWake:    make(chan struct{}, 1),
 		ctx:           ctx,
@@ -406,7 +411,10 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 // Wants fetches the IDs a peer listed in a session this node served and this
 // node does not hold (rangesync.Options.Wants). The fetch counts towards
 // SyncRate like an initiated session of the same size. It returns at once;
-// it is a no-op before Start and after Close.
+// it is a no-op before Start and after Close. One fetcher per peer fetches
+// the wants of its served sessions (fetchServed): wants listed while it runs
+// are queued, merged without duplicates, at most maxServedPending of them
+// (the next sessions list the rest again), and fetched next.
 func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 	if !r.started.Load() || len(ids) == 0 {
 		return
@@ -419,14 +427,94 @@ func (r *Reconciler) Wants(peer swarm.Address, ids []storer.ChunkID) {
 	r.markServedLocked(peer)
 	r.foundDiff = true
 	catchUp := len(ids) >= CatchUpMinDiff
+	if q, ok := r.servedFetches[peer.ByteString()]; ok {
+		q.add(ids, catchUp)
+		return
+	}
+	r.servedFetches[peer.ByteString()] = &servedQueue{seen: make(map[fingerprint.ID]struct{})}
 	if catchUp {
 		r.catchUpFetches++
 	}
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		r.fetch(peer, ids, catchUp)
+		r.fetchServed(peer, ids, catchUp)
 	}()
+}
+
+// maxServedPending bounds the wants of a peer's served sessions queued while
+// its fetcher runs: as many as a peer's claims.
+const maxServedPending = wantset.MaxClaimsPerPeer
+
+// servedQueue holds the wants of a peer's served sessions listed while its
+// fetcher runs: ids, without duplicates (seen), and whether one of the lists
+// merged into them counts towards SyncRate (catchUp). r.mu guards it.
+type servedQueue struct {
+	ids     []storer.ChunkID
+	seen    map[fingerprint.ID]struct{}
+	catchUp bool
+}
+
+// add queues ids, which count towards SyncRate when catchUp, up to
+// maxServedPending.
+func (q *servedQueue) add(ids []storer.ChunkID, catchUp bool) {
+	q.catchUp = q.catchUp || catchUp
+	for _, c := range ids {
+		if len(q.ids) >= maxServedPending {
+			return
+		}
+		id := fingerprint.NewID(c.Address, c.StampHash)
+		if _, ok := q.seen[id]; ok {
+			continue
+		}
+		q.seen[id] = struct{}{}
+		q.ids = append(q.ids, c)
+	}
+}
+
+// fetchServed is the fetcher of peer's served sessions: it fetches ids
+// (fetchFrom), then the wants queued meanwhile, one batch at a time, until
+// none is queued or Close. A batch that counts towards SyncRate (catchUp;
+// the caller counted the first) is counted until it ends, and the next
+// batch is counted before, so a run of catch-up batches counts throughout.
+func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
+	k := peer.ByteString()
+	for {
+		out, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
+		if catchUp && out.stored > 0 {
+			r.rate.Add(out.stored)
+		}
+		if err != nil {
+			r.logger.Debug("fetch", "peer_address", peer, "error", err)
+		}
+		r.mu.Lock()
+		q := r.servedFetches[k]
+		next, nextCatchUp := q.ids, q.catchUp
+		done := r.ctx.Err() != nil || len(next) == 0
+		if done {
+			delete(r.servedFetches, k)
+		} else {
+			q.ids, q.seen, q.catchUp = nil, make(map[fingerprint.ID]struct{}), false
+			if nextCatchUp {
+				r.catchUpFetches++
+			}
+		}
+		if catchUp {
+			r.catchUpFetches--
+		}
+		r.mu.Unlock()
+		if done {
+			return
+		}
+		ids, catchUp = next, nextCatchUp
+	}
+}
+
+// guardHoldsLocked reports whether the start-up guard holds at now: it is
+// not released, and StartupGuardTimeout has not passed since Start (a
+// reconciler that is not started has no guard to hold). r.mu must be held.
+func (r *Reconciler) guardHoldsLocked(now time.Time) bool {
+	return !r.startedAt.IsZero() && !r.guardReleased.Load() && now.Sub(r.startedAt) < r.guardTimeout
 }
 
 // checkGuardLocked releases the start-up guard once a round completed the
@@ -456,7 +544,7 @@ func (r *Reconciler) SyncRate() float64 {
 	}
 	r.mu.Lock()
 	inFlight := r.catchUpFetches > 0 || len(r.stripeRegistry) > 0 || r.radiusHoldLocked()
-	guard := !r.guardReleased.Load() && r.now().Sub(r.startedAt) < r.guardTimeout
+	guard := r.guardHoldsLocked(r.now())
 	r.mu.Unlock()
 	rt := r.rate.Rate()
 	if (guard || inFlight) && rt < StartupGuardRate {

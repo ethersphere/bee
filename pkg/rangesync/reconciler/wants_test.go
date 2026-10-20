@@ -7,16 +7,21 @@ package reconciler_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -1251,5 +1256,124 @@ func TestStripeUnverified(t *testing.T) {
 	}
 	if got := r.Score(higher); got != 0 {
 		t.Fatalf("peer score %d", got)
+	}
+}
+
+// TestWantsServedFetcher checks the one fetcher per peer of the wants of
+// the sessions this node served: while its fetch runs, the wants of later
+// sessions are queued, merged without duplicates, at most MaxServedPending
+// of them, and fetched in one batch after it, so a peer's served fetches
+// never run at once. A catch-up batch counts towards SyncRate while it runs,
+// the queue does not add to it, and the count ends with the last batch.
+func TestWantsServedFetcher(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(1) // the same digest: no round session
+	svc.fetchCalls = make(chan chan struct{})
+	h := newHarness(t, svc, lower)
+	noFetch := func(why string) {
+		t.Helper()
+		select {
+		case <-svc.fetchCalls:
+			t.Fatalf("a served fetch from the peer %s", why)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	h.r.Wants(lower, distinctChunkIDs(reconciler.CatchUpMinDiff))
+	release := <-svc.fetchCalls // the first fetch runs
+	if n := h.r.CatchUpFetches(); n != 1 {
+		t.Fatalf("%d catch-up fetches, want 1", n)
+	}
+	repeated := distinctChunkIDs(10)
+	for range 5 {
+		h.r.Wants(lower, repeated) // merged once
+	}
+	h.r.Wants(lower, distinctChunkIDs(100))
+	noFetch("while its first fetch runs")
+	if n := h.r.CatchUpFetches(); n != 1 {
+		t.Fatalf("%d catch-up fetches with wants queued, want 1", n)
+	}
+	close(release)
+	release = <-svc.fetchCalls // the queued 110
+	h.r.Wants(lower, distinctChunkIDs(reconciler.MaxServedPending+50))
+	noFetch("while its second fetch runs")
+	close(release)
+	close(<-svc.fetchCalls) // the queued MaxServedPending
+	waitFor(t, "fetches", func() bool {
+		return svc.count(svc.fetched, lower) == reconciler.CatchUpMinDiff+110+reconciler.MaxServedPending && h.r.CatchUpFetches() == 0
+	})
+	noFetch("after its queue drained")
+}
+
+// stallFetchOpens is a streamer whose fetch stream opens wait until their
+// context ends (a peer that stalls every headers exchange), and that counts
+// them.
+type stallFetchOpens struct {
+	p2p.StreamerDisconnecter
+	opens atomic.Int64
+}
+
+func (s *stallFetchOpens) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream != rangesync.FetchStreamName {
+		return s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+	}
+	s.opens.Add(1)
+	<-ctx.Done()
+	return nil, fmt.Errorf("send headers: %w", ctx.Err())
+}
+
+// TestWantsStalledOpens is the review's attack on the served fetches: a peer
+// starts sessions with this node faster than two stalled fetch opens per
+// fetch timeout drain their fetches, each listing the same junk IDs (at least
+// CatchUpMinDiff, so each counts towards SyncRate), and stalls every fetch
+// stream open. Nothing is claimed or scored. The peer's served fetches are
+// merged into one fetcher, and its first stalled open backs off its opens,
+// so the later batches fail at once: at most one catch-up fetch of the peer
+// is in flight, no open after the backoff, and the count ends as soon as the
+// sessions stop, so the peer cannot hold SyncRate above 0.
+func TestWantsStalledOpens(t *testing.T) {
+	t.Parallel()
+
+	const arrivals = 80 // one per 25 ms, 2 s
+	stall := new(stallFetchOpens)
+	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{
+		fetchTimeout:  100 * time.Millisecond,
+		roundInterval: time.Hour,
+		streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+			stall.StreamerDisconnecter = s
+			return stall
+		},
+	})
+	bAddr := addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr)
+	a.routes[b.addr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.Start(context.Background())
+
+	junk := make([]storer.ChunkID, reconciler.CatchUpMinDiff)
+	for i := range junk {
+		junk[i] = chunkIDOf(t, chunktesting.GenerateTestRandomChunk())
+	}
+	maxInFlight := 0
+	for range arrivals {
+		a.r.Wants(b.addr, junk)
+		maxInFlight = max(maxInFlight, a.r.CatchUpFetches())
+		time.Sleep(25 * time.Millisecond)
+	}
+	if maxInFlight > 1 {
+		t.Fatalf("%d catch-up fetches of the peer in flight at once, want at most 1", maxInFlight)
+	}
+	if o := stall.opens.Load(); o > 1 {
+		t.Fatalf("%d fetch stream opens, want 1 (the one before the backoff)", o)
+	}
+	waitFor(t, "no catch-up fetch in flight", func() bool { return a.r.CatchUpFetches() == 0 })
+	if score := a.r.Score(b.addr); score != 0 {
+		t.Fatalf("peer scored %d", score)
+	}
+	if a.rec.IsDisconnected(b.addr) {
+		t.Fatal("peer disconnected")
 	}
 }
