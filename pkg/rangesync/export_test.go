@@ -5,12 +5,15 @@
 package rangesync
 
 import (
+	"math"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -280,3 +283,34 @@ func (b ShortfallBook) Relisted(peer swarm.Address, ids []fingerprint.ID, now ti
 func (b ShortfallBook) Offend(peer swarm.Address, now time.Time) bool { return b.b.offend(peer, now) }
 
 func (b ShortfallBook) Clear(peer swarm.Address) { b.b.clear(peer) }
+
+// DisablePeerRateLimits lifts the per-peer limits of the Statuses this node
+// receives (PeerStatusInterval and PeerStatusBurst, and the drops past them)
+// and of the sessions it serves (PeerSessionInterval and PeerSessionBurst).
+// These limiters run on the real clock, so a simulation that runs the
+// protocol on a fake clock faster than real time would trip them although
+// every node keeps the rates on its own clock; the simulation checks the
+// rates on its clock instead. It must be called before the service is used.
+func (s *Service) DisablePeerRateLimits() {
+	s.sessionLimiter = ratelimit.New(time.Nanosecond, math.MaxInt32)
+	s.statusLimiter = ratelimit.New(time.Nanosecond, math.MaxInt32)
+	s.statusDrops = ratelimit.New(time.Nanosecond, math.MaxInt32)
+}
+
+// pairwiseDiffHook is the pairwise_diff histogram that also passes each
+// sample to f.
+type pairwiseDiffHook struct {
+	prometheus.Histogram
+	f func(float64)
+}
+
+func (h pairwiseDiffHook) Observe(v float64) {
+	h.f(v)
+	h.Histogram.Observe(v)
+}
+
+// OnPairwiseDiff makes the service call f with every pairwise_diff sample as
+// it observes it. It must be called before the service is used.
+func (s *Service) OnPairwiseDiff(f func(diff float64)) {
+	s.metrics.PairwiseDiff = pairwiseDiffHook{Histogram: s.metrics.PairwiseDiff, f: f}
+}
