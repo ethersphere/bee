@@ -1042,3 +1042,19 @@ _(sessions append here)_
     the test harnesses and `resolvePending` changed: `TestSREP*`, `TestRadius*`,
     `TestRejectedNotRefetchedEachRound`, `TestStripeDeferred*`, `TestStripe*`,
     `TestTransferStripes*`, `TestVerifyStripes*`, `TestWantSet*`.
+- **(T4.4 round-2 review, Lows; recorded by the orchestrator at landing) Fetch accounting and tests (T4.5).**
+  1. fetch.go ~L445-449: the "reserve already has the chunk" early return skips the post-`Put`
+     expiry check. If the claim expires while `validStamp` waits on the batch store (≥ 15 s stall)
+     and another fetch stores the chunk, the duplicate shows only in `cross_protocol_duplicates`,
+     contradicting "≤ `want_claims{expired}` in every case". Fix: call `claimExpired` there too, or
+     soften the wording.
+  2. `TestFetchExpiredDuringPut` (fetch_result_test.go): the 50 ms claim deadline must cover claim →
+     delivery; on a loaded CI `-race` run the delivery can be counted `late` and the test fails.
+     Raise it to ≥ 500 ms.
+  3. fetch.go ~L187: `Peek` doesn't count candidates already picked for the same Want, so near
+     `MaxClaimsPerPeer`/`MaxClaims` all 250 IDs peek as granted and the limiter charges 250 tokens;
+     "no fetch rate on refused IDs" is approximate. Doc wording.
+  4. The bad-signature tests use a fake validator (`recoverStamp`), not `postage.ValidStamp` with a
+     batch store; add one test through the real validator. A peer still pays nothing for rejected
+     junk while this node spends a fetch token per listed junk ID (covered by the T4.5 follow-ups on
+     scoring peers that don't deliver listed IDs).
