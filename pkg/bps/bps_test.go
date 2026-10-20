@@ -28,16 +28,21 @@ import (
 const waitFor = 5 * time.Second
 
 type blocklister struct {
-	mu    sync.Mutex
-	peers map[string]string
+	mu        sync.Mutex
+	peers     map[string]string
+	durations map[string]time.Duration
 }
 
 func (b *blocklister) NetworkStatus() p2p.NetworkStatus { return p2p.NetworkStatusAvailable }
 
-func (b *blocklister) Blocklist(overlay swarm.Address, _ time.Duration, reason string) error {
+func (b *blocklister) Blocklist(overlay swarm.Address, d time.Duration, reason string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.peers[overlay.ByteString()] = reason
+	if b.durations == nil {
+		b.durations = make(map[string]time.Duration)
+	}
+	b.durations[overlay.ByteString()] = d
 	return nil
 }
 
@@ -486,11 +491,20 @@ func TestInvalidDelivery(t *testing.T) {
 		}},
 	}
 	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
-	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
+	bl := &blocklister{peers: make(map[string]string)}
+	c := bps.New(rec, bl, false, log.Noop, bps.Options{})
 	sub := e.join(c, swarm.RandAddress(t).Bytes()[:20])
 	expectDone(t, sub)
 	if err := sub.Err(); !errors.Is(err, bps.ErrInvalidDelivery) {
 		t.Fatalf("got %v, want %v", err, bps.ErrInvalidDelivery)
+	}
+	// the broker is blocklisted for the longest period there is: forever
+	eventually(t, func() bool { return bl.blocklisted(e.brokerAddr) })
+	bl.mu.Lock()
+	d := bl.durations[e.brokerAddr.ByteString()]
+	bl.mu.Unlock()
+	if d != 0 {
+		t.Fatalf("broker blocklisted for %v, want forever (0)", d)
 	}
 }
 

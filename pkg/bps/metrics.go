@@ -14,13 +14,16 @@ import (
 // Counters are the per-cohort counters of the silent outcomes SWIP-74 makes a
 // broker expose.
 type Counters struct {
-	WrongStream    uint64 // a frame from a subscriber stream
-	UnknownKind    uint64 // a frame of a kind BPS-lite does not define
+	WrongStream    uint64 // a frame its stream may not send
+	UnknownKind    uint64 // a frame of a kind the broker does not define
 	WrongChallenge uint64 // a frame whose challenge is not its stream's
 	InvalidSOC     uint64 // a chunk that does not validate at the derived id
 	AuthTimeout    uint64 // a pending stream disconnected at the auth timeout
 	Retransmit     uint64 // a DATA frame below the cursor
-	QueueReset     uint64 // a subscriber stream reset for a full queue
+	QueueReset     uint64 // a receiving stream reset for a full queue
+	InvalidRoster  uint64 // a valid ROSTER chunk whose payload does not decode
+	Revoked        uint64 // a frame from a revoked stream, dropped unread
+	Ended          uint64 // a frame from a stream of a cohort an EOS ended, dropped unread
 }
 
 type counters struct {
@@ -31,6 +34,9 @@ type counters struct {
 	authTimeout    atomic.Uint64
 	retransmit     atomic.Uint64
 	queueReset     atomic.Uint64
+	invalidRoster  atomic.Uint64
+	revoked        atomic.Uint64
+	ended          atomic.Uint64
 }
 
 func (c *counters) snapshot() Counters {
@@ -42,6 +48,9 @@ func (c *counters) snapshot() Counters {
 		AuthTimeout:    c.authTimeout.Load(),
 		Retransmit:     c.retransmit.Load(),
 		QueueReset:     c.queueReset.Load(),
+		InvalidRoster:  c.invalidRoster.Load(),
+		Revoked:        c.revoked.Load(),
+		Ended:          c.ended.Load(),
 	}
 }
 
@@ -65,7 +74,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "accepted_updates",
-			Help:      "DATA updates accepted by the broker.",
+			Help:      "DATA updates accepted by the broker, from every publisher.",
 		}),
 		Cohorts: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,

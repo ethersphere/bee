@@ -208,6 +208,7 @@ const (
 	BPSCloseInvalidSOC     = bpsCloseInvalidSOC
 	BPSCloseInvalidMessage = bpsCloseInvalidMessage
 	BPSCloseBrokerGone     = bpsCloseBrokerGone
+	BPSCloseEndOfStream    = bpsCloseEndOfStream
 )
 
 // SetBPSAuthTimeout overrides the auth timeout and returns a restore func.
