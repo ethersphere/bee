@@ -1043,6 +1043,136 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   - `TestTopologyChangeFloor` and `TestStartupGuardNewPeer` wait until the first contact is
     recorded, since the send is no longer on the loop.
 
+- **(T4.5 part 2b) Undelivered listed IDs count against the peer, in rangesync's fetch.** This
+  supersedes T4.4's "Claim-and-stall goes through the single `PeerScorer`; no new code" where it
+  says "A peer that closes the fetch stream without some listed IDs is not scored: T1.10 treats
+  eviction between session and fetch as honest". A peer is asked only for IDs it listed (Items or
+  symbol decodes). Each `FetchWithResult` call now keeps the peer's shortfall:
+  - the IDs requested in Wants the peer closed (EOF) without delivering them, except those outside
+    the peer's root by its last Status: its radius grew since it listed them;
+  - its deliveries whose stamp is invalid on every node (`stampInvalid`): a signature that does not
+    recover or has the wrong length, or an address, bucket or owner that does not match. An honest
+    peer validated the stamp when it stored the chunk.
+
+  A shortfall above `max(4, requested/100)` (`shortfallTolerance`, the same as the stripe
+  verification's `verifyMinDiff` and `verifyDiffRatio`) is a violation. `initiatorViolation`
+  reports it to `Options.Scorer` (the reconciler, the single `PeerScorer`) and disconnects the
+  peer, as a stall does. It is judged on every return of the call, and also after each Want
+  against the tolerance of all the IDs passed. The end judgment can only confirm that one, so a
+  peer that listed junk costs one Want, not up to `LargeDiff` IDs of fetch rate. The undelivered
+  IDs are still released, and retried from other sources. These do not count:
+  - held, deferred and unverified IDs (want-set causes, and stamp checks that failed here);
+  - rejections that depend on the chain state the two nodes have seen: `postage.ErrNotFound` (an
+    unknown or expired batch, the Q7 skew) and `postage.ErrInvalidIndex` (a dilution raises the
+    depth);
+  - rejections that depend on this node's reserve (`ErrOverwriteNewerChunk`);
+  - the IDs of a Want that failed (reset by the peer, a local error, the context);
+  - anything when the call already reported a violation (one score per call), or while the Service
+    closes.
+- **(T4.5 part 2b) The tolerance against honest churn, and what it leaves.** Honest peers miss few
+  listed IDs:
+  - `unreserve` evicts bins below the radius, which lie outside the root, so it does not touch
+    listed IDs;
+  - a radius increase evicts only the overflow per pass, cheapest batches first, spread over a bin
+    of about half the reserve, and the IDs it drops leave the peer's root, which its next Status
+    shows;
+  - what is left is chunks replaced by a newer stamp, or evicted with an expiring batch, in the
+    second or so between listing and fetch (longer for catch-up fetches).
+
+  What can still trip an honest peer: a batch that expires on the peer before it does here while
+  more than 1% (and at least 5) of a fetch's IDs are in it, or a radius increase whose moved Status
+  arrives after the fetch ends (it waits for the index rebuild). Such a peer is disconnected once
+  and reconnects (no blocklist). Accepted for now; T6 should read it off testnet (Follow-ups). The
+  root exclusion can be abused: a peer can send a narrower root before its fetch ends to excuse
+  junk it listed. That is bounded by its Status rate, and the narrower root also scopes its next
+  sessions with this node.
+- **(T4.5 part 2b) Withholding and verification are not double-scored.**
+  - A fetch violation fails the stripe attempt with that error (`fetchErr`), not as withheld.
+    Withholding (`Undelivered > 0`) still reassigns a stripe unscored when the shortfall is within
+    the tolerance.
+  - A verification whose fetch was a violation ends with an error, so `verifyStripe` returns
+    before its verifier rule. That rule (over the whole verification, a score without a
+    disconnect) still catches shortfalls that stay under the tolerance of each fetch.
+  - The deliverer's verification rule judges IDs the deliverer never listed, a different shortfall.
+- **(T4.5 part 2b) Per-peer share of the rejected cache.** `wantset.Set.RejectFrom(id, peer)`
+  (additive) records a rejection against the delivering peer; `Reject` stays unattributed. Each
+  peer's share is `MaxRejectedPerPeer = MaxRejected / 4 = 2500`. A peer at its share drops its own
+  oldest rejection first. The cache's own bound still drops the overall oldest when the shares
+  together exceed `MaxRejected`, which takes at least four peers. So one peer can push out at most
+  2500 rejections of other peers, and none once it holds its share. Rejecting an ID again moves it
+  to the new peer's share. Chosen over:
+  - evicting from the largest share first, which needs a max structure;
+  - a per-peer rate, which depends on time and lets a patient peer flush the cache anyway.
+
+  A share is O(1) per rejection: one more list element per ID, about 340 B per ID measured (was
+  287 B), 3.4 MB at the cap. A quarter rather than the claims' tenth, because the honest
+  expired-batch skew spreads the rejections of a batch's neighborhood share (thousands) over a few
+  peers. `RejectedBy(peer)` (additive) reports a share. The fetch path rejects through the
+  delivering peer.
+- **(T4.5 part 2b) Requester-side fetch streams per peer.** `maxFetchStreamsOut =
+  maxPeerFetchStreams − 1 = 3`, in rangesync, so it covers every source: round fetches, stripes,
+  retries and the wants of served sessions. Each Want waits for a slot (`peerSlots`, refcounted per
+  peer) before the fetch limiter and before its claims. So a waiting fetch holds no claims, and the
+  bound from claim to last delivery (`FetchTimeout`) is unchanged. The cap is one below the
+  responder's limit, for a handler that has not returned yet (as `maxPeerStatusStreams`). A side
+  effect: a peer's claims are at most 3 × 250 = 750 < `MaxClaimsPerPeer`, so `PeerFull` is no
+  longer reached in production; `Full` still is. The package doc no longer claims O(neighbors)
+  goroutines for served sessions' fetches and retries, which queue up while the fetch rate lags;
+  their streams are O(neighbors). One wants fetcher per peer would make the goroutines
+  O(neighbors) too, but it changes the catch-up accounting behind `SyncRate` (Follow-ups).
+- **(T4.5 part 2b) Persistent Status spam is a violation.** This supersedes T4.1's "An inbound
+  Status over the rate is dropped. It is not a violation and is not scored." A dropped Status takes
+  a token of a per-peer drop budget: `PeerStatusDropBurst = 2 × PeerStatusBurst = 8`, one regained
+  per `PeerStatusDropInterval = 4 × PeerStatusInterval = 10 s` (additive constants, a
+  `ratelimit.Limiter` cleared on disconnect). A drop past the budget is a violation (reset, scored,
+  disconnected). A peer that sends more than a quarter over its rate (0.5/s) is escalated; below
+  that, a drop costs a stream reset before anything is read. T4.1's concern no longer applies: the
+  receiver's limits are cleared on disconnect, and the honest sender stays a Status below the rate.
+  `TestStatusGossipNeverEscalated` runs the reconciler's real schedule for 20 minutes of the fake
+  clock (summary changes every 100 ms, a reconnect every 5 minutes, bursts of six radius changes
+  every 2 minutes, 20 s or 3 s) against a model of the receiver:
+  - on time, nothing is dropped;
+  - with arrivals delayed by up to the send timeout (10 s), at random or bunched (all sends of each
+    10 s at once), at most 59 of 419 are dropped and none is escalated, with the limits cleared on
+    a reconnect or kept across it.
+
+  A first draft regained one drop per 60 s; the 20 s schedule with bunched delays escalated under
+  it, hence 10 s.
+- **(T4.5 part 2b) Local store errors are local causes (`rangesync.ErrLocal`).** The new additive
+  sentinel wraps:
+  - every error of a session's `Local` (fingerprint index, address index, reserve lookups). An
+    `IterateIDs` callback's own error is returned as it is;
+  - the `LocalStatus` error in `ReconcileWith`;
+  - the fetch's reserve lookups and `Put`.
+
+  The reconciler's `localCause` includes it: no backoff (`eventAborted`), no score. That also
+  covers `fingerprint.ErrOutsideRoot` from a session (this node's root moved), which backed off
+  before. Stripes are unchanged: a local error still ends the attempt and reassigns the stripe
+  without a score (Follow-ups).
+- **(T4.5 part 2b) The T4.4 round-2 Lows.**
+  - `deliver` calls `claimExpired` on the early return too, when the chunk is in the reserve after
+    the stamp check. So intra-`rangesync` duplicates are at most `want_claims{expired}` on that path
+    too (`TestFetchExpiredDuringStampCheck`).
+  - `TestFetchExpiredDuringPut` runs with a 500 ms claim deadline.
+  - `wantset.Set.PeekPicked(id, peer, picked)` (additive) counts the Want's earlier candidates
+    towards the caps. `wantCandidates` uses it, so near a cap only the room left is charged to the
+    fetch limiter (`TestFetchPeekCountsPicked`, `TestPeekPicked`, an op in `TestModelReject`).
+  - `TestFetchBadSignatureValidStamp` goes through the real `postage.ValidStamp` over a batch store,
+    with chunks a stamper signed for the batch's owner.
+- **(T4.5 part 2b) Tests changed by design.**
+  - `TestFetchManyWants` puts the IDs its holder lacks outside the holder's root: otherwise its 258
+    of 260 missing IDs are a violation.
+  - `TestStripeBadSignatures` runs with 4 bad signatures, the tolerance (was 8);
+    `TestStripeBadSignaturesScored` covers 8 (one score, a disconnect, the IDs not asked for again).
+  - `TestPeerStateLocalCauseNoBackoff` adds two `ErrLocal` failures in a row.
+- **(T4.5 part 2b) Contracts and scope.** These are unchanged: `reconciler.Service` and its
+  optional interfaces, the wiring, the `SyncRate` guard, `storer.Syncer`, the want-set claim
+  protocol and the T4.1–T4.5 rules not superseded above. New exported identifiers, all additive:
+  `rangesync.ErrLocal`, `PeerStatusDropBurst`, `PeerStatusDropInterval`; `wantset.MaxRejectedPerPeer`,
+  `Set.PeekPicked`, `Set.RejectFrom`, `Set.RejectedBy`. There is no `pkg/node`, `go.mod` or proto
+  change, and no new parser of peer input. `followup-fuzzing.md` gains one line for the new
+  invariants of two existing targets.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1428,3 +1558,53 @@ _(sessions append here)_
     `TestRound*`, `TestStatusGossip*`, `TestStartupGuard*`, `TestPeerState*`, `TestStripe*`,
     `TestTransferStripes*`, `TestVerifyStripes*`, `TestRoundBootstrap*`, `TestRadius*`,
     `TestWantSet*`, `TestSREP*`, and the T4.5 part 1 tests.
+- **(T4.5 part 2b) Resolved: undelivered listed IDs are scored.** This closes "(T4.4 → T4.5)
+  Undelivered IDs are not scored (§9 'bogus wants count against the peer')" and the last sentence of
+  item 4 of the T4.4 round-2 Lows. See the Decisions log.
+- **(T4.5 part 2b) Resolved: rejected-cache flush.** This closes "(T4.4 → T4.5) Rejected-cache
+  flush" (`RejectFrom`, a per-peer share).
+- **(T4.5 part 2b) Resolved: concurrent fetch streams per peer.** This closes "(T4.4 → T4.5)
+  Concurrent fetch streams per peer (pre-existing)" (`maxFetchStreamsOut`) and item 2 of the T4.5
+  part-1 review Lows (the `doc.go` wording; the goroutine count is the follow-up below).
+- **(T4.5 part 2b) Resolved: Status spam is escalated.** This closes "(T4.1) Repeated Status spam is
+  never escalated (T4.2)" and "(T4.2) Escalate Status spam (T4.5)".
+- **(T4.5 part 2b) Resolved: local store errors no longer back off.** This closes "(T4.2 fix) Local
+  store errors still count towards the backoff (T4.5)" (`rangesync.ErrLocal`).
+- **(T4.5 part 2b) Resolved: fetch accounting and tests.** This closes items 1 to 4 of "(T4.4
+  round-2 review, Lows; recorded by the orchestrator at landing) Fetch accounting and tests (T4.5)".
+- **(T4.5 part 2b → T6) Fetch shortfall violations on testnet.** Honest peers should never be
+  disconnected for a shortfall. Read the debug log reason "requested ids not delivered" (counted in
+  `invalid_message_total`) around batch expiries and radius increases. If honest peers show up,
+  raise the tolerance for large fetches, or defer the judgment until the peer's next Status. A
+  dedicated counter would make this readable from metrics.
+- **(T4.5 part 2b → T4.6) Junk with unknown-batch stamps is not scored.** A peer can list IDs of a
+  made-up batch and deliver chunks with such stamps. They are rejected (`postage.ErrNotFound`) but
+  not counted, because the expired-batch skew (Q7) looks the same; its share of the rejected cache
+  and the fetch rate bound the cost. If T4.6's Q7 measurement shows how many unknown-batch
+  rejections an honest skew causes, such rejections can count with a larger tolerance of their
+  own.
+- **(T4.5 part 2b) One wants fetcher per peer.** Served sessions' fetches and retry batches each
+  take a goroutine, which queue up per peer while the fetch rate lags; their streams are capped. A
+  single fetcher per peer with a bounded queue would make the goroutines O(neighbors), but `Wants`
+  counts a catch-up fetch per served session (`catchUpFetches`), which the `SyncRate` guard reads,
+  so the merge needs that accounting reworked.
+- **(T4.5 part 2b) Stripes and `ErrLocal`.** A local store error still ends a stripe attempt and
+  reassigns the stripe, unscored. It could restart on the per-stripe local budget, as `localBusy`
+  does, once a restart waits before it retries.
+- **(T4.5 part 2b) Tests to run with `-race` on CI.** These ran with `-count=20 -cpu=1,2,4` instead,
+  and `pkg/rangesync` and the reconciler package with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchExpiredDuringStampCheck`, `TestFetchPeekCountsPicked`,
+    `TestFetchBadSignatureValidStamp`, `TestLocalStoreErrors`, `TestReconcileLocalStoreError`,
+    `TestFetchLocalStoreError`, `TestFetchRejectedShare`, `TestFetchStreamsPerPeer`,
+    `TestStatusSpamEscalated`, `TestFetchShortfall*`. Changed: `TestFetchExpiredDuringPut`,
+    `TestFetchManyWants`. Re-run, because `FetchWithResult`, `deliver` and `handleStatus` changed:
+    `TestFetch*`, `TestStatus*`, `TestReconcile*`.
+  - `pkg/rangesync/wantset`, new: `TestPeekPicked`, `TestRejectFrom_PeerShare`,
+    `TestReject_DefaultShare`, `TestModelRejectShare`. Changed: `TestModelReject`. Re-run:
+    `TestConcurrentReject`, `TestReject*`.
+  - `pkg/rangesync/reconciler`, new: `TestStatusGossipNeverEscalated`,
+    `TestStripeBadSignaturesScored`. Changed: `TestStripeBadSignatures`,
+    `TestPeerStateLocalCauseNoBackoff`. Re-run, because every fetch now waits for a stream slot and
+    may end a violation: `TestSREP*`, `TestWantSet*`, `TestRejectedNotRefetchedEachRound`,
+    `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestRadius*`, the T4.5 part 1
+    tests (`TestDualMode*`, `TestRangesyncOnlyGoroutines`).
