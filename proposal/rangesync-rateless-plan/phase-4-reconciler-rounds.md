@@ -2049,6 +2049,59 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   proto change, no libp2p import and no new parser of peer input. Single runs:
   `TestNeighborhoodDelay` 2.1 s, `TestNeighborhoodSteady` 3.1 s (skipped with `-short`), the others
   as in round 1.
+- **(T4.6 part 1 fix round 3, Medium) The harness closes its streams before it stops the
+  reconcilers.** This extends "(T4.6 part 1 fix round 2, Medium) The harness's `FullClose` waits for
+  the remote's close". Since that wait, a run that ended while a session or a Status send was in its
+  close round trip never tore down. `simNeighborhood.close` (the test's cleanup) called
+  `Reconciler.Close` first, which waits for the reconciler's calls (`wg.Wait`). The call waited,
+  parked in `FullClose`, for the remote's close or `simCloseDeadline`, both due on a clock that no
+  longer moved; the streams were closed only after that. The test died at the go test timeout. The
+  review hit it with `Delay` 100 ms at N = 5, seed 5: with a `Limit` that ends the run unconverged
+  (5.6–5.95 s, 8 of 200 runs) and with `Tail` 64.0–64.15 s (4 of 21). The default `Tail` (60 s)
+  escaped only because it equals `StatusMaxInterval` (the review).
+  - Now `close` first closes every stream (both pipes: reads get `io.EOF`, writes
+    `ErrStreamClosed`) and refuses new ones. `NewStream` returns `errSimClosed`, checked under the
+    lock that adds a stream to the list, so no stream opens unclosed. Then it stops the reconcilers
+    and the services. A `FullClose` returns as on the remote's close (`awaitEOF` already took a
+    stream the harness closed as done), and a read returns `io.EOF` after the bytes that arrived.
+  - Why not keep moving the clock until the reconcilers closed (the review's other option): the run
+    is over and measured. Moving the clock after it runs more protocol work (calls in flight finish,
+    30 s deadlines fire) and needs every wait to be on the fake clock, so a wait on the real clock
+    would spin it. Closing the streams ends every wait at once without the clock; the old `close`
+    did the same, only last.
+  - `TestNeighborhoodTeardown` (new): a first run (N = 5, seed 5, 100 ms) finds the earliest Status
+    sent after the convergence (3.8 s after it). A second run ends 3 legs into that send (`Tail`
+    4.1 s), in its `FullClose`, and tears down under a 30 s watchdog. When the watchdog fires, the
+    test fails and moves the clock past the close deadlines, so that the cleanup does not hang. The
+    test also checks that a Status send ended in the teardown within its `FullClose` (2 to 4 legs
+    in), so it fails, instead of passing vacuously, if the protocol's timing moves that send.
+  - Revert check: with the old order the test fails at the watchdog (34 s). A `Tail` scan from 3.9 s
+    to 4.2 s hung for 4.0–4.15 s only. The 15 `Limit` values 5.6–5.95 s (25 ms apart) all fail
+    unconverged, as intended, and tear down (7 s); with the old order, three of them were still in
+    teardown at a 90 s go test timeout.
+- **(T4.6 part 1 fix round 3, Lows 2 and 3) Test fixes.** `TestSimStream`'s `parked` and `fullClose`
+  helpers take the subtest's `t`: a `t.Fatalf` on the parent `t` from a parallel subtest panics the
+  test binary instead of failing the subtest. `TestNeighborhoodConverges` runs with hint(R) and
+  without it (`simOptions.NoHints`; subtests "hints" and "no hints") under the same assertions:
+  convergence within the bound, no duplicate delivery, the sample checks. Both converge each batch
+  in 5 s with no duplicate.
+- **(T4.6 part 1 fix round 3, Low 4) The G6 table's small differences are within noise.** A record
+  of the review's figures for "(T4.6 part 1 fix round 2 → part 3, G6) The symbol overshoot: the
+  growth step, with and without the hint". At N = 9 steady, as a share of the modeled pullsync:
+  - seed 9 run three times: 76.9, 77.7, 79.7%;
+  - seeds 1–4: 74.2–78.5%;
+  - `Delay` 0/20/100/200 ms: 80.9/82.6/72.9/70.5%.
+
+  The hint's advantage over no hint ranges from −1 to +6 points across `Delay`. `GrowthFactor` 2's
+  drop of about 18 points holds. The hint and `BatchFactor` rows (differences of 5 points or less)
+  need a seed spread and a `Delay` sweep before G6 relies on them (Follow-ups). The baseline is
+  §7.8's pullsync column (N − 1 offers × 100 B per node; the harness counts 102 B per offer).
+  AC-B1's measured pullsync can only exceed it, so the percentages are conservative: they bound the
+  measured share from above.
+- **(T4.6 part 1 fix round 3) Scope, tests and wall times.** Test-only: `neighborhood_sim_test.go`
+  (the teardown order, `errSimClosed`) and `neighborhood_test.go`. There is no production,
+  `pkg/node`, `pkg/p2p`, `go.mod` or proto change. Single runs: `TestNeighborhoodTeardown` 4.1 s
+  (two runs), `TestNeighborhoodConverges` 0.75 s (two parallel subtests), the others as in round 2.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2908,3 +2961,15 @@ _(sessions append here)_
   - changed: `TestNeighborhoodDelay`, `TestSimStream`, `TestProtocolServedHint`,
     `TestProtocolConverges`, and through the harness (`FullClose`, sample checks)
     `TestNeighborhoodConverges` and `TestNeighborhoodSREP`.
+- **(T4.6 part 1 fix round 3 → part 3, G6) Report spreads, not single runs.** This extends "(T4.6
+  part 1 fix round 2 → part 3, G6) The symbol overshoot: the growth step, with and without the
+  hint". At the steady N = 9 load, rerunning one seed moves the share by about 3 points, seeds by
+  about 4 and `Delay` by about 12 (Decisions, round 3, Low 4). Part 3 must report every row as a
+  spread: at least 3 seeds and a `Delay` sweep (0–200 ms). G6 may rely on the hint and `BatchFactor`
+  rows only if their spreads separate. `GrowthFactor` 2's drop is already larger than the spread.
+- **(T4.6 part 1 fix round 3) Tests to run with `-race` on CI.** This extends the round-2 list; they
+  ran with `-count=10 -cpu=1,2,4` instead.
+  - new: `TestNeighborhoodTeardown`;
+  - changed: `TestNeighborhoodConverges` (the "no hints" subtest), `TestSimStream` (the helpers'
+    `t`), and through the harness's teardown order every neighborhood test.
+  - `TestNeighborhoodTeardown`'s watchdog is 30 s, for a teardown that takes milliseconds.
