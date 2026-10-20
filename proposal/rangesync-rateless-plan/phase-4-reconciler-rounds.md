@@ -2288,6 +2288,161 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     another; 105 s with the current constants), `TestSREPModelG6` 62 s.
   - `-count=5 -cpu=1,2,4`: the `TestSREP*` tests 35 s, the neighborhood tests (with the harness
     change) 67 s, all passing.
+- **(T4.6 part 2 fix round 1, Medium 1) `FirstBatch` reads `BatchFactor` (production, additive).**
+  This supersedes the Follow-up "(T4.6 part 2) `FirstBatch` does not read `BatchFactor`" and, in
+  "(T4.6 part 2) Validation: the model against the harness, 32 rows, all within tolerance", "(and
+  `FirstBatch` for `BatchFactor`)". `BatchFactor` is now `BatchFactorNum / BatchFactorDen`, two new
+  constants (16 and 10); `BatchFactor` stays an untyped constant (1.6). `FirstBatch(d)` is
+  `firstBatch(d, MinBatch, BatchFactorNum, BatchFactorDen)` = max(minBatch, ⌈num · d / den⌉ + 2),
+  with d clamped at MaxUint64 / (2 num). At 16/10 these are the old expressions,
+  (16d + 9) / 10 + 2 and MaxUint64 / 32. A fraction needs no tenths: 7/4 is 1.75, which tenths read
+  as 1.8.
+  - Tests: `TestFirstBatchPinned` pins the old formula for every d < 2^20 and around the clamp.
+    It passed before and after the change. `TestFirstBatchFactor` checks the ceiling and other
+    fractions through `FirstBatchOf` (export_test.go).
+  - The model: `srepParams.firstBatch` calls `FirstBatchOf`. Its `BatchFactor` is a fraction
+    (`srepFactor`, which replaces `BatchFactorTenths`) that defaults to the constants. "now" in
+    `srepConfigs` and in `TestSREPSessionCost` is the compiled constants. `srepCompiled` reads the
+    constants instead of inverting `FirstBatch(10)`. The harness runs `FirstBatch`.
+  - Mutation check: with only `BatchFactorNum` changed to 20, `FirstBatch(3)` is 8 (was 7) and
+    `FirstBatch(10)` is 22 (was 18). `TestFirstBatch`, `TestFirstBatchPinned` and
+    `TestWorkedExamples` then fail, and `TestSREPFirstBatch` passes, so the model follows. With
+    7/4 the model's factor prints 1.75, and both give 20 at d = 10.
+  - `TestFirstBatch`, `TestCapacity`, `TestWorkedExamples` and `TestSessionSymbols*` pass
+    unchanged.
+- **(T4.6 part 2 fix round 1, Medium 2 and Low 2) The validation: a 3-point share bound, the
+  components on their own, differences, 6 seeds and records.** This supersedes, in "(T4.6 part 2)
+  Validation: the model against the harness, 32 rows, all within tolerance", the tolerances (10%
+  for the share, the symbols and n_Δ), the 3 harness and 10 model seeds, its table, its
+  discrepancy list and "all within tolerance". In "(T4.6 part 2 → G6) The comparison table", the
+  harness column is now 6 seeds (below). `TestSREPModelVsHarness` now works as follows:
+  - Seeds: the harness runs 6 seeds per row (`srepHarnessSeeds`), each run in its own subtest, and
+    the model runs 20. `runNeighborhood` tears a neighborhood down with `tb.Cleanup`, so runs in one
+    test function stayed alive until it ended. The old test kept a row's 3 runs alive together, and
+    a 48-run collector reached 5 GB and was killed.
+  - A difference of means passes within a tolerance plus twice its standard error, taken from the
+    measured spreads of both sides. This covers the harness's nondeterminism: one seed's share
+    moves by up to 3 points between runs. Bound and deviation are logged. The tolerances: the share
+    3 points absolute; n_Δ per upload and the symbols per difference 6% each, so errors cannot
+    cancel in the share beyond that; the median n_Δ 15%; convergence 1 s; and no duplicate delivery
+    on either side (Low 2: both are 0 in every run). The largest component gaps at a Delay are 5.3%
+    and 6.0% (below). At 5%, the live N = 17, 200 ms row would fail about one run in twenty.
+  - Delay 0 is outside the model's domain for n_Δ, the symbols and the differences between
+    configurations. At N = 17 the harness's n_Δ is 7–11% above the model's: its goroutines of one
+    instant are not in step, so a session can read after a fetch of the same instant. The model's
+    symbols per difference are 2–11% above the harness's, so the share's agreement there (within
+    3.6 points) is partly cancellation. Delay 0 rows are checked for the share only. They do not
+    back G6's calls.
+  - Differences, model against harness, within 2 points (plus twice their standard error). Live,
+    paired by seed: hint off − on at 50 ms, and Delay 200 − 50 ms. Against `srepHarnessRef`: each
+    candidate's absolute figures, its difference from the compiled constants, and its hint
+    difference. `srepHarnessRef` holds the harness's records of 4 configurations × 8 rows, measured
+    with 6 seeds in scratch builds with the constants changed. The test logs the records of the
+    compiled constants. A record check fails when the live harness drifts from its record. In the
+    live run every row matched within 1.4 points.
+  - The table: share of AC-B1's pullsync (%), model mean ± sd of 20 seeds / harness mean ± sd of 6
+    seeds (range):
+
+    | constants | N | Delay 0 | 50 ms | 200 ms | 50 ms, no hint |
+    |---|---|---|---|---|---|
+    | now | 9 | 78.0 ± 1.7 / 78.1 ± 2.6 (74.2–81.9) | 78.3 ± 2.1 / 76.9 ± 1.7 (74.1–78.3) | 73.8 ± 3.0 / 72.0 ± 2.4 (69.4–75.9) | 81.0 ± 2.4 / 80.4 ± 1.8 (77.8–82.0) |
+    | now | 17 | 61.2 ± 1.0 / 64.8 ± 1.4 (62.7–66.8) | 62.9 ± 1.4 / 62.1 ± 2.0 (59.6–65.0) | 64.6 ± 1.8 / 66.2 ± 4.0 (60.7–72.6) | 59.1 ± 1.1 / 59.2 ± 1.2 (57.2–60.9) |
+    | `GrowthFactor` 2 | 9 | 58.4 ± 0.8 / 60.7 ± 1.5 (59.1–63.2) | 59.7 ± 0.8 / 59.5 ± 0.5 (58.8–60.3) | 59.2 ± 0.9 / 59.7 ± 0.9 (58.6–61.2) | 60.1 ± 0.9 / 59.6 ± 1.0 (58.5–60.8) |
+    | `GrowthFactor` 2 | 17 | 47.8 ± 0.7 / 50.5 ± 2.9 (47.1–53.1) | 49.4 ± 0.8 / 48.6 ± 1.1 (47.5–50.2) | 50.2 ± 0.9 / 52.1 ± 0.8 (50.8–53.1) | 44.3 ± 0.7 / 44.3 ± 0.9 (43.3–45.8) |
+    | `BatchFactor` 2.0 | 9 | 66.4 ± 1.7 / 69.1 ± 2.0 (65.4–71.0) | 69.5 ± 1.9 / 71.1 ± 2.0 (69.2–74.6) | 70.3 ± 2.3 / 70.6 ± 1.8 (67.7–72.8) | 80.8 ± 1.4 / 80.8 ± 2.5 (77.2–84.7) |
+    | `BatchFactor` 2.0 | 17 | 61.6 ± 1.3 / 62.1 ± 1.9 (58.7–64.7) | 63.2 ± 1.3 / 61.2 ± 1.8 (58.2–63.0) | 63.8 ± 1.5 / 63.8 ± 1.6 (62.0–66.5) | 58.9 ± 1.1 / 59.2 ± 1.2 (57.3–60.4) |
+    | both | 9 | 58.6 ± 0.5 / 61.4 ± 1.3 (59.5–62.5) | 61.1 ± 1.0 / 62.2 ± 0.9 (61.4–63.4) | 62.2 ± 0.9 / 64.0 ± 0.8 (63.0–65.2) | 60.5 ± 0.6 / 59.9 ± 0.9 (59.0–60.9) |
+    | both | 17 | 51.9 ± 0.8 / 51.2 ± 2.5 (47.5–54.4) | 53.5 ± 0.9 / 52.3 ± 0.8 (51.6–53.7) | 54.3 ± 0.9 / 55.7 ± 1.1 (53.7–57.0) | 44.3 ± 0.7 / 44.9 ± 0.9 (43.7–46.3) |
+
+  - Component gaps, model − harness, n_Δ / symbols per difference (%):
+    - at 50 ms: within ±1.2 / −3.1 to +4.1 in every configuration;
+    - at 200 ms: N = 9 within ±0.5 / −3.6 to +3.5; N = 17 −4.1 to −5.3 / +1.2 to +6.0;
+    - at Delay 0, N = 17: −7.4 to −10.7 / +2.2 to +10.7.
+
+    So the model's n_Δ at N = 17 is a lower bound at 200 ms too. The harness refused no session in
+    these runs (`sessions_total` has no `busy` or `session_limit`), so the session caps the model
+    omits are not the cause. Not traced further. The gap shows in the Delay 200 − 50 ms
+    difference at N = 17: the harness's share rises by 2.6–4.1 points, the model's by 0.7–1.8.
+    With hint(R), the model's symbols at N = 17 sit 2–6% above the harness's (`BatchFactor` 2.0 the
+    most), and without it within 2%. This is the second wave's hints, still untraced.
+  - The differences G6's calls rest on (share points, model / harness, at 50 and 200 ms):
+    - `GrowthFactor` 2 − now: −18.6 / −17.4 and −14.6 / −12.3 at N = 9; −13.5 / −13.5 and
+      −14.4 / −14.1 at N = 17.
+    - `BatchFactor` 2.0 − now: −8.8 / −5.8 and −3.4 / −1.4 at N = 9 (the model overstates the gain
+      by 2–3 points); +0.3 / −0.9 and −0.8 / −2.5 at N = 17 (no gain beyond the noise: the
+      harness's standard errors are 1.1 and 1.8).
+    - both − now: −9.4 / −9.8 and −10.3 / −10.6 at N = 17.
+    - hint off − on at 50 ms, N = 9 and N = 17: now +2.7 / +3.6 and −3.7 / −3.0; `GrowthFactor` 2
+      +0.4 / +0.1 and −5.1 / −4.3; `BatchFactor` 2.0 +11.4 / +9.7 and −4.2 / −2.1; both
+      −0.6 / −2.4 and −9.2 / −7.4.
+
+    All are within their bounds.
+  - What the model can decide: effects above about 3 points. These are `GrowthFactor` 2 everywhere,
+    `BatchFactor` 2.0's gain at N = 9 and its absence at N = 17, and the hint at N = 17 (and with
+    `BatchFactor` 2.0 at N = 9). It cannot decide whether `GrowthFactor` 2 with the hint passes
+    AC-B1 at N = 17. At 50 ms the model gives 49.4% and the harness 48.6 ± 1.1% (47.5–50.2); at
+    200 ms 50.2% and 52.1 ± 0.8%. Both are within the model's 3 points of 50%, so the call needs
+    the harness or testnet (T6). The slot-per-peer figures in "(T4.6 part 2 → G6) The comparison
+    table" (44.0 n_Δ per upload, 53% and 40%) are the model's alone and unvalidated (Follow-ups,
+    fix round 1).
+- **(T4.6 part 2 fix round 1, Medium 3) Correction: without the hint, `GrowthFactor` 2 costs 3.3×
+  the `More`s and 1.35× the round trips, not "3.4× the round trips".** This supersedes, in "(T4.6
+  part 2) AC-B1 per configuration: no candidate passes at N = 9", the bullet "`GrowthFactor` 2
+  without the hint reaches 43–45% at N = 17, with 4 `More`s per upload (3.4× the round trips)".
+  Figures at N = 17, 50 ms (harness 6 seeds, model 20):
+  - `More`s per upload: 4.03 without the hint against 1.22 with it (3.3×).
+  - Round trips per completed session (open and close counted): 6.33 against 4.68 (1.35×; model
+    6.25 against 4.63). That is 1.65 round trips, 165 ms, per session at 50 ms.
+  - Batch convergence: mean 3.99 s against 3.76 s; the longest is unchanged (6.49 s both).
+  - Share: 44.3 ± 0.9% (43.3–45.8) in the harness and 44.3% in the model. Only the setups with
+    `GrowthFactor` 2 and no hint clear AC-B1 at N = 17 with margin (both constants without the hint:
+    44.9 ± 0.9%).
+
+  So the hint costs bytes (4.3 points in the harness) and saves 1.65 of 6.33 round trips per
+  session (26%) and 0.23 s of mean convergence. G6 should weigh those, not 3.4× the round trips.
+- **(T4.6 part 2 fix round 1, Low 3) The n_Δ invariant of `TestSREPModel` is structural.** The old
+  check n_Δ per upload ≥ p(N − p) held only for its seed: 18.2 against 18 at N = 9, while over 20
+  seeds at 200 ms the model goes down to 17.7. Now:
+  - `srepCheckDiffs`: the differences of all sessions are at least the chunks fetches delivered
+    (stored or duplicate). Each delivered chunk was a difference of the session that wanted it,
+    on one side only, so this is N − p per upload with claims. It holds for every seed, with and
+    without claims. A mutation that records a quarter of each difference fails it.
+  - n_Δ per upload ≥ 0.95 p(N − p) stays, documented as a regression check of the step order of
+    one instant, not as a bound. The model gives 17.7–18.4 at N = 9 over 20 seeds at Delay 0–200
+    ms (sd ≤ 0.1), and the random leg order it guards against gave 14.8.
+- **(T4.6 part 2 fix round 1, Low 4) AC-B1 against pullsync's bytes on the wire.** This extends
+  "(T4.6 part 2) AC-B1 per configuration: no candidate passes at N = 9" and closes the round-3
+  review's Low 5 nit. AC-B1's baseline is 102 B per offer. On the wire an Offer entry is 104 B,
+  plus each page's Get, Offer header and Want: 1.09× the baseline at the steady load. Against
+  pullsync's wire bytes, every share above overstates rangesync's cost by about 8% (divide by 1.09).
+  On that basis (harness, Delay 0–200 ms, hint on, N = 9 and N = 17):
+  - now: 66–72% and 57–61%;
+  - `GrowthFactor` 2: 55–56% and 45–48%, which passes at N = 17 on this basis;
+  - `BatchFactor` 2.0: 63–65% and 56–59%;
+  - both: 56–59% and 47–51%;
+  - `GrowthFactor` 2 without the hint: 41% at N = 17.
+
+  AC-B1 as written (T6.0) measures `bee_pullsync_chunks_offered` × 102 B, so the verdicts above
+  stand. Re-basing it is G6's or T6.0's call (Follow-ups, "(T4.6 part 2 → G6) What can bring AC-B1
+  within reach").
+- **(T4.6 part 2 fix round 1) Scope, tests and wall times.**
+  - Production (Medium 1 only, in `pkg/rangesync`): `constants.go` (`BatchFactorNum`,
+    `BatchFactorDen`, `BatchFactor` derived from them) and `session_symbols.go` (`firstBatch`).
+    Behavior is identical at the current constants.
+  - Test-only: `export_test.go` (`FirstBatchOf`), `session_symbols_test.go`, and the three
+    `srep_model*` files.
+  - There is no `pkg/node`, `pkg/p2p`, `pkg/pullsync`, `go.mod` or proto change, no new parser of
+    peer input and no `*_fuzz_test.go`.
+  - Tests and wall times: single runs on this host.
+    - default: `TestSREPModel` 1.7–1.9 s and `TestSREPIdeal` 1.8 s (in parallel),
+      `TestFirstBatchPinned` 0.04 s, `TestFirstBatchFactor` < 0.01 s; `TestSREP*` and
+      `TestFirstBatch*` at `-count=5`: 9 s.
+    - `-tags=sim`: `TestSREPModelVsHarness` 184 s (48 harness runs, one after another, and the
+      model's 640 runs), `TestSREPModelG6` 57 s. The records took about 3 minutes per scratch build.
+    - `go test ./pkg/rangesync/...`, and `pkg/rangesync` at `-count=2 -cpu=1,2,4` (61 s): all pass.
+      `TestCombinedSyncerBothDrivers` passes at `-count=3`.
+    - `make build`, `make lint`, `golangci-lint --build-tags sim` and `go vet` (default and
+      `-tags=sim`) are clean.
 
 ## Follow-ups
 _(sessions append here)_
@@ -3237,3 +3392,40 @@ _(sessions append here)_
   `TestSREPStream`, `TestSREPDecodeTable`, `TestSREPSessionCost`, `TestSREPPullsync`,
   `TestSREPIdeal`, `TestSREPModel`; changed through the harness: every neighborhood test. They ran
   with `-count=5 -cpu=1,2,4` instead.
+- **(T4.6 part 2 fix round 1 → part 3, G6; Medium 2) The 16-slot gain is unvalidated.** This
+  qualifies the N = 17 bullet of "(T4.6 part 2 → G6) What can bring AC-B1 within reach". The 53%
+  (now) and 40% (`GrowthFactor` 2) with a slot per peer come from the model alone, and they run
+  through the second wave's hints. That is where the model's symbols per difference with hint(R)
+  sit 2–6% above the harness's at N = 17, a gap still untraced (Decisions, fix round 1, Medium 2),
+  and where the model has no session cap. Part 3 must measure it with the harness (a scratch edit
+  of `MaxInitiatedSessions`) before G6 relies on it.
+- **(T4.6 part 2 fix round 1 → G6, T4.x; Low 1) 16 initiated slots fit only at N = 17.** At
+  N = 17, node k (by overlay order) opens 16 − k sessions and serves k. With a slot per peer it
+  needs exactly 16 tokens, which is `MaxConcurrentSessions`; served and initiated sessions share
+  those tokens. `MaxInitiatedSessions = MaxConcurrentSessions / 2` keeps half for inbound
+  sessions (scheduler.go). A constant 16 breaks that reasoning in two cases: at N > 17 (a node
+  with more than 16 eligible neighbors), and whenever stripe transfers, verifications or takeovers
+  hold slots. The excess then turns into Busy answers. If G6 wants the second wave gone, the cap
+  must be per node or adaptive, not a constant: for example the node's eligible higher-overlay
+  neighbors, bounded by the tokens its served sessions leave.
+- **(T4.6 part 2 fix round 1 → part 3) The model's n_Δ gaps at N = 17.** This supersedes the
+  last sentence of "(T4.6 part 2 → part 3) The model as part 3's predictor" ("re-check the two gaps
+  left at N = 17"). The gaps with 6 seeds: the harness's n_Δ is 0–1% above the model's at 50 ms,
+  4–5% at 200 ms and 7–11% at Delay 0. No session was refused in these runs, so the session caps
+  the model omits are not the cause. The model's symbols per difference with hint(R) are 2–6%
+  above the harness's (`BatchFactor` 2.0 the most). The model underestimates the share's rise from
+  50 to 200 ms at N = 17 by about 2 points. Trace both before part 3 relies on the model at
+  200 ms.
+- **(T4.6 part 2 fix round 1) Re-record `srepHarnessRef` when the protocol changes.** The records
+  are the harness's figures with each of G6's candidates (6 seeds, scratch builds with the
+  constants changed). `TestSREPModelVsHarness` fails its record check when the live harness drifts
+  from the record of the compiled constants, and logs the new records. The candidates' records
+  must be re-measured in scratch builds, about 3 minutes each.
+- **(T4.6 part 2 fix round 1) Tests to run with `-race` on CI.** This extends "(T4.6 part 2) Tests
+  to run with `-race` on CI". They ran with `-count=2..5 -cpu=1,2,4` instead.
+  - New: `TestFirstBatchPinned`, `TestFirstBatchFactor`.
+  - Changed: `TestSREPFirstBatch`, `TestSREPSessionCost`, `TestSREPModel`.
+  - Changed through `FirstBatch`: `TestFirstBatch`, `TestWorkedExamples`, `TestSessionSymbols*`,
+    and the neighborhood tests.
+  - `TestSREPModelVsHarness` (`-tags=sim`) runs 48 harness runs one after another, about 3 minutes
+    on this host. Under `-race`, expect 10× that.
