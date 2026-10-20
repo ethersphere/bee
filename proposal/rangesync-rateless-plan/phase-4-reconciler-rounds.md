@@ -1173,6 +1173,78 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   change, and no new parser of peer input. `followup-fuzzing.md` gains one line for the new
   invariants of two existing targets.
 
+- **(T4.5 part 2b fix round 1, Medium 1a) A Status root must contain its sender, and root moves
+  excuse little.** This supersedes the part 2b entry's "except those outside the peer's root by its
+  last Status" and "The root exclusion can be abused ... bounded by its Status rate".
+  - `handleStatus` treats a root that does not contain the sender's overlay as a violation. §7.6
+    defines a root as `(B, rB)`, the node's own prefix at its storage radius, which is the
+    Indexer's root, so no honest Status trips it. Any two roots of one peer are then nested.
+  - A fetch requests no ID outside the peer's root by its last Status (looked up for each Want).
+    Such IDs are `Undelivered`: retried from other peers, counted as withheld by a stripe, free of
+    fetch rate, and never part of the shortfall.
+  - A missing ID that left the root while the fetch ran is excused only when the move from the
+    fetch's starting root is a radius increase of one or two bits (`plausibleStep`), and the first
+    move of that peer within `rootExcuseInterval` (10 min). The same move again, the concurrent
+    fetches of one radius increase, is excused too. The excuse is kept across reconnects.
+
+  So a peer that lists junk away from its overlay and then narrows its root gets only the Wants
+  already sent excused, once per 10 min.
+- **(T4.5 part 2b fix round 1, Medium 1b) A reset counts.** A fetch stream that fails without a
+  delivery, and was not ended by this node or by the fetch timeout, takes a token of a per-peer
+  budget: `maxFetchResets = 4`, then one per `fetchResetInterval` (1 min). Past it, the failure is a
+  violation. The budget is a `ratelimit.Limiter` cleared on disconnect. Honest causes (a store error
+  on the responder, a shutdown) seldom exceed four, and a disconnect clears them. A peer that resets
+  every Want gets one Want (at most 250 IDs) per minute unscored.
+- **(T4.5 part 2b fix round 1, Medium 2) A first offense scores without a disconnect, and a miss
+  counts when repeated.** This supersedes the part 2b entries "A shortfall above
+  `max(4, requested/100)` ... is a violation" (scored and disconnected on the first offense) and "after
+  each Want against the tolerance of all the IDs passed". The rules, in `shortfall.go`:
+  - *Blatant.* When at least half of at least `blatantMinIDs = 64` requested IDs fall short (after
+    excuses), the fetch is a violation at once. This is judged after each Want and at the end, so a
+    peer that listed junk still costs one Want.
+  - *Deferred verdict.* Otherwise a missing ID counts only when the same peer left it missing
+    before, within `shortfallWindow = 10 min` (the reconciler's `ScoreDecayInterval`). The memory is
+    per peer, at most `maxMissingPerPeer = MaxClaimsPerPeer` IDs, and is cleared on disconnect. An
+    honest peer's index commits an eviction, a batch expiry or an in-place rewrite before its next
+    listing, so it never lists such an ID again. Hot SOC and GSOC rewrites, correlated batch
+    evictions and fetches that waited minutes in a queue therefore never count. Stamps invalid on
+    every node count at once.
+  - *Offense.* At the end of the fetch, a count above `max(4, n/100)` is an offense. The first
+    within `shortfallWindow` is reported through `scorer.Fail` with a reason wrapping only the new
+    additive `ErrFetchShortfall`, without a disconnect. The fetch's error wraps `ErrFetchShortfall`,
+    so a stripe attempt fails with it and a verification does not score again. A repeat within the
+    window is a violation (disconnect). `PeerScorer.Fail`'s doc now allows that reason; the
+    reconciler only raises the score.
+
+  What still trips an honest peer: a batch expiry or a radius step beyond the excused move that
+  evicts more than half of a fetch of 64 or more IDs between the listing and the Want, which
+  disconnects it once. An inconsistent responder store (its index lists chunks it lost) is scored at
+  the second listing and disconnected at the third within 10 min, and again after each reconnect;
+  such a store needs a repair. What a peer can still do unscored: fresh junk that stays below half
+  of each fetch (it must fill the rest with chunks this node lacks), or below 64 IDs per fetch; and
+  unknown-batch junk (T4.6).
+- **(T4.5 part 2b fix round 1, Low 3) No judgment without a Status.** A disconnect deletes the
+  peer's Status, and the judgment then returns nothing, so the IDs a root move excused are not
+  counted as if there were no root. A peer that lists IDs has a Status (a session needs one), so
+  only a disconnect during the fetch skips the judgment. A test fetch from a peer with no Status is
+  not judged (`TestFetchManyWants` is back to its original setup).
+- **(T4.5 part 2b fix round 1, Low 4) The requester opens at most two fetch streams per peer.** This
+  supersedes part 2b's `maxFetchStreamsOut = maxPeerFetchStreams − 1 = 3`; it is now
+  `maxPeerFetchStreams / 2`. A stream this node resets keeps its handler on the responder until the
+  handler's next write fails, after its wait for the delivery rate, so the cap leaves room for two
+  such handlers. Chosen over a responder that resets at limit + 1: that reset would charge this
+  node's new reset budget (Medium 1b) to an honest responder and fail honest fetches. Two streams
+  cost little throughput: the responder delivers at most 250 chunks/s per peer anyway. A peer's
+  claims are then at most 500.
+- **(T4.5 part 2b fix round 1) Tests and contracts.** `TestFetchShortfall*` are rewritten for the
+  new rules: blatant, relisted (offenses and window), invalid stamps, honest churn (in-place
+  rewrites, correlated batch eviction, a radius increase mid-fetch, causes on this node), excuse
+  once, status gone, after a violation. New: `TestShortfallBook`, `TestFetchSkipsOutsidePeerRoot`,
+  `TestFetchResetBudget`, `TestStatusRootContainsPeer`, `TestFetchStreamsLaggingHandlers`. The
+  adversarial tests' raw peers sit inside their roots (`newRawPeerIn`). `TestStripeBadSignaturesScored`
+  is now a first offense: scored once, not disconnected. The additive identifier is
+  `rangesync.ErrFetchShortfall`. There is no `pkg/node`, `go.mod` or proto change.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1608,3 +1680,29 @@ _(sessions append here)_
     may end a violation: `TestSREP*`, `TestWantSet*`, `TestRejectedNotRefetchedEachRound`,
     `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestRadius*`, the T4.5 part 1
     tests (`TestDualMode*`, `TestRangesyncOnlyGoroutines`).
+- **(T4.5 part 2b fix round 1) Resolved: the review's Medium 1, Medium 2, Low 3 and Low 4.** See the
+  Decisions log. They amend the part 2b resolution of "(T4.4 → T4.5) Undelivered IDs are not
+  scored" and "(T4.4 → T4.5) Concurrent fetch streams per peer".
+- **(T4.5 part 2b fix round 1 → T4.6) Unknown-batch junk fills the rejected shares (review Low 5).**
+  This extends "(T4.5 part 2b → T4.6) Junk with unknown-batch stamps is not scored". Four or more
+  Sybils that deliver unscored unknown-batch junk fill every share of the rejected cache, so honest
+  rejections last about 10 s instead of `RejectTTL`. The fetch rate bounds it, so it is accepted
+  until Q7's measurement.
+- **(T4.5 part 2b fix round 1 → T6) Shortfall offenses on testnet.** Read the first offenses (the
+  reconciler's debug log, reason `ErrFetchShortfall`) and the violations ("requested ids not
+  delivered" in `invalid_message_total`). Honest peers should show none; a blatant one around a
+  batch expiry or a radius change would call for a wider excuse.
+- **(T4.5 part 2b fix round 1) Fresh junk below half of a fetch is never counted.** The deferred
+  verdict needs an ID listed again. If testnet shows peers that list a steady share of fresh junk,
+  count the misses per peer over a longer window as well.
+- **(T4.5 part 2b fix round 1) Tests to run with `-race` on CI.** These ran with
+  `-count=20 -cpu=1,2,4` instead, and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestShortfallBook`, `TestFetchShortfallBlatant`,
+    `TestFetchShortfallRelisted`, `TestFetchShortfallInvalidStamps`, `TestFetchShortfallExcuseOnce`,
+    `TestFetchShortfallStatusGone`, `TestFetchSkipsOutsidePeerRoot`, `TestFetchResetBudget`,
+    `TestStatusRootContainsPeer`, `TestFetchStreamsLaggingHandlers`. Changed:
+    `TestFetchShortfallHonestChurn`, `TestFetchShortfallAfterViolation`, `TestFetchManyWants`,
+    `TestReconcileAdversarial`, `TestReconcileOpeningOutsideRoot`. Re-run: `TestFetch*`, `TestStatus*`.
+  - `pkg/rangesync/reconciler`, changed: `TestStripeBadSignaturesScored`. Re-run, because every fetch
+    now looks up the peer's root and may end with `ErrFetchShortfall`: `TestStripe*`, `TestSREP*`,
+    `TestWantSet*`, `TestVerifyStripes*`, `TestRadius*`, `TestDualMode*`.
