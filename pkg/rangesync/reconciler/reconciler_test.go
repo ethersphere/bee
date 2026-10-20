@@ -115,6 +115,12 @@ type fakeService struct {
 	// wantIDs, by peer, are the wants Reconcile returns, instead of wants
 	// zero IDs.
 	wantIDs map[string][]storer.ChunkID
+	// busyErr, by peer, is the error of its busyN answers instead of
+	// rangesync.ErrPeerBusy; sessionHook, if not nil, is called at the start
+	// of each ReconcileWith with the peer and the number of its sessions so
+	// far, this one included.
+	busyErr     map[string]error
+	sessionHook func(peer swarm.Address, n int)
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -143,6 +149,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 		busyN:           make(map[string]int),
 		localBusyN:      make(map[string]int),
 		wantIDs:         make(map[string][]storer.ChunkID),
+		busyErr:         make(map[string]error),
 	}
 }
 
@@ -201,9 +208,12 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 	s.maxInSession[k] = max(s.maxInSession[k], s.inSession[k])
 	s.inAll++
 	s.maxInAll = max(s.maxInAll, s.inAll)
-	delay, gate := s.reconcileDelay, s.peerGate[k]
+	delay, gate, hook, calls := s.reconcileDelay, s.peerGate[k], s.sessionHook, len(s.opens[k])
 	s.mu.Unlock()
 	defer s.set(func() { s.inSession[k]--; s.inAll-- })
+	if hook != nil {
+		hook(peer, calls)
+	}
 	if gate != nil {
 		select {
 		case <-gate:
@@ -226,8 +236,11 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 	case localBusy:
 		s.localBusyN[k]--
 	}
+	busyErr := s.busyErr[k]
 	s.mu.Unlock()
 	switch {
+	case busy && busyErr != nil:
+		return nil, busyErr
 	case busy:
 		return nil, rangesync.ErrPeerBusy
 	case localBusy:
@@ -463,6 +476,22 @@ func (c *fakeClock) After(d time.Duration) <-chan time.Time {
 	}
 	c.timers = append(c.timers, fakeTimer{at: c.now.Add(d), c: ch})
 	return ch
+}
+
+// advancingAfter returns an After that, for a wait of exactly d (a test's
+// stripe retry interval), moves c on by d and fires at once, as if the caller
+// waited d and nothing else happened meanwhile; other waits (the stripe
+// timeout) follow c. Tests pick d unlike any time left on a stripe clock.
+func advancingAfter(c *fakeClock, d time.Duration) func(time.Duration) <-chan time.Time {
+	return func(w time.Duration) <-chan time.Time {
+		if w != d {
+			return c.After(w)
+		}
+		c.Add(d)
+		ch := make(chan time.Time, 1)
+		ch <- c.Now()
+		return ch
+	}
 }
 
 type harness struct {

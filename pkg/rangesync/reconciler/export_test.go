@@ -273,6 +273,10 @@ func (r *Reconciler) VerifierFor(res StripeResult) (swarm.Address, bool) {
 	return r.verifier(res, all, ready)
 }
 
+// StripeSlotsTaken returns the number of stripe slots taken
+// (MaxStripeSessions).
+func (r *Reconciler) StripeSlotsTaken() int { return len(r.stripeSlots) }
+
 // MaxStripeBusyRetries is maxStripeBusyRetries.
 const MaxStripeBusyRetries = maxStripeBusyRetries
 

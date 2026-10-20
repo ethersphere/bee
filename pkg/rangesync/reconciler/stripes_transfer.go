@@ -374,7 +374,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	clock := &stripeClock{left: r.stripeTimeout, expire: func() { cancel(ErrStripeTimeout) }}
+	clock := &stripeClock{now: r.now, after: r.after, left: r.stripeTimeout, expire: func() { cancel(ErrStripeTimeout) }}
 	defer clock.pause()
 	releaseSlots, err := r.acquireStripeSlots(ctx)
 	if err != nil {
@@ -440,6 +440,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	var lastLocal error // the last answer, if Busy for a cause on this node
 	for busy := 0; ; {
 		_, err = r.svc.ReconcileWith(ctx, peer, opts)
+		clock.expireIfDue()
 		lastLocal = nil
 		if !isBusy(err) {
 			break
@@ -459,13 +460,11 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		}
 		releaseSlots()
 		held = false
-		t := time.NewTimer(r.stripeRetry)
 		select {
 		case <-ctx.Done():
-		case <-t.C:
+		case <-r.after(r.stripeRetry):
 		}
-		t.Stop()
-		if ctx.Err() != nil {
+		if clock.expireIfDue(); ctx.Err() != nil {
 			break
 		}
 		if releaseSlots, err = r.acquireStripeSlots(ctx); err != nil {
@@ -483,7 +482,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	close(queue)
 	<-fetched
 	if fetchErr == nil && err == nil && ctx.Err() == nil && len(pending) > 0 {
-		pending, unverified, fetchErr = r.resolvePending(ctx, peer, pending, unverified, &res)
+		pending, unverified, fetchErr = r.resolvePending(ctx, clock, peer, pending, unverified, &res)
 	}
 	res.Deferred = len(pending) + unverified
 
@@ -515,14 +514,18 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 // for the IDs the want set would grant (wantset.Set.Peek). It adds the
 // outcome to res and returns the IDs still pending, the unverified count
 // and the error of a failed fetch.
-func (r *Reconciler) resolvePending(ctx context.Context, peer swarm.Address, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
+func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, peer swarm.Address, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
 	for pass := 0; len(pending) > 0 && pass < maxPendingPasses; pass++ {
-		t := time.NewTimer(r.stripeRetry)
 		select {
 		case <-ctx.Done():
-			t.Stop()
 			return pending, unverified, nil
-		case <-t.C:
+		case <-r.after(r.stripeRetry):
+		}
+		clock.expireIfDue()
+		select {
+		case <-ctx.Done(): // the caller reports the cause
+			return pending, unverified, nil
+		default:
 		}
 		out, err := r.fetchFrom(ctx, peer, pending, true)
 		res.Stored += out.stored
@@ -565,30 +568,59 @@ func (r *Reconciler) acquireStripeSlots(ctx context.Context) (release func(), er
 	}, nil
 }
 
-// stripeClock is the stripe timeout of one attempt, which runs only while
-// the attempt holds its slots: expire is called once left has run out.
+// stripeClock is the stripe timeout of one attempt, on the reconciler's
+// clock (Options.Now and Options.After): it runs while resumed, and expire is
+// called once left has run out. While it runs, a goroutine waits for the
+// expiry; pause ends it, and the attempt pauses the clock when it ends. It is
+// not safe for concurrent use: the attempt's goroutine drives it.
 type stripeClock struct {
+	now    func() time.Time
+	after  func(time.Duration) <-chan time.Time
+	expire func()
 	left   time.Duration
 	since  time.Time
-	timer  *time.Timer
-	expire func()
+	stop   chan struct{} // closed by pause; nil while paused
 }
 
-// resume starts the clock.
+// resume starts the clock; it is a no-op when the clock is running.
 func (c *stripeClock) resume() {
-	c.since = time.Now()
-	c.timer = time.AfterFunc(max(c.left, 0), c.expire)
+	if c.stop != nil {
+		return
+	}
+	c.since = c.now()
+	stop := make(chan struct{})
+	c.stop = stop
+	expired := c.after(max(c.left, 0))
+	go func() {
+		select {
+		case <-expired:
+			select {
+			case <-stop: // paused before this goroutine saw the expiry
+			default:
+				c.expire()
+			}
+		case <-stop:
+		}
+	}()
 }
 
 // pause stops the clock; it is a no-op when the clock is not running.
 func (c *stripeClock) pause() {
-	if c.timer == nil {
+	if c.stop == nil {
 		return
 	}
-	if c.timer.Stop() {
-		c.left -= time.Since(c.since)
+	close(c.stop)
+	c.stop = nil
+	c.left -= c.now().Sub(c.since)
+}
+
+// expireIfDue calls expire when the running clock has run out, whether or
+// not its goroutine has seen the expiry yet. The attempt checks it after each
+// session answer and each wait, so that it starts nothing past its timeout.
+func (c *stripeClock) expireIfDue() {
+	if c.stop != nil && c.now().Sub(c.since) >= c.left {
+		c.expire()
 	}
-	c.timer = nil
 }
 
 // stripeJob is a range queued for a striped transfer; started, if not nil,

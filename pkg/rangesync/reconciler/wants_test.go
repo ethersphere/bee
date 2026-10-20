@@ -270,8 +270,10 @@ func newWantHarness(t *testing.T, svc *wantService, peers ...swarm.Address) *har
 		clock: &fakeClock{now: time.Unix(1_000_000, 0)},
 	}
 	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{
-		Now:           h.clock.Now,
-		After:         h.clock.After,
+		Now: h.clock.Now,
+		// a test that sets a stripe retry interval of a millisecond has
+		// each of its waits pass at once
+		After:         advancingAfter(h.clock, time.Millisecond),
 		RoundInterval: time.Hour, // rounds run at Start only
 		// the guard ends a second after Start on the fake clock
 		StartupGuardTimeout: time.Millisecond,

@@ -48,6 +48,31 @@ func newGossipHarnessOptions(t *testing.T, svc *fakeService, o reconciler.Option
 	return h
 }
 
+// newStripeHarness returns a reconciler that is not started, for stripe
+// transfers on the fake clock: the stripe timeout is timeout, and each wait
+// to retry a Busy answer (retry) passes at once, moving the clock on by
+// retry (advancingAfter).
+func newStripeHarness(t *testing.T, svc *fakeService, timeout, retry time.Duration) *harness {
+	t.Helper()
+	h := &harness{
+		svc:   svc,
+		topo:  &fakeTopology{},
+		clock: &fakeClock{now: time.Unix(1_000_000, 0)},
+	}
+	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{
+		Now:           h.clock.Now,
+		After:         advancingAfter(h.clock, retry),
+		StripeTimeout: timeout,
+	})
+	h.r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return h
+}
+
 // gossipLog records the clock time of every Status sent to each peer.
 type gossipLog struct {
 	h     *harness

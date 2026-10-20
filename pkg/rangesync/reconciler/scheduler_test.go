@@ -471,7 +471,7 @@ func TestStripeSessionCap(t *testing.T) {
 func TestStripeTimeoutAfterSlot(t *testing.T) {
 	t.Parallel()
 
-	const timeout = 300 * time.Millisecond
+	const timeout = time.Hour // only the fake clock gets there
 	svc := newFakeService(status(1))
 	gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
 	peers := make([]swarm.Address, len(gates))
@@ -492,15 +492,16 @@ func TestStripeTimeoutAfterSlot(t *testing.T) {
 
 	done := make(chan []reconciler.StripeResult, 1)
 	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(addr(0xf1, 0))) }()
-	time.Sleep(2 * timeout)
-	select {
-	case <-done:
-		t.Fatal("stripe ended without a slot")
-	default:
-	}
+	waitFor(t, "stripe slot taken", func() bool { return h.r.StripeSlotsTaken() == 1 })
+	h.clock.Add(2 * timeout) // while the stripe waits for a session slot
 	close(gates[0])
-	if res := <-done; res[0].Err != nil {
-		t.Fatalf("stripe that waited for a slot: %v", res[0].Err)
+	select {
+	case res := <-done:
+		if res[0].Err != nil {
+			t.Fatalf("stripe that waited for a slot: %v", res[0].Err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stripe did not end: it timed out while waiting for a slot and was reassigned")
 	}
 }
 
@@ -842,8 +843,7 @@ func TestStripeBusyRetriesBounded(t *testing.T) {
 	svc := newFakeService(status(1))
 	p := addr(0xf1, 0)
 	svc.busyN[p.ByteString()] = 1 << 30
-	h := newGossipHarness(t, svc)
-	h.r.SetStripeRetryInterval(time.Millisecond)
+	h := newStripeHarness(t, svc, time.Hour, time.Millisecond)
 	res := h.r.TransferStripes(context.Background(), stripesTo(p))
 	if !errors.Is(res[0].Err, rangesync.ErrPeerBusy) {
 		t.Fatalf("stripe error %v, want Busy", res[0].Err)
@@ -854,48 +854,64 @@ func TestStripeBusyRetriesBounded(t *testing.T) {
 }
 
 // TestStripeTimeoutPausedWhileBusy: the waits between Busy retries do not
-// count towards the stripe timeout.
+// count towards the stripe timeout, while the time the attempts hold their
+// slots adds up across the Busy answers.
 func TestStripeTimeoutPausedWhileBusy(t *testing.T) {
 	t.Parallel()
 
 	const timeout = 300 * time.Millisecond
-	svc := newFakeService(status(1))
 	p := addr(0xf1, 0)
-	svc.busyN[p.ByteString()] = 5 // 500 ms of retries
-	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: timeout})
-	h.r.SetStripeRetryInterval(100 * time.Millisecond)
+	svc := newFakeService(status(1))
+	svc.busyN[p.ByteString()] = 5
+	h := newStripeHarness(t, svc, timeout, 100*time.Millisecond)
+	start := h.clock.Now()
 	if res := h.r.TransferStripes(context.Background(), stripesTo(p)); res[0].Err != nil {
 		t.Fatalf("stripe: %v", res[0].Err)
+	}
+	if d := h.clock.Now().Sub(start); d < 5*100*time.Millisecond {
+		t.Fatalf("stripe took %v, want 500 ms of retry waits (past the %v timeout)", d, timeout)
 	}
 
 	// the time the attempts hold their slots adds up: 100 ms per Busy answer
 	svc2 := newFakeService(status(1))
 	svc2.busyN[p.ByteString()] = 5
-	svc2.reconcileDelay = 100 * time.Millisecond
-	h2 := newGossipHarnessOptions(t, svc2, reconciler.Options{StripeTimeout: timeout})
-	h2.r.SetStripeRetryInterval(10 * time.Millisecond)
+	h2 := newStripeHarness(t, svc2, timeout, 10*time.Millisecond)
+	svc2.sessionHook = func(swarm.Address, int) { h2.clock.Add(100 * time.Millisecond) }
 	if res := h2.r.TransferStripes(context.Background(), stripesTo(p)); !errors.Is(res[0].Err, reconciler.ErrStripeTimeout) {
 		t.Fatalf("stripe: %v, want a timeout after 300 ms of Busy answers", res[0].Err)
 	}
 }
 
-// TestStripeFetchBoundedByTimeout: the stripe timeout also bounds the fetch
-// of the listed IDs after the session ended.
+// TestStripeFetchBoundedByTimeout: the stripe timeout, on the reconciler's
+// clock, also bounds the fetch of the listed IDs after the session ended.
 func TestStripeFetchBoundedByTimeout(t *testing.T) {
 	t.Parallel()
 
+	const timeout = time.Hour // only the fake clock gets there
 	svc := newFakeService(status(1))
 	p := addr(0xf1, 0)
 	svc.wants[p.ByteString()] = 3
-	svc.fetchGate = make(chan struct{}) // the fetch never ends on its own
-	t.Cleanup(func() { close(svc.fetchGate) })
-	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: 100 * time.Millisecond})
+	calls := make(chan chan struct{}, 1)
+	svc.fetchCalls = calls // the fetch never ends on its own
+	h := newStripeHarness(t, svc, timeout, time.Second)
 	done := make(chan []reconciler.StripeResult, 1)
 	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(p)) }()
+	<-calls // the fetch started
+	waitFor(t, "session ended", func() bool { return svc.running() == 0 })
+	select {
+	case res := <-done:
+		t.Fatalf("stripe ended before its timeout: %v", res[0].Err)
+	default:
+	}
+
+	h.clock.Add(timeout)
 	select {
 	case res := <-done:
 		if !errors.Is(res[0].Err, reconciler.ErrStripeTimeout) {
 			t.Fatalf("stripe: %v, want a timeout", res[0].Err)
+		}
+		if res[0].Listed != 3 {
+			t.Fatalf("listed %d, want 3", res[0].Listed)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the fetch after the session outlived the stripe timeout")
@@ -915,8 +931,7 @@ func TestStripeLocalBusy(t *testing.T) {
 	svc := newFakeService(status(1))
 	// more than capped attempts with their restarts could take
 	svc.localBusyN[a.ByteString()] = (reconciler.MaxStripeRestarts+1)*(reconciler.MaxStripeBusyRetries+1) + 10
-	h := newGossipHarness(t, svc)
-	h.r.SetStripeRetryInterval(time.Millisecond)
+	h := newStripeHarness(t, svc, reconciler.StripeTimeout, time.Millisecond)
 	res := h.r.TransferStripes(context.Background(), stripe)[0]
 	if res.Err != nil || !res.Peer.Equal(a) || len(res.Tried) != 1 {
 		t.Fatalf("stripe from %s (tried %v): %v; want done by %s", res.Peer, res.Tried, res.Err, a)
@@ -926,15 +941,15 @@ func TestStripeLocalBusy(t *testing.T) {
 	const timeout = 20 * time.Millisecond
 	svc2 := newFakeService(status(1))
 	svc2.localBusyN[a.ByteString()] = 1 << 30
-	h2 := newGossipHarnessOptions(t, svc2, reconciler.Options{StripeTimeout: timeout})
-	h2.r.SetStripeRetryInterval(time.Millisecond)
-	start := time.Now()
+	h2 := newStripeHarness(t, svc2, timeout, time.Millisecond)
+	start := h2.clock.Now()
 	res = h2.r.TransferStripes(context.Background(), stripe)[0]
 	if res.Err != nil || !res.Peer.Equal(b) {
 		t.Fatalf("stripe from %s: %v; want done by %s", res.Peer, res.Err, b)
 	}
-	if d, least := time.Since(start), (reconciler.MaxStripeRestarts+1)*timeout; d < least {
-		t.Fatalf("reassigned after %v, before %d restarts (%v)", d, reconciler.MaxStripeRestarts, least)
+	const attempts = reconciler.MaxStripeRestarts + 1
+	if d := h2.clock.Now().Sub(start); d < timeout*attempts || d >= timeout*(attempts+1) {
+		t.Fatalf("reassigned after %v, want %d attempts of %v", d, attempts, timeout)
 	}
 }
 
@@ -946,8 +961,7 @@ func TestStripeBusyReassigns(t *testing.T) {
 	a, b := addr(0xf1, 0), addr(0xf1, 1)
 	svc := newFakeService(status(1))
 	svc.busyN[a.ByteString()] = 1 << 30
-	h := newGossipHarness(t, svc)
-	h.r.SetStripeRetryInterval(time.Millisecond)
+	h := newStripeHarness(t, svc, time.Hour, time.Millisecond)
 	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}})[0]
 	if res.Err != nil || !res.Peer.Equal(b) || len(res.Tried) != 2 {
 		t.Fatalf("stripe from %s (tried %v): %v; want done by %s", res.Peer, res.Tried, res.Err, b)

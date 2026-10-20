@@ -82,13 +82,14 @@ type Topology interface {
 // defaults.
 type Options struct {
 	// Now returns the current time; time.Now if nil. Tests set a fake clock.
-	// It drives the start-up guard, the score decay, the SyncRate window and
-	// the Status gossip schedule.
+	// It drives the start-up guard, the score decay, the SyncRate window,
+	// the Status gossip schedule and the stripe timeouts.
 	Now func() time.Time
 	// After returns a channel that receives once d has passed; time.After if
 	// nil. Tests set one that follows the fake clock of Now. It wakes the
-	// Status gossip when the next Status is due, and runs a triggered round
-	// once the minimum round interval has passed (scheduler.go).
+	// Status gossip when the next Status is due, runs a triggered round once
+	// the minimum round interval has passed (scheduler.go), and times the
+	// stripe timeouts and a stripe's waits to retry (stripes_transfer.go).
 	After func(d time.Duration) <-chan time.Time
 	// RoundInterval, if set, fixes the round interval: it is both the
 	// minimum and the maximum of the adaptive interval (MinRoundInterval,
