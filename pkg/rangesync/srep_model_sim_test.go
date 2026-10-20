@@ -269,7 +269,9 @@ func srepSweep(t *testing.T, table *srepDecodeTable, p srepParams, seeds int) []
 // TestSREPModelG6 sweeps the model: G6's candidates with and without
 // hint(R) at N = 9 and 17 and Delay 0 to 200 ms in the harness's steady
 // mode, with the closed form of §7.8 next to them; then the upload rate
-// (Poisson), p and MinBatch. It logs tables for the Decisions log.
+// (Poisson), production sizes (a large reserve, a root of radius 10), the
+// initiated-session slots, p and MinBatch. It logs tables for the Decisions
+// log.
 func TestSREPModelG6(t *testing.T) {
 	table := newSREPDecodeTable(srepSimDraws, 8)
 	const seeds = 10
@@ -292,7 +294,7 @@ func TestSREPModelG6(t *testing.T) {
 					if noHints {
 						hint = "off"
 					}
-					fmt.Fprintf(&b, "| %d | %s | %s | %.0f%%, %.2f, %.2f RTT | ", n, c.name, hint, 100*id.Share(), id.SymbolsPerDiff, id.RoundTrips)
+					fmt.Fprintf(&b, "| %d | %s | %s | %.0f%% (oracle %.0f%%), %.2f, %.2f RTT | ", n, c.name, hint, 100*id.Share(), 100*id.OracleShare(), id.SymbolsPerDiff, id.RoundTrips)
 					for _, d := range delays {
 						p := base
 						p.Delay = d
@@ -310,6 +312,9 @@ func TestSREPModelG6(t *testing.T) {
 	})
 
 	t.Run("rate", func(t *testing.T) {
+		// differences of up to a few hundred at 50 uploads per second: fewer
+		// draws per size keep the table's cost down
+		table := newSREPDecodeTable(srepSimDraws/4, 9)
 		var b strings.Builder
 		b.WriteString("| N | constants | uploads/s | n_Δ p50 per session | share % | symbols/diff | batch convergence s | pullsync wire-level B (÷ AC-B1's) |\n")
 		for _, n := range []int{9, 17} {
@@ -324,6 +329,62 @@ func TestSREPModelG6(t *testing.T) {
 						srepSpreadOf(fs, func(f srepFigures) float64 { return f.SymbolsPerDiff }).format(1, 2),
 						srepSpreadOf(fs, func(f srepFigures) float64 { return f.BatchConv }).format(1, 1),
 						srepPullsyncWire(n, rate), srepPullsyncWire(n, rate)/srepPullsyncACB1(n))
+				}
+			}
+		}
+		t.Log("\n" + b.String())
+	})
+
+	t.Run("production sizes", func(t *testing.T) {
+		// a reserve past ScanLimit (the root cache bounds a stream at
+		// RootSymbols, and the count varints take two bytes) and a root of
+		// radius 10, at the steady load with 50 ms
+		var b strings.Builder
+		b.WriteString("| N | constants | metadata B per upload | share % | symbols/diff | outside |\n")
+		for _, n := range []int{9, 17} {
+			for _, c := range srepConfigs {
+				o := steadyOptions(n, 1)
+				o.Delay, o.Base = 50*time.Millisecond, 1<<20
+				p := srepParamsOf(o)
+				p.Root, p.GrowthFactor, p.BatchFactorTenths = rangeOf("1011001110"), c.growth, c.batchFactorTnth
+				fs := make([]srepFigures, 0, seeds)
+				outside := 0
+				for seed := range uint64(seeds) {
+					p.Seed = seed + 1
+					r := p.run(t, table)
+					outside += r.Outside
+					fs = append(fs, srepModelFigures(r))
+				}
+				fmt.Fprintf(&b, "| %d | %s | %s | %s | %s | %d |\n", n, c.name,
+					srepSpreadOf(fs, func(f srepFigures) float64 { return f.Metadata }).format(1, 0),
+					srepSpreadOf(fs, func(f srepFigures) float64 { return f.Share }).format(100, 0),
+					srepSpreadOf(fs, func(f srepFigures) float64 { return f.SymbolsPerDiff }).format(1, 2), outside)
+			}
+		}
+		t.Log("\n" + b.String())
+	})
+
+	t.Run("initiated sessions", func(t *testing.T) {
+		// MaxInitiatedSessions (8) against a slot per peer: at N = 17 the
+		// lowest overlays open up to 16 sessions per round, in two waves of
+		// 8, and the second wave meets peers that fetched from the first.
+		// The model does not cap the sessions a node serves
+		// (MaxConcurrentSessions), so 16 slots is a bound, not a design.
+		var b strings.Builder
+		b.WriteString("| N | slots | constants | n_Δ per upload (p(N − p)) | share % | symbols/diff | batch convergence s |\n")
+		for _, n := range []int{9, 17} {
+			for _, slots := range []int{8, 16} {
+				for _, c := range srepConfigs[:2] {
+					o := steadyOptions(n, 1)
+					o.Delay = 50 * time.Millisecond
+					p := srepParamsOf(o)
+					p.InitiatedSessions, p.GrowthFactor, p.BatchFactorTenths = slots, c.growth, c.batchFactorTnth
+					fs := srepSweep(t, table, p, seeds)
+					fmt.Fprintf(&b, "| %d | %d | %s | %s (%d) | %s | %s | %s |\n", n, slots, c.name,
+						srepSpreadOf(fs, func(f srepFigures) float64 { return f.DiffPerUpload }).format(1, 1), 3*(n-3),
+						srepSpreadOf(fs, func(f srepFigures) float64 { return f.Share }).format(100, 0),
+						srepSpreadOf(fs, func(f srepFigures) float64 { return f.SymbolsPerDiff }).format(1, 2),
+						srepSpreadOf(fs, func(f srepFigures) float64 { return f.BatchConv }).format(1, 2))
 				}
 			}
 		}

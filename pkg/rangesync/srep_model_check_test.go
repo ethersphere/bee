@@ -317,6 +317,9 @@ func TestSREPIdeal(t *testing.T) {
 		if id.OracleSymbolsPerDiff < 1.3 || id.OracleSymbolsPerDiff > 1.8 {
 			t.Errorf("N = %d: oracle %.2f symbols per difference, want within [1.3, 1.8]", n, id.OracleSymbolsPerDiff)
 		}
+		if id.OracleShare() >= id.Share() {
+			t.Errorf("N = %d: the oracle's share %.2f not below the constants' %.2f", n, id.OracleShare(), id.Share())
+		}
 		if id.SymbolsPerDiff <= id.OracleSymbolsPerDiff {
 			t.Errorf("N = %d: %.2f symbols per difference with the constants, not above the oracle's %.2f", n, id.SymbolsPerDiff, id.OracleSymbolsPerDiff)
 		}

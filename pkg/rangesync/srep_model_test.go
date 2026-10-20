@@ -586,6 +586,12 @@ func (r *srepResult) DiffQuantile(q float64) float64 {
 	return quantile(xs, q)
 }
 
+// SymbolsPerDiffQuantile returns the q-quantile of the symbols per
+// difference of the decoded streams with a difference.
+func (r *srepResult) SymbolsPerDiffQuantile(q float64) float64 {
+	return quantile(r.SymbolsPerDiff, q)
+}
+
 func (r *srepResult) String() string {
 	none, one, _ := r.MoreShares()
 	parts := ""
@@ -593,11 +599,12 @@ func (r *srepResult) String() string {
 		parts += fmt.Sprintf(" %s %.0f", srepKindNames[k], b/float64(r.Uploads))
 	}
 	return fmt.Sprintf("metadata %.0f B per upload (%.0f%% of AC-B1's pullsync; per upload:%s); n_Δ %.1f per upload, p50 %.0f per session; "+
-		"%.2f symbols per difference, %.2f Mores per upload, %.2f round trips per decoded session (%.0f%% no More, %.0f%% one); "+
+		"%.2f symbols per difference (per stream p10 %.2f, p50 %.2f, p90 %.2f), %.2f Mores per upload, %.2f round trips per decoded session (%.0f%% no More, %.0f%% one); "+
 		"sessions %d (%d equal, %d decoded, %d of them zero, %d stale, %d takeovers); %d fetched, %d denied, %d duplicates; "+
 		"convergence p50 %v, max %v; %d outside",
 		r.MetadataPerUpload(), 100*r.Share(), parts, r.DiffPerUpload(), r.DiffQuantile(0.5),
-		r.SymbolsPerDifference(), r.MoresPerUpload(), r.RoundTrips(), 100*none, 100*one,
+		r.SymbolsPerDifference(), r.SymbolsPerDiffQuantile(0.1), r.SymbolsPerDiffQuantile(0.5), r.SymbolsPerDiffQuantile(0.9),
+		r.MoresPerUpload(), r.RoundTrips(), 100*none, 100*one,
 		r.Sessions, r.Equal, r.Decoded, r.ZeroDecoded, r.Stale, r.Takeovers, r.Fetched, r.Denied, r.Duplicates,
 		r.ConvergenceQuantile(0.5), r.MaxConvergence(), r.Outside)
 }
@@ -1396,14 +1403,22 @@ func (id srepIdeal) MetadataPerUpload() float64 {
 // baseline.
 func (id srepIdeal) Share() float64 { return id.MetadataPerUpload() / srepPullsyncACB1(id.Nodes) }
 
+// OracleShare returns the share of the oracle, whose streams carry
+// OracleSymbolsPerDiff symbols per difference in one batch: the floor that
+// no first-batch or growth constant can go below.
+func (id srepIdeal) OracleShare() float64 {
+	m := id.MetadataPerUpload() - id.Bytes[srepMoreBytes] - id.Bytes[srepSymbolBytes]*(1-id.OracleSymbolsPerDiff/id.SymbolsPerDiff)
+	return m / srepPullsyncACB1(id.Nodes)
+}
+
 func (id srepIdeal) String() string {
 	parts := ""
 	for k, b := range id.Bytes {
 		parts += fmt.Sprintf(" %s %.0f", srepKindNames[k], b)
 	}
-	return fmt.Sprintf("ideal: metadata %.0f B per upload (%.0f%% of AC-B1's pullsync; per upload:%s); n_Δ %.1f per pair and round, %.1f per upload; "+
+	return fmt.Sprintf("ideal: metadata %.0f B per upload (%.0f%% of AC-B1's pullsync, the oracle's %.0f%%; per upload:%s); n_Δ %.1f per pair and round, %.1f per upload; "+
 		"%.2f symbols per difference (oracle %.2f), %.2f Mores and %.2f round trips per session",
-		id.MetadataPerUpload(), 100*id.Share(), parts, id.DiffPerSession, id.DiffPerUpload,
+		id.MetadataPerUpload(), 100*id.Share(), 100*id.OracleShare(), parts, id.DiffPerSession, id.DiffPerUpload,
 		id.SymbolsPerDiff, id.OracleSymbolsPerDiff, id.MoresPerSession, id.RoundTrips)
 }
 
