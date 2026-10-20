@@ -196,9 +196,26 @@ func (s *Service) SessionRounds() (count uint64, sum float64) {
 	return histogramValue(s.metrics.SessionRounds)
 }
 
-// PairwiseDiff returns the sample count and sum of pairwise_diff_half.
+// PairwiseDiffHalf returns the sample count and sum of pairwise_diff_half.
+func (s *Service) PairwiseDiffHalf() (count uint64, sum float64) {
+	return histogramValue(s.metrics.PairwiseDiffHalf)
+}
+
+// PairwiseDiff returns the sample count and sum of pairwise_diff.
 func (s *Service) PairwiseDiff() (count uint64, sum float64) {
 	return histogramValue(s.metrics.PairwiseDiff)
+}
+
+// PairwiseDiffBuckets returns the upper bounds of the pairwise_diff buckets
+// (+Inf excluded) and the cumulative sample count of each.
+func (s *Service) PairwiseDiffBuckets() (bounds []float64, counts []uint64) {
+	var m dto.Metric
+	_ = s.metrics.PairwiseDiff.Write(&m)
+	for _, b := range m.GetHistogram().GetBucket() {
+		bounds = append(bounds, b.GetUpperBound())
+		counts = append(counts, b.GetCumulativeCount())
+	}
+	return bounds, counts
 }
 
 // MoreRequests returns the value of the more_requests_total metric.

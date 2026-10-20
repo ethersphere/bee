@@ -308,11 +308,18 @@ func assertSessionMetrics(t *testing.T, a, b *testNode, sent, received []*pb.Mes
 	if n, _ := b.svc.SessionRounds(); n != 1 {
 		t.Errorf("b session_rounds: %d sessions", n)
 	}
-	if n, sum := a.svc.PairwiseDiff(); n != 1 || int(sum) != wantsA {
-		t.Errorf("a pairwise_diff: %d sessions, sum %v, want 1, %d", n, sum, wantsA)
+	wantsB := len(b.responderWants(a.addr))
+	if n, sum := a.svc.PairwiseDiffHalf(); n != 1 || int(sum) != wantsA {
+		t.Errorf("a pairwise_diff_half: %d sessions, sum %v, want 1, %d", n, sum, wantsA)
 	}
-	if _, sum := b.svc.PairwiseDiff(); int(sum) != len(b.responderWants(a.addr)) {
-		t.Errorf("b pairwise_diff: sum %v, want %d", sum, len(b.responderWants(a.addr)))
+	if _, sum := b.svc.PairwiseDiffHalf(); int(sum) != wantsB {
+		t.Errorf("b pairwise_diff_half: sum %v, want %d", sum, wantsB)
+	}
+	// each side observes the full n_Δ of the session: the IDs either lacks
+	for name, n := range map[string]*testNode{"a": a, "b": b} {
+		if count, sum := n.svc.PairwiseDiff(); count != 1 || int(sum) != wantsA+wantsB {
+			t.Errorf("%s pairwise_diff: %d sessions, sum %v, want 1, %d", name, count, sum, wantsA+wantsB)
+		}
 	}
 	// metadata out of a: its Status and the Messages it sent
 	statusBytes := 0

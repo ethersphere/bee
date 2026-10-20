@@ -42,9 +42,15 @@ type metrics struct {
 	// SessionRounds observes the number of Messages this side handled in
 	// each completed reconcile session.
 	SessionRounds prometheus.Histogram
-	// PairwiseDiff observes, per completed reconcile session, the number of
-	// IDs the peer listed that this node does not hold (its side of n_Δ;
-	// the two sides of a session together give n_Δ).
+	// PairwiseDiffHalf observes, per completed reconcile session, the number
+	// of IDs the peer listed that this node does not hold (its side of n_Δ;
+	// the two sides of a session together give n_Δ). It is the difference
+	// CatchUpMinDiff is compared with.
+	PairwiseDiffHalf prometheus.Histogram
+	// PairwiseDiff observes, per completed reconcile session, n_Δ: the
+	// number of elements only one of the two sides holds, in the ranges the
+	// session resolved (Session.Difference; proposal §10). Both sides of a
+	// session observe it.
 	PairwiseDiff prometheus.Histogram
 	// DecodeCorruption counts the peer's symbol streams the decoder found
 	// corrupt; their ranges fall back to an exact item exchange.
@@ -189,12 +195,19 @@ func newMetrics(rejected func() float64) metrics {
 			Help:      "Messages handled by this side per completed reconcile session.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
 		}),
-		PairwiseDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
+		PairwiseDiffHalf: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pairwise_diff_half",
 			Help:      "IDs listed by the peer and missing locally per completed reconcile session (this side's half of the session difference).",
 			Buckets:   append([]float64{0}, prometheus.ExponentialBuckets(1, 4, 10)...),
+		}),
+		PairwiseDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pairwise_diff",
+			Help:      "Elements held by only one side per completed reconcile session (the session difference n_Δ, observed by both sides).",
+			Buckets:   diffBuckets(),
 		}),
 		DecodeCorruption: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -260,6 +273,23 @@ func newMetrics(rejected func() float64) metrics {
 	}
 }
 
+// diffBucketOctaves is the number of buckets of pairwise_diff above 0.
+const diffBucketOctaves = 17
+
+// diffBuckets returns the upper bounds of the pairwise_diff buckets: 0, then
+// 2^k − 1 for k = 1 … diffBucketOctaves (1, 3, 7, …, 131071). A difference is
+// an integer, so each bucket above 0 holds one octave [2^(k−1), 2^k − 1]
+// exactly, and the bucket of 255 counts the sessions below CatchUpMinDiff
+// (256) exactly. Differences past 2 × LargeDiff fall into +Inf.
+func diffBuckets() []float64 {
+	b := make([]float64, 0, diffBucketOctaves+1)
+	b = append(b, 0)
+	for k := 1; k <= diffBucketOctaves; k++ {
+		b = append(b, float64(uint64(1)<<k-1))
+	}
+	return b
+}
+
 func (mt metrics) collectors() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(mt)
 }
@@ -322,9 +352,10 @@ func (mt metrics) sessionStats(st SessionStats) {
 	}
 }
 
-// sessionDone observes a completed session: the Messages handled and the
-// IDs the peer listed that this node lacks.
-func (mt metrics) sessionDone(handled, wants int) {
+// sessionDone observes a completed session: the Messages handled, the IDs
+// the peer listed that this node lacks, and the session's difference n_Δ.
+func (mt metrics) sessionDone(handled, wants int, diff uint64) {
 	mt.SessionRounds.Observe(float64(handled))
-	mt.PairwiseDiff.Observe(float64(wants))
+	mt.PairwiseDiffHalf.Observe(float64(wants))
+	mt.PairwiseDiff.Observe(float64(diff))
 }

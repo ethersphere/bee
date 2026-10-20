@@ -139,7 +139,7 @@ func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts Re
 	case err != nil:
 		return nil, err
 	}
-	s.metrics.sessionDone(handled, len(ids)+found)
+	s.metrics.sessionDone(handled, len(ids)+found, sess.Difference())
 	s.scorer.Succeed(peer)
 	return toChunkIDs(ids), nil
 }
@@ -346,7 +346,7 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		_ = stream.Reset()
 		return err
 	}
-	s.metrics.sessionDone(handled, len(wants))
+	s.metrics.sessionDone(handled, len(wants), sess.Difference())
 	if s.wants != nil && len(wants) > 0 {
 		s.wants(peer, toChunkIDs(wants))
 	}

@@ -179,6 +179,7 @@ func TestSessionSymbolsStaleStamp(t *testing.T) {
 	wantsA, wantsB, messages := drive(t, a, first, b, kinds.inspect)
 	assertSet(t, wantsA, []fingerprint.ID{c2})
 	assertSet(t, wantsB, []fingerprint.ID{c1})
+	assertDifference(t, a, b, 2)
 	// FP(root); Symbols(root) (and More while it does not decode);
 	// Items(root, [c1]); empty
 	if kinds.count("B:symbols") == 0 || kinds.count("B:fp") != 0 || kinds.count("A:items-reply") != 0 {
@@ -215,6 +216,7 @@ func TestSessionSymbolsExhausted(t *testing.T) {
 			wantsA, wantsB, _ := drive(t, a, first, b, kinds.inspect)
 			assertSet(t, wantsA, a2b)
 			assertSet(t, wantsB, b2a)
+			assertDifference(t, a, b, len(a2b)+len(b2a))
 			if a.Stats().Exhausted == 0 {
 				t.Fatalf("no exhausted stream: %+v", a.Stats())
 			}
@@ -247,6 +249,7 @@ func TestSessionSymbolsCorrupt(t *testing.T) {
 	wantsA, wantsB, _ := drive(t, a, first, b, kinds.inspect)
 	assertSet(t, wantsA, a2b)
 	assertSet(t, wantsB, b2a)
+	assertDifference(t, a, b, len(a2b)+len(b2a))
 	if got := a.Stats().DecodeCorruptions; got != 1 {
 		t.Fatalf("%d corruptions, want 1", got)
 	}

@@ -287,6 +287,11 @@ type Session struct {
 	// decoding holds the decoders of the peer's symbol streams by range.
 	decoding map[fingerprint.RangeKey]*decoding
 	stats    SessionStats
+	// decoded counts the IDs of the peer's symbol streams this side
+	// decoded, of both directions, and listings holds every listing of this
+	// side (Difference).
+	decoded  uint64
+	listings []*listing
 }
 
 // inStream is the state of one of the peer's Items streams.
@@ -296,6 +301,15 @@ type inStream struct {
 	reply        bool
 	answersReply bool   // answers this side's Reply stream for the range
 	listed       uint64 // IDs listed in the stream so far
+	wants        uint64 // listed IDs this node does not hold
+	// For a stream that answers this side's Fingerprint or symbol stream:
+	// localCount is this side's count of the range (from the Fingerprint or
+	// the stream); decoded reports that the peer decoded this side's symbol
+	// stream and lists the IDs only it holds, and peerCount is then the
+	// count of the peer's Fingerprint of the range.
+	localCount uint64
+	peerCount  uint64
+	decoded    bool
 }
 
 func newSession(cfg Config, initiator bool) *Session {
@@ -481,6 +495,60 @@ func (s *Session) Handle(in *pb.Message) (out *pb.Message, wants []fingerprint.I
 	return out, wants, nil
 }
 
+// Difference returns n_Δ of the session so far: the number of elements only
+// one of the two sides holds, in the ranges the session resolved (proposal
+// §10, pairwise_diff). Ranges taken over by the Striper, and ranges the peer
+// never answered (equal), count nothing. Both sides of a completed session
+// return the same value when neither side's elements changed during it.
+//
+// Each resolved range adds:
+//   - a symbol stream of the peer that this side decoded: the IDs it
+//     recovered, both directions;
+//   - otherwise, this side's wants in the range (the IDs the peer listed
+//     that this node does not hold, exact) plus the local IDs the peer
+//     lacks, which follow from the two counts: |only local| = cL − (cR −
+//     wants), within [0, cL]. cL is this side's count of the range (its
+//     listing, Fingerprint or symbol stream) and cR the peer's (its
+//     complete listing, or the count of its Fingerprint).
+//
+// The counts come from the time each side summarized or listed the range,
+// so elements that changed during the session make the value approximate;
+// it is a metric and nothing acts on it. A peer that lies about its counts
+// changes it within the local count of each range.
+func (s *Session) Difference() uint64 {
+	n := s.decoded
+	for _, l := range s.listings {
+		var wants uint64
+		if st := s.in[l.r.Key()]; st != nil && st.answersReply {
+			wants = st.wants
+		}
+		n += wants + onlyLocal(l.listed, l.peerCount, wants)
+	}
+	for _, st := range s.in {
+		if st.answersReply {
+			continue // counted with its listing above
+		}
+		peer := st.listed // a complete listing: SendItems, Exchange, the fallbacks
+		if st.decoded {
+			peer = st.peerCount
+		}
+		n += st.wants + onlyLocal(st.localCount, peer, st.wants)
+	}
+	return n
+}
+
+// onlyLocal returns the number of this side's elements of a range that the
+// peer lacks: local − (peer − wants), within [0, local], where local and
+// peer are the two sides' counts of the range and wants the number of the
+// peer's elements this side lacks.
+func onlyLocal(local, peer, wants uint64) uint64 {
+	common := peer - min(wants, peer)
+	if common >= local {
+		return 0
+	}
+	return local - common
+}
+
 func (s *Session) handle(in *pb.Message) (*pb.Message, []fingerprint.ID, error) {
 	first := !s.received
 	s.received = true
@@ -636,9 +704,9 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 	switch Decide(in) {
 	case DecisionEqual:
 	case DecisionSendItems:
-		s.addListing(r, false, false)
+		s.addListing(r, false, false, remote.Count)
 	case DecisionRequestItems:
-		s.addListing(r, true, true)
+		s.addListing(r, true, true, remote.Count)
 	case DecisionStripe:
 		if s.cfg.Striper != nil && s.cfg.Striper.Stripe(r, local.Count, remote.Count) {
 			break
@@ -652,14 +720,17 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 	case DecisionSplit:
 		s.tasks = append(s.tasks, &split{r: r})
 	case DecisionExchangeItems:
-		s.addListing(r, true, false)
+		s.addListing(r, true, false, remote.Count)
 	}
 	return nil
 }
 
-func (s *Session) addListing(r fingerprint.Range, reply, empty bool) {
-	l := &listing{r: r, reply: reply, empty: empty}
+// addListing queues the listing of r, whose element count on the peer's side
+// is peerCount.
+func (s *Session) addListing(r fingerprint.Range, reply, empty bool, peerCount uint64) {
+	l := &listing{r: r, reply: reply, empty: empty, peerCount: peerCount}
 	s.tasks = append(s.tasks, l)
+	s.listings = append(s.listings, l)
 	if reply {
 		s.replies[r.Key()] = l
 	}
@@ -676,7 +747,13 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 			return nil, invalid("second items stream for %s", it.Range)
 		}
 		st = &inStream{reply: it.Reply}
-		if _, ok := s.unanswered[key]; ok {
+		if count, ok := s.unanswered[key]; ok {
+			st.localCount = count
+			if sv := s.served[key]; sv != nil {
+				st.localCount = sv.count
+				st.decoded = !it.Reply
+				st.peerCount = s.peerCounts[key]
+			}
 			delete(s.unanswered, key)
 			s.closeServed(key)
 		} else if s.replies[key] != nil && !it.Reply {
@@ -718,6 +795,7 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 			held = append(held, id)
 		}
 	}
+	st.wants += uint64(len(wants))
 	if it.Reply {
 		s.addReplyInterval(it, held)
 	}
@@ -907,6 +985,10 @@ type listing struct {
 	empty  bool
 	cursor *fingerprint.ID
 	done   bool
+	// listed counts the IDs emitted so far; peerCount is the peer's count
+	// of r (Difference).
+	listed    uint64
+	peerCount uint64
 }
 
 func (l *listing) pending() bool { return !l.done }
@@ -926,6 +1008,7 @@ func (l *listing) emit(s *Session, b *builder) (bool, error) {
 			page.IDs, page.More = ids, more
 		}
 		b.add(pagePart(page))
+		l.listed += uint64(len(page.IDs))
 		if n := len(page.IDs); n > 0 {
 			last := page.IDs[n-1]
 			l.cursor = &last

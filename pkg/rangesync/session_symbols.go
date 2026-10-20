@@ -373,7 +373,7 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 		// §9: fall back to an exact item listing of r
 		s.stats.DecodeCorruptions++
 		delete(s.decoding, key)
-		s.addListing(r, true, false)
+		s.addListing(r, true, false, dc.count)
 		return nil, nil
 	case err != nil:
 		return nil, fmt.Errorf("decode symbols of %s: %w", r, err)
@@ -382,6 +382,7 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 	if dc.dec.Done() {
 		delete(s.decoding, key)
 		onlyLocal, onlyRemote := dc.dec.Result()
+		s.decoded += uint64(len(onlyLocal) + len(onlyRemote))
 		if s.cfg.Hints != nil {
 			s.cfg.Hints.SetHint(r, uint64(dc.dec.Recovered()))
 		}
@@ -403,7 +404,7 @@ func (s *Session) handleSymbols(sy Symbols) ([]fingerprint.ID, error) {
 		if s.splittable(r) {
 			s.tasks = append(s.tasks, &split{r: r})
 		} else {
-			s.addListing(r, true, false)
+			s.addListing(r, true, false, dc.count)
 		}
 		return nil, nil
 	}

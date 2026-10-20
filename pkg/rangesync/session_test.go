@@ -347,6 +347,15 @@ func assertSet(t *testing.T, got, want []fingerprint.ID) {
 	}
 }
 
+// assertDifference checks that initiator a and responder b both report the
+// session's full difference n_Δ, want: the IDs only one of them holds.
+func assertDifference(t *testing.T, a, b *rangesync.Session, want int) {
+	t.Helper()
+	if da, db := a.Difference(), b.Difference(); da != uint64(want) || db != uint64(want) {
+		t.Fatalf("difference: initiator %d, responder %d, want %d", da, db, want)
+	}
+}
+
 type striperFunc func(r fingerprint.Range, local, remote uint64) bool
 
 func (f striperFunc) Stripe(r fingerprint.Range, local, remote uint64) bool {
@@ -812,6 +821,7 @@ func TestSessionConverges(t *testing.T) {
 				wantsA, wantsB, messages := drive(t, a, first, b, pageChecker(t, new(int)), spanChecker(t, tc.longStreams && !symbols), countSymbols)
 				assertSet(t, wantsA, inOpen(a2b))
 				assertSet(t, wantsB, inOpen(b2a))
+				assertDifference(t, a, b, len(inOpen(a2b))+len(inOpen(b2a)))
 				if tc.onlyA+tc.onlyB == 0 && messages != 2 {
 					t.Fatalf("equal sets took %d messages, want 2", messages)
 				}
@@ -963,6 +973,9 @@ func TestSessionExclusionCap(t *testing.T) {
 	wantsA, wantsB, _ := drive(t, a, open, b, inspect)
 	assertSet(t, wantsA, nil)
 	assertSet(t, wantsB, onlyA)
+	// past MaxPendingReplies the answers carry IDs the peer listed; the
+	// difference counts only the IDs one side lacks
+	assertDifference(t, a, b, len(onlyA))
 	if most != rangesync.MaxPendingReplies {
 		t.Fatalf("at most %d pending exclusion lists, want the cap %d reached", most, rangesync.MaxPendingReplies)
 	}
