@@ -1245,6 +1245,52 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   is now a first offense: scored once, not disconnected. The additive identifier is
   `rangesync.ErrFetchShortfall`. There is no `pkg/node`, `go.mod` or proto change.
 
+- **(T4.5 part 2b fix round 2, Medium 1) A reset is charged whatever was delivered before it.** This
+  supersedes fix round 1's "A fetch stream that fails without a delivery ... takes a token". A
+  stream that fails with claimed IDs still undelivered takes a token of the peer's reset budget
+  (`chargeReset`), so one delivery (even a chunk this node rejects without counting it, such as an
+  unknown batch) before the reset no longer makes it free. These are still never charged: this
+  node ending the fetch (its context, `Close`), the fetch timeout (a stall, a violation of its own),
+  a stream whose claimed IDs all arrived, a peer whose Status is gone (it disconnected), and a peer
+  already reported for a violation (Low 3). The IDs lost to the failure are not judged blatant: an
+  honest network reset with many IDs in flight must not disconnect. They are not recorded as missing
+  either, so a re-listing of them is not counted. The budget now runs on the Service's clock
+  (`peerBudget`, `golang.org/x/time/rate` with explicit times; no `go.mod` change), so its refill is
+  tested.
+- **(T4.5 part 2b fix round 2, Medium 2) A root that swings back gets one move excused.** This
+  supersedes fix round 1's "The same move again, the concurrent fetches of one radius increase, is
+  excused too". The same move is excused again only for a fetch that started no later than the move
+  was first excused (`shortfall.startedAt`). A later fetch has the new root as its starting root,
+  unless the root swung back meanwhile, so `r → r+1 → r → r+1` gets the first increase excused, and
+  then nothing more for the interval. A move excuses at most the Wants in flight when the peer's
+  Status arrives: at most `maxFetchStreamsOut × MaxWantIDs = 500` IDs per peer per 10 min. Later
+  Wants skip the IDs outside the new root.
+- **(T4.5 part 2b fix round 2, Low 1) Small fresh junk stays unscored; not fixed.** Adding up the
+  first misses per peer over `shortfallWindow` is not honest-safe. Hot SOC and GSOC rewrites are
+  first misses that are never listed again, exactly like fresh junk, and a GSOC-heavy neighborhood
+  can show most of each small fetch missing every round. The rate left is in the Follow-ups.
+- **(T4.5 part 2b fix round 2, Low 2) Skips outside the verifier's root do not count against it.**
+  `FetchResult.OutsideRoot` (additive) is how many of `Undelivered` were not requested because they
+  lie outside the peer's root. `verifyStripe` judges the verifier on `Undelivered − outsideRoot`, and
+  `VerifyResult.Undelivered` reports that. A stripe transfer still counts them as undelivered: the
+  stripe peer cannot serve them, so the stripe is reassigned, not completed and then blamed on its
+  deliverer.
+- **(T4.5 part 2b fix round 2, Low 3) Stale entries and double scores.** A violation of a peer
+  (`initiatorViolation`, `violation`) marks it for `violationGrace = 1 min`, cleared on disconnect.
+  The shortfall judgment and `chargeReset` leave alone a marked peer and a peer whose Status is gone,
+  so the other fetches that fail with the disconnect are neither charged nor scored again. After
+  they record (the missing IDs, an offense, a reset), `forgetIfGone` clears the peer's entries if its
+  Status disappeared meanwhile. The disconnect hook's clear may have run first, and this keeps it
+  from leaving a stale entry. The disconnect hook also clears the mark and the reset budget.
+- **(T4.5 part 2b fix round 2, Low 4 and 5) Comments and tests.** The comments say the requester's
+  cap is half the peer's limit. New tests: `TestFetchResetAfterOneDelivery` (from the review's PoC),
+  `TestFetchShortfallExcuseOscillation` (from the review's PoC), `TestFetchResetHonest` (this node's
+  cancellations; a peer that disconnected, which leaves no charge behind; a peer already reported),
+  `TestFetchShortfallAfterPeerViolation`, `TestVerifyStripesVerifierOutsideRoot`. Changed:
+  `TestFetchResetBudget` (the refill on the fake clock, a Status), `TestShortfallBook` (the excuse
+  for fetches that started before it, not after). The additive identifier is
+  `rangesync.FetchResult.OutsideRoot`.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1706,3 +1752,30 @@ _(sessions append here)_
   - `pkg/rangesync/reconciler`, changed: `TestStripeBadSignaturesScored`. Re-run, because every fetch
     now looks up the peer's root and may end with `ErrFetchShortfall`: `TestStripe*`, `TestSREP*`,
     `TestWantSet*`, `TestVerifyStripes*`, `TestRadius*`, `TestDualMode*`.
+- **(T4.5 part 2b fix round 2) Resolved: the round-2 review's Medium 1, Medium 2, Low 2, Low 3, Low 4
+  and Low 5.** See the Decisions log.
+- **(T4.5 part 2b fix round 2) Junk a peer can still have fetched unscored, per Sybil.** This
+  replaces fix round 1's "Fresh junk below half of a fetch is never counted".
+  - Fresh junk under `blatantMinIDs` (64) IDs per fetch is never listed again, so it is never
+    counted, and is too small to be blatant. At a peer's served-session rate (one session per
+    `PeerSessionInterval`, 2.5 s, one at a time), that is up to 63 IDs per 2.5 s, about 25 IDs/s,
+    some 2.5% of `DefaultFetchRate`. It is the largest share left (review Low 1, not fixed; see the
+    Decisions log).
+  - Resets: 4 Wants, then one Want (250 IDs) per minute, about 4 IDs/s.
+  - Root moves: at most 500 IDs per 10 min, under 1 ID/s.
+  - Fresh junk under half of each larger fetch: the peer must fill the rest with chunks this node
+    lacks.
+  - Unknown-batch junk: T4.6.
+
+  Testnet cannot observe a deliberate attacker of this kind: its pattern looks like honest SOC and
+  GSOC rewrites. A fix would need a signal that tells a rewrite from junk, for example the
+  responder delivering the current stamp of a rewritten address, which the frozen wire (G2) does
+  not carry.
+- **(T4.5 part 2b fix round 2) Tests to run with `-race` on CI.** These ran with
+  `-count=20 -cpu=1,2,4` instead, and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchResetAfterOneDelivery`, `TestFetchResetHonest`,
+    `TestFetchShortfallExcuseOscillation`, `TestFetchShortfallAfterPeerViolation`. Changed:
+    `TestFetchResetBudget`, `TestShortfallBook`. Re-run: `TestFetchShortfall*`, `TestFetchStreams*`,
+    `TestFetchSkipsOutsidePeerRoot`.
+  - `pkg/rangesync/reconciler`, new: `TestVerifyStripesVerifierOutsideRoot`. Re-run:
+    `TestVerifyStripes*`, `TestStripeBadSignatures*`.
