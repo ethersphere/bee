@@ -698,6 +698,74 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 - **(T4.4 fix round 1) `want_claims` coverage.** `TestFetchWantSetFull` checks `peer_full`, `full`
   (`Deferred`) and `closed` (no part, no Want).
 
+- **(T4.4 fix round 2, Medium) Bad signatures are rejected, and only want-set refusals are asked
+  for again.** This supersedes two round-1 entries. The Medium entry said `FetchResult.Deferred`
+  also held stamp checks that may pass. The Low 1 entry said a signature that fails recovery is
+  treated as one that may pass. That opened an unblamed stall: `postage.ValidStamp` returns the
+  raw secp256k1 error for such a signature before its sentinel checks. So a stripe peer could list
+  made-up IDs on a real batch and deliver junk; the IDs were deferred and asked for 30 times per
+  attempt, each pass charging the fetch rate, then the stripe restarted 8 times, unscored and
+  unverified. Now:
+  - On the may-pass branch, `deliver` calls the exported `postage.RecoverBatchOwner(addr, stamp)`
+    and rejects the ID when it fails. No `pkg/postage` change is needed (the round-1 follow-up is
+    superseded below).
+  - `FetchResult.Deferred` holds only `Full`/`PeerFull` refusals. A new `FetchResult.Unverified`
+    holds IDs whose stamp check failed for a cause on this node (a batch store error). Their claims
+    are released.
+  - `resolvePending` asks again only for the IDs the want set held or refused. A peer cannot make
+    the stripe ask by how it delivers.
+  - Unverified IDs fail the stripe with `ErrStripeDeferred` (counted in `Deferred`): no blame, not
+    verified, so a verifier cannot blame the deliverer for chunks this node failed to check. They
+    are asked for once per restart. Only genuine local failures reach that path.
+
+  Tests: `TestStripeBadSignatures` (real services: 8 made-up IDs with bad signatures plus 2 valid
+  chunks; the stripe completes in one session with one Want and the bad IDs rejected; it fails
+  without the recovery check), `TestStripeUnverified` (one fetch per attempt, none asking again),
+  `TestFetchBadSignatureRejected`.
+- **(T4.4 fix round 2, Low 1) The real bound on expired claims.** This supersedes round-1 High's
+  "0 by construction, faults included". `FetchTimeout` bounds a Want's reads, but `deliver`'s
+  `Put` ignores ctx. It takes the reserve's per-batch lock (`multx`), which `EvictBatchBin` holds
+  for a whole batch eviction. So a claim can expire during its fetch when the Want plus one
+  `deliver` outlasts `ClaimDeadline`, that is, when one `Put` blocks for more than
+  `ClaimDeadline − FetchTimeout` (15 s by default). The next fetch's reserve re-check then
+  misses, and the chunk is delivered twice. Now:
+  - `deliver` checks the claim again after `Put`; a claim that expired meanwhile counts as
+    `want_claims{expired}` (not `late`: the delivery arrived in time). So intra-`rangesync`
+    duplicates are at most `want_claims{expired}` in every case, and are 0 unless a `Put` blocks
+    that long.
+  - `rangesync.New` clamps a `FetchTimeout` of `ClaimDeadline` or more to `ClaimDeadline / 2`.
+
+  Tests: `TestFetchExpiredDuringPut` and `TestFetchTimeoutClamped`.
+- **(T4.4 fix round 2, Low 2) `Peek` before the fetch limiter.** The want set gains
+  `Peek(id, peer) Result`, which shares `Claim`'s checks and records nothing. `wantCandidates`
+  drops the IDs `Peek` does not grant (rejected, held, full, peer full) before the limiter wait,
+  replacing the separate rejected-cache check; `Claim` after the wait stays authoritative. So
+  neither re-ask passes nor any other fetch spend fetch rate on IDs still held or refused. Each
+  ID offered counts once in `want_claims`, at `Peek` or at `Claim`. Tests:
+  `TestFetchPeekSkipsLimiter` (waits 1 s without it), `TestPeek`, and a `Peek` op in
+  `TestModelReject`.
+- **(T4.4 fix round 2, Low 3) Re-ask waits keep the peer.** For up to
+  `maxPendingPasses × stripeRetryInterval` (30 s), the passes of `resolvePending` keep:
+  - the stripe's per-peer lock, so other stripes of that peer wait;
+  - the peer's Striped state, so rounds start no session with it.
+
+  They hold no session slots, and the wait counts against the stripe timeout. Accepted for now,
+  since it happens once per attempt and only while the want set refuses IDs. Follow-up for T4.5.
+- **(T4.4 fix round 2) Test flakes were test bugs.**
+  - `TestSREPStallRetry`'s reference time is now taken before A's reconciler starts. The fetch
+    timeout starts in `fetch()` before `NewStream`, earlier than B1's handler signal.
+  - `roundNode.start` (and so every `roundNode` test) delivers A's Status to each peer and waits
+    until the peer holds it before starting the reconciler.
+  - `newRadiusNet` waits until the peers hold the first round's Status.
+
+  Cause, reproduced with a diagnostic copy under 8× CPU load (3 failures in 1500 runs): A sent
+  both Statuses (old root, then moved root) and neither was dropped (no rate limit, no stream
+  limit). But the first-contact handler stored after the moved-root handler. streamtest's
+  `FullClose` returns before the remote handler runs, so two Status handlers of one sender can be
+  in flight and store out of order, and the peer answers sessions Busy or keeps an old root.
+  libp2p's `FullClose` waits for the remote, so production is not affected. `pkg/p2p/streamtest`
+  is left unchanged (out of scope; Follow-ups).
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -944,3 +1012,33 @@ _(sessions append here)_
     and `TestVerifyStripesUndeliveredOnly`. Re-run, because `transferStripe`, `runStripe` and
     `wantSources` changed again: `TestWantSet*`, `TestSREP*`, `TestTransferStripes*`,
     `TestVerifyStripes*`, `TestStripe*`, `TestRadius*`, `TestRound*`.
+- **(T4.4 fix round 2 → T6.4) AC-D1/AC-D2 wording, corrected.** This supersedes the round-1 T6.4
+  bullet's "0 by construction, faults included". Intra-`rangesync` duplicates are at most
+  `want_claims{expired}`, which now also counts claims that expired while `Put` blocked. Both are 0
+  unless a `Put` waits for the reserve's batch lock (a batch eviction) for more than
+  `ClaimDeadline − FetchTimeout`; `FetchTimeout` is clamped below `ClaimDeadline`. AC-D1's "with
+  faults" clause should name that bound, and AC-D2 should read a non-zero
+  `want_claims{expired}` as long `Put` waits, not as a misconfigured timeout.
+- **(T4.4 fix round 2) Signature-recovery errors are rejected, without a `pkg/postage` change.**
+  This supersedes the round-1 follow-up "Signature-recovery stamp errors are not rejected".
+  `deliver` calls the exported `postage.RecoverBatchOwner` itself.
+- **(T4.4 fix round 2 → T4.5) Release the stripe peer while re-asks wait.** The `resolvePending`
+  waits (up to 30 s per attempt) keep the stripe's per-peer lock and the peer in Striped (Decisions
+  log, Low 3). If testnet shows rounds with such peers delayed, drop the peer lock and state
+  during the waits.
+- **(T4.4 fix round 2 → test infrastructure) streamtest's `FullClose` should wait for the remote
+  handler.** libp2p's waits, so a Status (or any message) is handled before the sender's next
+  stream. streamtest's returns at once, so handlers of one sender can run out of order. The
+  rangesync tests work around it by waiting for `LastStatus`. Changing `pkg/p2p/streamtest` is
+  outside this plan's scope.
+- **(T4.4 fix round 2) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4`
+  instead, and `TestSREPStallRetry` and `TestRadiusIncreaseNoFetch` with `-count=60 -cpu=1,2,4`,
+  with and without CPU load.
+  - `pkg/rangesync/wantset`: `TestPeek`, `TestModelReject`.
+  - `pkg/rangesync`: `TestFetchBadSignatureRejected`, `TestFetchPeekSkipsLimiter`,
+    `TestFetchExpiredDuringPut`, `TestFetchTimeoutClamped`, and `TestFetch*` again
+    (`wantCandidates` and `deliver` changed).
+  - `pkg/rangesync/reconciler`: `TestStripeBadSignatures`, `TestStripeUnverified`. Re-run, because
+    the test harnesses and `resolvePending` changed: `TestSREP*`, `TestRadius*`,
+    `TestRejectedNotRefetchedEachRound`, `TestStripeDeferred*`, `TestStripe*`,
+    `TestTransferStripes*`, `TestVerifyStripes*`, `TestWantSet*`.
