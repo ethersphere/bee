@@ -178,6 +178,12 @@ type Service struct {
 
 	hints *hintCache // hint(R) of the symbol estimate
 
+	// sessionDone, if not nil, is called with each completed session, its
+	// peer and whether this node initiated it, after its metrics. It is nil
+	// in a node; the neighborhood simulation reads each side's difference
+	// with it.
+	sessionDone func(peer swarm.Address, sess *Session, initiator bool)
+
 	statusMu   sync.Mutex
 	statuses   map[string]Status // last Status received, by peer
 	statusSubs []chan struct{}   // SubscribeStatus channels

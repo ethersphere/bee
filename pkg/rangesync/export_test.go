@@ -8,7 +8,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -297,20 +296,40 @@ func (s *Service) DisablePeerRateLimits() {
 	s.statusDrops = ratelimit.New(time.Nanosecond, math.MaxInt32)
 }
 
-// pairwiseDiffHook is the pairwise_diff histogram that also passes each
-// sample to f.
-type pairwiseDiffHook struct {
-	prometheus.Histogram
-	f func(float64)
+// SessionSample is what one side of a completed session reports to
+// OnSession.
+type SessionSample struct {
+	// Peer is the other side, and Initiator reports whether this node
+	// opened the session.
+	Peer      swarm.Address
+	Initiator bool
+	// Difference is the session's n_Δ (Session.Difference): the
+	// pairwise_diff sample.
+	Difference uint64
+	// Exact reports whether Difference counts only the symbol streams this
+	// side decoded (or nothing, for a session that found no difference): no
+	// term derived from counts, so it is exact under churn too.
+	Exact bool
+	// Recovered counts the IDs this side's decoders recovered, both
+	// directions; SymbolsReceived and SymbolsSent count the coded symbols of
+	// all streams, the overshoot and the streams that did not decode
+	// included.
+	Recovered, SymbolsReceived, SymbolsSent uint64
 }
 
-func (h pairwiseDiffHook) Observe(v float64) {
-	h.f(v)
-	h.Histogram.Observe(v)
-}
-
-// OnPairwiseDiff makes the service call f with every pairwise_diff sample as
-// it observes it. It must be called before the service is used.
-func (s *Service) OnPairwiseDiff(f func(diff float64)) {
-	s.metrics.PairwiseDiff = pairwiseDiffHook{Histogram: s.metrics.PairwiseDiff, f: f}
+// OnSession makes the service call f with every completed session, right
+// after it observed the session's pairwise_diff sample. It must be called
+// before the service is used.
+func (s *Service) OnSession(f func(SessionSample)) {
+	s.sessionDone = func(peer swarm.Address, sess *Session, initiator bool) {
+		f(SessionSample{
+			Peer:            peer,
+			Initiator:       initiator,
+			Difference:      sess.Difference(),
+			Exact:           len(sess.listings) == 0 && len(sess.in) == 0,
+			Recovered:       sess.decoded,
+			SymbolsReceived: sess.symbolsReceived,
+			SymbolsSent:     sess.symbolsSent,
+		})
+	}
 }

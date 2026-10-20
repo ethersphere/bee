@@ -5,10 +5,17 @@
 package rangesync_test
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"maps"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 )
 
@@ -35,12 +42,17 @@ import (
 // the bound, since the root-change and Status triggers do not wait for the
 // round timer: at its maximum (30 s) it would. A node's rounds are at least
 // MinRoundInterval apart, so it runs at most convergenceBound /
-// MinRoundInterval rounds after the upload until it converged. The extra
-// rounds over §7.8's single round are the Status latency (debounce and
+// MinRoundInterval + 1 rounds in the closed window from the upload to its
+// convergence (both instants count: the rounds at 0, 5, 10 and 15 s). The
+// extra rounds over §7.8's single round are the Status latency (debounce and
 // schedule), which §7.8's round model does not count.
+//
+// The bound is looser than AC-V1's 2 × RoundInterval (10 s at the minimum):
+// the derivation above reaches 15 s, when the upload lands on a lower-overlay
+// lacker's holders just after their last change sends and rounds.
 const (
 	convergenceBound  = 2*rangesync.StatusMinInterval + rangesync.MinRoundInterval
-	convergenceRounds = int(convergenceBound / rangesync.MinRoundInterval)
+	convergenceRounds = int(convergenceBound/rangesync.MinRoundInterval) + 1
 )
 
 // TestNeighborhoodConverges runs the neighborhood simulation with N = 5 and
@@ -76,33 +88,219 @@ func TestNeighborhoodSREP(t *testing.T) {
 
 // TestNeighborhoodRoundBounds checks that the simulation's bounds of the
 // adaptive round interval reach the reconcilers: after the quiet tail every
-// node's interval is at the overridden maximum, and an upload converges
-// within the bound of the overridden minimum.
+// node's interval is at the overridden maximum, no node runs two rounds
+// closer than the overridden minimum, and an upload converges within the
+// bound of the overridden minimum.
+//
+// The minimum is not below MinRoundInterval: PeerSessionInterval and the
+// reconciler's session backoff are tied to it, so a node with shorter rounds
+// would trip its peers' session limits in production (the simulation lifts
+// them and counts the trips, RateExceeded, which must stay 0).
 func TestNeighborhoodRoundBounds(t *testing.T) {
 	t.Parallel()
 
-	const lo, hi = 2 * time.Second, 8 * time.Second
-	o := simOptions{Nodes: 3, Replication: 1, Seed: 3, Batches: 1, BatchSize: 1, MinRoundInterval: lo, MaxRoundInterval: hi}
+	const lo, hi = 7 * time.Second, 8 * time.Second
+	o := simOptions{Nodes: 3, Replication: 1, Seed: 3, Batches: 2, BatchSize: 1, MinRoundInterval: lo, MaxRoundInterval: hi}
 	res := runNeighborhood(t, o)
 	for i, n := range res.Nodes {
 		if n.RoundInterval != hi {
 			t.Errorf("node %d: round interval %v after the tail, want %v", i, n.RoundInterval, hi)
 		}
+		// a late round (a starved goroutine, see Settle) only widens a gap
+		if n.Rounds < 2 || n.RoundGap < lo {
+			t.Errorf("node %d: %d rounds, at least %v apart, want rounds at least %v apart", i, n.Rounds, n.RoundGap, lo)
+		}
 	}
-	if bound := 2*rangesync.StatusMinInterval + lo; res.Batches[0].Convergence > bound {
-		t.Errorf("converged in %v, bound %v", res.Batches[0].Convergence, bound)
+	for i, b := range res.Batches {
+		if bound := 2*rangesync.StatusMinInterval + lo; b.Convergence > bound {
+			t.Errorf("batch %d converged in %v, bound %v", i, b.Convergence, bound)
+		}
+	}
+	if res.RateExceeded != 0 {
+		t.Errorf("%d Statuses or sessions over a peer's rate on the fake clock", res.RateExceeded)
 	}
 }
+
+// TestNeighborhoodDelay runs the simulation with a one-way stream latency on
+// the clock. Time passes in a call only by its message legs (the fetch limits
+// and timeouts are on the real clock): a stream open is one round trip, a
+// completed session at least one more (the opening and its answer) and one
+// per further pair of messages, a Status send one leg and a fetch's Want and
+// deliveries one leg each. Uploads still converge within the bound plus the
+// legs of the slowest chain of Status, session and fetch.
+func TestNeighborhoodDelay(t *testing.T) {
+	t.Parallel()
+
+	const delay = 100 * time.Millisecond
+	o := simOptions{Nodes: 5, Replication: 3, Seed: 5, Delay: delay}
+	res := runNeighborhood(t, o)
+	logNeighborhood(t, o, res)
+	// the chain: a Status (the open and one leg), a session that decodes
+	// after up to 3 Mores (the open, the opening and the symbols, the items
+	// and the end, a round trip per More) and a fetch (the open, the Want and
+	// the deliveries)
+	assertNeighborhoodWithin(t, o, res, convergenceBound+(3+(6+2*3)+4)*delay)
+	kinds := make(map[string]int)
+	for _, sp := range res.Spans {
+		if sp.Err != nil {
+			continue
+		}
+		kinds[sp.Kind]++
+		if sp.Duration%delay != 0 {
+			t.Errorf("%s took %v, not a multiple of the delay %v", sp.Kind, sp.Duration, delay)
+		}
+		// a fetch whose IDs were all held or claimed opens no stream
+		if least := map[string]time.Duration{"status": 2 * delay, "reconcile": 4 * delay}[sp.Kind]; sp.Duration < least {
+			t.Errorf("%s took %v, want at least %v", sp.Kind, sp.Duration, least)
+		}
+		if sp.Kind == "reconcile" && sp.Duration%(2*delay) != 0 {
+			t.Errorf("session took %v, not whole round trips of %v", sp.Duration, 2*delay)
+		}
+	}
+	for _, kind := range []string{"status", "reconcile", "fetch"} {
+		if kinds[kind] == 0 {
+			t.Errorf("no completed %s call", kind)
+		}
+	}
+}
+
+// TestSimStream checks the harness's streams (simEnd, simPipe): the closing
+// and reset rules, the delay on the clock, and that a reader waiting for a
+// stream is parked (not counted in flight).
+func TestSimStream(t *testing.T) {
+	t.Parallel()
+
+	newEnds := func(delay time.Duration) (nb *simNeighborhood, a, b *simEnd) {
+		nb = &simNeighborhood{o: simOptions{Delay: delay}.withDefaults()}
+		nb.clock = &simClock{now: time.Unix(1_000_000, 0), touch: nb.touch}
+		ab, ba := newSimPipe(nb, false), newSimPipe(nb, false)
+		return nb, &simEnd{Stream: nopStream{}, in: ba, out: ab}, &simEnd{Stream: nopStream{}, in: ab, out: ba}
+	}
+	// read reads b in a goroutine and returns what it read, once it did.
+	read := func(b *simEnd) <-chan string {
+		got := make(chan string, 1)
+		go func() {
+			buf := make([]byte, 16)
+			n, err := b.Read(buf)
+			if err != nil {
+				got <- err.Error()
+				return
+			}
+			got <- string(buf[:n])
+		}()
+		return got
+	}
+	parked := func(nb *simNeighborhood, want int64) {
+		t.Helper()
+		waitFor(t, "parked reader", func() bool { return nb.parked.Load() == want })
+	}
+
+	t.Run("close", func(t *testing.T) {
+		t.Parallel()
+		_, a, b := newEnds(0)
+		if _, err := a.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if got := <-read(b); got != "x" {
+			t.Fatalf("read %q, want x", got)
+		}
+		if got := <-read(b); got != io.EOF.Error() {
+			t.Fatalf("read %q after the close, want EOF", got)
+		}
+		if _, err := b.Write([]byte("y")); err != nil {
+			t.Fatalf("write after the remote's close: %v", err)
+		}
+	})
+	t.Run("full close", func(t *testing.T) {
+		t.Parallel()
+		_, a, b := newEnds(0)
+		if err := a.FullClose(); err != nil {
+			t.Fatal(err)
+		}
+		if got := <-read(b); got != io.EOF.Error() {
+			t.Fatalf("read %q, want EOF", got)
+		}
+		if _, err := b.Write([]byte("y")); !errors.Is(err, streamtest.ErrStreamClosed) {
+			t.Fatalf("write after the remote's full close: %v", err)
+		}
+	})
+	t.Run("reset", func(t *testing.T) {
+		t.Parallel()
+		nb, a, b := newEnds(0)
+		if _, err := a.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		got := read(b) // reads x
+		if s := <-got; s != "x" {
+			t.Fatalf("read %q, want x", s)
+		}
+		got = read(b)
+		parked(nb, 1)
+		if err := a.Reset(); err != nil {
+			t.Fatal(err)
+		}
+		if s := <-got; s != errSimReset.Error() {
+			t.Fatalf("read %q after the remote's reset, want %v", s, errSimReset)
+		}
+		parked(nb, 0)
+		if _, err := b.Write([]byte("y")); !errors.Is(err, errSimReset) {
+			t.Fatalf("write after the remote's reset: %v, want %v", err, errSimReset)
+		}
+		if _, err := a.Read(make([]byte, 1)); err == nil {
+			t.Fatal("read of a reset end")
+		}
+	})
+	t.Run("delay", func(t *testing.T) {
+		t.Parallel()
+		const delay = 10 * time.Millisecond
+		nb, a, b := newEnds(delay)
+		start := nb.clock.Now()
+		if _, err := a.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Reset(); err != nil {
+			t.Fatal(err)
+		}
+		got := read(b)
+		parked(nb, 1) // the bytes are on the way
+		if at, ok := nb.clock.next(); !ok || at != start.Add(delay) {
+			t.Fatalf("next timer %v (%v), want the arrival at %v", at, ok, start.Add(delay))
+		}
+		nb.clock.advance(start.Add(delay))
+		// the reset arrives with the bytes and discards them
+		if s := <-got; s != errSimReset.Error() {
+			t.Fatalf("read %q, want %v", s, errSimReset)
+		}
+		parked(nb, 0)
+	})
+}
+
+// nopStream is a p2p.Stream that does nothing, under a simEnd of TestSimStream.
+type nopStream struct{ p2p.Stream }
+
+func (nopStream) Close() error     { return nil }
+func (nopStream) FullClose() error { return nil }
+func (nopStream) Reset() error     { return nil }
 
 // assertNeighborhood checks the acceptance of T4.6 on res, the result of a
 // simulation with options o.
 func assertNeighborhood(t *testing.T, o simOptions, res *simResult) {
 	t.Helper()
+	assertNeighborhoodWithin(t, o, res, convergenceBound)
+}
+
+// assertNeighborhoodWithin is assertNeighborhood with the convergence bound
+// bound.
+func assertNeighborhoodWithin(t *testing.T, o simOptions, res *simResult, bound time.Duration) {
+	t.Helper()
 	o = o.withDefaults()
 
 	for i, b := range res.Batches {
-		if b.Convergence > convergenceBound {
-			t.Errorf("batch %d converged in %v, bound %v", i, b.Convergence, convergenceBound)
+		if b.Convergence > bound {
+			t.Errorf("batch %d converged in %v, bound %v", i, b.Convergence, bound)
 		}
 		if b.Rounds > convergenceRounds {
 			t.Errorf("batch %d took %d rounds of a node, bound %d", i, b.Rounds, convergenceRounds)
@@ -196,8 +394,18 @@ func logNeighborhood(t *testing.T, o simOptions, res *simResult) {
 			zero++
 		}
 	}
-	t.Logf("N=%d p=%d: convergence/rounds per batch %v; %d deliveries, %d duplicates; metadata %.0f B per upload, chunk bytes %.0f B per upload",
-		o.Nodes, o.Replication, conv, deliveries, res.Duplicates, meta/uploads, chunks/uploads)
-	t.Logf("sessions %v; pairwise_diff %d samples (%d zero), p50 %v, p99 %v; last session %v after convergence; %d steps, %v",
-		res.Sessions, len(diffs), zero, quantile(diffs, 0.5), quantile(diffs, 0.99), res.LastSession, res.Steps, res.Wall.Round(time.Millisecond))
+	// pullsync: every node is offered each upload by each of its N - 1 peers,
+	// ~102 B per offer (AC-B1)
+	pullsync := float64(o.Nodes*(o.Nodes-1)) * 102
+	perStream := make([]string, 0, len(res.StreamBytes))
+	for _, name := range slices.Sorted(maps.Keys(res.StreamBytes)) {
+		perStream = append(perStream, fmt.Sprintf("%s %.0f", name, float64(res.StreamBytes[name])/uploads))
+	}
+	exact := res.exactDiffsFrom(res.Batches[0].At)
+	spd, symbols := res.symbolsPerDifference(res.Batches[0].At)
+	t.Logf("N=%d p=%d: convergence/rounds per batch %v; %d deliveries, %d duplicates; metadata %.0f B per upload (%.0f%% of pullsync's ~%.0f B), chunk bytes %.0f B per upload; stream bytes per upload: %s",
+		o.Nodes, o.Replication, conv, deliveries, res.Duplicates, meta/uploads, 100*meta/uploads/pullsync, pullsync, chunks/uploads, strings.Join(perStream, ", "))
+	t.Logf("sessions %v; pairwise_diff %d samples (%d zero), p50 %v, p99 %v, exact side %d samples, p50 %v, p99 %v; %d symbols, %.2f per difference; last session %v after convergence; %d steps, %v",
+		res.Sessions, len(diffs), zero, quantile(diffs, 0.5), quantile(diffs, 0.99), len(exact), quantile(exact, 0.5), quantile(exact, 0.99),
+		symbols, spd, res.LastSession, res.Steps, res.Wall.Round(time.Millisecond))
 }
