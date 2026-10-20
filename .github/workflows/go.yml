@@ -109,7 +109,7 @@ jobs:
         # phantom staticcheck findings in files unrelated to the PR diff. The
         # full lint run is fast enough that correctness is worth the trade-off.
         skip-cache: true
-        version: v2.13.2
+        version: v2.15.0
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check
