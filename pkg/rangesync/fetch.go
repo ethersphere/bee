@@ -173,7 +173,10 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 	total := len(ids) // at most what the fetch requests
 	var sf shortfall
 	defer func() {
-		if verr := s.judgeShortfall(peer, &sf, sf.requested, err); verr != nil {
+		if errors.Is(err, ErrInvalidMessage) {
+			return // reported already: one score per fetch
+		}
+		if verr := s.judgeShortfall(peer, &sf, sf.requested); verr != nil {
 			err = verr
 		}
 	}()
@@ -191,7 +194,7 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 		}
 		// above the tolerance of every ID it could request, the fetch would
 		// end a violation: stop requesting junk now
-		if err := s.judgeShortfall(peer, &sf, total, nil); err != nil {
+		if err := s.judgeShortfall(peer, &sf, total); err != nil {
 			return res, err
 		}
 	}
@@ -232,12 +235,13 @@ func (sf *shortfall) count(root fingerprint.Range, hasRoot bool) int {
 // judgeShortfall reports the shortfall sf of a fetch from peer as a
 // violation when it is above shortfallTolerance(requested), and returns the
 // violation's error. Missing IDs outside the peer's root by its last Status
-// do not count: its radius grew since it listed them. It judges nothing when
-// err, the fetch's error, is a violation, already reported, or the Service
-// is closing.
-func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, requested int, err error) error {
-	if errors.Is(err, ErrInvalidMessage) || s.ctx.Err() != nil {
+// do not count: its radius grew since it listed them. It judges nothing
+// while the Service is closing.
+func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, requested int) error {
+	select {
+	case <-s.ctx.Done():
 		return nil
+	default:
 	}
 	remote, ok := s.LastStatus(peer)
 	if sf.count(remote.Root, ok) <= shortfallTolerance(requested) {

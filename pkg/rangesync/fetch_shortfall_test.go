@@ -73,7 +73,7 @@ func TestFetchShortfallScored(t *testing.T) {
 			chs, validStamp := signedChunks(t, 2+tc.missing+tc.bad)
 			held := chs[:2]
 			missing := chs[2 : 2+tc.missing]
-			var bad []swarm.Chunk
+			bad := make([]swarm.Chunk, 0, tc.bad)
 			for _, ch := range chs[2+tc.missing:] {
 				bad = append(bad, badSignature(ch))
 			}
@@ -177,7 +177,7 @@ func TestFetchShortfallHonestChurn(t *testing.T) {
 		}
 	}
 
-	var all []storer.ChunkID
+	all := make([]storer.ChunkID, 0, len(evicted)+len(outside)+len(holds))
 	for _, set := range [][]swarm.Chunk{evicted, outside, delivered, held, unverified, unknown, index, older} {
 		all = append(all, idsOf(t, set...)...)
 	}
@@ -201,7 +201,7 @@ func TestFetchShortfallAfterViolation(t *testing.T) {
 
 	const bad = 5
 	chs, validStamp := signedChunks(t, bad+1)
-	var deliveries []*pb.Delivery
+	deliveries := make([]*pb.Delivery, 0, bad)
 	for _, ch := range chs[:bad] {
 		deliveries = append(deliveries, delivery(t, badSignature(ch)))
 	}
@@ -216,7 +216,7 @@ func TestFetchShortfallAfterViolation(t *testing.T) {
 		<-stall
 	})
 
-	var ids []storer.ChunkID
+	ids := make([]storer.ChunkID, 0, bad+1)
 	for _, ch := range chs[:bad] {
 		ids = append(ids, chunkIDOf(t, badSignature(ch)))
 	}
