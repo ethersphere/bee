@@ -1194,3 +1194,20 @@ _(sessions append here)_
 - **(T4.5 part 1) `(*Session).pendingReplies` has test callers only** (`pkg/rangesync/session.go`,
   T2.x). `golangci-lint --tests=false --enable-only unused` flags it. Move it into
   `export_test.go`. It is outside the reconciler, so it was left alone.
+- **(T4.5 part 1 review, Lows; recorded by the orchestrator at landing) For T4.5 part 2.**
+  1. In-place FSM reset (`gossip.go` ~L222, `peers.go` ~L67): `st.fsm = newPeerFSM()` also clears
+     `fetching`, which the old `peerState.fetching` survived. Fetching (F1 running) → hidden
+     reconnect → Unsupported → re-admit → a stripe from Idle ends Idle, so a round session and a
+     second fetch can start while F1 runs, and F1's `eventFetched` can end the new Fetching early.
+     Fix: a generation number on `peerState` checked by session/release callbacks, or replace `st`
+     on reset.
+  2. `TestRangesyncOnlyGoroutines` cannot see inbound-triggered goroutines: the fetch goroutine
+     `Wants` starts (`reconciler.go` ~L408) runs on the inbound handler goroutine (remote's pprof
+     label under streamtest), and `AfterFunc` callbacks (`stripeClock`) escape the count. `doc.go`'s
+     "O(neighbors)" doesn't hold for served-session fetches (one per served session; see the T4.4
+     "concurrent fetch streams per peer" follow-up).
+  3. "No pullsync streams opened" is vacuous in that harness (no puller); the real guarantee is in
+     the pkg/node wiring tests.
+  4. Dual-mode `SyncRate` with a stand-in puller is accepted (T6 follow-up already recorded).
+  5. The remaining Phase-1 behavior is immediate topology rounds (T4.3 deferred it to T4.5); part 2
+     must close it.
