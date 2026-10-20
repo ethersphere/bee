@@ -452,10 +452,11 @@ func TestStripeBadSignatures(t *testing.T) {
 }
 
 // TestStripeBadSignaturesScored (T4.5 part 2b): past the fetch's shortfall
-// tolerance, a stripe peer's stamps that are invalid on every node are a
-// violation of its fetch: the peer is scored once, through the single
-// PeerScorer, and disconnected, and its IDs are rejected, so not requested
-// again. The stripe's own withholding rule adds no score.
+// tolerance, a stripe peer's stamps that are invalid on every node are an
+// offense of its fetch: the peer is scored once, through the single
+// PeerScorer, without a disconnect (a first offense), and its IDs are
+// rejected, so not requested again. The stripe's own withholding rule adds
+// no score.
 func TestStripeBadSignaturesScored(t *testing.T) {
 	t.Parallel()
 
@@ -469,8 +470,8 @@ func TestStripeBadSignaturesScored(t *testing.T) {
 	if got := a.r.Score(bAddr); got != 1 {
 		t.Fatalf("peer score %d, want 1", got)
 	}
-	if !a.rec.IsDisconnected(bAddr) {
-		t.Fatal("peer not disconnected")
+	if a.rec.IsDisconnected(bAddr) {
+		t.Fatal("peer disconnected on a first offense")
 	}
 	if n := len(a.wantsTo(t, bAddr)); n != 1 {
 		t.Fatalf("%d wants to the peer, want 1 (rejected IDs not asked for again)", n)

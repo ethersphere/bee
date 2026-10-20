@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // PendingReplies reports the state kept for answers to the peer's Reply
@@ -172,3 +173,36 @@ func (s *Service) FetchTimeout() time.Duration { return s.fetchTimeout }
 // ShortfallTolerance returns the shortfall a fetch of requested IDs
 // tolerates from its peer.
 func ShortfallTolerance(requested int) int { return shortfallTolerance(requested) }
+
+// SetNow sets the clock of the fetch shortfall's rules (its windows). It
+// must be called before the service is used.
+func (s *Service) SetNow(now func() time.Time) { s.now = now }
+
+const (
+	ShortfallWindow    = shortfallWindow
+	RootExcuseInterval = rootExcuseInterval
+	BlatantMinIDs      = blatantMinIDs
+	MaxMissingPerPeer  = maxMissingPerPeer
+	MaxFetchResets     = maxFetchResets
+)
+
+// PlausibleStep reports whether a root move from from to to excuses the IDs
+// that left the root.
+func PlausibleStep(from, to fingerprint.Range) bool { return plausibleStep(from, to) }
+
+// ShortfallBook exposes the per-peer memory of the fetch shortfall.
+type ShortfallBook struct{ b *shortfallBook }
+
+func NewShortfallBook() ShortfallBook { return ShortfallBook{newShortfallBook()} }
+
+func (b ShortfallBook) Excuse(peer swarm.Address, from, to fingerprint.Range, now time.Time) bool {
+	return b.b.excuse(peer, from, to, now)
+}
+
+func (b ShortfallBook) Relisted(peer swarm.Address, ids []fingerprint.ID, now time.Time) int {
+	return b.b.relisted(peer, ids, now)
+}
+
+func (b ShortfallBook) Offend(peer swarm.Address, now time.Time) bool { return b.b.offend(peer, now) }
+
+func (b ShortfallBook) Clear(peer swarm.Address) { b.b.clear(peer) }

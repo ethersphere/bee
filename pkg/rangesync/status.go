@@ -135,7 +135,9 @@ func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
 }
 
 // handleStatus serves the status stream: it reads one Status and records it
-// as the peer's last status. An invalid Status disconnects the peer. A Status
+// as the peer's last status. An invalid Status disconnects the peer, and so
+// does a Status whose root does not contain the peer's overlay: a node's
+// root is its own overlay's prefix at its storage radius (§7.6). A Status
 // whose Mapping differs from this node's is recorded and counted
 // (mapping_mismatch_total); sessions with that peer are refused. A Status
 // over the peer's rate (PeerStatusBurst, then one per PeerStatusInterval) is
@@ -179,6 +181,9 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	st, err := ParseStatus(&m)
 	if err != nil {
 		return s.violation(p.Address, stream, err)
+	}
+	if !st.Root.Contains(p.Address) {
+		return s.violation(p.Address, stream, invalid("status root %s does not contain the peer", st.Root))
 	}
 	if st.Mapping != fingerprint.DefaultMapperID {
 		s.metrics.MappingMismatch.Inc()

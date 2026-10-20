@@ -125,11 +125,11 @@ func TestReconcileAdversarial(t *testing.T) {
 				b = newTestNode(t)
 			}
 			b.start(t)
-			p := newRawPeer(t, b)
 			root := whole
 			if tc.root != nil {
 				root = *tc.root
 			}
+			p := newRawPeerIn(t, b, root)
 			if err := p.sendStatus(t, statusWithRoot(root)); err != nil {
 				t.Fatal(err)
 			}
@@ -171,7 +171,7 @@ func TestReconcileOpeningOutsideRoot(t *testing.T) {
 
 	b := newTestNode(t, stampedChunks(t, 30)...)
 	b.start(t)
-	p := newRawPeer(t, b)
+	p := newRawPeerIn(t, b, rangeOf("01"))
 	if err := p.sendStatus(t, statusWithRoot(rangeOf("01"))); err != nil {
 		t.Fatal(err)
 	}

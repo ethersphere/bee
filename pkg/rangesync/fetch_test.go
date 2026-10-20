@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -127,34 +128,16 @@ func TestFetch(t *testing.T) {
 func TestFetchManyWants(t *testing.T) {
 	t.Parallel()
 
+	chs := stampedChunks(t, rangesync.MaxWantIDs+10)
 	// b holds one chunk of each Want: streamtest deadlocks when a writer
 	// runs more than 16 writes ahead of its reader, so the test keeps the
-	// deliveries few. The others lie outside b's root, which narrowed
-	// since b listed them (its radius grew), so that they do not count
-	// against b (TestFetchShortfallHonestChurn).
-	whole := fingerprint.NewRange(swarm.ZeroAddress, 0)
-	root, outside := whole.Child(1, 1), whole.Child(1, 0)
-	chs := stampedChunks(t, rangesync.MaxWantIDs+10)
-	for i, ch := range chs {
-		addr := ch.Address().Bytes()
-		addr[0] &^= 0x80 // in outside
-		chs[i] = swarm.NewChunk(swarm.NewAddress(addr), ch.Data()).WithStamp(ch.Stamp())
-		if !outside.Contains(chs[i].Address()) {
-			t.Fatal("chunk not outside b's root")
-		}
-	}
+	// deliveries few. b sends no Status, so its shortfall is not judged
+	// (shortfall.go; a peer that lists IDs has a Status).
 	held := []swarm.Chunk{validChunks(1)[0], validChunks(1)[0]}
 	chs[0], chs[len(chs)-1] = held[0], held[1]
 	a := newTestNode(t)
 	b := newTestNode(t, held...)
 	connect0(a, b)
-	if err := b.svc.SendStatusWith(context.Background(), a.addr, rangesync.Status{Root: root, LeafBits: serviceLeafBits, Mapping: fingerprint.DefaultMapperID}); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "b's status", func() bool {
-		_, ok := a.svc.LastStatus(b.addr)
-		return ok
-	})
 
 	ids := idsOf(t, chs...)
 	stored, err := a.svc.Fetch(context.Background(), b.addr, ids)
@@ -415,6 +398,70 @@ func TestFetchStreamsPerPeer(t *testing.T) {
 		}
 	}
 	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchStreamsLaggingHandlers checks the margin of the requester's cap
+// below the peer's limit: fetch streams this node ended (reset) leave their
+// handlers on the peer until their next delivery fails, and with two such
+// handlers new fetches, more than the cap, still keep the peer within its
+// limit (MaxPeerFetchStreams), so the peer does not disconnect this node.
+func TestFetchStreamsLaggingHandlers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		lagging = 2 // the margin the cap leaves
+		fresh   = rangesync.MaxFetchStreamsOut + 1
+	)
+	var calls atomic.Int32
+	lag, hold := make(chan struct{}), make(chan struct{})
+	chs := validChunks(lagging + fresh)
+	a := newTestNode(t)
+	b := newTestNodeOpts(t, nodeOpts{getHook: func() {
+		if calls.Add(1) <= lagging {
+			<-lag
+		} else {
+			<-hold
+		}
+	}}, chs...)
+	connect0(a, b)
+
+	// fetches whose handlers block on b, ended by this node
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	for _, id := range idsOf(t, chs[:lagging]...) {
+		wg.Go(func() { _, _ = a.svc.FetchWithResult(ctx, b.addr, []storer.ChunkID{id}) })
+	}
+	waitFor(t, "handlers on the peer", func() bool { return calls.Load() == lagging })
+	cancel()
+	wg.Wait()
+
+	// their handlers stay; new fetches
+	errs := make(chan error, fresh)
+	for _, id := range idsOf(t, chs[lagging:]...) {
+		go func() {
+			_, err := a.svc.Fetch(context.Background(), b.addr, []storer.ChunkID{id})
+			errs <- err
+		}()
+	}
+	waitFor(t, "new handlers", func() bool { return calls.Load() >= rangesync.MaxPeerFetchStreams })
+	time.Sleep(50 * time.Millisecond) // a stream past the cap, if any, arrives meanwhile
+	close(hold)
+	close(lag)
+	for range fresh {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range records {
+		if err := r.Err(); errors.Is(err, rangesync.ErrStreamLimitExceeded) {
+			t.Fatalf("the peer's fetch stream limit was hit: %v", err)
+		}
+	}
+	assertStored(t, a, true, idsOf(t, chs[lagging:]...)...)
 }
 
 func TestFetchViolations(t *testing.T) {

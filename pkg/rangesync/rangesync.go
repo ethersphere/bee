@@ -78,8 +78,10 @@ var (
 // PeerScorer receives the outcome of the sessions with each peer. The
 // reconciler implements it and keeps the single per-peer failure score.
 type PeerScorer interface {
-	// Fail reports that peer broke the protocol; reason wraps
-	// ErrInvalidMessage. The peer was disconnected.
+	// Fail reports that peer broke the protocol, and then reason wraps
+	// ErrInvalidMessage and the peer was disconnected, or that a fetch from
+	// peer fell short for the first time in a while, and then reason wraps
+	// only ErrFetchShortfall and the peer was not disconnected.
 	Fail(peer swarm.Address, reason error)
 	// Succeed reports that a session with peer completed.
 	Succeed(peer swarm.Address)
@@ -160,6 +162,9 @@ type Service struct {
 	sessionLimiter  *ratelimit.Limiter // per peer, sessions served
 	statusLimiter   *ratelimit.Limiter // per peer, statuses received
 	statusDrops     *ratelimit.Limiter // per peer, statuses over the rate
+	fetchResets     *ratelimit.Limiter // per peer, fetch streams failed without a delivery
+	shortfalls      *shortfallBook     // per peer, the fetch shortfall's memory
+	now             func() time.Time
 
 	index   *fingerprint.Index
 	indexer *Indexer
@@ -239,6 +244,9 @@ func New(
 		sessionLimiter:   ratelimit.New(PeerSessionInterval, PeerSessionBurst),
 		statusLimiter:    ratelimit.New(PeerStatusInterval, PeerStatusBurst),
 		statusDrops:      ratelimit.New(PeerStatusDropInterval, PeerStatusDropBurst),
+		fetchResets:      ratelimit.New(fetchResetInterval, maxFetchResets),
+		shortfalls:       newShortfallBook(),
+		now:              time.Now,
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
 		local:            &local{index: index, store: store},
@@ -298,7 +306,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 // disconnected forgets the peer's status, stream slots, delivery, session
-// and status limits, and its dropped statuses.
+// and status limits, its dropped statuses, its failed fetch streams and the
+// missing IDs and offenses of its fetch shortfall.
 func (s *Service) disconnected(peer p2p.Peer) error {
 	s.statusMu.Lock()
 	delete(s.statuses, peer.Address.ByteString())
@@ -310,6 +319,8 @@ func (s *Service) disconnected(peer p2p.Peer) error {
 	s.sessionLimiter.Clear(peer.Address.ByteString())
 	s.statusLimiter.Clear(peer.Address.ByteString())
 	s.statusDrops.Clear(peer.Address.ByteString())
+	s.fetchResets.Clear(peer.Address.ByteString())
+	s.shortfalls.clear(peer.Address)
 	s.peerSessions.clear(peer.Address)
 	return nil
 }

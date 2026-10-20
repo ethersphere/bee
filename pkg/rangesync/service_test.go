@@ -105,6 +105,11 @@ type nodeOpts struct {
 	// storeErr, if not nil, is called by each ReserveHasID and
 	// ReserveIterateAddr of the service; an error fails the call.
 	storeErr func() error
+	// getHook, if not nil, is called by each ReserveGetByID of the service
+	// (the fetch handler's) before it reads the chunk.
+	getHook func()
+	// addr is the node's overlay; random if zero.
+	addr swarm.Address
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -113,6 +118,14 @@ type radiusStore struct {
 	outside  func(swarm.Address) bool
 	hasHook  func(swarm.Address)
 	storeErr func() error
+	getHook  func()
+}
+
+func (s radiusStore) ReserveGetByID(ctx context.Context, addr swarm.Address, stampHash []byte) (swarm.Chunk, error) {
+	if s.getHook != nil {
+		s.getHook()
+	}
+	return s.ReserveStore.ReserveGetByID(ctx, addr, stampHash)
 }
 
 func (s radiusStore) failed() error {
@@ -149,8 +162,11 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	if o.validStamp == nil {
 		o.validStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
 	}
+	if o.addr.IsZero() {
+		o.addr = swarm.RandAddress(tb)
+	}
 	n := &testNode{
-		addr:   swarm.RandAddress(tb),
+		addr:   o.addr,
 		store:  mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(chunks...), mockstorer.WithPutHook(o.putHook)),
 		scorer: newRecordingScorer(),
 		wants:  make(map[string][]storer.ChunkID),
@@ -164,7 +180,7 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	if o.streamer != nil {
 		streamer = o.streamer(n.rec)
 	}
-	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside, hasHook: o.hasHook, storeErr: o.storeErr}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside, hasHook: o.hasHook, storeErr: o.storeErr, getHook: o.getHook}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:       n.scorer,
 		Wants:        n.addWants,
 		LeafBits:     serviceLeafBits,
@@ -489,7 +505,14 @@ type rawPeer struct {
 
 func newRawPeer(t *testing.T, server *testNode) *rawPeer {
 	t.Helper()
-	p := &rawPeer{addr: swarm.RandAddress(t)}
+	return newRawPeerIn(t, server, fingerprint.NewRange(swarm.ZeroAddress, 0))
+}
+
+// newRawPeerIn is newRawPeer with an address in root, so that the peer may
+// send Statuses with that root.
+func newRawPeerIn(t *testing.T, server *testNode, root fingerprint.Range) *rawPeer {
+	t.Helper()
+	p := &rawPeer{addr: addrIn(t, root)}
 	countReset := func(h p2p.HandlerFunc) p2p.HandlerFunc {
 		return func(ctx context.Context, peer p2p.Peer, s p2p.Stream) error {
 			return h(ctx, peer, &resetRecordingStream{Stream: s, resets: &p.resets})
@@ -562,6 +585,40 @@ func assertFailed(t *testing.T, s *recordingScorer, peer swarm.Address) {
 	}
 	if succeeds != 0 {
 		t.Fatalf("scorer succeeds: %d", succeeds)
+	}
+}
+
+// addrIn returns a random address in r.
+func addrIn(tb testing.TB, r fingerprint.Range) swarm.Address {
+	tb.Helper()
+	for {
+		if a := swarm.RandAddress(tb); r.Contains(a) {
+			return a
+		}
+	}
+}
+
+// TestStatusRootContainsPeer checks that a Status whose root does not
+// contain the sender's overlay is a violation (§7.6: a node's root is its
+// own overlay's prefix), and that one whose root does is recorded.
+func TestStatusRootContainsPeer(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t)
+	b.start(t)
+	inside, outside := rangeOf("01"), rangeOf("10")
+	p := newRawPeerIn(t, b, inside)
+	if err := p.sendStatus(t, statusWithRoot(inside)); err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := b.svc.LastStatus(p.addr); !ok || !st.Root.Equal(inside) {
+		t.Fatalf("status %v (%v), want the root %s", st, ok, inside)
+	}
+	err := p.sendStatus(t, statusWithRoot(outside))
+	assertDisconnect(t, err)
+	assertFailed(t, b.scorer, p.addr)
+	if st, _ := b.svc.LastStatus(p.addr); !st.Root.Equal(inside) {
+		t.Fatalf("status root %s recorded, want %s kept", st.Root, inside)
 	}
 }
 

@@ -44,7 +44,9 @@ var _ resultFetcher = (*rangesync.Service)(nil)
 type fetchOutcome struct {
 	stored int // chunks stored
 	// undelivered is the number of IDs requested from the peer that it did
-	// not deliver; without a resultFetcher, every ID not stored.
+	// not deliver, or not requested because they lie outside its root
+	// (FetchResult.Undelivered); without a resultFetcher, every ID not
+	// stored.
 	undelivered int
 	// pending are the IDs the want set did not grant (another fetch held
 	// the claim, or the set or the peer's share was full): neither stored
