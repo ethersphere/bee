@@ -1670,6 +1670,144 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   `rangesync.ErrOpenBackoff` (was unexported) and `rangesync.Options.Now`. There is no `pkg/node`,
   `go.mod` or proto change, no libp2p import in `pkg/rangesync`, and no new parser of peer input.
 
+- **(T4.6 part 1) `pairwise_diff` is added; `pairwise_diff_half` stays as it is.** The new histogram
+  `pairwise_diff` holds n_Δ (the elements only one side holds) per completed reconcile session, and
+  both sides of a session observe it. `pairwise_diff_half` keeps its name, buckets and meaning (the
+  wants of this side), because it is the quantity `CatchUpMinDiff` is compared with (T1.11, T3.5) and
+  a dashboard may already read it. Only the unexported struct field and the `export_test.go` accessor
+  are renamed (`PairwiseDiffHalf`). An aggregate over a neighborhood counts each session twice, which
+  leaves its quantiles unchanged.
+- **(T4.6 part 1) How one side knows n_Δ: `Session.Difference` (additive).** The rateless decoder
+  gives both directions only on the side that decodes. In the steady state that is the initiator,
+  and the responder of a root symbol stream sees only the listing of the IDs it lacks. So
+  `Difference` counts, per resolved range:
+  - for a symbol stream this side decoded, the IDs recovered in both directions (exact);
+  - for every range resolved by items, this side's wants (exact) plus the local IDs the peer lacks,
+    from the counts both sides already exchanged: |only local| = cL − (cR − wants), within [0, cL].
+    cL is this side's count (its listing, Fingerprint or symbol stream). cR is the peer's count (its
+    complete listing, or the count of its Fingerprint for a stream the peer decoded).
+
+  Ranges taken over by the Striper, and ranges never answered (equal), count nothing. The value is
+  exact when neither side changes during the session. `TestSessionConverges` (every case, both
+  forms), `TestSessionExclusionCap` (answers past `MaxPendingReplies`), the corrupt, exhausted and
+  stale-stamp symbol tests and `TestProtocolConverges` (both sides, all sizes) assert that both
+  sides report the true n_Δ; a mutation of each of the three counting paths fails them. Under churn
+  the value is approximate. A peer that lies about its counts moves it within the local count of a
+  range. Nothing acts on it. In the simulations it is never below the session's wants.
+- **(T4.6 part 1) `pairwise_diff` buckets: 0 and 2^k − 1 for k = 1 … 17.** A difference is an
+  integer, so each bucket holds exactly one octave, and `le="255"` counts exactly the sessions below
+  `CatchUpMinDiff` (Q9: the p99 is below 256 if and only if at least 99% of the samples are in
+  `le="255"`). The top bound, 131071, is past 2 × `LargeDiff`. Octave resolution matches the
+  power-of-two constants that the metric tunes (caches 4096/512/32, `MinBatch` 4, `CatchUpMinDiff`
+  256). The simulation gets every sample exactly (`OnPairwiseDiff`), so part 3's p50 and p99 do not
+  depend on the buckets. `TestPairwiseDiffBuckets` pins the layout.
+- **(T4.6 part 1) The harness: `runNeighborhood(tb, simOptions) *simResult`** in
+  `pkg/rangesync/neighborhood_sim_test.go` (package `rangesync_test`, so that it can use rangesync's
+  `export_test.go`; it uses the reconciler's exported API only). Each of the N nodes has a real
+  `rangesync.Service`, a real `reconciler.Reconciler` and a mock reserve, wired as in `pkg/node`
+  (scorer, wants, `SetService`), in a full mesh at radius 0. Every node starts with the same `Base`
+  chunks, so that no node bootstraps. Each upload is put into the reserves of p random nodes.
+  - Options: `Nodes`, `Replication`, `Seed`, `Base`, `Batches`, `BatchSize`, `BatchInterval`,
+    `Warmup`, `ChunkSize`, `Tail`, `Limit`, `Settle`, `MinRoundInterval`, `MaxRoundInterval`, and the
+    `Reconciler`/`Service` hooks, which adjust each node's options.
+  - Result, counted from the first upload:
+    - per batch, the convergence time and the most rounds a node ran;
+    - per node, the uploads, the chunks stored, the rangesync deliveries, the rounds,
+      `bytes_metadata` and `bytes_chunks`, `want_claims` by result, and the exposed `pairwise_diff`
+      count;
+    - every `pairwise_diff` sample, with its time and node;
+    - reconciler `sessions_total` by result;
+    - the duplicate deliveries, the protocols of the opened streams, the fake-clock rate check, the
+      convergence time, the last session after it, and the steps and wall time.
+
+    Helpers: `diffsFrom` and `quantile`.
+- **(T4.6 part 1) A fake clock that moves only while the neighborhood is quiet.** All reconcilers and
+  services share one clock (`Options.Now`/`After`, `rangesync.Options.Now`). The harness counts the
+  reconcilers' calls into their services and the stream handlers, from `NewStream` until the handler
+  returns, as in flight. It moves the clock to the next pending timer only when nothing is in flight
+  and nothing has started for `Settle` (15 ms of real time). So the work of one instant ends at that
+  instant, and the times measure the protocol's waits, not the host. Three parts run on the real
+  clock:
+  - the Index's root-change debounce, which is not injectable: the reconciler's service view
+    (`simService.SubscribeRootChange`) is driven instead by a debounce on the fake clock, from the
+    reserve's put hook;
+  - the per-peer Status and session limiters (`pkg/ratelimit` takes no clock): they are lifted by
+    the `export_test.go` hook `DisablePeerRateLimits`, and the harness checks the same token buckets
+    on the fake clock (`RateExceeded`, 0 in every run);
+  - the fetch limiters and the fetch timeout: they are kept, and a fetch that waits on them is in
+    flight, so it holds the clock.
+
+  A clock moved too early, by a goroutine starved for longer than `Settle`, can only delay a
+  convergence by one timer step. The overlays, chunks, targets and jitters are seeded. Which session
+  claims a chunk first within one instant is up to the scheduler, so byte counts vary by about 10%
+  between runs. The assertions are bounds and invariants.
+- **(T4.6 part 1) Stream bytes go through an in-test pipe.** streamtest's record deadlocks when a
+  writer runs more than 16 writes ahead of its reader (the T4.4 note and `TestFetchManyWants`), and a
+  fetch of more than 16 chunks does that. streamtest still routes each stream
+  (`WithPeerProtocols`), runs the peer's handler with the peer's address, and supplies the headers,
+  the version and the `RecorderDisconnecter`. The bytes go through `simPipe`, an unbounded buffer
+  with streamtest's closing rules: `Close` ends the writes, `FullClose` and `Reset` also end the
+  reads, and neither waits for the remote. The two ends are paired by a header that a `Headler` of
+  the wrapped protocol echoes. `pkg/p2p` is unchanged. Deliveries are counted from the kept bytes of
+  the fetch streams. A run with 120 uploads per batch at N = 17 (5040 deliveries) completes in 2 s.
+- **(T4.6 part 1) Round interval bounds as reconciler options (additive).** The task asks for the
+  harness to take `RoundInterval` bounds. `Options.RoundInterval` fixes min = max and moves the round
+  timer to the real clock, so it is unusable on the fake clock. The new
+  `reconciler.Options.MinRoundInterval` and `MaxRoundInterval` override the bounds and keep the timer
+  on `After`, as `StartupGuardTimeout` and `StripeTimeout` already override theirs. A maximum below
+  the minimum is raised to it, and `RoundInterval` takes precedence. The node leaves them zero.
+  `TestRoundIntervalBounds` covers the adaptation and the trigger floor, and
+  `TestNeighborhoodRoundBounds` covers the harness plumbing (a mutation that drops the option fails
+  it).
+- **(T4.6 part 1) The convergence bound: 2 × `StatusMinInterval` + `MinRoundInterval` = 15 s, and at
+  most 3 rounds of any node.** Within `StatusMinInterval` a holder's index signals the change (or a
+  timed round sees it sooner). The signal sends the holder's Status (deferred to at most
+  `StatusMinInterval` after its last change send to that peer) and triggers its round, no sooner
+  than `MinRoundInterval` after its last round. That round opens sessions with every higher-overlay
+  lacker. A lower-overlay lacker has the Status by 2 × `StatusMinInterval`, which triggers its round
+  within `MinRoundInterval`. The want set lets each lacker fetch each upload once (§7.8: one round,
+  no redundant fetch). The adaptive interval does not add, because the triggers do not wait for the
+  round timer. Rounds are at least `MinRoundInterval` apart, so a node runs at most 3 in the window.
+  §7.8's I = 1 round counts no gossip latency; the rest of the bound is the debounce and the Status
+  schedule.
+
+  Measured (4 batches of 8 uploads, 17 s apart, from 61 s, which is off the 5-s grid of quiet rounds
+  and heartbeats; 20 runs each at `-cpu=1,4`):
+  - N = 5: 5 s and 1 round per batch;
+  - N = 9: 5 s and 1 round (a batch at 0–3 s when a timer coincided);
+  - N = 17: 5–10 s and 1–2 rounds. The second round comes from sessions that went stale while they
+    waited for one of the 8 slots, because every node holds some uploads and lacks others, so its
+    root moves under them. Busy answers at the node session limit add to it.
+
+  There were zero duplicate deliveries in every run.
+- **(T4.6 part 1) Invariants the tests assert for free.**
+  - Each node stores and receives exactly the uploads it lacked.
+  - `want_claims`: `expired` and `late` are 0, and `granted` ≥ stored. A granted claim is released
+    unrequested when the reserve check after the claim (T4.4 fix round 1) finds the chunk stored by
+    another fetch.
+  - Only `rangesync` streams are opened (no `pullsync`).
+  - No Status or session exceeds a peer's rate on the fake clock.
+  - No session fails (`sessions_total{error}` is 0).
+  - `pairwise_diff` has 2 × `sessions_total{ok}` samples, all below `CatchUpMinDiff`, summing to at
+    least twice the chunks fetched, and the histogram exposed through `Service.Metrics` has the same
+    count.
+  - The last session starts within `StatusMaxInterval` + 2 × `MaxRoundInterval` of convergence
+    (AC-C2; measured 5 s).
+- **(T4.6 part 1) Tests and wall times** (single run, this host):
+  - `TestNeighborhoodConverges` (N = 5): 0.9 s;
+  - `TestNeighborhoodSREP`: N = 9 0.9 s, N = 17 1.2 s, skipped with `-short`;
+  - `TestNeighborhoodRoundBounds`: 0.6 s;
+  - `TestPairwiseDiffBuckets`: < 0.01 s;
+  - `TestRoundIntervalBounds`: 0.2 s.
+
+  No integration tag is needed. Scope:
+  - Production changes: `Session.Difference`, the `pairwise_diff` metric and the two reconciler
+    options.
+  - New hooks in `export_test.go`: `DisablePeerRateLimits`, `OnPairwiseDiff`,
+    `PairwiseDiffBuckets`, and `PairwiseDiffHalf` (renamed).
+  - There is no `pkg/node`, `pkg/p2p`, `go.mod` or proto change, no libp2p import in
+    `pkg/rangesync`, no new parser of peer input, and no `*_fuzz_test.go`.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -2363,3 +2501,48 @@ _(sessions append here)_
   3. Tests: `TestFetchWithProgress` lacks the `ErrOverwriteNewerChunk` and already-in-reserve
      branches; no test pins one-chunk-then-reset; no test of an honest catch-up after the grace was
      drained. followup-fuzzing.md still says `errOpenBackoff` (now `ErrOpenBackoff`).
+- **(T4.6 part 1 → part 3) Zero-difference sessions.** At the default load, about a third or more of
+  the `pairwise_diff` samples are 0: 39 of 116 (N = 5), 159 of 436 (N = 9) and 648 of 1508 (N = 17).
+  All of them fall one `StatusMinInterval` after a batch converged. A node's own fetches change its
+  root, and the debounced signal triggers its round. That round meets its peers' Statuses from before
+  they fetched, because their pushes arrive in the same instant. The race is real, and network
+  latency widens it. Each such session costs a Fingerprint and `MinBatch` symbols per pair. Part 3
+  (G6) should measure the share at the reference load (median `pairwise_diff` ≥ 20) and decide
+  whether a root change caused only by this node's rangesync fetches should trigger a round, or
+  whether such a round should wait for the peers' Statuses.
+- **(T4.6 part 1 → part 3) Metadata per upload is well above §7.8.** At the default load (8 uploads
+  per batch, median `pairwise_diff` 1–4; the low-load regime of AC-B1b), `bytes_metadata{out}` per
+  upload is about 2.4 KB (N = 5), 7.4 KB (N = 9) and 19.5 KB (N = 17), against §7.8's 2.0–2.5 KB and
+  4.6–5.9 KB. With 120 uploads per batch (median 54 and 36) it is 5.9 KB and 16.3 KB. The figures
+  include the Status gossip (each changed node to its N − 1 peers) and the zero-difference sessions
+  above. Part 3 should break them down and compare at the reference load, averaged over seeds (byte
+  counts vary by about 10% between runs).
+- **(T4.6 part 1 → part 3) Busy, collisions and stale sessions at N = 17.** In the logged runs:
+  `sessions_total{busy}` 4–5, `session_limit` 1–4 and `stale` 130–150 per run (32 uploads). They make
+  some batches take a second round. This is input to "(T4.3) Initiated-session share (T4.6)" and
+  "(T4.3 fix) T4.6: check the stripe/round split".
+- **(T4.6 part 1 → part 3) What the harness cannot vary yet.**
+  - Compile-time constants: the cache sizes (Q2), `MinBatch`, `CatchUpMinDiff`, `StatusMinInterval`
+    and `StatusMaxInterval`, and the request-driven vs streamed choice (Q3). Sweeping them needs a
+    production change (an option, or constants made variables). What `Options` exposes can be swept
+    through the `Reconciler` and `Service` hooks: the round bounds, `LeafBits`, `FetchRate`,
+    `FetchTimeout`, `StripeTimeout`, `StartupGuardTimeout` and `Jitter`.
+  - Scenarios: radius changes, bootstraps and stripes, batch expiry skew (Q7), churning or Busy-heavy
+    peers. Every node starts at radius 0 with the same base set. Part 3 adds these for the earlier
+    T4.6 measurement follow-ups: Q7 under skew, retry granularity, deferred stripes, Busy-heavy
+    stripes, re-ask waits, trimmed stripe parts, first-chunk latency of catch-ups, the stripe
+    registry, and the initiated-session share and stripe split.
+- **(T4.6 part 1) Proposal §10 and T6.0 wording.** §10's `pairwise_diff` ("histogram of n_Δ per
+  session") is now observed by both sides of a session, and `pairwise_diff_half` remains next to it.
+  AC-C2 and AC-K5 read `pairwise_diff`. A neighborhood-wide aggregate counts each session twice, so
+  its quantiles are right but its sample count is twice the sessions. For Q9, the check is the share
+  of samples in `le="255"`.
+- **(T4.6 part 1) Tests to run with `-race` on CI.** These ran with `-count=10 -cpu=1,2,4` instead.
+  - `pkg/rangesync`:
+    - new: `TestNeighborhoodConverges`, `TestNeighborhoodSREP`, `TestNeighborhoodRoundBounds`,
+      `TestPairwiseDiffBuckets`;
+    - changed: `TestProtocolConverges`, `TestSessionConverges`, `TestSessionExclusionCap`,
+      `TestSessionSymbolsStaleStamp`, `TestSessionSymbolsExhausted`, `TestSessionSymbolsCorrupt`.
+  - `pkg/rangesync/reconciler`: `TestRoundIntervalBounds`.
+  - Under `-race`, raise `simOptions.Settle` if a convergence bound fails: a clock moved too early
+    only lengthens a convergence.
