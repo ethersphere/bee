@@ -54,7 +54,20 @@ const (
 
 	// fetchKey is the key of the node-wide fetch limiter.
 	fetchKey = ""
+
+	// shortfallMin and shortfallRatio set the shortfall a fetch tolerates
+	// from its peer (shortfallTolerance): at most shortfallMin IDs, or
+	// 1/shortfallRatio of the IDs requested, whichever is more, as the
+	// reconciler's stripe verification tolerates.
+	shortfallMin   = 4
+	shortfallRatio = 100
 )
+
+// shortfallTolerance returns the shortfall a fetch of requested IDs
+// tolerates from its peer.
+func shortfallTolerance(requested int) int {
+	return max(shortfallMin, requested/shortfallRatio)
+}
 
 // errNoStampValidator rejects every delivery of a Service created without a
 // stamp validator.
@@ -111,13 +124,13 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // reserve holds already and the IDs the want set would not grant now
 // (wantset.Set.PeekPicked: rejected within RejectTTL, held by another claim,
 // or the set or the peer's share full, the Want's earlier candidates
-// counted), so that they cost no fetch rate, then
-// the IDs it does not grant when claimed and, once claimed, the IDs another
-// fetch stored meanwhile (during the fetch limiter wait); when none remains
-// no stream is opened. While a fetch holds the claim on an ID no other fetch
-// requests it, so a chunk is delivered twice only after a claim expired. The
-// claims of an ID end with Done when it was stored, with Reject when it was
-// rejected, and with Release otherwise, on every return. Before the IDs of
+// counted), so that they cost no fetch rate, then the IDs it does not grant
+// when claimed and, once claimed, the IDs another fetch stored meanwhile
+// (during the fetch limiter wait); when none remains no stream is opened.
+// While a fetch holds the claim on an ID no other fetch requests it, so a
+// chunk is delivered twice only after a claim expired. The claims of an ID
+// end with Done when it was stored, with Reject when it was rejected, and
+// with Release otherwise, on every return. Before the IDs of
 // each Want are claimed, it waits for one of the fetch streams this node
 // opens to peer (at most maxFetchStreamsOut at once, one fewer than the
 // peer's own limit, whatever runs the fetches), then for the node-wide fetch
@@ -131,19 +144,39 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // disconnected, the failure is reported to the PeerScorer and the error wraps
 // ErrInvalidMessage. A delivery whose stamp the stamp validator rejects
 // (stampRejected), or whose stamp is older than the one the reserve holds,
-// is dropped without penalty and its ID rejected for RejectTTL
-// (wantset.Set.RejectFrom: against the peer's share of the rejected cache);
-// one the validator fails for another cause is
-// dropped without penalty and reported Unverified. Requested
-// IDs the peer does not deliver are not an error. A chunk that is in the
-// reserve when it would be stored is counted as a cross protocol duplicate
-// and not stored again.
+// is dropped and its ID rejected for RejectTTL (wantset.Set.RejectFrom,
+// against the peer's share of the rejected cache); one the validator fails
+// for another cause is dropped and reported Unverified. A chunk that is in
+// the reserve when it would be stored is counted as a cross protocol
+// duplicate and not stored again.
+//
+// The peer listed the IDs it is asked for, so what it does not deliver
+// counts against it (§9, bogus wants): its shortfall is the IDs requested in
+// Wants it closed without delivering them, except those outside its root by
+// its last Status (its radius grew since it listed them), and its deliveries
+// with a stamp invalid on every node (stampInvalid). A shortfall above
+// shortfallTolerance of the IDs requested is a violation, judged as the
+// fetch returns, on every return, unless the fetch already reported a
+// violation or the Service is closing; and after each Want, against the
+// tolerance of all the IDs passed, so that a peer that listed junk is
+// stopped as soon as the verdict is certain. Up to the tolerance it is not
+// an error: an honest peer may have evicted a few IDs since it listed them.
+// Held, deferred and unverified IDs, rejections that depend on the chain
+// state or on this node's reserve, and the IDs of a Want that failed (reset
+// by the peer, or failed on this node) do not count.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.ctx, cancel) // Close ends the fetch
 	defer stop()
 
+	total := len(ids) // at most what the fetch requests
+	var sf shortfall
+	defer func() {
+		if verr := s.judgeShortfall(peer, &sf, sf.requested, err); verr != nil {
+			err = verr
+		}
+	}()
 	for len(ids) > 0 {
 		var cands []fingerprint.ID
 		cands, ids, err = s.wantCandidates(peer, ids, &res)
@@ -153,18 +186,71 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 		if len(cands) == 0 {
 			continue
 		}
-		if err := s.want(ctx, peer, cands, &res); err != nil {
+		if err := s.want(ctx, peer, cands, &res, &sf); err != nil {
+			return res, err
+		}
+		// above the tolerance of every ID it could request, the fetch would
+		// end a violation: stop requesting junk now
+		if err := s.judgeShortfall(peer, &sf, total, nil); err != nil {
 			return res, err
 		}
 	}
 	return res, nil
 }
 
+// shortfall is what one FetchWithResult call holds against its peer.
+type shortfall struct {
+	requested int              // IDs requested in Wants
+	missing   []fingerprint.ID // requested and not delivered when the peer closed the stream
+	invalid   int              // delivered with a stamp invalid on every node (stampInvalid)
+
+	// counted of missing were classified against root (none: hasRoot
+	// false), inRoot of them inside it (count).
+	root    fingerprint.Range
+	hasRoot bool
+	counted int
+	inRoot  int
+}
+
+// count returns the shortfall: the missing IDs inside root (the peer's
+// root by its last Status; all of them when hasRoot is false) and the
+// invalid stamps. It classifies the IDs missing since the last call, and all
+// of them again when the root differs from the last call's.
+func (sf *shortfall) count(root fingerprint.Range, hasRoot bool) int {
+	if hasRoot != sf.hasRoot || hasRoot && !root.Equal(sf.root) {
+		sf.root, sf.hasRoot, sf.counted, sf.inRoot = root, hasRoot, 0, 0
+	}
+	for _, id := range sf.missing[sf.counted:] {
+		if !hasRoot || root.ContainsID(id) {
+			sf.inRoot++
+		}
+	}
+	sf.counted = len(sf.missing)
+	return sf.inRoot + sf.invalid
+}
+
+// judgeShortfall reports the shortfall sf of a fetch from peer as a
+// violation when it is above shortfallTolerance(requested), and returns the
+// violation's error. Missing IDs outside the peer's root by its last Status
+// do not count: its radius grew since it listed them. It judges nothing when
+// err, the fetch's error, is a violation, already reported, or the Service
+// is closing.
+func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, requested int, err error) error {
+	if errors.Is(err, ErrInvalidMessage) || s.ctx.Err() != nil {
+		return nil
+	}
+	remote, ok := s.LastStatus(peer)
+	if sf.count(remote.Root, ok) <= shortfallTolerance(requested) {
+		return nil
+	}
+	return s.initiatorViolation(peer, invalid("%d of %d requested ids not delivered or with an invalid stamp (%d)", sf.inRoot+sf.invalid, sf.requested, sf.invalid))
+}
+
 // want requests cands from peer in one Want: it takes one of the peer's
 // fetch stream slots (maxFetchStreamsOut), then waits for the fetch rate,
-// claims cands and fetches the claimed IDs. The waits come before the
-// claims, so that they cannot outlast them.
-func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult) error {
+// claims cands and fetches the claimed IDs, recording the peer's shortfall
+// in sf. The waits come before the claims, so that they cannot outlast them.
+func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall) error {
 	release, err := s.fetchStreamsOut.acquire(ctx, peer)
 	if err != nil {
 		return fmt.Errorf("fetch stream slot: %w", err)
@@ -180,7 +266,7 @@ func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerpr
 	if len(claimed) == 0 {
 		return nil
 	}
-	return s.fetch(ctx, peer, claimed, res)
+	return s.fetch(ctx, peer, claimed, res, sf)
 }
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of
@@ -280,6 +366,35 @@ func signatureRecovers(addr swarm.Address, stamp *postage.Stamp) bool {
 	return err == nil
 }
 
+// stampInvalid reports whether a stamp the stamp validator failed with err
+// (recovers: whether its signature recovers, signatureRecovers) is invalid on
+// every node, whatever chain state it has seen: a signature that does not
+// recover or has the wrong length, or a chunk address, bucket or owner that
+// does not match it. An honest peer validated the stamp when it stored the
+// chunk, so delivering such a stamp is the peer's fault. An unknown or
+// expired batch (postage.ErrNotFound) and an index past the batch depth
+// (postage.ErrInvalidIndex, which a dilution raises) depend on the chain
+// state each node has seen, and errNoStampValidator on this node.
+func stampInvalid(err error, recovers bool) bool {
+	if errors.Is(err, errNoStampValidator) {
+		return false
+	}
+	if !recovers {
+		return true
+	}
+	for _, target := range []error{
+		postage.ErrInvalidChunkAddress,
+		postage.ErrBucketMismatch,
+		postage.ErrOwnerMismatch,
+		crypto.ErrInvalidLength,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
 // stampRejected reports whether err, an error of the stamp validator
 // (postage.ValidStamp), is about the stamp itself, which the ID includes, so
 // that it holds for every delivery of the ID: an unknown or expired batch
@@ -331,9 +446,11 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 }
 
 // fetch sends one Want of the claimed IDs to peer and handles the
-// deliveries until the peer closes the stream. Every claim in claimed is
-// ended before it returns.
-func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult) (err error) {
+// deliveries until the peer closes the stream, recording the peer's
+// shortfall in sf: the Want's IDs as requested, those still undelivered
+// when the peer closed the stream as missing, and the stamps invalid on
+// every node. Every claim in claimed is ended before it returns.
+func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
 	// claimed holds the IDs not delivered yet
 	defer func() {
 		for id := range claimed {
@@ -375,12 +492,16 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 		return stalled(fmt.Errorf("write want: %w", err))
 	}
 	s.metrics.BytesMetadata.WithLabelValues(dirOut).Add(float64(wireSize(want)))
+	sf.requested += len(want.IDs)
 
 	for len(claimed) > 0 {
 		var d pb.Delivery
 		if err := readMessage(ctx, r, &d); err != nil {
 			if errors.Is(err, io.EOF) {
-				// the peer delivered what it holds
+				// the peer delivered what it holds: it listed the rest
+				for id := range claimed {
+					sf.missing = append(sf.missing, id)
+				}
 				return nil
 			}
 			if errors.Is(err, ErrInvalidMessage) {
@@ -389,7 +510,7 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 			return stalled(fmt.Errorf("read delivery: %w", err))
 		}
 		s.metrics.BytesChunks.WithLabelValues(dirIn).Add(float64(wireSize(&d)))
-		err := s.deliver(ctx, peer, claimed, &d, res)
+		err := s.deliver(ctx, peer, claimed, &d, res, sf)
 		if errors.Is(err, ErrInvalidMessage) {
 			return s.initiatorViolation(peer, err)
 		}
@@ -412,9 +533,10 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 // deliver validates one Delivery against the claimed IDs and stores it. The
 // rules are those of pullsync.Sync (pkg/pullsync/pullsync.go), re-implemented
 // here. It removes the delivered ID from claimed, ends its claim and records
-// the outcome in res. A delivery whose claim had expired is counted late
-// (want_claims). A violation wraps ErrInvalidMessage.
-func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult) error {
+// the outcome in res, and a stamp invalid on every node in sf. A delivery
+// whose claim had expired is counted late (want_claims). A violation wraps
+// ErrInvalidMessage.
+func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult, sf *shortfall) error {
 	if len(d.Address) != swarm.HashSize {
 		return invalid("delivery address of %d bytes", len(d.Address))
 	}
@@ -443,7 +565,11 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", addr)
 		// A signature that does not recover is the stamp's fault too, and
 		// postage.ValidStamp returns the raw recovery error for it.
-		if stampRejected(err) || !signatureRecovers(addr, stamp) {
+		recovers := signatureRecovers(addr, stamp)
+		if stampInvalid(err, recovers) {
+			sf.invalid++
+		}
+		if stampRejected(err) || !recovers {
 			s.wantSet.RejectFrom(id, peer)
 			res.Rejected++
 			return nil

@@ -418,30 +418,21 @@ func recoverStamp(ch swarm.Chunk) (swarm.Chunk, error) {
 // it made up on a real batch and delivers them with stamps whose signatures
 // do not recover cannot pin the stripe. The IDs are rejected, not deferred:
 // the stripe is not asked for them again, completes in one session (and so
-// can be verified), and the valid chunks are stored.
+// can be verified), and the valid chunks are stored. Since T4.5 part 2b such
+// stamps count against the peer (rangesync's fetch shortfall): up to the
+// tolerance (4 here) it is not scored (TestStripeBadSignaturesScored).
 func TestStripeBadSignatures(t *testing.T) {
 	t.Parallel()
 
-	const bad = 8 // streamtest deadlocks past 16 deliveries per Want
-	good := chunktesting.GenerateTestRandomChunks(2)
-	chunks := append([]swarm.Chunk(nil), good...)
-	for _, ch := range chunktesting.GenerateTestRandomChunks(bad) {
-		chunks = append(chunks, badSignature(ch))
-	}
-	bAddr := addr(0xa0, 0)
-	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, chunks...)
-	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{validStamp: recoverStamp, roundInterval: time.Hour}, bAddr)
-	a.routes[bAddr.String()] = b.svc.Protocol()
-	b.rec.SetProtocols(a.svc.Protocol())
-	exchangeStatus(t, a, b)
-	a.r.SetStripeRetryInterval(time.Millisecond)
+	const bad = 4 // the fetch's shortfall tolerance
+	a, bAddr, chunks, good := badSignatureStripe(t, bad)
 
 	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
 	res := a.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{bAddr}}})[0]
 	if res.Err != nil {
 		t.Fatalf("stripe failed: %v", res.Err)
 	}
-	if res.Listed != len(chunks) || res.Stored != len(good) || res.Undelivered != 0 || res.Deferred != 0 {
+	if res.Listed != len(chunks) || res.Stored != good || res.Undelivered != 0 || res.Deferred != 0 {
 		t.Fatalf("listed %d, stored %d, undelivered %d, deferred %d", res.Listed, res.Stored, res.Undelivered, res.Deferred)
 	}
 	if n := len(streamRecords(t, &a.stripeNode, bAddr, rangesync.ReconcileStreamName)); n != 1 {
@@ -451,13 +442,65 @@ func TestStripeBadSignatures(t *testing.T) {
 		t.Fatalf("%d wants to the peer, want 1 (no IDs asked for again)", n)
 	}
 	for i, ch := range chunks {
-		if got, want := a.has(t, ch), i < len(good); got != want {
+		if got, want := a.has(t, ch), i < good; got != want {
 			t.Fatalf("chunk %d stored %v, want %v", i, got, want)
 		}
 	}
 	if got := a.r.Score(bAddr); got != 0 {
 		t.Fatalf("peer score %d", got)
 	}
+}
+
+// TestStripeBadSignaturesScored (T4.5 part 2b): past the fetch's shortfall
+// tolerance, a stripe peer's stamps that are invalid on every node are a
+// violation of its fetch: the peer is scored once, through the single
+// PeerScorer, and disconnected, and its IDs are rejected, so not requested
+// again. The stripe's own withholding rule adds no score.
+func TestStripeBadSignaturesScored(t *testing.T) {
+	t.Parallel()
+
+	a, bAddr, chunks, good := badSignatureStripe(t, 8)
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := a.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{bAddr}}})[0]
+	if res.Stored != good {
+		t.Fatalf("stored %d, want %d", res.Stored, good)
+	}
+	if got := a.r.Score(bAddr); got != 1 {
+		t.Fatalf("peer score %d, want 1", got)
+	}
+	if !a.rec.IsDisconnected(bAddr) {
+		t.Fatal("peer not disconnected")
+	}
+	if n := len(a.wantsTo(t, bAddr)); n != 1 {
+		t.Fatalf("%d wants to the peer, want 1 (rejected IDs not asked for again)", n)
+	}
+	for i, ch := range chunks {
+		if got, want := a.has(t, ch), i < good; got != want {
+			t.Fatalf("chunk %d stored %v, want %v", i, got, want)
+		}
+	}
+}
+
+// badSignatureStripe returns a node a whose stamp validator recovers
+// signatures, and a stripe peer at bAddr, with exchanged Statuses, that holds
+// 2 valid chunks (the first good of chunks) and bad chunks whose stamps'
+// signatures do not recover.
+func badSignatureStripe(t *testing.T, bad int) (a *roundNode, bAddr swarm.Address, chunks []swarm.Chunk, good int) {
+	t.Helper()
+	good = 2 // streamtest deadlocks past 16 deliveries per Want
+	chunks = chunktesting.GenerateTestRandomChunks(good)
+	for _, ch := range chunktesting.GenerateTestRandomChunks(bad) {
+		chunks = append(chunks, badSignature(ch))
+	}
+	bAddr = addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, chunks...)
+	a = newRoundNode(t, addr(0x10, 0), roundNodeOptions{validStamp: recoverStamp, roundInterval: time.Hour}, bAddr)
+	a.routes[bAddr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.SetStripeRetryInterval(time.Millisecond)
+	return a, bAddr, chunks, good
 }
 
 // exchangeStatus has a and b send each other their Status and waits until

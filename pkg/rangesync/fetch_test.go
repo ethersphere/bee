@@ -127,15 +127,34 @@ func TestFetch(t *testing.T) {
 func TestFetchManyWants(t *testing.T) {
 	t.Parallel()
 
-	chs := stampedChunks(t, rangesync.MaxWantIDs+10)
 	// b holds one chunk of each Want: streamtest deadlocks when a writer
 	// runs more than 16 writes ahead of its reader, so the test keeps the
-	// deliveries few
+	// deliveries few. The others lie outside b's root, which narrowed
+	// since b listed them (its radius grew), so that they do not count
+	// against b (TestFetchShortfallHonestChurn).
+	whole := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	root, outside := whole.Child(1, 1), whole.Child(1, 0)
+	chs := stampedChunks(t, rangesync.MaxWantIDs+10)
+	for i, ch := range chs {
+		addr := ch.Address().Bytes()
+		addr[0] &^= 0x80 // in outside
+		chs[i] = swarm.NewChunk(swarm.NewAddress(addr), ch.Data()).WithStamp(ch.Stamp())
+		if !outside.Contains(chs[i].Address()) {
+			t.Fatal("chunk not outside b's root")
+		}
+	}
 	held := []swarm.Chunk{validChunks(1)[0], validChunks(1)[0]}
 	chs[0], chs[len(chs)-1] = held[0], held[1]
 	a := newTestNode(t)
 	b := newTestNode(t, held...)
 	connect0(a, b)
+	if err := b.svc.SendStatusWith(context.Background(), a.addr, rangesync.Status{Root: root, LeafBits: serviceLeafBits, Mapping: fingerprint.DefaultMapperID}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "b's status", func() bool {
+		_, ok := a.svc.LastStatus(b.addr)
+		return ok
+	})
 
 	ids := idsOf(t, chs...)
 	stored, err := a.svc.Fetch(context.Background(), b.addr, ids)
@@ -150,6 +169,7 @@ func TestFetchManyWants(t *testing.T) {
 		t.Fatalf("got %d wants", len(wants))
 	}
 	assertNoClaims(t, a)
+	assertNotScored(t, a, b.addr)
 }
 
 func TestFetchUnknownID(t *testing.T) {

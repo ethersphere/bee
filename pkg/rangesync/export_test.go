@@ -168,3 +168,7 @@ const (
 
 // FetchTimeout returns the timeout of one Want.
 func (s *Service) FetchTimeout() time.Duration { return s.fetchTimeout }
+
+// ShortfallTolerance returns the shortfall a fetch of requested IDs
+// tolerates from its peer.
+func ShortfallTolerance(requested int) int { return shortfallTolerance(requested) }
