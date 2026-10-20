@@ -167,7 +167,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T4.1 Status gossip (debounce + heartbeat)
 - [x] T4.2 Per-peer state machine (probing, unsupported peers)
 - [x] T4.3 Round scheduler (initiator rule, adaptive interval, session caps)
-- [ ] T4.4 Want-set integration in rounds + rejected cache
+- [x] T4.4 Want-set integration in rounds + rejected cache
 - [ ] T4.5 Replace the minimal reconciler; dual-mode coexistence
 - [ ] T4.6 Neighborhood simulation / N-node integration test
 
