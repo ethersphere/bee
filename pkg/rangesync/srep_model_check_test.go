@@ -7,6 +7,7 @@ package rangesync_test
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -208,6 +209,60 @@ func TestSREPDecodeTable(t *testing.T) {
 		if ks := table.thresholds(t, d); ks[0] < d {
 			t.Errorf("d = %d: threshold %d below the difference", d, ks[0])
 		}
+	}
+}
+
+// TestSREPSessionCost checks the expected cost of one session's stream
+// (srepParams.sessionCost) per difference size, over the decoder's
+// thresholds. With an exact estimate (a hint equal to the difference) the
+// first batch FirstBatch(d) = ⌈1.6 d⌉ + 2 lies above the median threshold
+// (T2.6: p50 68 and p90 79 at d = 45, against 74), so most first batches
+// decode (85% at d = 45) and a stream costs 2.0–2.4 symbols per difference
+// for d ≥ 45; BatchFactor 2.0 decodes nearly all of them. The count estimate
+// alone (|cA − cB| = |2X − d|, X binomial(d, 1/2)) is far below d, and the
+// Mores it takes cost 3.3–3.6 symbols per difference with GrowthFactor 4
+// and 2.1–2.4 with 2. It logs the table, with the oracle that stops at the
+// threshold.
+func TestSREPSessionCost(t *testing.T) {
+	t.Parallel()
+
+	table := newSREPDecodeTable(srepCheckDraws, 4)
+	w := newSREPWire(fingerprint.Range{}, serviceLeafBits)
+	count, capR := 736, rangesync.SessionSymbolBudget
+	for _, c := range []struct {
+		name         string
+		growth, bf   int
+		noMoreAt45   [2]float64
+		perDiffExact [2]float64
+	}{
+		{name: "now", growth: 4, bf: 16, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{2, 2.8}},
+		{name: "GrowthFactor 2", growth: 2, bf: 16, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{1.6, 2.2}},
+		{name: "BatchFactor 2.0", growth: 4, bf: 20, noMoreAt45: [2]float64{0.9, 1}, perDiffExact: [2]float64{1.9, 2.4}},
+	} {
+		p := srepParams{GrowthFactor: c.growth, BatchFactorTenths: c.bf}.withDefaults()
+		var rows []string
+		for _, d := range []int{1, 4, 10, 20, 45, 80} {
+			exact := p.sessionCost(t, table, w, d, d, count, capR)
+			var counted float64
+			for x, px := range srepBinomial(d, 0.5) {
+				counted += px * p.sessionCost(t, table, w, d, max(2*x-d, d-2*x, 1), count, capR).Symbols
+			}
+			rows = append(rows, fmt.Sprintf("d=%d: exact %.2f (no More %.0f%%, one %.0f%%, %.2f round trips), counts only %.2f, oracle %.2f",
+				d, exact.Symbols/float64(d), 100*exact.MoreShares[0], 100*exact.MoreShares[1], exact.RoundTrips(), counted/float64(d), table.meanThreshold(t, d)/float64(d)))
+			if d != 45 {
+				continue
+			}
+			if got := exact.MoreShares[0]; got < c.noMoreAt45[0] || got > c.noMoreAt45[1] {
+				t.Errorf("%s, d = 45, exact estimate: %.2f of the first batches decode, want within %v", c.name, got, c.noMoreAt45)
+			}
+			if got := exact.Symbols / 45; got < c.perDiffExact[0] || got > c.perDiffExact[1] {
+				t.Errorf("%s, d = 45, exact estimate: %.2f symbols per difference, want within %v", c.name, got, c.perDiffExact)
+			}
+			if exact.Undecoded != 0 {
+				t.Errorf("%s, d = 45: %.2f of the streams reach their capacity", c.name, exact.Undecoded)
+			}
+		}
+		t.Logf("%s: symbols per difference\n  %s", c.name, strings.Join(rows, "\n  "))
 	}
 }
 

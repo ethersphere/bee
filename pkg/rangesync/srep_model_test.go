@@ -59,8 +59,9 @@ import (
 //     Fingerprint, the Symbols, a round trip per More, the Items, the empty
 //     answer and the FullClose's round trip), the hint recorded by both
 //     sides, the claims of the want set (each missing chunk fetched once)
-//     and the fetch's legs (open, Want, Delivery). Events of one instant run
-//     in a random order, as the harness's goroutines do at Delay 0.
+//     and the fetch's legs (open, Want, Delivery). At Delay 0 a leg takes
+//     srepInstant, so that concurrent calls progress in step as the
+//     harness's goroutines do; events of one instant run in a random order.
 //
 // srepParams.ideal is the closed form of §7.8 with the session cost of the
 // real decoder: synchronous rounds of MinRoundInterval in which every pair
@@ -613,6 +614,16 @@ func (p srepParams) run(tb testing.TB, table *srepDecodeTable) *srepResult {
 // srepNever is a time that never comes.
 const srepNever = time.Duration(math.MaxInt64)
 
+// srepInstant is the time of a message leg at Delay 0. In the harness the
+// calls of one instant run concurrently in real time, each leg a goroutine
+// hand-off, so they progress in step: every session of a round reads the
+// indexes before any of them ends and fetches. A random order of the legs
+// of one instant would instead let a fetch land before a concurrent
+// session's read, which the harness does not show (n_Δ per upload p(N − p)
+// at Delay 0). A leg of a microsecond keeps the step order and adds
+// microseconds to the times.
+const srepInstant = time.Microsecond
+
 // srepEvent is a pending event: fn runs at at. Events of one instant run in
 // the order of tie, a random number, then of seq.
 type srepEvent struct {
@@ -730,6 +741,7 @@ type srepSim struct {
 	table    *srepDecodeTable
 	wire     *srepWire
 	rng      *rand.Rand
+	leg      time.Duration // one message leg: Delay, or srepInstant at Delay 0
 	now      time.Duration
 	queue    srepQueue
 	seq      uint64
@@ -746,7 +758,7 @@ type srepSim struct {
 
 func newSREPSim(tb testing.TB, p srepParams, table *srepDecodeTable) *srepSim {
 	tb.Helper()
-	s := &srepSim{tb: tb, p: p, table: table, wire: newSREPWire(p.Root, p.LeafBits), rng: newRand(p.Seed ^ 0x5eed)}
+	s := &srepSim{tb: tb, p: p, table: table, wire: newSREPWire(p.Root, p.LeafBits), rng: newRand(p.Seed ^ 0x5eed), leg: max(p.Delay, srepInstant)}
 	s.res.Nodes, s.res.Replication = p.Nodes, p.Replication
 
 	// the upload schedule
@@ -931,8 +943,8 @@ func (s *srepSim) sendDue(n *srepNode, local srepStatus) int {
 		ps.picked, ps.sending, ps.lastSent, ps.lastSentSt = true, true, s.now, local
 		s.count(srepStatusBytes, s.wire.status(local.count))
 		to := s.nodes[j]
-		s.at(s.now+3*s.p.Delay, func() { s.statusArrived(to, n.i, local) })
-		s.at(s.now+4*s.p.Delay, func() { ps.sending, ps.sentAny = false, true })
+		s.at(s.now+3*s.leg, func() { s.statusArrived(to, n.i, local) })
+		s.at(s.now+4*s.leg, func() { ps.sending, ps.sentAny = false, true })
 		sent++
 	}
 	return sent
@@ -1013,7 +1025,7 @@ func (s *srepSim) round(n *srepNode) {
 		s.armRound(n)
 	}
 	if s.sendDue(n, local) > 0 {
-		s.at(s.now+4*s.p.Delay, cont)
+		s.at(s.now+4*s.leg, cont)
 		return
 	}
 	cont()
@@ -1112,7 +1124,7 @@ func (s *srepSim) startSession(a, b *srepNode, decided time.Duration) {
 	if takeover && s.counting {
 		s.res.Takeovers++
 	}
-	d := s.p.Delay
+	d := s.leg
 	// the open's round trip, then the Fingerprint's leg
 	s.at(s.now+2*d, func() {
 		sess.cA, sess.dA = a.count, a.digest
@@ -1123,7 +1135,7 @@ func (s *srepSim) startSession(a, b *srepNode, decided time.Duration) {
 
 // decide is the responder's answer to the opening.
 func (s *srepSim) decide(sess *srepSession) {
-	a, b, d := sess.a, sess.b, s.p.Delay
+	a, b, d := sess.a, sess.b, s.leg
 	ps := &b.peers[a.i]
 	ps.serving = true
 	if b.count == sess.cA && b.digest == sess.dA {
@@ -1188,14 +1200,14 @@ func (s *srepSim) decode(sess *srepSession) {
 			s.res.SymbolsPerDiff = append(s.res.SymbolsPerDiff, float64(sess.st.symbols)/float64(diff))
 		}
 	}
-	s.at(s.now+2*time.Duration(sess.st.mores())*s.p.Delay, func() { s.decoded(sess) })
+	s.at(s.now+2*time.Duration(sess.st.mores())*s.leg, func() { s.decoded(sess) })
 }
 
 // decoded is the initiator once its decoder is Done: it records the hint,
 // keeps the IDs only the responder holds that it still lacks as wants, and
 // lists the IDs only it holds.
 func (s *srepSim) decoded(sess *srepSession) {
-	a, b, d := sess.a, sess.b, s.p.Delay
+	a, b, d := sess.a, sess.b, s.leg
 	if !s.p.NoHints {
 		a.peers[b.i].hint = len(sess.onlyA) + len(sess.onlyB)
 	}
@@ -1289,7 +1301,7 @@ func (s *srepSim) fetch(n *srepNode, wants []int, done func()) {
 	for i := 0; i < len(granted); i += rangesync.MaxWantIDs {
 		s.count(srepWantBytes, s.wire.want(min(rangesync.MaxWantIDs, len(granted)-i)))
 	}
-	s.at(s.now+4*s.p.Delay, func() {
+	s.at(s.now+4*s.leg, func() {
 		for _, u := range granted {
 			if !s.p.NoClaims {
 				delete(n.claims, u)
@@ -1300,6 +1312,55 @@ func (s *srepSim) fetch(n *srepNode, wants []int, done func()) {
 			done()
 		}
 	})
+}
+
+// srepCost is the expected cost of one symbol stream of a difference of d
+// IDs with the estimate e, over the decoder's thresholds of d.
+type srepCost struct {
+	// Symbols and Mores are the expected symbols received and More
+	// requests, and SymbolBytes and MoreBytes their Messages' bytes.
+	Symbols, Mores, SymbolBytes, MoreBytes float64
+	// MoreShares holds the probabilities of 0, 1, 2 and more Mores, and
+	// Undecoded that the stream reaches cap(R) first.
+	MoreShares [4]float64
+	Undecoded  float64
+}
+
+// RoundTrips returns the expected round trips of the session, counting the
+// open and the close.
+func (c srepCost) RoundTrips() float64 { return 4 + c.Mores }
+
+// sessionCost returns the expected cost of a stream of a difference of d IDs
+// whose first batch is FirstBatch(e), of a responder holding count elements,
+// with capacity capR.
+func (p srepParams) sessionCost(tb testing.TB, table *srepDecodeTable, w *srepWire, d, e, count, capR int) srepCost {
+	tb.Helper()
+	var c srepCost
+	ks := table.thresholds(tb, d)
+	n0 := p.firstBatch(e)
+	for _, k := range ks {
+		st := p.stream(n0, k, capR)
+		c.Symbols += float64(st.symbols)
+		c.Mores += float64(st.mores())
+		c.MoreShares[min(st.mores(), 3)]++
+		if !st.decoded {
+			c.Undecoded++
+		}
+		start := 0
+		for i, b := range st.batches {
+			if i > 0 {
+				c.MoreBytes += float64(w.more(start + b))
+			}
+			c.SymbolBytes += float64(w.symbols(count, start, b))
+			start += b
+		}
+	}
+	kn := float64(len(ks))
+	c.Symbols, c.Mores, c.SymbolBytes, c.MoreBytes, c.Undecoded = c.Symbols/kn, c.Mores/kn, c.SymbolBytes/kn, c.MoreBytes/kn, c.Undecoded/kn
+	for i := range c.MoreShares {
+		c.MoreShares[i] /= kn
+	}
+	return c
 }
 
 // srepIdeal is the closed form of §7.8 with the real decoder's costs: every
@@ -1393,7 +1454,6 @@ func (p srepParams) ideal(tb testing.TB, table *srepDecodeTable, perRound float6
 		pDiff += prob
 		diff += prob * float64(d)
 		oracle += prob * table.meanThreshold(tb, d)
-		ks := table.thresholds(tb, d)
 		// the count estimate S = |2X − d|, X binomial(d, 1/2)
 		cdfS := make([]float64, d+1)
 		for x, px := range srepBinomial(d, 0.5) {
@@ -1413,7 +1473,6 @@ func (p srepParams) ideal(tb testing.TB, table *srepDecodeTable, perRound float6
 		if !p.NoHints {
 			maxE = max(d, len(cdfD)-1)
 		}
-		var es, em, eb, emb float64
 		for e := 1; e <= maxE; e++ {
 			pe := cdf(e)
 			if e > 1 {
@@ -1422,31 +1481,12 @@ func (p srepParams) ideal(tb testing.TB, table *srepDecodeTable, perRound float6
 			if pe < 1e-12 {
 				continue
 			}
-			n0 := p.firstBatch(e)
-			var sumSym, sumMore, sumBytes, sumMoreBytes float64
-			for _, k := range ks {
-				st := p.stream(n0, k, capR)
-				sumSym += float64(st.symbols)
-				sumMore += float64(st.mores())
-				start := 0
-				for i, b := range st.batches {
-					if i > 0 {
-						sumMoreBytes += float64(w.more(start + b))
-					}
-					sumBytes += float64(w.symbols(count, start, b))
-					start += b
-				}
-			}
-			kn := float64(len(ks))
-			es += pe * sumSym / kn
-			em += pe * sumMore / kn
-			eb += pe * sumBytes / kn
-			emb += pe * sumMoreBytes / kn
+			c := p.sessionCost(tb, table, w, d, e, count, capR)
+			symbols += prob * pe * c.Symbols
+			mores += prob * pe * c.Mores
+			symBytes += prob * pe * c.SymbolBytes
+			moreBytes += prob * pe * c.MoreBytes
 		}
-		symbols += prob * es
-		mores += prob * em
-		symBytes += prob * eb
-		moreBytes += prob * emb
 		var it float64
 		for x, px := range srepBinomial(d, 0.5) {
 			it += px * float64(w.items(x))

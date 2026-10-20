@@ -257,8 +257,8 @@ type simNodeResult struct {
 	RoundGap      time.Duration
 	RoundInterval time.Duration
 	// MetadataIn and MetadataOut are bytes_metadata{in,out}, ChunksIn and
-	// ChunksOut bytes_chunks{in,out}.
-	MetadataIn, MetadataOut, ChunksIn, ChunksOut float64
+	// ChunksOut bytes_chunks{in,out}, and MoreRequests more_requests_total.
+	MetadataIn, MetadataOut, ChunksIn, ChunksOut, MoreRequests float64
 	// WantClaims holds want_claims by result.
 	WantClaims map[string]float64
 	// PairwiseDiff is the sample count of the pairwise_diff histogram that
@@ -370,9 +370,9 @@ type simArrival struct {
 
 // simCounters are a node's metrics at one time.
 type simCounters struct {
-	metaIn, metaOut, chunksIn, chunksOut float64
-	claims                               map[string]float64
-	diffs                                uint64
+	metaIn, metaOut, chunksIn, chunksOut, mores float64
+	claims                                      map[string]float64
+	diffs                                       uint64
 }
 
 // simNode is one node of the neighborhood.
@@ -735,6 +735,7 @@ func (n *simNode) counters() simCounters {
 		metaOut:   n.svc.MetadataBytes("out"),
 		chunksIn:  n.svc.ChunkBytes("in"),
 		chunksOut: n.svc.ChunkBytes("out"),
+		mores:     n.svc.MoreRequests(),
 		claims:    make(map[string]float64),
 	}
 	for _, r := range wantClaimResults {
@@ -875,6 +876,7 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 			MetadataOut:  c.metaOut - base.metaOut,
 			ChunksIn:     c.chunksIn - base.chunksIn,
 			ChunksOut:    c.chunksOut - base.chunksOut,
+			MoreRequests: c.mores - base.mores,
 			WantClaims:   make(map[string]float64),
 			PairwiseDiff: c.diffs - base.diffs,
 		}
