@@ -71,6 +71,12 @@ func (s *Service) DrainFetchLimiter() bool {
 	return s.fetchLimiter.Allow(fetchKey, MaxWantIDs)
 }
 
+// TakeFetchTokens takes n tokens of the node-wide fetch limiter if it holds
+// them, and reports whether it did.
+func (s *Service) TakeFetchTokens(n int) bool {
+	return s.fetchLimiter.Allow(fetchKey, n)
+}
+
 // WantClaims returns the want_claims counter of result.
 func (s *Service) WantClaims(result string) float64 {
 	return counterValue(s.metrics.WantClaims.WithLabelValues(result))

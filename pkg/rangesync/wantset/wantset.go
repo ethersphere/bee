@@ -174,7 +174,7 @@ func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 	defer s.mu.Unlock()
 
 	now := s.now()
-	if r := s.check(id, peer, now); r != Granted {
+	if r := s.check(id, peer, 0, now); r != Granted {
 		return r
 	}
 	p := s.peers[string(peer.Bytes())]
@@ -196,15 +196,24 @@ func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 // limiter) skips the IDs Peek does not grant, so as not to wait for them; it
 // claims the others after the wait, as the outcome may have changed.
 func (s *Set) Peek(id fingerprint.ID, peer swarm.Address) Result {
+	return s.PeekPicked(id, peer, 0)
+}
+
+// PeekPicked is Peek with picked more IDs counted as claimed by peer: the
+// IDs the caller already picked to claim for peer after the same wait (the
+// candidates of one Want), which count towards the set's and the peer's caps
+// once claimed. picked must not be negative.
+func (s *Set) PeekPicked(id fingerprint.ID, peer swarm.Address, picked int) Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.check(id, peer, s.now())
+	return s.check(id, peer, picked, s.now())
 }
 
-// check returns the outcome of a claim of id by peer at now, Granted when
-// nothing stops it, without recording one. s.mu must be held.
-func (s *Set) check(id fingerprint.ID, peer swarm.Address, now time.Time) Result {
+// check returns the outcome of a claim of id by peer at now, with picked
+// more IDs counted as claimed by peer, Granted when nothing stops it,
+// without recording one. s.mu must be held.
+func (s *Set) check(id fingerprint.ID, peer swarm.Address, picked int, now time.Time) Result {
 	if s.closed {
 		return Closed
 	}
@@ -219,10 +228,14 @@ func (s *Set) check(id fingerprint.ID, peer swarm.Address, now time.Time) Result
 		// Expired, but behind a claim that has not: the clock went back.
 		s.drop(e)
 	}
-	if len(s.claims) >= s.maxClaims {
+	if len(s.claims)+picked >= s.maxClaims {
 		return Full
 	}
-	if p := s.peers[string(peer.Bytes())]; p != nil && p.n >= s.maxPerPeer {
+	held := picked
+	if p := s.peers[string(peer.Bytes())]; p != nil {
+		held += p.n
+	}
+	if held >= s.maxPerPeer {
 		return PeerFull
 	}
 	return Granted

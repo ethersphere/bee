@@ -218,6 +218,33 @@ func TestPeek(t *testing.T) {
 	peek(1, 2, wantset.Closed)
 }
 
+// TestPeekPicked checks that PeekPicked counts the IDs picked for the peer
+// since its last Claim towards both caps, as if they were claimed, and
+// records nothing.
+func TestPeekPicked(t *testing.T) {
+	t.Parallel()
+
+	c := newClock()
+	s := wantset.NewWithClock(testDeadline, testRejectTTL, 4, 3, wantset.MaxRejected, c.Now)
+	peek := func(id, peer, picked int, want wantset.Result) {
+		t.Helper()
+		if got := s.PeekPicked(testID(id), testPeer(peer), picked); got != want {
+			t.Fatalf("PeekPicked(id %d, peer %d, picked %d) = %v, want %v", id, peer, picked, got, want)
+		}
+	}
+
+	checkClaim(t, s, 1, 1, wantset.Granted)
+	peek(2, 1, 1, wantset.Granted)
+	peek(2, 1, 2, wantset.PeerFull) // 1 claimed and 2 picked: the peer's share
+	peek(2, 2, 2, wantset.Granted)
+	peek(2, 2, 3, wantset.Full) // 1 claimed and 3 picked: the set's cap
+	peek(1, 2, 0, wantset.Held) // a claim is checked before the caps
+	if got := s.Peek(testID(2), testPeer(1)); got != wantset.Granted {
+		t.Fatalf("Peek = %v, want %v (PeekPicked with none picked)", got, wantset.Granted)
+	}
+	checkLen(t, s, 1)
+}
+
 // TestReject_Closed checks that a closed set rejects nothing and reports no
 // rejected IDs and no claims.
 func TestReject_Closed(t *testing.T) {
@@ -284,21 +311,24 @@ func TestModelReject(t *testing.T) {
 		return n
 	}
 
-	expect := func(i, p int) wantset.Result {
+	// expectPicked is what a claim of i by p returns with picked more IDs
+	// counted as claimed by p (PeekPicked).
+	expectPicked := func(i, p, picked int) wantset.Result {
 		if _, ok := rejected[i]; ok {
 			return wantset.Rejected
 		}
 		if _, ok := claims[i]; ok {
 			return wantset.Held
 		}
-		if len(claims) >= maxClaims {
+		if len(claims)+picked >= maxClaims {
 			return wantset.Full
 		}
-		if held(p) >= maxPerPeer {
+		if held(p)+picked >= maxPerPeer {
 			return wantset.PeerFull
 		}
 		return wantset.Granted
 	}
+	expect := func(i, p int) wantset.Result { return expectPicked(i, p, 0) }
 
 	for op := range ops {
 		i, p := rnd.IntN(ids), rnd.IntN(peers)
@@ -316,6 +346,11 @@ func TestModelReject(t *testing.T) {
 		case k == 12:
 			if got, want := s.Peek(testID(i), testPeer(p)), expect(i, p); got != want {
 				t.Fatalf("op %d: Peek(id %d, peer %d) = %v, want %v", op, i, p, got, want)
+			}
+		case k == 11:
+			picked := rnd.IntN(maxClaims)
+			if got, want := s.PeekPicked(testID(i), testPeer(p), picked), expectPicked(i, p, picked); got != want {
+				t.Fatalf("op %d: PeekPicked(id %d, peer %d, picked %d) = %v, want %v", op, i, p, picked, got, want)
 			}
 		case k < 6:
 			delete(claims, i)

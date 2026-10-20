@@ -101,8 +101,9 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 //
 // Before each Want it drops the IDs outside the storage radius, the IDs the
 // reserve holds already and the IDs the want set would not grant now
-// (wantset.Set.Peek: rejected within RejectTTL, held by another claim, or
-// the set or the peer's share full), so that they cost no fetch rate, then
+// (wantset.Set.PeekPicked: rejected within RejectTTL, held by another claim,
+// or the set or the peer's share full, the Want's earlier candidates
+// counted), so that they cost no fetch rate, then
 // the IDs it does not grant when claimed and, once claimed, the IDs another
 // fetch stored meanwhile (during the fetch limiter wait); when none remains
 // no stream is opened. While a fetch holds the claim on an ID no other fetch
@@ -160,8 +161,9 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of
 // ids that are within the storage radius, not in the reserve and that the
-// want set would grant to peer now, and the IDs not looked at yet. It records
-// the IDs the want set would not grant in res.
+// want set would grant to peer now, with the candidates before them claimed
+// (PeekPicked), and the IDs not looked at yet. It records the IDs the want
+// set would not grant in res.
 func (s *Service) wantCandidates(peer swarm.Address, ids []storer.ChunkID, res *FetchResult) (cands []fingerprint.ID, rest []storer.ChunkID, err error) {
 	seen := make(map[fingerprint.ID]struct{})
 	for len(ids) > 0 && len(cands) < MaxWantIDs {
@@ -184,7 +186,7 @@ func (s *Service) wantCandidates(peer swarm.Address, ids []storer.ChunkID, res *
 			continue
 		}
 		seen[id] = struct{}{}
-		r := s.wantSet.Peek(id, peer)
+		r := s.wantSet.PeekPicked(id, peer, len(cands))
 		if r == wantset.Granted {
 			cands = append(cands, id)
 			continue
@@ -443,6 +445,11 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		return fmt.Errorf("reserve has id: %w", err)
 	}
 	if has {
+		if !expired {
+			// validStamp may have waited for the batch store past the claim
+			// deadline: count a claim that expired meanwhile, as after Put
+			s.claimExpired(peer, id)
+		}
 		s.metrics.CrossProtocolDuplicates.Inc()
 		s.wantSet.Done(id)
 		return nil

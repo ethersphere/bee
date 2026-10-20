@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"testing"
 	"time"
@@ -16,11 +17,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	batchstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -578,6 +582,72 @@ func TestFetchBadSignatureRejected(t *testing.T) {
 	assertNotScored(t, a, b.addr)
 }
 
+// signedChunks returns n chunks stamped by the owner of one batch, and the
+// node's stamp validator, postage.ValidStamp over a batch store that holds
+// that batch.
+func signedChunks(t *testing.T, n int) ([]swarm.Chunk, postage.ValidStampFn) {
+	t.Helper()
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := crypto.NewEthereumAddress(key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner))
+	issuer := postage.NewStampIssuer("label", "keyID", batch.ID, big.NewInt(3), batch.Depth, batch.BucketDepth, 1000, true)
+	stamper := postage.NewStamper(inmemstore.New(), issuer, crypto.NewDefaultSigner(key))
+	chs := make([]swarm.Chunk, n)
+	for i, ch := range validChunks(n) {
+		idAddress, err := storage.IdentityAddress(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, err := stamper.Stamp(ch.Address(), idAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		chs[i] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(st)
+	}
+	return chs, postage.ValidStamp(batchstoremock.New(batchstoremock.WithBatch(batch)))
+}
+
+// TestFetchBadSignatureValidStamp is TestFetchBadSignatureRejected through
+// the node's stamp validator, postage.ValidStamp over a batch store: a stamp
+// on a real batch whose signature does not recover is rejected, and a valid
+// one is stored.
+func TestFetchBadSignatureValidStamp(t *testing.T) {
+	t.Parallel()
+
+	chs, validStamp := signedChunks(t, 2)
+	if _, err := validStamp(chs[0]); err != nil {
+		t.Fatalf("valid stamp: %v", err)
+	}
+	bad := badSignature(chs[1])
+	if _, err := validStamp(bad); err == nil {
+		t.Fatal("bad signature accepted by the stamp validator")
+	}
+	a := newTestNodeOpts(t, nodeOpts{validStamp: validStamp})
+	b := newTestNode(t, chs[0], bad)
+	connect0(a, b)
+
+	ids := idsOf(t, chs[0], bad)
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stored != 1 || res.Rejected != 1 || len(res.Unverified) != 0 || len(res.Undelivered) != 0 {
+		t.Fatalf("%+v", res)
+	}
+	assertStored(t, a, true, ids[0])
+	assertStored(t, a, false, ids[1])
+	if !a.svc.WantSet().IsRejected(fpID(ids[1])) {
+		t.Fatal("bad signature not rejected")
+	}
+	assertNotScored(t, a, b.addr)
+}
+
 // TestFetchPeekSkipsLimiter checks that IDs the want set would not grant
 // (here held by another claim) are skipped before the fetch limiter wait,
 // so they cost no fetch rate.
@@ -608,13 +678,45 @@ func TestFetchPeekSkipsLimiter(t *testing.T) {
 	assertWantClaims(t, a, map[string]float64{"denied": 1, "granted": 0})
 }
 
+// TestFetchPeekCountsPicked checks that the candidates of one Want count
+// towards the want set's caps before the fetch limiter wait (PeekPicked):
+// with room for two claims, two of five IDs are candidates and charged, and
+// the other three are deferred without costing fetch rate.
+func TestFetchPeekCountsPicked(t *testing.T) {
+	t.Parallel()
+
+	const room = 2
+	chs := validChunks(5)
+	a := newTestNodeOpts(t, nodeOpts{fetchRate: 1}) // the burst refills a token a second
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+	for i, id := range fillIDs(wantset.MaxClaims - room) {
+		if r := a.svc.WantSet().Claim(id, testPeerN(i/wantset.MaxClaimsPerPeer)); r != wantset.Granted {
+			t.Fatal(r)
+		}
+	}
+
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stored != room || len(res.Deferred) != len(chs)-room {
+		t.Fatalf("stored %d, deferred %d, want %d, %d", res.Stored, len(res.Deferred), room, len(chs)-room)
+	}
+	// at most room tokens were taken (one more refills within a second)
+	if !a.svc.TakeFetchTokens(rangesync.MaxWantIDs - room) {
+		t.Fatal("the fetch charged the fetch limiter for deferred IDs")
+	}
+	assertWantClaims(t, a, map[string]float64{"granted": room, "full": float64(len(chs) - room)})
+}
+
 // TestFetchExpiredDuringPut checks that a claim that expires while Put
 // blocks (Put ignores ctx and waits for the reserve's batch lock) is counted
 // as expired, not late: the delivery arrived in time.
 func TestFetchExpiredDuringPut(t *testing.T) {
 	t.Parallel()
 
-	const deadline = 50 * time.Millisecond
+	const deadline = 500 * time.Millisecond
 	chs := validChunks(1)
 	a := newTestNodeOpts(t, nodeOpts{putHook: func(swarm.Chunk) error {
 		time.Sleep(2 * deadline)
@@ -627,6 +729,46 @@ func TestFetchExpiredDuringPut(t *testing.T) {
 	res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...))
 	if err != nil || res.Stored != 1 {
 		t.Fatalf("%+v, %v", res, err)
+	}
+	assertWantClaims(t, a, map[string]float64{"granted": 1, "expired": 1, "late": 0})
+}
+
+// TestFetchExpiredDuringStampCheck checks that a claim that expires while the
+// stamp validator waits for the batch store, after which the chunk is found
+// in the reserve (another writer stored it), is counted as expired: the
+// cross protocol duplicate is within want_claims{expired}.
+func TestFetchExpiredDuringStampCheck(t *testing.T) {
+	t.Parallel()
+
+	const deadline = 500 * time.Millisecond
+	chs := validChunks(1)
+	var (
+		a, b *testNode
+		id   fingerprint.ID
+	)
+	a = newTestNodeOpts(t, nodeOpts{validStamp: func(ch swarm.Chunk) (swarm.Chunk, error) {
+		// the batch store stalls past the claim deadline, while another
+		// writer stores the chunk
+		for a.svc.WantSet().HeldBy(id, b.addr) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := a.store.ReservePutter().Put(context.Background(), ch); err != nil {
+			return nil, err
+		}
+		return ch, nil
+	}})
+	a.svc.SetWantSet(wantset.New(deadline, rangesync.RejectTTL))
+	b = newTestNode(t, chs...)
+	connect0(a, b)
+	ids := idsOf(t, chs...)
+	id = fpID(ids[0])
+
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+	if err != nil || res.Stored != 0 || len(res.Undelivered) != 0 {
+		t.Fatalf("%+v, %v", res, err)
+	}
+	if d := a.svc.CrossProtocolDuplicates(); d != 1 {
+		t.Fatalf("cross protocol duplicates %v, want 1", d)
 	}
 	assertWantClaims(t, a, map[string]float64{"granted": 1, "expired": 1, "late": 0})
 }
