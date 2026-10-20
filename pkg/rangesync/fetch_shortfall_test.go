@@ -1630,7 +1630,8 @@ func (h *heldOpens) NewStream(ctx context.Context, addr swarm.Address, hd p2p.He
 // that a disconnect clears the backoff of the peer's fetch stream opens
 // through the service's disconnect hook: after a failed open the peer's
 // fetches fail at once while the backoff runs, but once it disconnected and
-// reconnected its next fetch opens a stream at once.
+// reconnected its next fetch opens a stream at once. FetchOpensBackOff
+// reports the backoff.
 func TestFetchDisconnectClearsOpenBackoff(t *testing.T) {
 	t.Parallel()
 
@@ -1643,10 +1644,18 @@ func TestFetchDisconnectClearsOpenBackoff(t *testing.T) {
 	b := newTestNode(t, chs...)
 	connect0(a, b)
 	sendRoot(t, b, a, whole)
+	backsOff := func(want bool) {
+		t.Helper()
+		if got := a.svc.FetchOpensBackOff(b.addr); got != want {
+			t.Fatalf("opens back off %v, want %v", got, want)
+		}
+	}
 
+	backsOff(false)
 	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); err == nil || errors.Is(err, rangesync.ErrOpenBackoff) {
 		t.Fatalf("got %v, want a failed open", err)
 	}
+	backsOff(true)
 	h.hold.Store(false) // the peer's opens would succeed now
 	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); !errors.Is(err, rangesync.ErrOpenBackoff) {
 		t.Fatalf("got %v, want %v", err, rangesync.ErrOpenBackoff)
@@ -1655,6 +1664,7 @@ func TestFetchDisconnectClearsOpenBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	sendRoot(t, b, a, whole) // the reconnect, within the backoff
+	backsOff(false)
 	if res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); err != nil || res.Stored != 1 {
 		t.Fatalf("after the reconnect: stored %d, %v", res.Stored, err)
 	}

@@ -124,6 +124,13 @@ type fakeService struct {
 	// sendBlock, by peer, makes SendStatusWith wait until its context ends
 	// (a peer that never answers).
 	sendBlock map[string]bool
+	// openUntil, by peer, is when the backoff of its fetch stream opens
+	// ends on the clock of now (FetchOpensBackOff); until then its fetches
+	// fail with rangesync.ErrOpenBackoff. fetchErrs are the errors of the
+	// next Fetch calls, one each, before fetchErr.
+	openUntil map[string]time.Time
+	now       func() time.Time
+	fetchErrs []error
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -154,7 +161,20 @@ func newFakeService(local rangesync.Status) *fakeService {
 		wantIDs:         make(map[string][]storer.ChunkID),
 		busyErr:         make(map[string]error),
 		sendBlock:       make(map[string]bool),
+		openUntil:       make(map[string]time.Time),
 	}
+}
+
+// FetchOpensBackOff reports whether peer's fetch stream opens back off
+// (openUntil).
+func (s *fakeService) FetchOpensBackOff(peer swarm.Address) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.opensBackOffLocked(peer)
+}
+
+func (s *fakeService) opensBackOffLocked(peer swarm.Address) bool {
+	return s.now != nil && s.now().Before(s.openUntil[peer.ByteString()])
 }
 
 // running returns the ReconcileWith calls running with any peer.
@@ -381,6 +401,14 @@ func (s *fakeService) Fetch(ctx context.Context, peer swarm.Address, ids []store
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.opensBackOffLocked(peer) {
+		return 0, rangesync.ErrOpenBackoff
+	}
+	if len(s.fetchErrs) > 0 {
+		err := s.fetchErrs[0]
+		s.fetchErrs = s.fetchErrs[1:]
+		return 0, err
+	}
 	if s.fetchErr != nil {
 		return 0, s.fetchErr
 	}

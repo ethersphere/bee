@@ -73,13 +73,15 @@ const (
 	skippedInReserve = "in_reserve"
 )
 
+// ErrOpenBackoff fails a fetch from a peer whose fetch stream opens back off
+// after a failed one (FetchOpensBackOff), at once, without a claim. It says
+// nothing about the peer: ask again once the backoff ends.
+var ErrOpenBackoff = errors.New("rangesync: fetch stream opens to the peer back off")
+
 var (
 	// errNoStampValidator rejects every delivery of a Service created
 	// without a stamp validator.
 	errNoStampValidator = errors.New("rangesync: no stamp validator")
-	// errOpenBackoff fails a fetch from a peer whose fetch stream opens back
-	// off after a failed one (openGate), at once, without a claim.
-	errOpenBackoff = errors.New("rangesync: fetch stream opens to the peer back off")
 	// errFetchQueueFull fails a fetch from a peer that maxFetchWaiters other
 	// fetch calls wait for, at once, without a claim.
 	errFetchQueueFull = errors.New("rangesync: too many fetches wait for the peer")
@@ -245,7 +247,7 @@ func (s *Service) FetchWithProgress(ctx context.Context, peer swarm.Address, ids
 // slot.
 func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall, stored func()) error {
 	if !s.opens.allowed(peer, s.now) {
-		return errOpenBackoff
+		return ErrOpenBackoff
 	}
 	release, err := s.fetchStreamsOut.acquire(ctx, peer)
 	if err != nil {
@@ -274,6 +276,14 @@ func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerpr
 	return s.fetch(ctx, peer, stream, claimed, res, sf, stored)
 }
 
+// FetchOpensBackOff reports whether peer's fetch stream opens back off now
+// (openGate): its last open failed and the backoff has not ended, or an open
+// probes it after the backoff. A fetch from the peer then fails at once with
+// ErrOpenBackoff.
+func (s *Service) FetchOpensBackOff(peer swarm.Address) bool {
+	return !s.opens.allowed(peer, s.now)
+}
+
 // openFetchStream opens a fetch stream to peer within fetchTimeout, through
 // the peer's open gate (openGate): it fails at once while the peer's opens
 // back off, and a failed open starts or extends the backoff. libp2p's
@@ -288,7 +298,7 @@ func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerpr
 func (s *Service) openFetchStream(ctx context.Context, peer swarm.Address) (p2p.Stream, error) {
 	probe, ok := s.opens.begin(peer, s.now)
 	if !ok {
-		return nil, errOpenBackoff
+		return nil, ErrOpenBackoff
 	}
 	octx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
 	defer cancel()

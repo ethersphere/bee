@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -366,4 +367,83 @@ func TestTransferStripesShutdown(t *testing.T) {
 	if got := r.StripesTotal("done"); got != 0 {
 		t.Fatalf("stripes done %v, want 0", got)
 	}
+}
+
+// TestTransferStripesOpenBackoff (T4.5 part 2c fix round 2): a stripe peer
+// whose fetch stream opens back off is treated as Busy, not as a failed
+// fetch that moves the stripe on at once: the stripe waits for it, off the
+// stripe clock, at most MaxStripeBusyRetries times, then is reassigned; an
+// attempt whose fetch found the backoff is restarted with the same peer.
+func TestTransferStripesOpenBackoff(t *testing.T) {
+	t.Parallel()
+
+	const retry = time.Millisecond
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	other := addr(0xf1, 0)
+	harness := func(t *testing.T) *harness {
+		t.Helper()
+		svc := newFakeService(status(0))
+		svc.wants[higher.ByteString()] = 3
+		svc.wants[other.ByteString()] = 3
+		h := newStripeHarness(t, svc, time.Hour, retry)
+		svc.now = h.clock.Now
+		return h
+	}
+
+	t.Run("waited for", func(t *testing.T) {
+		t.Parallel()
+
+		h := harness(t)
+		h.svc.set(func() { h.svc.openUntil[higher.ByteString()] = h.clock.Now().Add(5 * retry) })
+		res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher, other}}})[0]
+		if res.Err != nil || !res.Peer.Equal(higher) || res.Stored != 3 {
+			t.Fatalf("peer %s, stored %d, err %v, want %s, 3, nil", res.Peer, res.Stored, res.Err, higher)
+		}
+		if n := len(h.svc.sessionOpens(higher)); n != 1 {
+			t.Fatalf("%d sessions, want 1 (none while the opens back off)", n)
+		}
+		if got := h.r.StripesTotal("reassigned"); got != 0 {
+			t.Fatalf("stripes reassigned %v, want 0", got)
+		}
+		if got := h.r.Score(higher); got != 0 {
+			t.Fatalf("peer scored %d", got)
+		}
+	})
+
+	t.Run("reassigned once the waits run out", func(t *testing.T) {
+		t.Parallel()
+
+		h := harness(t)
+		h.svc.set(func() { h.svc.openUntil[higher.ByteString()] = h.clock.Now().Add(time.Hour) })
+		res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher, other}}})[0]
+		if res.Err != nil || !res.Peer.Equal(other) || res.Stored != 3 {
+			t.Fatalf("peer %s, stored %d, err %v, want %s, 3, nil", res.Peer, res.Stored, res.Err, other)
+		}
+		if n := len(h.svc.sessionOpens(higher)); n != 0 {
+			t.Fatalf("%d sessions with the peer whose opens back off, want 0", n)
+		}
+		if got := h.r.StripesTotal("reassigned"); got != 1 {
+			t.Fatalf("stripes reassigned %v, want 1", got)
+		}
+		if got := h.r.Score(higher); got != 0 {
+			t.Fatalf("peer scored %d", got)
+		}
+	})
+
+	t.Run("restarted after its fetch found the backoff", func(t *testing.T) {
+		t.Parallel()
+
+		h := harness(t)
+		h.svc.set(func() { h.svc.fetchErrs = []error{fmt.Errorf("fetch: %w", rangesync.ErrOpenBackoff)} })
+		res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher, other}}})[0]
+		if res.Err != nil || !res.Peer.Equal(higher) || res.Stored != 3 {
+			t.Fatalf("peer %s, stored %d, err %v, want %s, 3, nil", res.Peer, res.Stored, res.Err, higher)
+		}
+		if n := len(h.svc.sessionOpens(higher)); n != 2 {
+			t.Fatalf("%d sessions, want 2 (a restart)", n)
+		}
+		if got := h.r.StripesTotal("reassigned"); got != 0 {
+			t.Fatalf("stripes reassigned %v, want 0", got)
+		}
+	})
 }

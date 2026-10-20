@@ -120,8 +120,8 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 
 // verifier returns the peer to verify res with: a peer of statuses whose
 // root covers the stripe, other than the deliverer and every peer that ran a
-// session of the stripe (res.Tried), of those in ready (not backing off) if
-// any, lowest failure score first.
+// session of the stripe (res.Tried), of those in ready (not backing off,
+// stripePeers) if any, lowest failure score first.
 func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (swarm.Address, bool) {
 	for _, peers := range [][]PeerStatus{ready, statuses} {
 		var cands []swarm.Address

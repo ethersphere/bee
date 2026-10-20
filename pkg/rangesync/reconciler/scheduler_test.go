@@ -422,6 +422,71 @@ func TestStripePlanAvoidsBackoff(t *testing.T) {
 	}
 }
 
+// TestStripePlanAvoidsOpenBackoff (T4.5 part 2c fix round 2): stripes are
+// planned, reassigned and verified without the peers whose fetch stream
+// opens back off, where they would only wait, unless they are needed to
+// cover the range; once the backoff ends such a peer is planned again.
+func TestStripePlanAvoidsOpenBackoff(t *testing.T) {
+	t.Parallel()
+
+	backoff, ready := addr(0xf0, 1), addr(0xf0, 2)
+	svc := newFakeService(status(1))
+	svc.remote[backoff.ByteString()] = status(1)
+	svc.remote[ready.ByteString()] = status(1)
+	h := newGossipHarness(t, svc, backoff, ready)
+	svc.set(func() {
+		svc.now = h.clock.Now
+		svc.openUntil[backoff.ByteString()] = h.clock.Now().Add(time.Minute)
+	})
+	h.r.Round()
+	waitFor(t, "peers idle", func() bool {
+		a, _ := h.r.PeerState(backoff)
+		b, _ := h.r.PeerState(ready)
+		return a == reconciler.StateIdle && b == reconciler.StateIdle
+	})
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	for _, st := range h.r.PlanStripesFor(root) {
+		if len(st.Peers) != 1 || !st.Peers[0].Equal(ready) {
+			t.Fatalf("stripe %s planned with %v, want only %s", st.Range, st.Peers, ready)
+		}
+	}
+	deliverer := addr(0xf1, 0)
+	for range 20 { // each call walks the peers in a new (map) order
+		if p, ok := h.r.NextStripePeerFallback(root, deliverer); !ok || !p.Equal(ready) {
+			t.Fatalf("fallback peer %s, want %s", p, ready)
+		}
+		if p, ok := h.r.VerifierFor(reconciler.StripeResult{Range: root, Peer: deliverer}); !ok || !p.Equal(ready) {
+			t.Fatalf("verifier %s, want %s", p, ready)
+		}
+	}
+
+	// the peer whose opens back off is the only one that covers a half
+	svc.set(func() { svc.remote[ready.ByteString()] = withRootOf(status(1), fingerprint.NewRange(addr(0xf0, 0), 1)) })
+	other := root.Child(1, 0) // the half ready does not cover
+	planned := func() bool {
+		for _, st := range h.r.PlanStripesFor(root) {
+			if other.ContainsRange(st.Range) && len(st.Peers) > 0 && st.Peers[0].Equal(backoff) {
+				return true
+			}
+		}
+		return false
+	}
+	if !planned() {
+		t.Fatal("the half only the backed-off peer covers is not planned")
+	}
+	// once its backoff ends it is planned again, with the other peers
+	svc.set(func() { svc.remote[ready.ByteString()] = status(1) })
+	h.clock.Add(time.Minute)
+	var backoffPlanned bool
+	for _, st := range h.r.PlanStripesFor(root) {
+		backoffPlanned = backoffPlanned || len(st.Peers) > 0 && st.Peers[0].Equal(backoff)
+	}
+	if !backoffPlanned {
+		t.Fatal("the peer is not planned after its backoff ended")
+	}
+}
+
 // withRootOf returns st with root.
 func withRootOf(st rangesync.Status, root fingerprint.Range) rangesync.Status {
 	st.Root = root

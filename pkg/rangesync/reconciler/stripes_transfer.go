@@ -280,7 +280,11 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 // it lists only the IDs still missing. A session that completed with IDs
 // requested from the peer and not delivered is withholding
 // (ErrStripeWithheld) and is reassigned; IDs the want set did not grant and
-// rejected stamps are not.
+// rejected stamps are not. An attempt whose session ran and whose fetch
+// found the peer's fetch stream opens backing off (rangesync.ErrOpenBackoff)
+// is restarted with the same peer too (maxStripeRestarts): the next attempt
+// waits for the backoff as for a Busy answer (transferStripe), and is
+// reassigned once those waits run out.
 //
 // Bound: a stripe makes at most (1 + maxStripeReassign) × (1 +
 // maxStripeRestarts) = 36 attempts, each of at most StripeTimeout on its
@@ -316,6 +320,10 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		}
 		progress := res.Stored > 0 || errors.Is(res.Err, ErrStripeDeferred)
 		local := !progress && localBusy(res.Err) // held up by this node only
+		// the session ran and its fetch found the peer's opens backing off:
+		// as for a Busy answer, ask the same peer again (the next attempt
+		// waits for the backoff as for a Busy answer)
+		backoff := !progress && res.ran && errors.Is(res.Err, rangesync.ErrOpenBackoff)
 		switch {
 		case total.Err == nil:
 			r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
@@ -323,12 +331,12 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		case ctx.Err() != nil:
 			return total
 		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && restarts < maxStripeRestarts &&
-			(progress || local && localRestarts < maxStripeRestarts):
+			(progress || backoff || local && localRestarts < maxStripeRestarts):
 			restarts++
 			if local {
 				localRestarts++
 			}
-			continue // progress, or held up by this node: restart with the same peer
+			continue // progress, the peer's open backoff or held up by this node: restart with the same peer
 		case reassigns == maxStripeReassign:
 			ok = false
 			continue
@@ -347,7 +355,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 
 // nextStripePeer returns the next untried peer of *next, consuming it, or,
 // when *next is exhausted, the first untried peer with a Status whose root
-// covers sr (§7.6), a peer that does not back off first.
+// covers sr (§7.6), a peer that does not back off first (stripePeers).
 func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address, tried map[string]bool) (swarm.Address, bool) {
 	for len(*next) > 0 {
 		p := (*next)[0]
@@ -371,8 +379,8 @@ func (r *Reconciler) nextStripePeer(sr fingerprint.Range, next *[]swarm.Address,
 }
 
 // planStripes plans rg (PlanStripes) across the peers that do not back off
-// after Busy or failed round sessions (peerFSM.retryAt), and across every
-// peer offered for stripes when those leave a stripe without a peer.
+// (stripePeers), and across every peer offered for stripes when those leave
+// a stripe without a peer.
 func (r *Reconciler) planStripes(rg fingerprint.Range) []Stripe {
 	all, ready := r.stripePeers()
 	if len(ready) < len(all) {
@@ -384,14 +392,22 @@ func (r *Reconciler) planStripes(rg fingerprint.Range) []Stripe {
 }
 
 // stripePeers returns the peers offered for stripes (peerStatuses), and
-// those of them that do not back off.
+// those of them that do not back off: neither after Busy or failed round
+// sessions (peerFSM.retryAt) nor in their fetch stream opens (opensBackOff),
+// where a stripe would only wait.
 func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 	all = r.peerStatuses()
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	now := r.now()
+	var idle []PeerStatus
 	for _, ps := range all {
 		if st, ok := r.peers[ps.Peer.ByteString()]; ok && !now.Before(st.fsm.retryAt) {
+			idle = append(idle, ps)
+		}
+	}
+	r.mu.Unlock()
+	for _, ps := range idle {
+		if !r.opensBackOff(ps.Peer) {
 			ready = append(ready, ps)
 		}
 	}
@@ -408,7 +424,9 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // It holds a stripe slot (MaxStripeSessions) and a session slot
 // (MaxInitiatedSessions) while its session runs, and frees both while it
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
-// peer's Busy, and without a count for a cause on this node (localBusy). The
+// peer's Busy, and without a count for a cause on this node (localBusy). A
+// peer whose fetch stream opens back off (opensBackOff) is not asked for a
+// session: that counts as the peer's Busy (stripeBusy). The
 // stripe timeout (stripeClock) starts once it holds them and then runs until
 // it ends, the fetch after the session included, except while it waits to
 // retry the peer's Busy with no fetch of the attempt running; the waits for
@@ -498,10 +516,15 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	}
 	var lastLocal error // the last answer, if Busy for a cause on this node
 	for busy := 0; ; {
-		_, err = r.svc.ReconcileWith(ctx, peer, opts)
+		if r.opensBackOff(peer) {
+			// its fetches would fail at once: wait as for its Busy
+			err = rangesync.ErrOpenBackoff
+		} else {
+			_, err = r.svc.ReconcileWith(ctx, peer, opts)
+		}
 		clock.expireIfDue()
 		lastLocal = nil
-		if !isBusy(err) {
+		if !stripeBusy(err) {
 			res.ran = true
 			break
 		}
@@ -666,6 +689,32 @@ func (r *Reconciler) holdPeer(ctx context.Context, locks *peerLocks, peer swarm.
 		return err
 	}
 	return nil
+}
+
+// openBackoffReporter is implemented by a Service that backs off a peer's
+// fetch stream opens after a failed one (*rangesync.Service). Stripes treat
+// a peer whose opens back off as Busy, and are planned and verified on other
+// peers when they can.
+type openBackoffReporter interface {
+	FetchOpensBackOff(peer swarm.Address) bool
+}
+
+var _ openBackoffReporter = (*rangesync.Service)(nil)
+
+// opensBackOff reports whether peer's fetch stream opens back off
+// (openBackoffReporter), so that a fetch from it now fails at once; false
+// without an openBackoffReporter.
+func (r *Reconciler) opensBackOff(peer swarm.Address) bool {
+	b, ok := r.svc.(openBackoffReporter)
+	return ok && b.FetchOpensBackOff(peer)
+}
+
+// stripeBusy reports whether err makes a stripe wait and ask its peer again,
+// as Busy (maxStripeBusyRetries): a Busy answer (isBusy), or the peer's
+// fetch stream opens backing off (rangesync.ErrOpenBackoff), which says
+// nothing about the peer either.
+func stripeBusy(err error) bool {
+	return isBusy(err) || errors.Is(err, rangesync.ErrOpenBackoff)
 }
 
 // localBusy reports whether err is a Busy for a cause on this node: its index
