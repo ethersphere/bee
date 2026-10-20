@@ -1820,6 +1820,167 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   `-cpu=1,2,4` stayed within the bound. Waiting until every fired timer channel is read would not
   help: about 80% of them are abandoned, because the gossip loop re-arms on every wake.
 
+- **(T4.6 part 1 fix round 1, High) The serving side of a decoded stream records hint(R).** Before,
+  only the decoding side wrote the hint (`session_symbols.go`, on `Done`) and only the deciding side
+  read it (`decide`). In the steady state the lower overlay initiates and decodes the higher's root
+  stream, so the side that decides never had a hint (the review measured 859 reads, 0 non-zero, at
+  N = 17). `TestSessionSymbolsHints` hid it: both sessions shared one hints map. Now the serving side
+  records, once the peer's listing of a stream it decoded ends (`Items` without `Reply` answering
+  this side's stream), `servedHint` = min(n_Δ of the range, the symbols this side sent for it), where
+  n_Δ = listed + (cL − (cR − listed)) as in `Difference` (cL: the count of this side's stream, cR:
+  the count of the peer's Fingerprint). Nothing changes on the wire (G2), and the cache stays the
+  4096-entry LRU keyed by (peer, range). Why the difference and not the symbols sent (the review's
+  suggestion): after a miss the stream grew ×4, so its length is up to 4 × the batch it needed;
+  starting the next stream there would keep that overshoot in every session and never shrink. The
+  difference gives the next stream `FirstBatch(d)` as §6.3 intends.
+  - The bound: a decoder recovers at most one ID per symbol it received, so an honest peer's n_Δ
+    is at most the symbols sent, which are at most cap(R) and `SessionSymbolBudget`. A peer that
+    lists more IDs or lies about its Fingerprint count raises the hint to the length of the stream it
+    asked for, and this node's next first batch to at most `FirstBatch` of that (past cap(R) or
+    `MaxBatchSymbols` the range is split instead). A Fingerprint whose count differs from this
+    node's by as much already gets that batch (d̂ = |cL − cR|), so the hint adds no amplification.
+    A peer can flush the shared LRU with one hint per decoded stream (Follow-ups); losing a hint
+    only makes a first batch smaller.
+  - Tests: `TestSessionSymbolsHints` (now one hints map per side: both sides record 20 after a cold
+    session that needed a `More`, and the next first batch is `FirstBatch(20)`; it encoded the
+    shared map, not the cold start), `TestSessionSymbolsServedHintBound` (a listing of 200 IDs after
+    a 4-symbol stream records 4), `TestProtocolServedHint` (two services, the same initiator twice
+    over a hidden difference of 20: the responder's first batch is `MinBatch`, then
+    `FirstBatch(20)`). Dropping the record fails the first and the last, dropping the bound the
+    second. `TestWorkedExamples`, `TestSession*`, `TestSessionSymbols*` and `TestProtocolConverges`
+    pass unchanged: the worked examples run without hints, and `TestProtocolConverges`'s second
+    session finds equal sets.
+  - Measured with the harness (5 seeds each, 4 batches; mean and range; "before" is this round's
+    harness with the serving-side record disabled):
+
+    | N, uploads per batch | symbols per difference | `bytes_metadata{out}` per upload (of pullsync's N(N−1) × 102 B) |
+    |---|---|---|
+    | 9, 8 | 3.58 (3.37–3.97) → 3.73 (3.34–4.19) | 7.7 KB (105%) → 7.8 KB (106%) |
+    | 9, 120 | 3.32 (3.19–3.47) → 2.84 (2.61–2.98) | 6.0 KB (82%) → 5.3 KB (72%) |
+    | 17, 8 | 3.69 (3.45–3.91) → 3.68 (3.41–4.01) | 22.0 KB (79%) → 22.4 KB (81%) |
+    | 17, 120 | 3.27 (3.04–3.37) → 3.43 (3.26–3.59) | 15.5 KB (56%) → 16.3 KB (59%) |
+
+    `More` requests per upload (3 seeds, 120 per batch) fall from 0.63 to 0.20 (N = 9) and from 1.87
+    to 0.76 (N = 17). So the hint removes about two thirds of the round trips but does not bring
+    the symbols near §7.8's 1.35–1.72, and AC-B1 stays above 50%. The review's cause is only part of
+    it: with 120 uploads per batch the count difference already gave many streams a fair estimate,
+    and what remains is `FirstBatch` = 1.6 d + 2, which sits at the median of the symbols a
+    difference d needs, so about half the streams miss and the `More` grows them ×4 (up to 6.4 d).
+    With an exact estimate that costs about 0.5 × 1.6 + 0.5 × 6.4 ≈ 4 symbols per difference, and
+    a random cold start growing ×4 about 3.2 (the ×4 geometric overshoot). Light loads are
+    `MinBatch`-bound (d̂ ≤ 1, one to six differences per session). The constants are G6's
+    (Follow-ups: the `GrowthFactor` and `BatchFactor` runs).
+- **(T4.6 part 1 fix round 1, Medium 1) `pairwise_diff` is exact on the decoding side only.** This
+  supersedes, in "(T4.6 part 1) `pairwise_diff` is added", the claim that an aggregate over a
+  neighborhood "leaves its quantiles unchanged", and, in "(T4.6 part 1) How one side knows n_Δ", the
+  reading that both sides report the true n_Δ beyond the churn-free tests that assert it.
+  - The decoding side counts the IDs it recovered: the size of the difference between the two
+    snapshots the streams came from, exact under churn too.
+  - The serving side derived its value from its wants, which `HasID` filters: an ID it gained from
+    another peer since it served the stream dropped the value by 2 (once from the wants, once from
+    |only local|). It now counts the decoder's listing (`inStream.decodedDifference`), which the
+    review measured fixes N = 5. What remains is the decoder's change between its Fingerprint (cR)
+    and the snapshot it decoded against: an element it gained meanwhile that this side holds
+    counts once more. The serving side cannot see that count without a wire change, and taking the
+    decoder's snapshot at its Fingerprint would copy each cached prefix (up to 4096 symbols, ~350 KB)
+    for every range it opens, most of them equal; so it stays approximate.
+  - Measured (Σ over pairs of |initiator − responder| ÷ Σ initiator, from the first upload, 5
+    seeds): 21% (15–27%) at N = 9 and 26% (13–39%) at N = 17 with 8 uploads per batch, 1.1% and 9.3%
+    with 120. The responder is always the larger. The medians of all samples and of the exact ones
+    were equal in every run; the p99s differ (N = 17, 120 per batch: 78–97 against 68–80). Q9 is
+    unaffected (p99 8–10 at the default load, below 100 at 120 per batch).
+  - Part 3 reads the decoding side: `SessionSample.Exact` (only decoded streams, or no difference
+    at all) and `simResult.exactDiffsFrom`, which counts each session once (a session that found no
+    difference is exact on both sides and counts its initiator's sample; a side that decoded a
+    stream sends its peer a listing, which makes the peer's sample inexact). `TestSessionSymbolsDifferenceListed`
+    gains an ID the decoder lists on the serving side before it handles the listing: both sides
+    report 20 (the serving side reported 18 before; restoring the wants fails it).
+- **(T4.6 part 1 fix round 1) Per-session samples: `OnSession` replaces `OnPairwiseDiff`.** The
+  harness needs each side's role, exactness, peer and symbol counts, which the histogram hook could
+  not carry. `Service` gets an unexported test seam, `sessionDone func(peer, *Session, initiator)`,
+  called after the session's metrics in `ReconcileWith` and `handleReconcile`; it is nil in a node.
+  `export_test.go`'s `OnSession(func(SessionSample))` sets it; `SessionSample` holds `Peer`,
+  `Initiator`, `Difference`, `Exact`, `Recovered`, `SymbolsReceived` and `SymbolsSent`.
+  `OnPairwiseDiff` is removed. The harness's samples (`simSample.Session`) carry it, and
+  `simResult.symbolsPerDifference` is Σ symbols received ÷ Σ recovered (the overshoot and streams
+  that did not decode included).
+- **(T4.6 part 1 fix round 1, Medium 2) The harness models a one-way latency on the fake clock.**
+  This supersedes the in-flight rule of "(T4.6 part 1) A fake clock that moves only while the
+  neighborhood is quiet" and extends "(T4.6 part 1) The harness" (a `Delay` option, `Spans`,
+  `StreamBytes`, `RoundGap`).
+  - `simOptions.Delay` (default 0): every byte, close and reset a stream end writes reaches the other
+    end `Delay` later on the clock (`simPipe` schedules the arrival), and a stream open costs one
+    round trip (bee's headers exchange; the handler starts and waits for the first bytes). A session
+    of k round trips then takes 2k × `Delay` after its open (an equal one 1, a decoded one without a
+    `More` 2, each `More` one more), a Status send 2 × `Delay`, and a fetch the open plus its Want
+    and Delivery legs.
+  - Quiet now means: every call and handler in flight is parked (a goroutine reading a stream it has
+    nothing to read on, or sleeping on the clock for an open) and nothing started for `Settle`. An
+    event that can let a reader go on (an arrival, a close of its end) counts it as working again
+    before it wakes it. Readers on an empty pipe park at `Delay` 0 too: their remote is in flight or
+    parked itself. pkg/rangesync closes or resets every stream before a call or handler returns,
+    which wakes a read it left behind, so no reader stays parked for a call that ended.
+  - A fetch waits for one of the peer's `MaxFetchStreamsOut` slots in the harness before it counts
+    as in flight (`simNode.fetchSlot`): a third fetch to a peer would otherwise wait inside the
+    service while the fetch that holds the slot is parked, and hold the clock. The service's
+    `maxFetchWaiters` path is not reached in the simulation.
+  - `simResult.Spans` records every call of a reconciler into its service (kind, node, peer, start,
+    duration on the clock, error), so part 3 can time sessions (Q3: round trips against overshoot),
+    fetches (first chunk: open, Want and first Delivery, 4 × `Delay` with no limit wait) and the gap
+    between a Status and the session it triggers. `TestNeighborhoodDelay` (N = 5, 100 ms) checks that
+    every completed call takes a multiple of `Delay`, sessions whole round trips and at least 4 ×
+    `Delay`, Status sends at least 2 × `Delay`, and that the uploads converge within
+    `convergenceBound` plus the legs of a Status, a session with three `More`s and a fetch (measured:
+    6.1–6.3 s). `TestSimStream` covers the closing rules, the delay and the parking. Mutations that
+    send at once, drop the open's round trip or stop parking fail them.
+  - Not on the injected clock, so part 3 cannot time them: the node-wide fetch limiter and the
+    holder's delivery limiter (`pkg/ratelimit` takes no clock; a fetch that waits on one is in flight
+    and its wait takes no simulated time), the fetch timeout (`context.WithTimeout`), the session
+    and Status timeouts, and the want set's claim deadline and reject TTL (`wantset.New` takes no
+    clock). A parked read lets the clock run while they count real time, so a stalled holder cannot
+    be timed, and a fetch that spans `FetchTimeout` of real time (15 s; each clock step costs at
+    least `Settle`) fails. Moving them is not cheap: the limiter needs a clock-aware replacement on
+    the fetch path, the timeout an injected timer and a cause check where `fetch` tests
+    `DeadlineExceeded`, and the want set an exported clock option; and the three only help together,
+    with stall scenarios (Follow-ups). There is no bandwidth limit (a 4 KB Delivery takes the same
+    leg as a Want), no jitter, and no protocol negotiation round trip.
+  - Measured at 50 ms (1 seed each): N = 9 converges in 5.65 s per batch (wall 2.6–2.9 s), N = 17 in
+    1.95–10.75 s (8 per batch) and 5.9–6.15 s (120 per batch), wall 3.9–4.1 s.
+- **(T4.6 part 1 fix round 1, Low 6) A reset reaches the remote as a reset.** This supersedes "Reset
+  also end[s] the reads" in "(T4.6 part 1) Stream bytes go through an in-test pipe". `simEnd.Reset`
+  was a `FullClose`, so the remote read `io.EOF`: a responder that had sent its empty Message took an
+  initiator's reset for the normal end. Now this end's and the remote's reads and writes fail with
+  `errSimReset` (libp2p's `network.ErrReset`, which pkg/rangesync does not import), and the remote
+  drops what it has not read. `FullClose` keeps its rules. `TestSimStream/reset` fails with the old
+  `Reset`. The default runs are unchanged (no session or fetch fails in them).
+- **(T4.6 part 1 fix round 1, Lows 2, 3 and 5) Round bounds and `Settle`.**
+  - Low 3: `convergenceRounds` is `convergenceBound / MinRoundInterval + 1` = 4: the window from an
+    upload to its convergence is closed, so rounds at 0, 5, 10 and 15 s all count. This supersedes
+    "at most 3 rounds of any node" in "(T4.6 part 1) The convergence bound".
+  - Low 2: `TestNeighborhoodRoundBounds` used a 2 s minimum, below what production allows:
+    `PeerSessionInterval` (`MinRoundInterval / 2`) and the reconciler's `sessionBackoffBase`
+    (`MinRoundInterval`) stay tied to 5 s, so a node with shorter rounds would trip its peers'
+    session limits, which the simulation lifts. It now runs 7–8 s over 2 batches and also checks
+    that no node runs two rounds closer than 7 s (`simNodeResult.RoundGap`; a late round only widens
+    a gap) and `RateExceeded` = 0. Dropping the minimum override now fails it (rounds 5 s apart);
+    before, only the maximum was checked. This extends "(T4.6 part 1) Correction:
+    `TestNeighborhoodRoundBounds` reads the interval gauge".
+  - Low 4: the 15 s bound is looser than AC-V1's 2 × `RoundInterval` (10 s at the minimum). The
+    derivation reaches it: a lacker below every holder gets the Status by 2 × `StatusMinInterval`
+    when the holders sent it a change just before, and its round may then wait `MinRoundInterval`.
+    The measured 10 s at N = 17 is within both. T6.4 should reconcile AC-V1's wording (Follow-ups).
+  - Low 5: `Settle` defaults to 15 ms, 150 ms under the race detector (`racedetection.On`).
+- **(T4.6 part 1 fix round 1) Scope, tests and wall times.** Production changes: `servedHint` and
+  `decodedDifference` in `session.go` (comments in `hints.go`, `session_symbols.go`), the
+  `sessionDone` seam (`rangesync.go`, `reconcile.go`). Test hooks: `OnSession` and `SessionSample`
+  (new), `OnPairwiseDiff` (removed). There is no `pkg/node`, `pkg/p2p`, `go.mod` or proto change, no
+  libp2p import in `pkg/rangesync`, and no `*_fuzz_test.go`; the serving-side hint is derived from
+  peer input, so `followup-fuzzing.md` gets a line. Single runs on this host:
+  `TestNeighborhoodConverges` 0.8 s, `TestNeighborhoodSREP` 0.9 s and 1.2 s,
+  `TestNeighborhoodRoundBounds` 0.8 s, `TestNeighborhoodDelay` 2.6 s, `TestSimStream`,
+  `TestSessionSymbolsDifferenceListed`, `TestSessionSymbolsHints` and
+  `TestSessionSymbolsServedHintBound` < 0.05 s, `TestProtocolServedHint` 0.07 s.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -2558,3 +2719,76 @@ _(sessions append here)_
   - `pkg/rangesync/reconciler`: `TestRoundIntervalBounds`.
   - Under `-race`, raise `simOptions.Settle` if a convergence bound fails: a clock moved too early
     only lengthens a convergence.
+- **(T4.6 part 1 fix round 1 → part 3, G6) The symbol overshoot is `GrowthFactor`'s, not the hint's.**
+  With the serving-side hint (Decisions), N = 17 at 120 uploads per batch still costs 3.3–3.6
+  symbols per difference and 55–61% of pullsync's metadata (AC-B1 ≤ 50%), and N = 9 2.6–3.0 and
+  68–75%. Runs with the hint and other constants (120 per batch, 2–3 seeds each; symbols per
+  difference, share of pullsync's metadata, `More`s per upload):
+
+  | constants | N = 9 | N = 17 |
+  |---|---|---|
+  | as now (`BatchFactor` 1.6, `GrowthFactor` 4) | 2.9–3.0, 75–78%, 0.20 | 3.1–3.5, 53–59%, 0.76 |
+  | `GrowthFactor` 2 | 2.0–2.1, 55–59%, 0.32 | 2.2–2.3, 40–43%, 1.07 |
+  | `GrowthFactor` 2, no hint | 2.1–2.2, 55–60%, 1.0 | 2.1–2.2, 40–42%, 3.2 |
+  | `BatchFactor` 2.0 | 2.4–2.5, 63–68% | 3.0–3.2, 54–58% |
+  | both | 2.1, 58–59% | 2.4–2.5, 44% |
+
+  At 8 uploads per batch, `GrowthFactor` 2 gives N = 9 2.7–3.3 and 88–96%, N = 17 3.0–3.3 and 71–72%
+  (`MinBatch` per session dominates). So `GrowthFactor` 2 meets AC-B1 at N = 17 but not at N = 9,
+  where n_Δ per upload is also above p(N − p); the hint keeps its round trips near today's. T2.6 kept
+  4 on the worked examples (round trips against overshoot); part 3 should decide it under
+  `simOptions.Delay`, which now times the round trips (Q3), and check N = 9 against §7.8's p(N − p)
+  pairs.
+- **(T4.6 part 1 fix round 1) Correction: metadata per upload.** This supersedes the last sentence of
+  "(T4.6 part 1 → part 3) Metadata per upload is well above §7.8": Status gossip and zero-difference
+  sessions are not what puts it above §7.8. With 120 uploads per batch, Status is 53 B (N = 9) and
+  199 B (N = 17) per upload, about 1%, and reconcile 4.8–5.6 KB and 14.3–15.2 KB: the excess is
+  symbols, 2.8–3.4 per difference against 1.35–1.72 (above), on n_Δ per upload somewhat above p(N −
+  p) (the review: 48–56 against 42 at N = 17). With 8 per batch, Status is 0.8 KB and 3.1 KB per
+  upload (10–14%), zero-difference sessions 2–4% (next entry), and the rest is mostly `MinBatch`
+  streams for one to six differences.
+- **(T4.6 part 1 fix round 1) Correction: zero-difference sessions.** This supersedes "Each such
+  session costs a Fingerprint and `MinBatch` symbols per pair" in "(T4.6 part 1 → part 3)
+  Zero-difference sessions". Most are equal-digest sessions: an opening Fingerprint and an empty
+  Message, about 45 B. Of the sessions whose initiator reported 0, 13 of 101 (N = 9) and 37 of 231
+  (N = 17) carried a `MinBatch` stream that decoded to no difference (a side changed since its
+  Fingerprint), with 8 uploads per batch; none of 70 and 235 with 120. Together 2–4% of the metadata
+  at 8 per batch. The rest of that entry (the race, part 3's decision) stands. With `Delay` 50–100 ms
+  the share of such sessions rises (half of the sessions at N = 5 and 9); part 3 should measure it
+  there.
+- **(T4.6 part 1 fix round 1) Correction: §10 and T6.0 wording of `pairwise_diff`.** This supersedes
+  "its quantiles are right" in "(T4.6 part 1) Proposal §10 and T6.0 wording". A neighborhood-wide
+  aggregate mixes in the serving side's samples, which are approximate while the neighborhood
+  changes (Decisions, Medium 1): the medians matched in every run, the p99 did not (up to 97 against
+  80 at N = 17 with 120 per batch). AC-C2, AC-K5 and Q9 (the share in `le="255"`) are unaffected at
+  these loads; a dashboard that needs the tail should read the decoding side, which a metric label
+  could expose (a T6.0 decision, not a wire change).
+- **(T4.6 part 1 fix round 1 → T6.4) AC-V1 against the 15 s bound.** AC-V1 says 2 × `RoundInterval`
+  (10 s at the minimum); the simulation's bound is 2 × `StatusMinInterval` + `MinRoundInterval` =
+  15 s, which the derivation reaches (Decisions, Low 4), with 4 rounds of a node in the window.
+  T6.4 should reconcile AC-V1's wording with it (or count the Status latency as §8.2 does).
+- **(T4.6 part 1 fix round 1 → part 3) What the harness cannot vary or time.** This extends
+  "(T4.6 part 1 → part 3) What the harness cannot vary yet".
+  - A `MinRoundInterval` below 5 s: `PeerSessionInterval` and `sessionBackoffBase` stay tied to
+    `rangesync.MinRoundInterval`, so production would rate-limit such a node; a sweep needs those
+    to follow the option (a production change) or `RateExceeded` = 0 to hold.
+  - With `Delay`: the fetch and delivery limiters take no simulated time; the fetch timeout, the
+    session and Status timeouts and the want set's claim deadline and reject TTL run on the real
+    clock, so stalls, claim expiry and Busy-heavy waits that end in a timeout cannot be timed (a
+    stalled holder fails its fetch after 15 s of real time). Putting them on `rangesync.Options`'
+    clock (an injected timer for the timeout, a clock-aware fetch limiter, a clock option for the
+    want set) belongs with part 3's churn and Busy scenarios. No bandwidth, jitter or protocol
+    negotiation round trip is modeled.
+- **(T4.6 part 1 fix round 1 → TF/hardening) One peer can flush the hint LRU.** Each decoded stream
+  records one (peer, range) hint on either side, and the 4096 entries are shared by all peers. A
+  peer that opens a session over many disjoint ranges and decodes or lets this node decode each
+  stream can evict every other peer's hints (performance only: their streams start from the count
+  estimate again). A per-peer share of the LRU would bound it; not needed for honest peers, which
+  record one or a few root and level-1 hints per session.
+- **(T4.6 part 1 fix round 1) Tests to run with `-race` on CI.** This extends "(T4.6 part 1) Tests to
+  run with `-race` on CI"; they ran with `-count=10 -cpu=1,2,4` instead.
+  - new: `TestNeighborhoodDelay`, `TestSimStream`, `TestSessionSymbolsDifferenceListed`,
+    `TestSessionSymbolsServedHintBound`, `TestProtocolServedHint`;
+  - changed: `TestSessionSymbolsHints`, `TestNeighborhoodRoundBounds`, and through the harness
+    (parking, fetch slots, resets) `TestNeighborhoodConverges` and `TestNeighborhoodSREP`.
+  - `Settle` is now 150 ms under the race detector; raise it further if a convergence bound fails.
