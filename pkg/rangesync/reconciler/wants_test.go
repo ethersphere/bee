@@ -742,6 +742,153 @@ func TestStripeDeferredResolved(t *testing.T) {
 	}
 }
 
+// TestStripeReaskReleasesPeer: while a stripe waits to ask its peer again
+// for an ID the want set held, it holds neither the peer's Striped state nor
+// its stripe lock, so a round session and another stripe's session with the
+// peer run meanwhile; it takes both again for the next ask.
+func TestStripeReaskReleasesPeer(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x := testChunkID(1)
+	other := addr(0xf1, 0) // not followed: its stripe fails, then moves to higher
+	const retry = 7 * time.Second
+	svc := newWantService(status(1))
+	svc.remote[higher.ByteString()] = status(1) // equal digests: no round session yet
+	svc.lists(higher, x)
+	if r := svc.ws.Claim(fpID(x), lower); r != wantset.Granted { // another fetch holds x
+		t.Fatal(r)
+	}
+	otherGate := make(chan struct{})
+	svc.peerGate[other.ByteString()] = otherGate
+	svc.reconErr[other.ByteString()] = errors.New("stream reset")
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	waits := make(chan chan time.Time) // the stripe's waits to ask again
+	after := func(d time.Duration) <-chan time.Time {
+		if d != retry {
+			return clock.After(d)
+		}
+		c := make(chan time.Time, 1)
+		waits <- c
+		return c
+	}
+	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{higher}}, svc, log.Noop, reconciler.Options{Now: clock.Now, After: after})
+	r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+	r.Round() // higher is followed: Idle
+	waitState(t, r, higher, reconciler.StateIdle)
+
+	done := make(chan []reconciler.StripeResult, 1)
+	go func() {
+		done <- r.TransferStripes(context.Background(), []reconciler.Stripe{
+			{Range: root.Child(1, 0), Peers: []swarm.Address{higher}},
+			{Range: root.Child(1, 1), Peers: []swarm.Address{other, higher}},
+		})
+	}()
+	wait := recvWait(t, waits) // x was held: the first stripe waits to ask again
+	if got := peerState(r, higher); got != reconciler.StateIdle {
+		t.Fatalf("peer %v while the stripe waits to ask again, want %v", got, reconciler.StateIdle)
+	}
+
+	// a round session with the peer
+	svc.set(func() { svc.remote[higher.ByteString()] = status(2) })
+	r.Round()
+	waitFor(t, "round session", func() bool { return len(svc.sessionOpens(higher)) == 2 })
+	waitState(t, r, higher, reconciler.StateIdle)
+
+	// the other stripe, moved to the peer, takes its stripe lock and stores x
+	svc.ws.Release(fpID(x), lower)
+	close(otherGate)
+	waitFor(t, "other stripe's session with the peer", func() bool { return len(svc.sessionOpens(higher)) == 3 })
+	waitDelivered(t, svc, x)
+
+	wait <- clock.Now() // the next ask finds x stored
+	for i, res := range <-done {
+		if res.Err != nil || !res.Peer.Equal(higher) {
+			t.Fatalf("stripe %d from %s: %v", i, res.Peer, res.Err)
+		}
+	}
+	assertDelivered(t, svc, x, higher)
+}
+
+// recvWait receives a stripe's wait to ask again from waits.
+func recvWait(t *testing.T, waits <-chan chan time.Time) chan time.Time {
+	t.Helper()
+	select {
+	case w := <-waits:
+		return w
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the stripe to wait to ask again")
+		return nil
+	}
+}
+
+// TestStripeReaskTimeoutBoundsPeerWait: the stripe timeout runs while a
+// stripe waits to take its peer back for the next ask, so a round session
+// holding the peer does not keep the stripe past it.
+func TestStripeReaskTimeoutBoundsPeerWait(t *testing.T) {
+	t.Parallel()
+
+	x := testChunkID(1)
+	const (
+		retry   = 7 * time.Second
+		timeout = time.Hour
+	)
+	svc := newWantService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	svc.lists(higher, x)
+	if r := svc.ws.Claim(fpID(x), lower); r != wantset.Granted {
+		t.Fatal(r)
+	}
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	waits := make(chan chan time.Time)
+	after := func(d time.Duration) <-chan time.Time {
+		if d != retry {
+			return clock.After(d)
+		}
+		c := make(chan time.Time, 1)
+		waits <- c
+		return c
+	}
+	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{higher}}, svc, log.Noop, reconciler.Options{Now: clock.Now, After: after, StripeTimeout: timeout})
+	r.SetStripeRetryInterval(retry)
+	gate := make(chan struct{})
+	t.Cleanup(func() {
+		close(gate)
+		_ = r.Close()
+		_ = svc.ws.Close()
+	})
+	r.Round()
+	waitState(t, r, higher, reconciler.StateIdle)
+
+	done := make(chan reconciler.StripeResult, 1)
+	go func() {
+		done <- r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{higher}}})[0]
+	}()
+	wait := recvWait(t, waits)
+	svc.set(func() {
+		svc.peerGate[higher.ByteString()] = gate // the round session holds the peer
+		svc.remote[higher.ByteString()] = status(2)
+	})
+	r.Round()
+	waitFor(t, "round session", func() bool { return len(svc.sessionOpens(higher)) == 2 })
+	wait <- clock.Now()
+	waitFor(t, "stripe waiting for the peer", func() bool { return r.StripeWaiters(higher) == 1 })
+
+	clock.Add(timeout)
+	select {
+	case res := <-done:
+		if !errors.Is(res.Err, reconciler.ErrStripeTimeout) || res.Deferred != 1 {
+			t.Fatalf("stripe: %v, deferred %d; want a timeout with x deferred", res.Err, res.Deferred)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stripe waited for its peer past its timeout")
+	}
+}
+
 // TestVerifyStripesUndeliveredOnly: a verifier is scored for withholding only
 // for IDs requested from it and not delivered, not for IDs rejected within
 // RejectTTL. A verification whose IDs the want set does not grant is

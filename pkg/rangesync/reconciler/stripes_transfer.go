@@ -277,13 +277,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 			total.Tried = append(total.Tried, peer)
 			total.PeerStored = 0
 		}
-		release, err := locks.acquire(ctx, peer)
-		if err != nil {
-			total.Err = err
-			break
-		}
-		res := r.transferStripe(ctx, st.Range, peer, started)
-		release()
+		res := r.transferStripe(ctx, st.Range, peer, locks, started)
 		total.Peer = peer
 		total.Listed += res.Listed
 		total.Stored += res.Stored
@@ -381,6 +375,9 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants.
+// It takes the peer's lock in locks first (one stripe session per peer), and
+// holds it, and the peer in Striped (acquireStripe), until it ends, except
+// while it waits to ask again for IDs the want set held (resolvePending).
 // It holds a stripe slot (MaxStripeSessions) and a session slot
 // (MaxInitiatedSessions) while its session runs, and frees both while it
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
@@ -390,12 +387,19 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // retry the peer's Busy with no fetch of the attempt running; the waits for
 // a cause on this node count, so they end at the timeout, and runStripe
 // restarts such an attempt with the same peer (maxStripeRestarts) instead of
-// reassigning it. The peer is in Striped throughout (acquireStripe); the
-// wait for its round session to end counts towards the stripe timeout.
-func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
+// reassigning it. The wait for the peer's round session to end
+// (acquireStripe) counts towards the stripe timeout.
+func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, locks *peerLocks, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
+	unlock, err := locks.acquire(ctx, peer)
+	if err != nil {
+		res.Err = err
+		return res
+	}
+	hold := &peerHold{unlock: unlock}
+	defer hold.release()
 	clock := &stripeClock{now: r.now, after: r.after, left: r.stripeTimeout, expire: func() { cancel(ErrStripeTimeout) }}
 	defer clock.pause()
 	releaseSlots, err := r.acquireStripeSlots(ctx)
@@ -410,15 +414,13 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		}
 	}()
 	clock.resume()
-	release, err := r.acquireStripe(ctx, peer)
-	if err != nil {
+	if hold.unstripe, err = r.acquireStripe(ctx, peer); err != nil {
 		res.Err = err
 		if errors.Is(err, ErrStripeTimeout) {
 			res.Err = fmt.Errorf("stripe %s from %s: waiting for the peer: %w", sr, peer, ErrStripeTimeout)
 		}
 		return res
 	}
-	defer release()
 
 	queue := make(chan []storer.ChunkID, stripeQueue)
 	var (
@@ -509,7 +511,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	close(queue)
 	<-fetched
 	if fetchErr == nil && err == nil && ctx.Err() == nil && len(pending) > 0 {
-		pending, unverified, fetchErr = r.resolvePending(ctx, clock, peer, pending, unverified, &res)
+		pending, unverified, fetchErr = r.resolvePending(ctx, clock, peer, locks, hold, pending, unverified, &res)
 	}
 	res.Deferred = len(pending) + unverified
 
@@ -541,11 +543,17 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 // for the IDs the want set would grant (wantset.Set.Peek). It adds the
 // outcome to res and returns the IDs still pending, the unverified count
 // and the error of a failed fetch.
-func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, peer swarm.Address, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
+//
+// While it waits between passes it releases hold, the peer's lock in locks
+// and its Striped state, so that round sessions and other stripes' sessions
+// with the peer run meanwhile, and takes both again for the next pass. It
+// holds no slot. The stripe clock runs throughout, so the timeout bounds the
+// waits and the passes alike.
+func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, peer swarm.Address, locks *peerLocks, hold *peerHold, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
 	for pass := 0; len(pending) > 0 && pass < maxPendingPasses; pass++ {
+		hold.release()
 		select {
 		case <-ctx.Done():
-			return pending, unverified, nil
 		case <-r.after(r.stripeRetry):
 		}
 		clock.expireIfDue()
@@ -553,6 +561,9 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 		case <-ctx.Done(): // the caller reports the cause
 			return pending, unverified, nil
 		default:
+		}
+		if err := r.holdPeer(ctx, locks, peer, hold); err != nil {
+			return pending, unverified, fmt.Errorf("waiting for the peer: %w", err)
 		}
 		out, err := r.fetchFrom(ctx, peer, pending, true)
 		res.Stored += out.stored
@@ -567,6 +578,38 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 		pending = out.pending
 	}
 	return pending, unverified, nil
+}
+
+// peerHold is what a stripe attempt holds on its peer: the peer's stripe
+// lock (peerLocks) and its Striped state (acquireStripe). Either is nil when
+// not held.
+type peerHold struct {
+	unlock, unstripe func()
+}
+
+// release frees what h holds: the Striped state, then the lock.
+func (h *peerHold) release() {
+	if h.unstripe != nil {
+		h.unstripe()
+		h.unstripe = nil
+	}
+	if h.unlock != nil {
+		h.unlock()
+		h.unlock = nil
+	}
+}
+
+// holdPeer takes peer's lock in locks, then moves the peer to Striped, into
+// h, waiting for each until ctx ends; on an error h holds nothing.
+func (r *Reconciler) holdPeer(ctx context.Context, locks *peerLocks, peer swarm.Address, h *peerHold) (err error) {
+	if h.unlock, err = locks.acquire(ctx, peer); err != nil {
+		return err
+	}
+	if h.unstripe, err = r.acquireStripe(ctx, peer); err != nil {
+		h.release()
+		return err
+	}
+	return nil
 }
 
 // localBusy reports whether err is a Busy for a cause on this node: its index
