@@ -49,13 +49,15 @@ import (
 //     taken (the peer runs its own session with this node) ends without a
 //     backoff, and a takeover answered Busy waits for the initiator again:
 //     the initiator is alive.
-//   - Triggers. A round runs on the round timer, on every topology change, and
-//     on a trigger (a changed Status of a peer, a root change of this node, a
-//     moved root delivered to a peer), which is deferred to the minimum round
-//     interval after the last round, so that triggers do not run sessions
-//     with a peer faster than its session rate (rangesync.PeerSessionInterval).
-//     A topology change runs a round at once, so that a new peer gets its
-//     first Status, and its first session, without waiting.
+//   - Triggers. A round runs on the round timer and on a trigger (a topology
+//     change, a changed Status of a peer, a root change of this node, a moved
+//     root delivered to a peer), which is deferred to the minimum round
+//     interval after the last round, so that rounds never run sessions with
+//     a peer faster than its session rate (rangesync.PeerSessionInterval)
+//     and a peer's first Busy is retried no sooner than that. A topology
+//     change also runs the round's first step at once (track), so that a new
+//     peer gets its first Status without waiting; its first session waits
+//     for the round.
 //   - Cap. The sessions this node opens, round sessions, takeovers, stripe
 //     transfers and verifications alike, take one of MaxInitiatedSessions
 //     slots first and wait for one, first come, first served. Stripe
@@ -176,11 +178,13 @@ func (r *Reconciler) wakeRound() {
 	}
 }
 
-// loop runs a round at start, on the round timer, on every topology change
-// and on a trigger (wakeRound, a changed peer Status on statuses), until
-// Close. A trigger waits until the minimum interval has passed since the last
-// round. Triggers follow Options.Now and Options.After, and so does the round
-// timer unless Options.RoundInterval fixes the interval (roundAfter).
+// loop runs a round at start, on the round timer and on a trigger (a
+// topology change on changes, wakeRound, a changed peer Status on statuses),
+// until Close. A trigger waits until the minimum interval has passed since
+// the last round. A topology change first runs track at once: the new peers'
+// first contacts. Triggers follow Options.Now and Options.After, and so does
+// the round timer unless Options.RoundInterval fixes the interval
+// (roundAfter).
 func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 	last := r.now()
 	r.round()
@@ -196,8 +200,11 @@ func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 		case <-r.ctx.Done():
 			return
 		case <-timer:
-		case <-changes:
 		case <-deferred:
+		case <-changes:
+			r.track()
+			trigger()
+			continue
 		case <-r.roundWake:
 			trigger()
 			continue
@@ -217,40 +224,13 @@ func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 }
 
 // round is one round of the scheduler. It follows the topology into the
-// per-peer machines (trackPeersLocked), sends the Statuses that are due
-// (first contacts, a moved root; pickDueLocked), admits the peers whose
-// Statuses are now exchanged, registers the striped transfer that a
-// bootstrap or a radius decrease calls for (planCatchUp) and starts the
+// per-peer machines and sends the Statuses that are due (track), admits the
+// peers whose Statuses are now exchanged, registers the striped transfer that
+// a bootstrap or a radius decrease calls for (planCatchUp) and starts the
 // sessions (scheduleLocked).
 func (r *Reconciler) round() {
-	var connected []swarm.Address
-	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-		connected = append(connected, addr)
-		return false, false, nil
-	}, topology.Select{})
-
-	r.pickMu.Lock()
-	local, err := r.svc.LocalStatus()
-	if err != nil {
-		r.pickMu.Unlock()
-		r.logger.Debug("round skipped", "error", err)
-		return
-	}
-	r.mu.Lock()
-	r.trackRootLocked(local.Root)
-	radiusPending := r.radius.pending
-	r.trackPeersLocked(connected)
-	// First contacts, and a new root (it makes the peers' session scopes
-	// with this node stale), go out now unless the sender-side rate defers
-	// them, so that the evaluation below sees the outcome. The gossip loop
-	// sends the rest when due.
-	due := r.pickDueLocked(local, r.now())
-	r.mu.Unlock()
-	r.pickMu.Unlock()
-
-	r.probe(due, local)
-	r.wakeGossip()
-	if r.ctx.Err() != nil {
+	local, connected, radiusPending, ok := r.track()
+	if !ok || r.ctx.Err() != nil {
 		return
 	}
 	// The peers whose Statuses are now exchanged leave Probing before any
@@ -264,6 +244,42 @@ func (r *Reconciler) round() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.scheduleLocked(local, connected, bootstrap)
+}
+
+// track is the first step of a round, which a topology change also runs on
+// its own: it follows this node's root (trackRootLocked) and the topology's
+// peers (trackPeersLocked) into the per-peer machines, and sends the
+// Statuses that are due (pickDueLocked, probe). First contacts, and a new
+// root (it makes the peers' session scopes with this node stale), go out now
+// unless the sender-side rate defers them, so that the round's evaluation
+// sees the outcome; the gossip loop sends the rest when due. It returns the
+// Status the picks were taken with, the connected peers and whether a radius
+// decrease's new half is pending; ok is false without a Status (the index is
+// not built yet).
+func (r *Reconciler) track() (local rangesync.Status, connected []swarm.Address, radiusPending, ok bool) {
+	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		connected = append(connected, addr)
+		return false, false, nil
+	}, topology.Select{})
+
+	r.pickMu.Lock()
+	local, err := r.svc.LocalStatus()
+	if err != nil {
+		r.pickMu.Unlock()
+		r.logger.Debug("no local status", "error", err)
+		return local, nil, false, false
+	}
+	r.mu.Lock()
+	r.trackRootLocked(local.Root)
+	radiusPending = r.radius.pending
+	r.trackPeersLocked(connected)
+	due := r.pickDueLocked(local, r.now())
+	r.mu.Unlock()
+	r.pickMu.Unlock()
+
+	r.probe(due, local)
+	r.wakeGossip()
+	return local, connected, radiusPending, true
 }
 
 // scheduleLocked starts a session with every connected peer that is

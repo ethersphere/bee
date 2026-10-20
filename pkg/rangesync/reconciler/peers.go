@@ -61,7 +61,9 @@ func (r *Reconciler) currentLocked(peer swarm.Address, st *peerState, gen uint64
 // forgotten, and an Unsupported peer that shows a Status it had not sent at
 // the verdict gets a new machine (a reconnect the peer set did not show). A
 // peer whose Status this node lacks is asked for this node's Status again
-// (peerState.resend). r.mu must be held.
+// (peerState.resend). A new peer, or a new machine, disarms the start-up
+// guard until a round evaluates the peer (scheduleLocked): the round that a
+// topology change triggers may wait for MinRoundInterval. r.mu must be held.
 func (r *Reconciler) trackPeersLocked(connected []swarm.Address) {
 	present := make(map[string]bool, len(connected))
 	for _, p := range connected {
@@ -71,6 +73,7 @@ func (r *Reconciler) trackPeersLocked(connected []swarm.Address) {
 		if !ok {
 			st = &peerState{fsm: newPeerFSM()}
 			r.peers[k] = st
+			r.guardArmed = false
 		}
 		// Without the peer's Status the peer may lack this node's too: both
 		// are forgotten on a disconnect, which a reconnect between two
@@ -86,6 +89,7 @@ func (r *Reconciler) trackPeersLocked(connected []swarm.Address) {
 		if have && st.fsm.state == stateUnsupported && !st.sending && (!st.verdictHave || !equalStatus(remote, st.verdict)) {
 			st.resetLocked()
 			st.sent, st.lastSent = false, time.Time{}
+			r.guardArmed = false
 			r.logger.Debug("peer speaks rangesync after a reconnect", "peer_address", p)
 		}
 	}

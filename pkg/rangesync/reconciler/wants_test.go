@@ -257,7 +257,8 @@ func testChunkID(i byte) storer.ChunkID {
 }
 
 // newWantHarness returns a started reconciler with overlay self over svc,
-// whose rounds run only at Start and on topology changes.
+// whose rounds run only at Start: a topology change follows the peers at once
+// but defers its round by the hour on the fake clock.
 func newWantHarness(t *testing.T, svc *wantService, peers ...swarm.Address) *harness {
 	t.Helper()
 	for _, p := range peers {
@@ -271,7 +272,7 @@ func newWantHarness(t *testing.T, svc *wantService, peers ...swarm.Address) *har
 	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{
 		Now:           h.clock.Now,
 		After:         h.clock.After,
-		RoundInterval: time.Hour, // rounds run at Start and on topology changes
+		RoundInterval: time.Hour, // rounds run at Start only
 		// the guard ends a second after Start on the fake clock
 		StartupGuardTimeout: time.Millisecond,
 	})

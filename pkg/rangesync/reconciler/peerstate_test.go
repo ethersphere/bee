@@ -483,6 +483,56 @@ func TestStartupGuardBusyPeer(t *testing.T) {
 	}
 }
 
+// TestStartupGuardNewPeer: a peer that connects while the start-up guard
+// waits, or an Unsupported peer that reconnects with rangesync, keeps the
+// guard from releasing until a round has evaluated the peer; the round that a
+// topology change triggers waits for MinRoundInterval.
+func TestStartupGuardNewPeer(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		start []swarm.Address
+		join  func(h *harness)
+	}{
+		{"new peer", []swarm.Address{lower}, func(h *harness) {
+			h.topo.setPeers(lower, higher)
+		}},
+		{"unsupported peer reconnects", []swarm.Address{lower, higher}, func(h *harness) {
+			h.svc.set(func() {
+				delete(h.svc.unsupported, higher.ByteString())
+				h.svc.remote[higher.ByteString()] = status(5)
+			})
+			h.topo.setPeers(lower, higher) // a topology change of another peer
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newFakeService(status(4))
+			svc.remote[lower.ByteString()] = status(5) // initiates: the guard waits for its session
+			svc.unsupported[higher.ByteString()] = true
+			h := newScheduledHarness(t, svc, tc.start...)
+			waitFor(t, "first contact", func() bool { return svc.count(svc.sent, lower) == 1 })
+			settle()
+			sent := svc.count(svc.sent, higher)
+			svc.set(func() { delete(svc.unsupported, higher.ByteString()) })
+			svc.set(func() { svc.remote[higher.ByteString()] = status(5) })
+
+			tc.join(h)
+			waitFor(t, "first contact with the peer", func() bool { return svc.count(svc.sent, higher) == sent+1 })
+			h.r.Succeed(lower) // the lower peer's session
+			if h.r.GuardReleased() {
+				t.Fatal("guard released before a round evaluated the peer")
+			}
+			h.clock.Add(reconciler.MinRoundInterval) // the round: a session with the peer
+			waitFor(t, "guard released", h.r.GuardReleased)
+			if n := svc.count(svc.reconciled, higher); n != 1 {
+				t.Fatalf("%d sessions with the peer, want 1", n)
+			}
+		})
+	}
+}
+
 // TestPeerStateLocalCauseNoBackoff: a session that did not run for a cause
 // on this node (its session cap, its index rebuilding, a stale scope, no
 // Status), or because the peer runs its own session with this node (the

@@ -32,10 +32,11 @@ type radiusNet struct {
 	topo  *fakeTopology
 }
 
-// round triggers a round of a's reconciler (rounds are otherwise hourly,
-// since peers answer Busy to sessions faster than PeerSessionInterval).
+// round runs a round of a's reconciler (its own rounds are hourly, since
+// peers answer Busy to sessions faster than PeerSessionInterval, and a
+// topology change defers its round as long).
 func (n *radiusNet) round() {
-	n.topo.setPeers(n.peers[0].addr, n.peers[1].addr)
+	n.r.Round()
 }
 
 func newRadiusNet(t *testing.T, radius uint8, own, all []swarm.Chunk) *radiusNet {

@@ -710,6 +710,31 @@ func TestStatusChangeFloor(t *testing.T) {
 	assertSessions(t, svc, higher, 2)
 }
 
+// TestTopologyChangeFloor: a topology change sends a new peer this node's
+// Status at once, but runs the round, and so the sessions, no sooner than
+// MinRoundInterval after the last one: a peer that answered Busy is not
+// retried earlier because another peer connected.
+func TestTopologyChangeFloor(t *testing.T) {
+	t.Parallel()
+
+	joiner := addr(0xf0, 1)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.remote[joiner.ByteString()] = status(2)
+	svc.reconErr[higher.ByteString()] = rangesync.ErrPeerBusy // the first session
+	h := newScheduledHarness(t, svc, higher)
+	assertSessions(t, svc, higher, 1)
+	waitFor(t, "first Busy recorded", func() bool { return h.r.PeerFailures(higher) == 1 })
+
+	h.topo.setPeers(higher, joiner)
+	waitFor(t, "first contact", func() bool { return svc.count(svc.sent, joiner) == 1 })
+	assertSessions(t, svc, higher, 1) // the first Busy is not retried within the floor
+	assertSessions(t, svc, joiner, 0)
+	h.clock.Add(reconciler.MinRoundInterval)
+	assertSessions(t, svc, higher, 2)
+	assertSessions(t, svc, joiner, 1)
+}
+
 // TestRoundIntervalServedWants: wants a peer listed in a session this node
 // served count as differences found, like the wants of its own sessions.
 func TestRoundIntervalServedWants(t *testing.T) {

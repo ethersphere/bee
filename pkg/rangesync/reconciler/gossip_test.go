@@ -363,11 +363,12 @@ func TestStatusGossipWithinPeerRate(t *testing.T) {
 	}
 }
 
-// TestRoundOwnsFirstContact: the round that adds a peer sends it the first
-// Status itself, so that this round already starts the session, while the
-// gossip loop runs passes back to back. A pass that took the first contact
-// in flight would leave the round without the outcome and skip the session
-// until the next round (an hour here).
+// TestRoundOwnsFirstContact: the topology change that adds a peer sends it
+// the first Status itself, at once (the round's first step, track), so that
+// the round it triggers starts the session, while the gossip loop runs passes
+// back to back. A pass that took the first contact in flight would leave the
+// round without the outcome and skip the session until the next round (an
+// hour here).
 func TestRoundOwnsFirstContact(t *testing.T) {
 	t.Parallel()
 
@@ -375,9 +376,11 @@ func TestRoundOwnsFirstContact(t *testing.T) {
 	topo := &fakeTopology{}
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
 	r := reconciler.New(self, topo, svc, log.Noop, reconciler.Options{
-		Now:           clock.Now,
-		After:         clock.After,
-		RoundInterval: time.Hour, // rounds run on topology changes only
+		Now:   clock.Now,
+		After: clock.After,
+		// rounds run on topology changes only, an hour (on the fake clock)
+		// after the last one
+		RoundInterval: time.Hour,
 	})
 	t.Cleanup(func() {
 		if err := r.Close(); err != nil {
@@ -411,6 +414,8 @@ func TestRoundOwnsFirstContact(t *testing.T) {
 		svc.set(func() { svc.remote[p.ByteString()] = status(11) })
 		peers = append(peers, p)
 		topo.setPeers(peers...)
+		waitFor(t, fmt.Sprintf("first contact with peer %d", i), func() bool { return svc.count(svc.sent, p) > 0 })
+		clock.Add(time.Hour) // the round the topology change triggered
 		waitFor(t, fmt.Sprintf("session with peer %d", i), func() bool { return svc.count(svc.reconciled, p) > 0 })
 	}
 }
