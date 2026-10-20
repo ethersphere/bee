@@ -16,8 +16,9 @@
 // whatever the number of peers and bins. Work in flight adds one goroutine
 // per session this node opens (at most one per peer, which also fetches the
 // session's wants), per fetch of the wants a peer listed in a session this
-// node served, and per retry source, two per stripe peer (its transfers and
-// their fetch), and at most maxConcurrentProbes for Status sends. They end
+// node served, and per retry source, three per stripe peer (its transfers,
+// their fetch and the stripe clock while it runs), and at most
+// maxConcurrentProbes for Status sends. They end
 // with their work. So the count is O(neighbors), where the puller runs
 // workers per peer and bin.
 package reconciler

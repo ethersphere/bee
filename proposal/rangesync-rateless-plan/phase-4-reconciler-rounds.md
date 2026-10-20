@@ -881,6 +881,117 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     trimming, `sameDigest` summaries, `Local.Symbols` ctx, the stripe bounds and timer, scoring
     undelivered IDs, the rejected-cache flush.
 
+- **(T4.5 part 2a) Topology changes wait for the round floor; first contacts stay immediate.** This
+  supersedes three entries: T4.3's "Topology changes still run a round at once", T4.2's "rounds are
+  at least `MinRoundInterval` apart, except rounds that a topology change triggers", and part 1's
+  kept item "Topology changes still run a round at once". It closes the last Phase-1 behavior.
+  - A topology change is a trigger: its round runs no sooner than `MinRoundInterval` after the last
+    one. So every round, and every session a round starts, is at least `MinRoundInterval` after the
+    previous round, and a peer's first Busy (`sessionBackoff(1) = 0`) waits at least that long.
+  - The round's first step is now `track` (`trackRootLocked`, `trackPeersLocked`, `pickDueLocked`,
+    `probe`). A topology change runs `track` at once, then defers the round. T4.1's "round owns
+    first contact" holds: `track` adds a peer and picks its first contact in one critical section
+    under `pickMu`, and the gossip loop sees only peers that `track` added.
+  - Start-up guard: a new entry, or a new machine for an Unsupported peer that reconnected, disarms
+    the guard until a round has evaluated the peer.
+  - Latency: the first Status to a new peer is unchanged (at once). Its first session waits up to
+    `MinRoundInterval` (5 s) after the last round, and so can the guard's release (well under the
+    120 s `StartupGuardTimeout`).
+
+  Tests: `TestTopologyChangeFloor` and `TestStartupGuardNewPeer` (a new peer, and an Unsupported
+  peer that reconnects). Reworked:
+  - `TestRoundOwnsFirstContact` checks the first contact before it moves the fake clock an hour to
+    the deferred round;
+  - `radiusNet.round` calls `Round`;
+  - the want harness's comments say its rounds run at Start only.
+
+  `TestWantSetRetryLeftPeer` is unchanged, because `track` forgets a departed peer at once.
+- **(T4.5 part 2a) A new machine has a new generation.** This is part-1 review Low 1.
+  `peerState.gen` counts the machines an entry has had. `resetLocked` bumps it and replaces the
+  three in-place resets:
+  - `ErrProtocolUnsupported` outside Probing, in `probe`;
+  - an Unsupported peer's new Status, in `trackPeersLocked`;
+  - a Removed peer that is eligible again, in `admitPeerLocked`.
+
+  The session outcome, its fetch's `eventFetched`, `recheckSession` and the stripe release fire
+  only while `currentLocked` holds: the same entry and the same generation. Before this, an old
+  fetch ended the new machine's Fetching early, an old Busy backed off the peer during the new
+  session, an old session waiting for its slot passed its recheck on the new machine's Reconciling,
+  and an old stripe's release ended a new stripe's Striped. The old machine's runs belong to the
+  old connection. One of them may still overlap the new machine's first session or fetch (at most
+  one per reset), as after a reconnect the peer set shows, which gets a new entry. Keeping the new
+  machine idle until they end was not done, because that case does not do it either. Tests:
+  `TestPeerStateResetIgnoresStaleRuns` (a stale fetch, a stale session, a stale session waiting for
+  its slot, a stale stripe). Each check site fails one of them when reverted.
+- **(T4.5 part 2a) Stripe restarts, the peer's session slot and the stripe clock.** These are the
+  T4.3 round-3 review Lows 1 to 4. This supersedes three earlier statements:
+  - T4.3 fix round 3's "`localBusy` covers ... its session slots being taken (the node cap, or the
+    peer's own session with this node)";
+  - T4.3 fix round 3's bound "at most `(maxStripeRestarts + 1) × StripeTimeout` on one peer";
+  - T4.3 fix round 2's "the clock pauses while the attempt waits to retry the peer's Busy". That
+    pause now needs no fetch of the attempt to be running.
+
+  What changed:
+  - *`ErrPeerSessionLimit` is the peer's Busy for stripes.* Only the peer's own session with this
+    node holds that slot, and the responder keeps it through `busy()` and `FullClose`. It now
+    counts towards `maxStripeBusyRetries`, off the clock, and the stripe is reassigned after about
+    30 s, unscored. `localBusy` is `fingerprint.ErrBusy` and `ErrNodeSessionLimit`. Round sessions
+    are unchanged (`eventAborted`, no backoff; T4.3 L1).
+  - *One local-Busy restart budget per stripe.* Restarts after attempts held up only by this node
+    draw on `maxStripeRestarts` per stripe, and reassigning does not reset that budget. Restarts
+    after progress or deferral keep their per-peer budget.
+  - *The bound, now in `runStripe`'s doc.* A stripe makes at most `(1 + maxStripeReassign) × (1 +
+    maxStripeRestarts) = 36` attempts of `StripeTimeout` on the stripe clock (9 h). At most `1 +
+    maxStripeRestarts + maxStripeReassign = 12` of them (3 h) are held up only by this node; this
+    was 36 (about 9 h). Off the clock, per attempt: the wait for the peer's stripe lock and the
+    slots, and the peer-Busy waits (at most 30 × (1 s + slot wait)).
+  - *No pause while a fetch is pending.* The clock does not pause for the peer's Busy while a fetch
+    of IDs listed by an earlier session of the attempt still runs (a count of queued batches).
+  - *The injected clock.* `stripeClock`, the Busy retry wait and the re-ask wait use
+    `Options.Now` and `Options.After`. `stripeClock` runs one goroutine per resumed stretch, which
+    `pause` ends. A goroutine paused before it saw its expiry does not expire later. The attempt
+    calls `expireIfDue` after each session answer and each wait, so it starts nothing past its
+    timeout whatever the goroutine scheduling; on a fake clock that makes the timeout exact.
+
+  Tests: `TestStripeLocalBusyBudget`, `TestStripePeerSessionLimitIsPeerBusy` and
+  `TestStripeBusyPauseFetchPending`. These move to the fake clock (`newStripeHarness`; its
+  `advancingAfter` makes each retry wait pass at once):
+  - `TestStripeFetchBoundedByTimeout` now waits until the fetch has started and the session has
+    ended, and only then moves the clock past the timeout;
+  - `TestStripeLocalBusy` now checks both bounds;
+  - `TestStripeTimeoutPausedWhileBusy` adds held time through a session hook;
+  - `TestStripeTimeoutAfterSlot` was vacuous on a frozen fake clock;
+  - `TestStripeBusyRetriesBounded` and `TestStripeBusyReassigns`.
+
+  The want harness's `After` makes 1 ms waits pass at once. The package doc counts the stripe
+  clock's goroutine.
+- **(T4.5 part 2a) Re-ask waits release the peer.** This supersedes T4.4 fix round 2 Low 3
+  ("Re-ask waits keep the peer"). `resolvePending` releases the stripe's per-peer lock and the
+  peer's Striped state before each wait. It takes both back, lock first, for the next ask, and it
+  holds no slot. The per-peer lock moved from `runStripe` and `verifyStripe` into
+  `transferStripe`, which keeps what it holds on its peer in a `peerHold`. The stripe clock runs
+  throughout, so the timeout bounds the waits, the waits to take the peer back, and the asks. The
+  cost: another stripe of the same peer may now run its whole attempt during a wait, and the
+  waiting stripe waits for it on its own clock (Follow-ups). Tests: `TestStripeReaskReleasesPeer`
+  and `TestStripeReaskTimeoutBoundsPeerWait`.
+- **(T4.5 part 2a) `Tried` holds only the peers that ran a session.** This supersedes T4.3 fix
+  round 3's "`TestStripeBusyReassigns` covers ... Tried = 2". `StripeResult.Tried` now holds the
+  peers whose attempt was answered other than Busy or listed IDs. `verifier` excludes only those,
+  so a peer that only answered Busy may verify the stripe. A Busy peer is still never blamed: Busy
+  is unscored, and a verification it answers Busy is incomplete. `runStripe`'s own tried set, which
+  keeps a stripe from going back to a peer it was assigned to, is unchanged. Test:
+  `TestVerifyStripesBusyOnlyPeer`.
+- **(T4.5 part 2a) Contracts and scope.** These are unchanged:
+  - `reconciler.Service` and its optional interfaces;
+  - the wiring and the single `stripeWorker`;
+  - the `SyncRate` guard semantics; the guard only waits for a new peer's round;
+  - `storer.Syncer`;
+  - the 8/4 slot split, the post-slot recheck, the takeover and the want-set claim protocol.
+
+  There is no `pkg/node`, `go.mod` or proto change. There is no new parser of peer input, so no
+  line in `followup-fuzzing.md`. New test helpers: `fakeService.sessionHook` and `busyErr`,
+  `advancingAfter`, `newStripeHarness`, and the export `StripeSlotsTaken`.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1211,3 +1322,34 @@ _(sessions append here)_
   4. Dual-mode `SyncRate` with a stand-in puller is accepted (T6 follow-up already recorded).
   5. The remaining Phase-1 behavior is immediate topology rounds (T4.3 deferred it to T4.5); part 2
      must close it.
+- **(T4.5 part 2a) Resolved: defer topology rounds.** This closes "(T4.2) First Busy retry on
+  topology rounds (T4.3)", "(T4.3) First Busy retry on topology rounds (T4.5)", "(T4.5 part 1 →
+  part 2) Defer topology rounds" and item 5 of the part-1 review Lows. See the Decisions log.
+- **(T4.5 part 2a) Resolved: FSM in-place reset.** This closes item 1 of the part-1 review Lows
+  (`peerState.gen`).
+- **(T4.5 part 2a) Resolved: stripe bounds and timer.** This closes items 1 to 4 of "(T4.3 round-3
+  review, Lows ...) Stripe bounds and timer (T4.5)".
+- **(T4.5 part 2a) Resolved: release the stripe peer while re-asks wait.** This closes "(T4.4 fix
+  round 2 → T4.5) Release the stripe peer while re-asks wait".
+- **(T4.5 part 2a) Resolved: a Busy-only peer may verify.** This closes "(T4.3 fix round 3) A
+  Busy-only peer counts as tried for verification (T4.5)".
+- **(T4.5 part 2a → T4.6) Re-ask waits and the stripe lock.** While a stripe waits to ask again, a
+  stripe reassigned to the same peer may take the lock and run its whole attempt, and the waiting
+  stripe then waits for it on its own clock. T4.6 should check that bootstraps near
+  `MaxClaimsPerPeer` do not time out stripes waiting for each other. If they do, hand the lock back
+  to the waiting stripe first, or skip the lock for re-asks (they are fetches, not sessions).
+- **(T4.5 part 2a) Tests to run with `-race` on CI.** These ran with `-count=20 -cpu=1,2,4`
+  instead, and the reconciler package with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync/reconciler`, new: `TestPeerStateResetIgnoresStaleRuns`,
+    `TestTopologyChangeFloor`, `TestStartupGuardNewPeer`, `TestStripeLocalBusyBudget`,
+    `TestStripePeerSessionLimitIsPeerBusy`, `TestStripeBusyPauseFetchPending`,
+    `TestStripeReaskReleasesPeer`, `TestStripeReaskTimeoutBoundsPeerWait`,
+    `TestVerifyStripesBusyOnlyPeer`.
+  - Reworked: `TestRoundOwnsFirstContact`, `TestStripeFetchBoundedByTimeout`,
+    `TestStripeLocalBusy`, `TestStripeTimeoutPausedWhileBusy`, `TestStripeTimeoutAfterSlot`,
+    `TestStripeBusyRetriesBounded`, `TestStripeBusyReassigns`, `TestRadius*` (`radiusNet.round`).
+  - Re-run, because `loop`, `session`, the machine resets, `transferStripe`, `resolvePending` and
+    `runStripe` changed: `TestPeerState*`, `TestRound*`, `TestStatusGossip*`, `TestStartupGuard*`,
+    `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestWantSet*`, `TestSREP*`,
+    `TestRejectedNotRefetchedEachRound`, `TestPeerJoinLeave`, `TestClose`, and the T4.5 part 1
+    tests.
