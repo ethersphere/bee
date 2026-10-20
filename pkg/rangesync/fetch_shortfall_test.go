@@ -1381,7 +1381,10 @@ func TestFetchBackoffSlotsBusy(t *testing.T) {
 // open backs them off for the base, doubling with each failed probe up to
 // the maximum; opens that began before the failure count with it; after the
 // backoff one open probes at a time; a probe this node aborts leaves the
-// backoff as it was; a success or Clear ends it.
+// backoff as it was; a success or Clear ends it. A probe that ends after
+// Clear (a disconnect) leaves a newer backoff of the peer alone (T4.5 part 2c
+// fix round 2): it neither ends that backoff's probe, so two probes never
+// run at once, nor counts as its failure.
 func TestOpenGate(t *testing.T) {
 	t.Parallel()
 
@@ -1389,43 +1392,63 @@ func TestOpenGate(t *testing.T) {
 	g := rangesync.NewOpenGate(base, maxBackoff)
 	p := swarm.RandAddress(t)
 	now := time.Unix(1_000_000, 0)
-	begin := func(at time.Time, wantProbe, wantOK bool) {
+	begin := func(at time.Time, wantProbe, wantOK bool) rangesync.OpenProbe {
 		t.Helper()
 		if ok := g.Allowed(p, at); ok != wantOK {
 			t.Fatalf("allowed at %v: %v, want %v", at.Sub(now), ok, wantOK)
 		}
-		if probe, ok := g.Begin(p, at); probe != wantProbe || ok != wantOK {
-			t.Fatalf("begin at %v: probe %v ok %v, want %v %v", at.Sub(now), probe, ok, wantProbe, wantOK)
+		probe, ok := g.Begin(p, at)
+		if probe.IsProbe() != wantProbe || ok != wantOK {
+			t.Fatalf("begin at %v: probe %v ok %v, want %v %v", at.Sub(now), probe.IsProbe(), ok, wantProbe, wantOK)
 		}
+		return probe
 	}
 
 	// two opens in flight fail: one backoff of base
-	begin(now, false, true)
-	begin(now, false, true)
-	g.End(p, now, rangesync.OpenFailed, false)
-	g.End(p, now, rangesync.OpenFailed, false)
+	o1 := begin(now, false, true)
+	o2 := begin(now, false, true)
+	g.End(p, now, rangesync.OpenFailed, o1)
+	g.End(p, now, rangesync.OpenFailed, o2)
 	begin(now.Add(base-1), false, false)
 	// the probe; a second open waits for it
-	begin(now.Add(base), true, true)
+	probe := begin(now.Add(base), true, true)
 	begin(now.Add(base), false, false)
 	// an aborted probe leaves the backoff
-	g.End(p, now.Add(base), rangesync.OpenAborted, true)
-	begin(now.Add(base), true, true)
+	g.End(p, now.Add(base), rangesync.OpenAborted, probe)
+	probe = begin(now.Add(base), true, true)
 	// a failed probe doubles it, up to the maximum
 	at := now.Add(base)
 	for _, wait := range []time.Duration{2 * base, 4 * base, maxBackoff, maxBackoff} {
-		g.End(p, at, rangesync.OpenFailed, true)
+		g.End(p, at, rangesync.OpenFailed, probe)
 		begin(at.Add(wait-1), false, false)
 		at = at.Add(wait)
-		begin(at, true, true)
+		probe = begin(at, true, true)
 	}
 	// a success ends it
-	g.End(p, at, rangesync.OpenSucceeded, true)
-	begin(at, false, true)
-	g.End(p, at, rangesync.OpenFailed, false)
+	g.End(p, at, rangesync.OpenSucceeded, probe)
+	o1 = begin(at, false, true)
+	g.End(p, at, rangesync.OpenFailed, o1)
 	begin(at, false, false)
 	g.Clear(p)
 	begin(at, false, true)
+
+	// a probe that ends after Clear and a newer backoff
+	at = at.Add(time.Hour)
+	o1 = begin(at, false, true)
+	g.End(p, at, rangesync.OpenFailed, o1)
+	stale := begin(at.Add(base), true, true)
+	g.Clear(p) // a disconnect
+	o1 = begin(at.Add(base), false, true)
+	g.End(p, at.Add(base), rangesync.OpenFailed, o1) // after the reconnect
+	at = at.Add(2 * base)
+	probe = begin(at, true, true)
+	for _, outcome := range []rangesync.OpenOutcome{rangesync.OpenAborted, rangesync.OpenFailed} {
+		g.End(p, at, outcome, stale)
+		begin(at, false, false) // the newer probe still runs alone
+	}
+	g.End(p, at, rangesync.OpenFailed, probe)
+	begin(at.Add(2*base-1), false, false)
+	begin(at.Add(2*base), true, true) // doubled once, by the newer probe only
 }
 
 // TestFetchInboundFullNotDisconnected is the honest-safety check of failed

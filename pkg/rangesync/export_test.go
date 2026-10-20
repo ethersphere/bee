@@ -92,12 +92,18 @@ func at(t time.Time) func() time.Time { return func() time.Time { return t } }
 
 func (g OpenGate) Allowed(peer swarm.Address, now time.Time) bool { return g.g.allowed(peer, at(now)) }
 
-func (g OpenGate) Begin(peer swarm.Address, now time.Time) (probe, ok bool) {
-	return g.g.begin(peer, at(now))
+// OpenProbe is the probe an open of OpenGate.Begin made, if any (IsProbe).
+type OpenProbe struct{ st *openState }
+
+func (p OpenProbe) IsProbe() bool { return p.st != nil }
+
+func (g OpenGate) Begin(peer swarm.Address, now time.Time) (OpenProbe, bool) {
+	st, ok := g.g.begin(peer, at(now))
+	return OpenProbe{st}, ok
 }
 
-func (g OpenGate) End(peer swarm.Address, now time.Time, outcome OpenOutcome, probe bool) {
-	g.g.end(peer, at(now), outcome, probe)
+func (g OpenGate) End(peer swarm.Address, now time.Time, outcome OpenOutcome, probe OpenProbe) {
+	g.g.end(peer, at(now), outcome, probe.st)
 }
 
 func (g OpenGate) Clear(peer swarm.Address) { g.g.clear(peer) }

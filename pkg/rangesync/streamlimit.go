@@ -179,29 +179,33 @@ func (g *openGate) allowed(peer swarm.Address, now func() time.Time) bool {
 	return !ok || (!st.probing && !now().Before(st.until))
 }
 
-// begin starts an open to peer now if allowed, and reports whether it probes
-// the peer (its opens failed before); end must follow with the same probe.
-func (g *openGate) begin(peer swarm.Address, now func() time.Time) (probe, ok bool) {
+// begin starts an open to peer now if allowed. probe is not nil when the
+// open probes the peer (its opens failed before): it is the backoff the
+// probe belongs to. end must follow with the same probe.
+func (g *openGate) begin(peer swarm.Address, now func() time.Time) (probe *openState, ok bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	st, found := g.peers[peer.ByteString()]
 	if !found {
-		return false, true
+		return nil, true
 	}
 	if st.probing || now().Before(st.until) {
-		return false, false
+		return nil, false
 	}
 	st.probing = true
-	return true, true
+	return st, true
 }
 
-// end records how an open to peer that begin started ended, now.
-func (g *openGate) end(peer swarm.Address, now func() time.Time, outcome openOutcome, probe bool) {
+// end records how an open to peer that begin started, with probe, ended,
+// now. A probe whose backoff clear forgot meanwhile neither ends the probing
+// of a newer backoff of the peer nor counts as one of its failures: it began
+// before the failure that started it.
+func (g *openGate) end(peer swarm.Address, now func() time.Time, outcome openOutcome, probe *openState) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	k := peer.ByteString()
 	st, found := g.peers[k]
-	if found && probe {
+	if found && st == probe {
 		st.probing = false
 	}
 	switch outcome {
@@ -212,7 +216,7 @@ func (g *openGate) end(peer swarm.Address, now func() time.Time, outcome openOut
 		case !found:
 			st = new(openState)
 			g.peers[k] = st
-		case !probe:
+		case st != probe:
 			return // it began before the failure that started the backoff
 		}
 		st.failures++
