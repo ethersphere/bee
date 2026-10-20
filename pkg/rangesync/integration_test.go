@@ -6,6 +6,7 @@ package rangesync_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
@@ -248,6 +249,52 @@ func TestProtocolConverges(t *testing.T) {
 				t.Fatalf("second session: %d wants", len(wants))
 			}
 		})
+	}
+}
+
+// TestProtocolServedHint runs two sessions that the same node opens with its
+// peer over a hidden difference of 20 (equal counts, so the counts estimate
+// d̂ = 1), as in the steady state, where the lower overlay always initiates
+// and decodes. The responder's first symbol batch is MinBatch in the first
+// session and FirstBatch(20) in the second, from the hint it recorded when
+// the initiator decoded its stream.
+func TestProtocolServedHint(t *testing.T) {
+	t.Parallel()
+
+	common := stampedChunks(t, 300)
+	onlyA := stampedChunks(t, 10)
+	a := newTestNode(t, append(slices.Clone(common), onlyA...)...)
+	b := newTestNode(t, append(slices.Clone(common), restamped(onlyA)...)...)
+	a.start(t)
+	b.start(t)
+	connect(t, a, b)
+
+	for i, want := range []uint64{rangesync.MinBatch, rangesync.FirstBatch(20)} {
+		wants, err := a.svc.Reconcile(context.Background(), b.addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(wants) != 10 {
+			t.Fatalf("session %d: %d wants, want 10", i, len(wants))
+		}
+		records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.ReconcileStreamName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(records) != i+1 {
+			t.Fatalf("%d reconcile streams, want %d", len(records), i+1)
+		}
+		first := uint64(0)
+		for _, m := range readMessages(t, records[i].Out()) {
+			for _, p := range m.GetParts() {
+				if p.GetSymbols() != nil && first == 0 {
+					first = uint64(len(parseSymbols(t, p.GetSymbols())))
+				}
+			}
+		}
+		if first != want {
+			t.Fatalf("session %d: first batch of %d symbols, want %d", i, first, want)
+		}
 	}
 }
 

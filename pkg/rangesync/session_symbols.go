@@ -15,7 +15,8 @@ import (
 )
 
 // Hints keeps, for the ranges of one peer, the size of the last decoded
-// difference (hint(R), proposal §6.3). It may forget entries at any time.
+// difference (hint(R), proposal §6.3), whichever side of the symbol stream
+// decoded it. It may forget entries at any time.
 type Hints interface {
 	// Hint returns the size of the last decoded difference of r, 0 if none.
 	Hint(r fingerprint.Range) uint64

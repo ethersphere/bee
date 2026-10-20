@@ -105,7 +105,9 @@ type Config struct {
 	// fingerprint.FloatMapper.
 	Mapper fingerprint.Mapper
 	// Hints, if not nil, keeps the size of the last decoded difference per
-	// range of this peer (hint(R)).
+	// range of this peer (hint(R)): recorded by both sides of a symbol
+	// stream, the decoding side and the serving side, and read by the side
+	// that decides on the peer's Fingerprint.
 	Hints Hints
 }
 
@@ -305,10 +307,12 @@ type inStream struct {
 	// For a stream that answers this side's Fingerprint or symbol stream:
 	// localCount is this side's count of the range (from the Fingerprint or
 	// the stream); decoded reports that the peer decoded this side's symbol
-	// stream and lists the IDs only it holds, and peerCount is then the
-	// count of the peer's Fingerprint of the range.
+	// stream and lists the IDs only it holds, and peerCount and symbols are
+	// then the count of the peer's Fingerprint of the range and the symbols
+	// this side sent for it.
 	localCount uint64
 	peerCount  uint64
+	symbols    uint64
 	decoded    bool
 }
 
@@ -504,17 +508,26 @@ func (s *Session) Handle(in *pb.Message) (out *pb.Message, wants []fingerprint.I
 // Each resolved range adds:
 //   - a symbol stream of the peer that this side decoded: the IDs it
 //     recovered, both directions;
+//   - a symbol stream of this side that the peer decoded: the IDs the peer
+//     listed (those only it holds) plus the local IDs the peer lacks, which
+//     follow from the two counts: |only local| = cL − (cR − listed), within
+//     [0, cL], where cL is the count of this side's stream and cR the count
+//     of the peer's Fingerprint;
 //   - otherwise, this side's wants in the range (the IDs the peer listed
-//     that this node does not hold, exact) plus the local IDs the peer
-//     lacks, which follow from the two counts: |only local| = cL − (cR −
-//     wants), within [0, cL]. cL is this side's count of the range (its
-//     listing, Fingerprint or symbol stream) and cR the peer's (its
-//     complete listing, or the count of its Fingerprint).
+//     that this node does not hold) plus |only local| = cL − (cR − wants),
+//     within [0, cL]. cL is this side's count of the range (its listing or
+//     Fingerprint) and cR the peer's (its complete listing, or the count of
+//     its Fingerprint).
 //
-// The counts come from the time each side summarized or listed the range,
-// so elements that changed during the session make the value approximate;
-// it is a metric and nothing acts on it. A peer that lies about its counts
-// changes it within the local count of each range.
+// Only the first is exact under churn: it is the size of the difference
+// between the two snapshots the streams were taken from. The others combine
+// counts and listings from different times (the peer's Fingerprint is older
+// than the snapshot it decoded against, and wants miss the IDs this node
+// gained since), so elements that changed during the session make them
+// approximate: for a stream of this side that the peer decoded, the error is
+// the peer's change between its Fingerprint and the snapshot it decoded
+// against. It is a metric and nothing acts on it. A peer that lies about its
+// counts changes it within the local count of each range.
 func (s *Session) Difference() uint64 {
 	n := s.decoded
 	for _, l := range s.listings {
@@ -528,13 +541,38 @@ func (s *Session) Difference() uint64 {
 		if st.answersReply {
 			continue // counted with its listing above
 		}
-		peer := st.listed // a complete listing: SendItems, Exchange, the fallbacks
 		if st.decoded {
-			peer = st.peerCount
+			n += st.decodedDifference()
+			continue
 		}
-		n += st.wants + onlyLocal(st.localCount, peer, st.wants)
+		// a complete listing: SendItems, Exchange, the fallbacks
+		n += st.wants + onlyLocal(st.localCount, st.listed, st.wants)
 	}
 	return n
+}
+
+// decodedDifference returns n_Δ of a range whose symbol stream (this side's)
+// the peer decoded, from the peer's listing of the IDs only it holds: the
+// listed IDs plus the local IDs the peer lacks, local − (peer − listed). It
+// counts the listing, not this side's wants, which miss the listed IDs this
+// node gained since it served the stream (from another peer).
+func (st *inStream) decodedDifference() uint64 {
+	return st.listed + onlyLocal(st.localCount, st.peerCount, st.listed)
+}
+
+// servedHint returns the hint(R) the serving side of a decoded symbol stream
+// records once the peer's listing ended: the difference (decodedDifference),
+// at most the symbols this side sent. Without it the serving side, which in
+// the steady state never decodes (the lower overlay initiates and decodes the
+// higher's root stream), would start every stream at MinBatch and grow it by
+// GrowthFactor. The bound holds for an honest peer, whose decoder recovers at
+// most one ID per symbol received, and keeps a peer that lists more IDs or
+// lies about its count from raising this node's next first batch past its
+// last stream, which the peer asked for within cap(R) and
+// SessionSymbolBudget: no more than a Fingerprint whose count differs from
+// this node's can ask for.
+func (st *inStream) servedHint() uint64 {
+	return min(st.decodedDifference(), st.symbols)
 }
 
 // onlyLocal returns the number of this side's elements of a range that the
@@ -753,6 +791,7 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 				st.localCount = sv.count
 				st.decoded = !it.Reply
 				st.peerCount = s.peerCounts[key]
+				st.symbols = sv.sent
 			}
 			delete(s.unanswered, key)
 			s.closeServed(key)
@@ -780,6 +819,9 @@ func (s *Session) handleItems(it Items) ([]fingerprint.ID, error) {
 	}
 	if len(it.IDs) > 0 {
 		st.last = it.IDs[len(it.IDs)-1]
+	}
+	if st.decoded && !st.more && s.cfg.Hints != nil {
+		s.cfg.Hints.SetHint(it.Range, st.servedHint())
 	}
 
 	var wants, held []fingerprint.ID

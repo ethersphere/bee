@@ -290,25 +290,28 @@ func reconcileMessages(t *testing.T, a *testNode, b swarm.Address) (sent, receiv
 	if err != nil {
 		t.Fatal(err)
 	}
-	read := func(data []byte) []*pb.Message {
-		// up to MaxMessageBytes: protobuf.ReadMessages has a smaller limit
-		r := ggio.NewDelimitedReader(bytes.NewReader(data), rangesync.MaxMessageBytes)
-		var out []*pb.Message
-		for {
-			m := new(pb.Message)
-			if err := r.ReadMsg(m); errors.Is(err, io.EOF) {
-				return out
-			} else if err != nil {
-				t.Fatal(err)
-			}
-			out = append(out, m)
-		}
-	}
 	for _, r := range records {
-		sent = append(sent, read(r.In())...)
-		received = append(received, read(r.Out())...)
+		sent = append(sent, readMessages(t, r.In())...)
+		received = append(received, readMessages(t, r.Out())...)
 	}
 	return sent, received
+}
+
+// readMessages returns the reconcile Messages of one direction of a stream.
+func readMessages(t *testing.T, data []byte) []*pb.Message {
+	t.Helper()
+	// up to MaxMessageBytes: protobuf.ReadMessages has a smaller limit
+	r := ggio.NewDelimitedReader(bytes.NewReader(data), rangesync.MaxMessageBytes)
+	var out []*pb.Message
+	for {
+		m := new(pb.Message)
+		if err := r.ReadMsg(m); errors.Is(err, io.EOF) {
+			return out
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, m)
+	}
 }
 
 func TestStatus(t *testing.T) {

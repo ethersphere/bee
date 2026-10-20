@@ -190,6 +190,49 @@ func TestSessionSymbolsStaleStamp(t *testing.T) {
 	}
 }
 
+// TestSessionSymbolsDifferenceListed checks the difference the serving side
+// of a decoded stream reports when it gains an ID the decoder lists between
+// the decoder's listing and its own handling of it (it fetched the ID from
+// another peer meanwhile): it counts the listing, not its wants, so both
+// sides still report the decoded difference.
+func TestSessionSymbolsDifferenceListed(t *testing.T) {
+	t.Parallel()
+
+	rng := newRand(19)
+	root := rangeOf("")
+	scope := rangesync.Scope{Root: root, LeafDepth: 12}
+	la, lb, a2b, b2a := convergenceSets(rng, root, scope, 300, 10, 10, false)
+	a, b, first := symbolsPair(t, status(root, 12), la, lb)
+	var gained *fingerprint.ID
+	churn := func(fromInitiator bool, m *pb.Message) {
+		for _, p := range m.GetParts() {
+			if !fromInitiator || gained != nil || p.GetItems() == nil {
+				continue
+			}
+			it, err := rangesync.ParseItems(p.GetItems())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if it.Reply || len(it.IDs) == 0 {
+				continue
+			}
+			gained = &it.IDs[0]
+			lb.ids = append(lb.ids, *gained)
+			slices.SortFunc(lb.ids, fingerprint.ID.Compare)
+		}
+	}
+	wantsA, wantsB, _ := drive(t, a, first, b, churn)
+	if gained == nil {
+		t.Fatal("the decoder listed no IDs")
+	}
+	if a.Stats().Decoded != 1 {
+		t.Fatalf("stats %+v, want one decoded stream", a.Stats())
+	}
+	assertSet(t, wantsA, a2b)
+	assertSet(t, wantsB, slices.DeleteFunc(slices.Clone(b2a), func(id fingerprint.ID) bool { return id == *gained }))
+	assertDifference(t, a, b, len(a2b)+len(b2a))
+}
+
 // TestSessionSymbolsExhausted checks that a stream that ends before it
 // decodes is split above the leaf depth and exchanged as items at it, and
 // that the session still converges.
@@ -390,8 +433,13 @@ func TestSessionSymbolsChurnBeforeFirstEmit(t *testing.T) {
 	assertSet(t, wantsB, b2a)
 }
 
-// TestSessionSymbolsHints checks that a decoded difference is recorded and
-// raises the next session's first batch.
+// TestSessionSymbolsHints checks that both sides of a decoded stream record
+// the difference, each in its own hints of the peer: the decoding side the
+// IDs it recovered, the serving side the difference that follows from the
+// decoder's listing and the two counts. The serving side of the next session
+// then starts its stream at FirstBatch of it instead of MinBatch, which in
+// the steady state (the lower overlay initiates and decodes) is the only
+// hint that is ever read.
 func TestSessionSymbolsHints(t *testing.T) {
 	t.Parallel()
 
@@ -399,43 +447,95 @@ func TestSessionSymbolsHints(t *testing.T) {
 	root := rangeOf("")
 	scope := rangesync.Scope{Root: root, LeafDepth: 12}
 	st := status(root, 12)
+	// paired differences: equal counts, so d̂ = 1 without a hint
 	la, lb, _, _ := convergenceSets(rng, root, scope, 300, 10, 10, true)
-	hints := mapHints{}
-	firstBatch := func(hints rangesync.Hints) int {
+	hintsA, hintsB := mapHints{}, mapHints{}
+	session := func() (first int, a *rangesync.Session) {
 		la.status, lb.status = &st, &st
-		a, first, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Status: st, PeerStatus: st, Hints: hints})
+		a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: la, Status: st, PeerStatus: st, Hints: hintsA})
 		if err != nil {
 			t.Fatal(err)
 		}
-		b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: lb, Status: st, PeerStatus: st, Hints: hints})
-		n := -1
-		drive(t, a, first, b, func(_ bool, m *pb.Message) {
+		b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: lb, Status: st, PeerStatus: st, Hints: hintsB})
+		first = -1
+		drive(t, a, open, b, func(_ bool, m *pb.Message) {
 			for _, p := range m.GetParts() {
-				if p.GetSymbols() == nil || n >= 0 {
+				if p.GetSymbols() == nil || first >= 0 {
 					continue
 				}
-				sy, err := rangesync.ParseSymbols(p.GetSymbols())
-				if err != nil {
-					t.Fatal(err)
-				}
-				syms, err := fingerprint.ParseSymbolData(fingerprint.NewFloatMapper(), sy.Count, sy.Start, sy.Data)
-				if err != nil {
-					t.Fatal(err)
-				}
-				n = len(syms)
+				first = len(parseSymbols(t, p.GetSymbols()))
 			}
 		})
-		return n
+		return first, a
 	}
-	if n := firstBatch(hints); n != rangesync.MinBatch {
+	n, a := session()
+	if n != rangesync.MinBatch {
 		t.Fatalf("first batch %d, want %d", n, rangesync.MinBatch)
 	}
-	if hints[root.Key()] != 20 {
-		t.Fatalf("hint %d, want 20", hints[root.Key()])
+	if a.Stats().MoreRequests == 0 {
+		t.Fatal("cold stream decoded without a More")
 	}
-	if n := firstBatch(hints); n != int(rangesync.FirstBatch(20)) {
+	if hintsA[root.Key()] != 20 || hintsB[root.Key()] != 20 {
+		t.Fatalf("hints: decoder %d, server %d, want 20", hintsA[root.Key()], hintsB[root.Key()])
+	}
+	if n, _ := session(); n != int(rangesync.FirstBatch(20)) {
 		t.Fatalf("first batch %d, want %d", n, rangesync.FirstBatch(20))
 	}
+}
+
+// TestSessionSymbolsServedHintBound checks that the hint the serving side
+// records is at most the symbols it sent for the range: a decoder recovers
+// at most one ID per symbol, so a peer that lists more IDs, or lies about
+// its count, cannot make this node's next first batch larger than its last
+// stream (which the peer asked for, within cap(R) and SessionSymbolBudget).
+func TestSessionSymbolsServedHintBound(t *testing.T) {
+	t.Parallel()
+
+	rng := newRand(21)
+	root := rangeOf("")
+	st := status(root, 12)
+	scope := mustScope(t, st, st)
+	local := newFakeLocal(randIDs(rng, root, 300)...)
+	local.status = &st
+	hints := mapHints{}
+	b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: local, Status: st, PeerStatus: st, Hints: hints})
+	sum, err := local.Summary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum.Digest[0] ^= 1 // the same count, another set: d̂ = 1
+	out, _, err := b.Handle(wire(t, &pb.Message{Parts: []*pb.Part{{Kind: &pb.Part_FP{FP: rangesync.EncodeFingerprint(root, sum)}}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.GetParts()) != 1 || out.GetParts()[0].GetSymbols() == nil {
+		t.Fatalf("answer %v, want one symbol batch", out)
+	}
+	sent := len(parseSymbols(t, out.GetParts()[0].GetSymbols()))
+	// "decoded": the peer lists 200 IDs only it holds
+	listed := randIDs(rng, root, 200)
+	slices.SortFunc(listed, fingerprint.ID.Compare)
+	items := rangesync.EncodeItems(rangesync.Items{Range: root, IDs: listed})
+	if _, _, err := b.Handle(wire(t, &pb.Message{Parts: []*pb.Part{{Kind: &pb.Part_Items{Items: items}}}})); err != nil {
+		t.Fatal(err)
+	}
+	if got := hints[root.Key()]; got != uint64(sent) {
+		t.Fatalf("hint %d, want the %d symbols sent", got, sent)
+	}
+}
+
+// parseSymbols returns the coded symbols of the Symbols part p.
+func parseSymbols(t *testing.T, p *pb.Symbols) []fingerprint.CodedSymbol {
+	t.Helper()
+	sy, err := rangesync.ParseSymbols(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	syms, err := fingerprint.ParseSymbolData(fingerprint.NewFloatMapper(), sy.Count, sy.Start, sy.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return syms
 }
 
 type mapHints map[fingerprint.RangeKey]uint64

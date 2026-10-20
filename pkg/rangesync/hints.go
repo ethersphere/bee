@@ -18,7 +18,8 @@ type hintKey struct {
 }
 
 // hintCache keeps the size of the last decoded difference per (peer, range)
-// for the symbol estimate hint(R) (proposal §6.3): in memory only, the least
+// for the symbol estimate hint(R) (proposal §6.3), recorded by the decoding
+// and by the serving side of a stream: in memory only, the least
 // recently used of HintCacheSize entries evicted. Losing an entry only makes
 // a first batch smaller. It is safe for concurrent use.
 type hintCache struct {
