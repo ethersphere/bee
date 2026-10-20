@@ -57,14 +57,26 @@ const (
 
 // TestNeighborhoodConverges runs the neighborhood simulation with N = 5 and
 // p = 3: random uploads converge within convergenceBound, every node fetches
-// each upload it lacks once, and no stream of another protocol is opened.
+// each upload it lacks once, and no stream of another protocol is opened;
+// with hint(R) and without it (simOptions.NoHints, G6's other setting).
 func TestNeighborhoodConverges(t *testing.T) {
 	t.Parallel()
 
-	o := simOptions{Nodes: 5, Replication: 3, Seed: 1}
-	res := runNeighborhood(t, o)
-	logNeighborhood(t, o, res)
-	assertNeighborhood(t, o, res)
+	for _, tc := range []struct {
+		name    string
+		noHints bool
+	}{
+		{name: "hints"},
+		{name: "no hints", noHints: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			o := simOptions{Nodes: 5, Replication: 3, Seed: 1, NoHints: tc.noHints}
+			res := runNeighborhood(t, o)
+			logNeighborhood(t, o, res)
+			assertNeighborhood(t, o, res)
+		})
+	}
 }
 
 // TestNeighborhoodSREP runs the neighborhood simulation at §7.8's sizes,
@@ -206,6 +218,66 @@ func TestNeighborhoodSteady(t *testing.T) {
 	}
 }
 
+// TestNeighborhoodTeardown checks that a run that ends while a Status send
+// waits in its FullClose for the handler's close still tears down. That close
+// is a leg on the clock, which no longer moves once the run ended, so the
+// harness must end the wait itself (simNeighborhood.close) before it waits for
+// the reconcilers. A first run finds a Status sent after the convergence; the
+// second ends mid-way through its FullClose (from its second leg to its
+// fourth, see TestNeighborhoodDelay).
+func TestNeighborhoodTeardown(t *testing.T) {
+	t.Parallel()
+
+	const (
+		delay    = 100 * time.Millisecond
+		watchdog = 30 * time.Second // a teardown takes milliseconds
+	)
+	o := simOptions{Nodes: 5, Replication: 3, Seed: 5, Delay: delay}
+	res := runNeighborhood(t, o)
+	done := o.withDefaults().Warmup + res.Converged
+	sent := time.Duration(-1) // when the earliest Status after the convergence started
+	for _, sp := range res.Spans {
+		if at := sp.At + sp.Wait; sp.Kind == "status" && sp.Err == nil && at >= done && (sent < 0 || at < sent) {
+			sent = at
+		}
+	}
+	if sent < 0 {
+		t.Fatal("no Status sent after the convergence")
+	}
+
+	o.Tail = sent - done + 3*delay
+	nb := newNeighborhood(t, o)
+	res = nb.run()
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		nb.close() // again in the cleanup: a no-op then
+	}()
+	select {
+	case <-closed:
+	case <-time.After(watchdog):
+		t.Errorf("teardown of a run that ended mid-FullClose still waits after %v", watchdog)
+		// end the waits on the clock so that the cleanup does not hang
+		for range 100 {
+			nb.clock.advance(nb.clock.Now().Add(simCloseDeadline))
+			select {
+			case <-closed:
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+		t.Fatal("teardown still waits after the close deadlines")
+	}
+	// the run ended with a Status send in its FullClose: one past its open
+	nb.mu.Lock()
+	defer nb.mu.Unlock()
+	if !slices.ContainsFunc(nb.spans[len(res.Spans):], func(sp simSpan) bool {
+		return sp.Kind == "status" && sp.Duration >= 2*delay && sp.Duration < 4*delay
+	}) {
+		t.Errorf("no Status send ended in the teardown within its FullClose; the run ended %v after the convergence", o.Tail)
+	}
+}
+
 // TestSimStream checks the harness's streams (simEnd, simPipe): the closing
 // and reset rules, the delay on the clock, and that a reader waiting for a
 // stream is parked (not counted in flight).
@@ -232,7 +304,8 @@ func TestSimStream(t *testing.T) {
 		}()
 		return got
 	}
-	parked := func(nb *simNeighborhood, want int64) {
+	// parked waits until want readers of nb are parked; t is the subtest's.
+	parked := func(t *testing.T, nb *simNeighborhood, want int64) {
 		t.Helper()
 		waitFor(t, "parked reader", func() bool { return nb.parked.Load() == want })
 	}
@@ -256,18 +329,19 @@ func TestSimStream(t *testing.T) {
 			t.Fatalf("write after the remote's close: %v", err)
 		}
 	})
-	// fullClose runs a.FullClose in a goroutine, once it is parked.
-	fullClose := func(nb *simNeighborhood, a *simEnd) <-chan error {
+	// fullClose runs a.FullClose in a goroutine and returns once it is
+	// parked; t is the subtest's.
+	fullClose := func(t *testing.T, nb *simNeighborhood, a *simEnd) <-chan error {
 		t.Helper()
 		done := make(chan error, 1)
 		go func() { done <- a.FullClose() }()
-		parked(nb, 1)
+		parked(t, nb, 1)
 		return done
 	}
 	t.Run("full close waits for the remote's close", func(t *testing.T) {
 		t.Parallel()
 		nb, a, b := newEnds(0)
-		done := fullClose(nb, a)
+		done := fullClose(t, nb, a)
 		if got := <-read(b); got != io.EOF.Error() {
 			t.Fatalf("read %q, want EOF", got)
 		}
@@ -282,7 +356,7 @@ func TestSimStream(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatalf("full close: %v", err)
 		}
-		parked(nb, 0)
+		parked(t, nb, 0)
 		if _, err := b.Write([]byte("y")); !errors.Is(err, streamtest.ErrStreamClosed) {
 			t.Fatalf("write after the full closes: %v", err)
 		}
@@ -290,7 +364,7 @@ func TestSimStream(t *testing.T) {
 	t.Run("full close gets bytes instead", func(t *testing.T) {
 		t.Parallel()
 		nb, a, b := newEnds(0)
-		done := fullClose(nb, a)
+		done := fullClose(t, nb, a)
 		if _, err := b.Write([]byte("y")); err != nil {
 			t.Fatal(err)
 		}
@@ -304,7 +378,7 @@ func TestSimStream(t *testing.T) {
 	t.Run("full close deadline", func(t *testing.T) {
 		t.Parallel()
 		nb, a, b := newEnds(0)
-		done := fullClose(nb, a)
+		done := fullClose(t, nb, a)
 		nb.clock.advance(nb.clock.Now().Add(simCloseDeadline))
 		if err := <-done; !errors.Is(err, errSimCloseTimeout) {
 			t.Fatalf("full close: %v, want %v", err, errSimCloseTimeout)
@@ -324,14 +398,14 @@ func TestSimStream(t *testing.T) {
 			t.Fatalf("read %q, want x", s)
 		}
 		got = read(b)
-		parked(nb, 1)
+		parked(t, nb, 1)
 		if err := a.Reset(); err != nil {
 			t.Fatal(err)
 		}
 		if s := <-got; s != errSimReset.Error() {
 			t.Fatalf("read %q after the remote's reset, want %v", s, errSimReset)
 		}
-		parked(nb, 0)
+		parked(t, nb, 0)
 		if _, err := b.Write([]byte("y")); !errors.Is(err, errSimReset) {
 			t.Fatalf("write after the remote's reset: %v, want %v", err, errSimReset)
 		}
@@ -351,7 +425,7 @@ func TestSimStream(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := read(b)
-		parked(nb, 1) // the bytes are on the way
+		parked(t, nb, 1) // the bytes are on the way
 		if at, ok := nb.clock.next(); !ok || at != start.Add(delay) {
 			t.Fatalf("next timer %v (%v), want the arrival at %v", at, ok, start.Add(delay))
 		}
@@ -360,7 +434,7 @@ func TestSimStream(t *testing.T) {
 		if s := <-got; s != errSimReset.Error() {
 			t.Fatalf("read %q, want %v", s, errSimReset)
 		}
-		parked(nb, 0)
+		parked(t, nb, 0)
 	})
 }
 

@@ -347,6 +347,7 @@ type simNeighborhood struct {
 	arrivals  map[simArrival][]time.Time
 	sessions  []time.Time // starts of the sessions the reconcilers opened
 	streams   []*simPair
+	closed    bool // close closed the streams: NewStream opens no more
 	spans     []simSpan
 	converged int // uploads held by every node
 	baseline  []simCounters
@@ -538,9 +539,22 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 	return n
 }
 
-// close stops the reconcilers, then the services, then closes every stream,
-// which ends the reads still waiting on one.
+// close closes every stream and refuses new ones, then stops the reconcilers,
+// then the services. Closing the streams first ends the reads and the
+// FullCloses still waiting on one: what they wait for (bytes, the remote's
+// close, simCloseDeadline) is due on the clock, which no longer moves, and
+// Reconciler.Close waits for its calls to end. A FullClose then returns as on
+// the remote's close (simPipe.awaitEOF), and a read returns io.EOF after the
+// bytes that arrived. It is safe to call more than once.
 func (nb *simNeighborhood) close() {
+	nb.mu.Lock()
+	nb.closed = true
+	streams := slices.Clone(nb.streams)
+	nb.mu.Unlock()
+	for _, s := range streams {
+		s.toHandler.closeRead(io.EOF, streamtest.ErrStreamClosed)
+		s.toInitiator.closeRead(io.EOF, streamtest.ErrStreamClosed)
+	}
 	for _, n := range nb.nodes {
 		if err := n.r.Close(); err != nil {
 			nb.tb.Error(err)
@@ -550,13 +564,6 @@ func (nb *simNeighborhood) close() {
 		if err := n.svc.Close(); err != nil {
 			nb.tb.Error(err)
 		}
-	}
-	nb.mu.Lock()
-	streams := slices.Clone(nb.streams)
-	nb.mu.Unlock()
-	for _, s := range streams {
-		s.toHandler.closeRead(io.EOF, streamtest.ErrStreamClosed)
-		s.toInitiator.closeRead(io.EOF, streamtest.ErrStreamClosed)
 	}
 }
 
@@ -1199,6 +1206,14 @@ func (s *simStreamer) NewStream(ctx context.Context, addr swarm.Address, _ p2p.H
 		toHandler:   newSimPipe(nb, false),
 		toInitiator: newSimPipe(nb, stream == rangesync.FetchStreamName),
 	}
+	nb.mu.Lock()
+	if nb.closed {
+		nb.mu.Unlock()
+		return nil, errSimClosed
+	}
+	nb.protocols[protocol] = true
+	nb.streams = append(nb.streams, pair)
+	nb.mu.Unlock()
 	if c, ok := ctx.Value(simCallKey{}).(*simCall); ok {
 		c.mu.Lock()
 		c.streams = append(c.streams, pair)
@@ -1206,10 +1221,6 @@ func (s *simStreamer) NewStream(ctx context.Context, addr swarm.Address, _ p2p.H
 	}
 	id := strconv.FormatUint(nb.pairSeq.Add(1), 10)
 	nb.pairs.Store(id, pair)
-	nb.mu.Lock()
-	nb.protocols[protocol] = true
-	nb.streams = append(nb.streams, pair)
-	nb.mu.Unlock()
 	nb.inflight.Add(1) // until the handler returns
 	nb.touch()
 	st, err := s.StreamerDisconnecter.NewStream(ctx, addr, p2p.Headers{simPairHeader: []byte(id)}, protocol, version, stream)
@@ -1245,11 +1256,14 @@ func (nb *simNeighborhood) handlerEnd(s p2p.Stream) p2p.Stream {
 // which pkg/rangesync does not import); errSimExpectedEOF and
 // errSimCloseTimeout are what FullClose returns when bytes arrive instead of
 // the remote's end of the writes, and when that does not arrive within
-// simCloseDeadline (libp2p's errExpectedEof and its read deadline).
+// simCloseDeadline (libp2p's errExpectedEof and its read deadline);
+// errSimClosed is what NewStream returns once the harness closed the streams
+// (simNeighborhood.close).
 var (
 	errSimReset        = errors.New("sim: stream reset")
 	errSimExpectedEOF  = errors.New("sim: read on full close: expected eof")
 	errSimCloseTimeout = errors.New("sim: full close deadline exceeded")
+	errSimClosed       = errors.New("sim: neighborhood closed")
 )
 
 // simCloseDeadline bounds FullClose's wait for the remote's end of the
