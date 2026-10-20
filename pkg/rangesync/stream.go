@@ -69,13 +69,16 @@ func readMessage(ctx context.Context, r protobuf.Reader, m wireMessage) error {
 
 // violation handles a peer's protocol violation err (wrapping
 // ErrInvalidMessage) on stream: it resets the stream and reports the failure
-// to the scorer. It returns the error for the handler to return, which makes
-// the p2p layer disconnect the peer. rangesync does not blocklist.
+// to the scorer, unless the peer was reported within violationGrace
+// (markViolation). It returns the error for the handler to return, which
+// makes the p2p layer disconnect the peer. rangesync does not blocklist.
 func (s *Service) violation(peer swarm.Address, stream p2p.Stream, err error) error {
 	_ = stream.Reset()
-	s.shortfalls.markViolation(peer, s.now())
+	reported := s.markViolation(peer)
 	s.metrics.InvalidMessage.Inc()
-	s.scorer.Fail(peer, err)
+	if !reported {
+		s.scorer.Fail(peer, err)
+	}
 	s.logger.Debug("invalid message from peer, disconnecting", "peer_address", peer, "error", err)
 	return p2p.NewDisconnectError(err)
 }

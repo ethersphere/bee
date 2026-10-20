@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -928,8 +929,8 @@ func TestFetchShortfallExcuseOscillation(t *testing.T) {
 
 // TestFetchShortfallAfterPeerViolation checks that once a peer was reported
 // for a violation, which disconnects it, its other fetches within
-// ViolationGrace are not judged or recorded: they fail with it, and one
-// violation is one score.
+// ViolationGrace (one minute) are not judged or recorded: they fail with it,
+// and one violation is one score.
 func TestFetchShortfallAfterPeerViolation(t *testing.T) {
 	t.Parallel()
 
@@ -949,9 +950,16 @@ func TestFetchShortfallAfterPeerViolation(t *testing.T) {
 	}
 	assertShortfallScored(t, a, b.addr, 1, true)
 
+	// the grace is one minute: just before it the peer is still not judged
+	clock.Add(time.Minute - time.Second)
+	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missing); err != nil {
+		t.Fatalf("within the grace: %v", err)
+	}
+	assertShortfallScored(t, a, b.addr, 1, true)
+
 	// past the grace the peer is judged again (here it stayed connected):
 	// missing once more, the IDs are a first offense
-	clock.Add(rangesync.ViolationGrace)
+	clock.Add(time.Second)
 	for range 2 {
 		_, _ = a.svc.FetchWithResult(context.Background(), b.addr, missing)
 	}
@@ -959,4 +967,485 @@ func TestFetchShortfallAfterPeerViolation(t *testing.T) {
 	if len(fails) != 2 || !errors.Is(fails[1], rangesync.ErrFetchShortfall) || errors.Is(fails[1], rangesync.ErrInvalidMessage) {
 		t.Fatalf("scorer fails %v, want a first offense after the violation", fails)
 	}
+}
+
+// errOpenFailed is a fetch stream open that fails on the peer's side, as
+// libp2p's NewStream does when the peer resets the headers exchange.
+var errOpenFailed = errors.New("send headers: read message: stream reset")
+
+// withoutStream returns spec without the stream name.
+func withoutStream(spec p2p.ProtocolSpec, name string) p2p.ProtocolSpec {
+	spec.StreamSpecs = slices.DeleteFunc(slices.Clone(spec.StreamSpecs), func(s p2p.StreamSpec) bool { return s.Name == name })
+	return spec
+}
+
+// TestFetchStreamOpenCharged checks that a fetch stream that fails while it
+// opens is charged as a reset: by then the Want took its fetch rate and holds
+// its claims. A peer can make the open fail by resetting the headers
+// exchange, by stalling it for the headers timeout (shorter than the fetch
+// timeout, so not a stall of the fetch), or by not serving the fetch stream.
+// MaxFetchResets such failures are not scored, the next one is a violation,
+// and every claim is released. Every fetch runs this path, a verifier's
+// among them.
+func TestFetchStreamOpenCharged(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		err  error // the open's error; nil: the peer serves no fetch stream
+	}{
+		{"headers reset", errOpenFailed},
+		{"headers stalled", fmt.Errorf("send headers: read message: %w", context.DeadlineExceeded)},
+		{"no fetch handler", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var o nodeOpts
+			if tc.err != nil {
+				o.streamErr = func(_ swarm.Address, _, _, stream string) error {
+					if stream == rangesync.FetchStreamName {
+						return tc.err
+					}
+					return nil
+				}
+			}
+			a := newTestNodeOpts(t, o)
+			b := newTestNode(t)
+			connect0(a, b)
+			if tc.err == nil {
+				a.rec.SetProtocols(withoutStream(b.svc.Protocol(), rangesync.FetchStreamName))
+			}
+			sendRoot(t, b, a, whole)
+			for i := range rangesync.MaxFetchResets + 1 {
+				ids := missingIDs(t, 2, whole)
+				res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+				if got, want := errors.Is(err, rangesync.ErrInvalidMessage), i == rangesync.MaxFetchResets; err == nil || got != want {
+					t.Fatalf("fetch %d: %v (a violation: %v, want %v)", i, err, got, want)
+				}
+				assertChunkIDs(t, res.Undelivered, ids...)
+				assertNoClaims(t, a, ids...)
+			}
+			assertFailed(t, a.scorer, b.addr)
+			if !a.rec.IsDisconnected(b.addr) {
+				t.Fatal("peer not disconnected")
+			}
+		})
+	}
+}
+
+// heldOpens is a streamer whose fetch stream opens wait while hold is set:
+// until release is closed, then they fail with errOpenFailed (a transient
+// failure on the peer's side), or until their context ends, then they fail
+// with its error (as libp2p's headers exchange does). entered receives a
+// value for each open that waits; maxWaiting is the most that waited at once.
+type heldOpens struct {
+	p2p.StreamerDisconnecter
+	hold                atomic.Bool
+	entered             chan struct{}
+	release             chan struct{}
+	waiting, maxWaiting atomic.Int32
+}
+
+func newHeldOpens() *heldOpens {
+	return &heldOpens{entered: make(chan struct{}, 64), release: make(chan struct{})}
+}
+
+// wrap is a nodeOpts streamer of h.
+func (h *heldOpens) wrap(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+	h.StreamerDisconnecter = s
+	return h
+}
+
+func (h *heldOpens) NewStream(ctx context.Context, addr swarm.Address, hd p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream != rangesync.FetchStreamName || !h.hold.Load() {
+		return h.StreamerDisconnecter.NewStream(ctx, addr, hd, protocol, version, stream)
+	}
+	n := h.waiting.Add(1)
+	defer h.waiting.Add(-1)
+	for m := h.maxWaiting.Load(); n > m && !h.maxWaiting.CompareAndSwap(m, n); m = h.maxWaiting.Load() {
+	}
+	h.entered <- struct{}{}
+	select {
+	case <-h.release:
+		return nil, errOpenFailed
+	case <-ctx.Done():
+		return nil, fmt.Errorf("send headers: %w", ctx.Err())
+	}
+}
+
+// TestFetchStreamOpenHonest checks that stream opens that fail for no fault
+// of the peer are never charged, and that honest transient failures cannot
+// spend the budget:
+//   - an open that finds the peer gone (p2p.ErrPeerNotFound), whose Status
+//     the disconnect hook has not cleared yet;
+//   - an open this node ends (its context, Close);
+//   - a transient failure fails at most MaxFetchStreamsOut opens at once (the
+//     fetches queued behind them open after it), so it takes at most that
+//     many of the MaxFetchResets: two such events back to back cost nothing,
+//     and one per two FetchResetIntervals is refilled.
+func TestFetchStreamOpenHonest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the peer is gone", func(t *testing.T) {
+		t.Parallel()
+
+		var openErr atomic.Pointer[error]
+		gone := fmt.Errorf("new stream: %w", p2p.ErrPeerNotFound)
+		openErr.Store(&gone)
+		a := newTestNodeOpts(t, nodeOpts{streamErr: func(_ swarm.Address, _, _, stream string) error {
+			if stream == rangesync.FetchStreamName {
+				return *openErr.Load()
+			}
+			return nil
+		}})
+		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		fail := func() {
+			t.Helper()
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("got %v, want a failed open", err)
+			}
+		}
+		for range 2 * rangesync.MaxFetchResets {
+			fail()
+		}
+		// nothing was charged: the whole budget remains
+		openErr.Store(&errOpenFailed)
+		for range rangesync.MaxFetchResets {
+			fail()
+		}
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("this node's cancellations", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHeldOpens()
+		h.hold.Store(true)
+		a := newTestNodeOpts(t, nodeOpts{streamer: h.wrap})
+		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		for range rangesync.MaxFetchResets + 2 {
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() {
+				_, err := a.svc.FetchWithResult(ctx, b.addr, missingIDs(t, 1, whole))
+				done <- err
+			}()
+			<-h.entered
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("got %v, want %v", err, context.Canceled)
+			}
+		}
+		assertNotScored(t, a, b.addr)
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole))
+			done <- err
+		}()
+		<-h.entered
+		if err := a.svc.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want a canceled open", err)
+		}
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("transient failures", func(t *testing.T) {
+		t.Parallel()
+
+		const fetches = 3 * rangesync.MaxFetchStreamsOut
+		clock := newFakeClock()
+		h := newHeldOpens()
+		a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: h.wrap}))
+		chs := validChunks(fetches + 4*rangesync.MaxFetchStreamsOut)
+		b := newTestNode(t, chs...)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+
+		// one failure hits every open in flight: at most MaxFetchStreamsOut
+		h.hold.Store(true)
+		errs := make(chan error, fetches)
+		for _, ch := range chs[:fetches] {
+			go func() {
+				_, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, ch))
+				errs <- err
+			}()
+		}
+		for range rangesync.MaxFetchStreamsOut {
+			<-h.entered
+		}
+		h.hold.Store(false) // the opens after the failure succeed
+		close(h.release)
+		failed := 0
+		for range fetches {
+			err := <-errs
+			if errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("a transient failure is a violation: %v", err)
+			}
+			if err != nil {
+				failed++
+			}
+		}
+		if failed != rangesync.MaxFetchStreamsOut || h.maxWaiting.Load() != rangesync.MaxFetchStreamsOut {
+			t.Fatalf("%d opens failed, %d at once, want %d", failed, h.maxWaiting.Load(), rangesync.MaxFetchStreamsOut)
+		}
+
+		// a second failure right after it, and a third two refills later
+		event := func(chs []swarm.Chunk) {
+			t.Helper()
+			h.hold.Store(true)
+			defer h.hold.Store(false)
+			for _, ch := range chs {
+				if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, ch)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+					t.Fatalf("got %v, want a failed open", err)
+				}
+			}
+		}
+		event(chs[fetches : fetches+rangesync.MaxFetchStreamsOut])
+		clock.Add(2 * rangesync.FetchResetInterval)
+		event(chs[fetches+rangesync.MaxFetchStreamsOut : fetches+2*rangesync.MaxFetchStreamsOut])
+		assertNotScored(t, a, b.addr)
+	})
+}
+
+// hookClock is a fakeClock that runs a hook once, at a later reading. The
+// hook stands in for the disconnect hook landing between a rule's look at
+// the peer's Status and its record: the rules read the clock in between.
+type hookClock struct {
+	*fakeClock
+	mu   sync.Mutex
+	skip int
+	hook func()
+}
+
+func newHookClock() *hookClock { return &hookClock{fakeClock: newFakeClock()} }
+
+// at arms hook to run at the reading after the next skip readings.
+func (c *hookClock) at(skip int, hook func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.skip, c.hook = skip, hook
+}
+
+func (c *hookClock) Now() time.Time {
+	c.mu.Lock()
+	var run func()
+	if c.hook != nil {
+		if c.skip == 0 {
+			run, c.hook = c.hook, nil
+		} else {
+			c.skip--
+		}
+	}
+	c.mu.Unlock()
+	if run != nil {
+		run()
+	}
+	return c.fakeClock.Now()
+}
+
+// set makes c the clock of n's shortfall rules and returns n.
+func (c *hookClock) set(n *testNode) *testNode {
+	n.svc.SetNow(c.Now)
+	return n
+}
+
+// TestFetchForgetIfGone checks that what the rules record for a peer while
+// it disconnects is forgotten: a disconnect that lands after their look at
+// the peer's Status, so after the disconnect hook cleared the peer's
+// entries, must not leave a reset charge, missing IDs or a violation mark
+// for the next connection.
+func TestFetchForgetIfGone(t *testing.T) {
+	t.Parallel()
+
+	disconnecter := func(a, b **testNode) func() {
+		return func() {
+			if err := (*a).svc.Protocol().DisconnectIn(p2p.Peer{Address: (*b).addr}); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	resetsAfterReconnect := func(t *testing.T, a, b *testNode, off *atomic.Bool) {
+		t.Helper()
+		sendRoot(t, b, a, whole) // the reconnect
+		off.Store(false)
+		for i := range rangesync.MaxFetchResets {
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("reset %d after the reconnect: got %v, want an unscored reset", i+1, err)
+			}
+		}
+	}
+
+	t.Run("reset charge", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			a, b  *testNode
+			off   atomic.Bool
+			armed atomic.Bool
+		)
+		clock := newHookClock()
+		armed.Store(true)
+		a = clock.set(newTestNodeOpts(t, nodeOpts{streamer: resetStreams(func() {
+			if armed.CompareAndSwap(true, false) {
+				clock.at(0, disconnecter(&a, &b)) // in chargeReset
+			}
+		}, &off)}))
+		b = newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want a reset", err)
+		}
+		resetsAfterReconnect(t, a, b, &off)
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("missing ids", func(t *testing.T) {
+		t.Parallel()
+
+		var a, b *testNode
+		clock := newHookClock()
+		a = clock.set(newTestNode(t))
+		b = newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		missing := missingIDs(t, 5, whole)
+		// the fetch reads the clock at its start, in the judgment after its
+		// Want and in its end judgment, which records the missing IDs
+		clock.at(2, disconnecter(&a, &b))
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missing); err != nil {
+			t.Fatal(err)
+		}
+		sendRoot(t, b, a, whole) // the reconnect
+		// missing for the first time on this connection: not counted
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missing); err != nil {
+			t.Fatalf("got %v, want the ids not counted", err)
+		}
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("violation mark", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			a, b *testNode
+			off  atomic.Bool
+		)
+		off.Store(true)
+		clock := newHookClock()
+		a = clock.set(newTestNodeOpts(t, nodeOpts{streamer: resetStreams(nil, &off)}))
+		b = newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		// a blatant shortfall: the fetch reads the clock at its start, in the
+		// judgment after its Want and when it marks the violation
+		clock.at(2, disconnecter(&a, &b))
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, rangesync.MaxWantIDs, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		resetsAfterReconnect(t, a, b, &off)
+		// the mark did not outlive the connection: past the budget is a
+		// violation again
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("reset past the budget: got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		if fails, _ := a.scorer.get(b.addr); len(fails) != 2 {
+			t.Fatalf("scorer fails %v, want 2", fails)
+		}
+	})
+}
+
+// TestViolationMarks checks the marks of violations: a peer without a
+// Status (the disconnect hook cleared it) is not marked, so that a mark
+// cannot outlive its connection and exempt the next one from the rules for
+// ViolationGrace, and a peer already marked is not reported again, on
+// either side: one violation, one score.
+func TestViolationMarks(t *testing.T) {
+	t.Parallel()
+
+	unsolicited := func(t *testing.T, a, b *testNode) {
+		t.Helper()
+		fakeHolder(a, b, func(_ *pb.Want, w protobuf.Writer) {
+			_ = w.WriteMsg(delivery(t, validChunks(1)[0]))
+		})
+	}
+
+	t.Run("no mark without a status", func(t *testing.T) {
+		t.Parallel()
+
+		var off atomic.Bool
+		off.Store(true)
+		clock := newFakeClock()
+		a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: resetStreams(nil, &off)}))
+		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+			t.Fatal(err)
+		}
+		// a violation after the disconnect hook ran, as a second stalled Want
+		unsolicited(t, a, b)
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		connect0(a, b)
+		sendRoot(t, b, a, whole) // the reconnect
+		off.Store(false)
+		for i := range rangesync.MaxFetchResets {
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("reset %d: got %v, want an unscored reset", i+1, err)
+			}
+		}
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("reset past the budget: got %v, want %v (the peer is not exempt)", err, rangesync.ErrInvalidMessage)
+		}
+		if fails, _ := a.scorer.get(b.addr); len(fails) != 2 {
+			t.Fatalf("scorer fails %v, want 2", fails)
+		}
+	})
+
+	t.Run("one score per violation", func(t *testing.T) {
+		t.Parallel()
+
+		a := newTestNode(t)
+		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		// a blatant shortfall, then an unsolicited delivery while the peer is
+		// being disconnected (it stays connected in this test)
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, rangesync.MaxWantIDs, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		unsolicited(t, a, b)
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		assertFailed(t, a.scorer, b.addr)
+
+		// the responder side: a marked peer's invalid Want still disconnects
+		// it, unscored; an unmarked one's is scored
+		p := newRawPeerIn(t, a, whole)
+		if err := p.sendStatus(t, rangesync.EncodeStatus(rangesync.Status{Root: whole, LeafBits: serviceLeafBits, Mapping: fingerprint.DefaultMapperID})); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			s := p.open(t, rangesync.FetchStreamName)
+			if err := protobuf.NewWriter(s).WriteMsg(&pb.Want{}); err != nil {
+				t.Fatal(err)
+			}
+			_ = s.FullClose()
+			records := p.records(t, rangesync.FetchStreamName)
+			assertDisconnect(t, records[len(records)-1].Err())
+		}
+		assertFailed(t, a.scorer, p.addr)
+	})
 }

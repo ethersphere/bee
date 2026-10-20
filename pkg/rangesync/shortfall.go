@@ -46,11 +46,15 @@ import (
 //   - Nothing is judged, and nothing is recorded for the peer, without a
 //     Status of the peer (it disconnected), after a violation of the peer
 //     (this fetch's, or another's within violationGrace), or while the
-//     Service closes.
+//     Service closes. A violation marks the peer only while it has a
+//     Status, and a peer marked already is not reported again.
 //   - Apart from the shortfall, a fetch stream that fails with IDs still
-//     undelivered (a reset by the peer, not this node ending the fetch nor
-//     the fetch timeout) takes one of the peer's maxFetchResets, then one per
-//     fetchResetInterval; past them it is a violation.
+//     undelivered (a reset by the peer, or an open that fails while the
+//     peer is connected; not this node ending the fetch nor the fetch
+//     timeout) takes one of the peer's maxFetchResets, then one per
+//     fetchResetInterval; past them it is a violation. The requester opens
+//     at most maxFetchStreamsOut streams to a peer, so one transient failure
+//     takes at most that many.
 const (
 	// shortfallMin and shortfallRatio set the shortfall a fetch tolerates
 	// from its peer (shortfallTolerance): at most shortfallMin IDs, or
@@ -182,8 +186,9 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 		return nil
 	default:
 	}
-	now := s.now()
 	remote, ok := s.LastStatus(peer)
+	// read after the Status: a disconnect from here on is forgetIfGone's
+	now := s.now()
 	if !ok || s.shortfalls.violated(peer, now) {
 		return nil // the peer disconnected (its root is unknown), or is being disconnected
 	}
@@ -211,22 +216,47 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 }
 
 // chargeReset takes one of peer's fetch resets, for a fetch stream that
-// failed with IDs undelivered, and reports whether its budget was spent
+// failed, or failed to open, with IDs undelivered, and reports whether its
+// budget was spent
 // (maxFetchResets, then one per fetchResetInterval). Nothing is charged for
 // a peer whose Status is gone (it disconnected) or that is being
 // disconnected for a violation.
 func (s *Service) chargeReset(peer swarm.Address) (spent bool) {
+	_, ok := s.LastStatus(peer)
+	// read after the Status: a disconnect from here on is forgetIfGone's
 	now := s.now()
-	if _, ok := s.LastStatus(peer); !ok || s.shortfalls.violated(peer, now) {
+	if !ok || s.shortfalls.violated(peer, now) {
 		return false
 	}
 	defer s.forgetIfGone(peer)
 	return !s.fetchResets.take(peer, now)
 }
 
+// markViolation marks peer as reported for a violation, for violationGrace,
+// and reports whether it was marked already: reported within the grace, so
+// that the caller does not report it again (one violation, one score; the
+// peer is being disconnected). A peer whose Status is gone (it
+// disconnected, and the disconnect hook cleared its mark) is not marked, so
+// that no mark outlives its connection and exempts the next one.
+func (s *Service) markViolation(peer swarm.Address) (marked bool) {
+	_, ok := s.LastStatus(peer)
+	// read after the Status: a disconnect from here on is forgetIfGone's
+	if s.shortfalls.markViolation(peer, s.now(), ok) {
+		return true
+	}
+	if ok {
+		s.forgetIfGone(peer)
+	}
+	return false
+}
+
 // forgetIfGone clears what the shortfall rules and the reset budget keep for
 // peer when its Status is gone: it disconnected while they recorded, after
-// the disconnect hook cleared them.
+// the disconnect hook cleared them. A Status that handleStatus records after
+// the disconnect hook (an accepted race, see there) hides the disconnect:
+// what was recorded then is kept until the peer's next disconnect, or until
+// it expires (a mark after violationGrace, missing IDs and an offense after
+// shortfallWindow, reset charges at one per fetchResetInterval).
 func (s *Service) forgetIfGone(peer swarm.Address) {
 	if _, ok := s.LastStatus(peer); !ok {
 		s.shortfalls.clear(peer)
@@ -300,11 +330,19 @@ func (b *shortfallBook) excuse(peer swarm.Address, from, to fingerprint.Range, s
 	return true
 }
 
-// markViolation records that peer was reported for a violation at now.
-func (b *shortfallBook) markViolation(peer swarm.Address, now time.Time) {
+// markViolation reports whether peer was reported for a violation within
+// violationGrace before now and, if it was not and set is true, records that
+// it was reported at now.
+func (b *shortfallBook) markViolation(peer swarm.Address, now time.Time, set bool) (marked bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.violations[peer.ByteString()] = now
+	if b.violatedLocked(peer, now) {
+		return true
+	}
+	if set {
+		b.violations[peer.ByteString()] = now
+	}
+	return false
 }
 
 // violated reports whether peer was reported for a violation within
@@ -312,6 +350,11 @@ func (b *shortfallBook) markViolation(peer swarm.Address, now time.Time) {
 func (b *shortfallBook) violated(peer swarm.Address, now time.Time) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.violatedLocked(peer, now)
+}
+
+// violatedLocked is violated with b.mu held.
+func (b *shortfallBook) violatedLocked(peer swarm.Address, now time.Time) bool {
 	at, ok := b.violations[peer.ByteString()]
 	if ok && now.Sub(at) >= violationGrace {
 		delete(b.violations, peer.ByteString())

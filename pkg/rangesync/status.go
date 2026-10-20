@@ -193,7 +193,9 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	// peer that just disconnected. That is accepted: the entry is one small
 	// value per peer address, it is replaced by the peer's next Status or
 	// deleted on its next disconnect, and a Reconcile using it fails at
-	// NewStream because the peer is not connected.
+	// NewStream because the peer is not connected. The fetch rules then miss
+	// the disconnect: what they record for the peer meanwhile is kept until
+	// its next disconnect or expiry (forgetIfGone).
 	s.statusMu.Lock()
 	prev, had := s.statuses[p.Address.ByteString()]
 	s.statuses[p.Address.ByteString()] = st

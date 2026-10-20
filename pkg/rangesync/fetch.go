@@ -154,8 +154,9 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // IDs, rejections that depend on the chain state or on this node's reserve,
 // and the IDs of a Want that failed do not count. No ID outside the peer's
 // root by its last Status is requested. A fetch stream that fails with IDs
-// undelivered (the peer reset it) is a violation past maxFetchResets, then
-// one per fetchResetInterval, per peer.
+// undelivered (the peer reset it), or fails to open while the peer is
+// connected, is a violation past maxFetchResets, then one per
+// fetchResetInterval, per peer.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -406,9 +407,11 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 // deliveries until the peer closes the stream, recording the peer's
 // shortfall in sf: the Want's IDs as requested, those still undelivered
 // when the peer closed the stream as missing, and the stamps invalid on
-// every node. A stream that fails with claimed IDs undelivered takes one
-// of the peer's fetch resets (chargeReset), past which it is a violation.
-// Every claim in claimed is ended before it returns.
+// every node. A stream that fails with claimed IDs undelivered, or fails to
+// open while the peer is connected (not p2p.ErrPeerNotFound), takes one of
+// the peer's fetch resets (chargeReset), past which it is a violation;
+// this node ending the fetch does not. Every claim in claimed is ended
+// before it returns.
 func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
 	// claimed holds the IDs not delivered yet
 	defer func() {
@@ -441,7 +444,14 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
 	if err != nil {
-		return fmt.Errorf("new stream: %w", err)
+		err = fmt.Errorf("new stream: %w", err)
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			return err // the peer is gone: nothing to charge
+		}
+		// The Want took its fetch rate and holds its claims: an open the
+		// peer fails (it resets or stalls the headers exchange, or serves no
+		// fetch stream) is charged as a reset.
+		return stalled(err)
 	}
 	defer func() {
 		if err != nil {

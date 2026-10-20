@@ -179,11 +179,14 @@ func (s *Service) acquireSession(peer swarm.Address) (release func(), err error)
 }
 
 // initiatorViolation disconnects peer for the violation err and reports it
-// to the scorer; the caller resets the stream. It returns err.
+// to the scorer, unless the peer was reported within violationGrace
+// (markViolation); the caller resets the stream. It returns err.
 func (s *Service) initiatorViolation(peer swarm.Address, err error) error {
-	s.shortfalls.markViolation(peer, s.now())
+	reported := s.markViolation(peer)
 	s.metrics.InvalidMessage.Inc()
-	s.scorer.Fail(peer, err)
+	if !reported {
+		s.scorer.Fail(peer, err)
+	}
 	s.logger.Debug("invalid message from peer, disconnecting", "peer_address", peer, "error", err)
 	if derr := s.streamer.Disconnect(peer, "rangesync: invalid message"); derr != nil {
 		s.logger.Debug("disconnect peer failed", "peer_address", peer, "error", derr)
