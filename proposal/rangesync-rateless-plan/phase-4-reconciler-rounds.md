@@ -992,6 +992,57 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   line in `followup-fuzzing.md`. New test helpers: `fakeService.sessionHook` and `busyErr`,
   `advancingAfter`, `newStripeHarness`, and the export `StripeSlotsTaken`.
 
+- **(T4.5 part 2a fix round 1, Low 1) Verifications and bootstrap stripes keep the stripe lock
+  across re-asks.** This supersedes the part 2a entry "Re-ask waits release the peer" for those
+  two cases. `verifier` picks the first ready candidate for every stripe, so the verifications of
+  a transfer queue on one peer's lock. One that freed the lock while it waited to ask again
+  rejoined the back of the queue on its own clock and could time out. Verifications do not
+  restart, so the deliverer then went unverified and unscored (§9 withholding). During a bootstrap
+  rounds start no session, so the release bought them nothing. Now:
+  - `peerLocks.keep` makes a stripe free only the peer's Striped state while it waits, and
+    `holdPeer` takes back only what was freed;
+  - `VerifyStripes`' lock set keeps its locks, and so does the stripe worker's transfer of a
+    bootstrap job (`transferStripes` gains a bootstrap flag);
+  - other transfers (radius halves, sessions' large ranges) still free the lock.
+
+  Keeping the lock was chosen over spreading verifications across candidates: it also covers a
+  neighborhood with a single candidate, and it keeps the lowest-score choice. Tests:
+  `TestVerifyStripesShareVerifierReask`, `TestBootstrapStripeKeepsLockReask`.
+- **(T4.5 part 2a fix round 1, Low 2) The clock checks cover every timed wait.** This corrects the
+  part 2a entry's "starts nothing past its timeout whatever the goroutine scheduling". That held
+  only for session answers and retry waits. The attempt now also calls `expireIfDue` after the
+  wait for its peer before the first session, after taking its slots back in the Busy loop, and
+  after taking its peer back for an ask. So no session and no ask starts past the timeout. A fetch
+  already running ends when the clock's goroutine cancels it. Tests:
+  `TestStripeClockCheckedAfterWaits` (peer, slots) and `TestStripeReaskClockCheckedAfterPeerWait`.
+  They use `stripeWaits`, an `After` whose stripe expiries never fire and whose retry waits the
+  test ends.
+- **(T4.5 part 2a fix round 1, Low 3) Topology churn does not stretch the round gap.** This
+  supersedes the part 2a entry's "A topology change runs `track` at once":
+  - *A due round goes first.* The loop runs a due round (timer or deferred trigger), checked with
+    a non-blocking select, before it handles the next trigger.
+  - *Sends leave the loop.* A topology change runs `follow` on the loop: the root and the topology
+    into the machines, and the picks, in the critical section that adds new peers. It then sends
+    the picked Statuses in a goroutine of its own (`followTopology`, in `r.wg`). So a peer that
+    never answers holds up no round. Sends stay bounded: at most one is in flight per peer
+    (`sending`).
+  - *A delivered send triggers a round,* as a gossip pass does: a round that ran while it was in
+    flight skipped the peer's session.
+  - *Rounds are unchanged.* `track`, the round's first step, is `follow` plus a synchronous
+    `probe`, so a round still sees the outcome of the first contacts it sends (T4.1).
+  - *Latency:* the first Status is still sent at once. If it is slower than the round floor, the
+    first session waits for the round its delivery triggers.
+
+  Tests: `TestRoundDueBeforeTopologyChange` (20 trials) and `TestTopologyChangeDoesNotHoldRounds`.
+- **(T4.5 part 2a fix round 1, Low 4) Test gaps closed.**
+  - `TestStripeReaskRetakesLock` fails when `holdPeer` skips the lock.
+  - `TestRoundOwnsFirstContact` tests its race again. Peers join without a topology change, the
+    test runs the round that finds them while the gossip loop runs passes back to back, and it
+    checks the first contact right after that round. It fails when `track` sends nothing or does
+    not pick.
+  - `TestTopologyChangeFloor` and `TestStartupGuardNewPeer` wait until the first contact is
+    recorded, since the send is no longer on the loop.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1353,3 +1404,27 @@ _(sessions append here)_
     `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestWantSet*`, `TestSREP*`,
     `TestRejectedNotRefetchedEachRound`, `TestPeerJoinLeave`, `TestClose`, and the T4.5 part 1
     tests.
+- **(T4.5 part 2a fix round 1 → T4.6) Busy-heavy stripes, extended.** This extends "(T4.3 fix
+  round 2) T4.6: Busy-heavy stripes". Since part 2a, `ErrPeerSessionLimit` is the peer's Busy for
+  stripes, so a stripe is reassigned after about 30 s of it. An honest lower peer sends every ID
+  to an empty node (`session.go`, count 0), so its own session with this node holds the per-peer
+  slot for long. Stripes assigned to such peers can then be pushed away and exhaust
+  `maxStripeReassign`, which fails the bootstrap. T4.6 should measure this in an N = 17
+  bootstrap. If it shows, count peer-session-limit Busy separately with a longer bound, or prefer
+  peers that are not in a session with this node when planning stripes.
+- **(T4.5 part 2a fix round 1) Re-ask waits and the stripe lock, narrowed.** This narrows "(T4.5
+  part 2a → T4.6) Re-ask waits and the stripe lock". Verifications and bootstrap stripes now keep
+  the lock, so the open case is the other transfers: radius halves and sessions' large ranges.
+  Nothing is left open for verifications.
+- **(T4.5 part 2a fix round 1) Tests to run with `-race` on CI.** These ran with
+  `-count=20 -cpu=1,2,4` instead, and the reconciler package with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync/reconciler`, new: `TestStripeClockCheckedAfterWaits`,
+    `TestStripeReaskClockCheckedAfterPeerWait`, `TestRoundDueBeforeTopologyChange`,
+    `TestTopologyChangeDoesNotHoldRounds`, `TestStripeReaskRetakesLock`,
+    `TestVerifyStripesShareVerifierReask`, `TestBootstrapStripeKeepsLockReask`.
+  - Changed: `TestRoundOwnsFirstContact`, `TestTopologyChangeFloor`, `TestStartupGuardNewPeer`,
+    `TestStripeReaskReleasesPeer`, `TestStripeReaskTimeoutBoundsPeerWait`.
+  - Re-run, because `loop`, `follow`/`track`, `transferStripe` and `resolvePending` changed:
+    `TestRound*`, `TestStatusGossip*`, `TestStartupGuard*`, `TestPeerState*`, `TestStripe*`,
+    `TestTransferStripes*`, `TestVerifyStripes*`, `TestRoundBootstrap*`, `TestRadius*`,
+    `TestWantSet*`, `TestSREP*`, and the T4.5 part 1 tests.
