@@ -56,6 +56,7 @@ type published struct {
 type fakeSession struct {
 	challenge []byte
 	msgs      chan bps.Message
+	granted   chan struct{}
 	done      chan struct{}
 	published chan published
 	closed    chan struct{}
@@ -73,6 +74,7 @@ func newFakeSession() *fakeSession {
 	return &fakeSession{
 		challenge: challenge,
 		msgs:      make(chan bps.Message),
+		granted:   closedChan(),
 		done:      make(chan struct{}),
 		published: make(chan published, 8),
 		closed:    make(chan struct{}),
@@ -81,9 +83,16 @@ func newFakeSession() *fakeSession {
 
 func (f *fakeSession) Challenge() []byte            { return f.challenge }
 func (f *fakeSession) Messages() <-chan bps.Message { return f.msgs }
-func (f *fakeSession) Cursor() uint64               { return 0 }
-func (f *fakeSession) Done() <-chan struct{}        { return f.done }
-func (f *fakeSession) Err() error                   { return f.err }
+func (f *fakeSession) Position() bps.Position       { return bps.Position{} }
+func (f *fakeSession) Granted() <-chan struct{}     { return f.granted }
+
+func closedChan() chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}
+func (f *fakeSession) Done() <-chan struct{} { return f.done }
+func (f *fakeSession) Err() error            { return f.err }
 
 func (f *fakeSession) Publish(_ context.Context, kind bps.Kind, index uint64, b []byte) error {
 	if f.publishErr != nil {
@@ -157,9 +166,22 @@ func (f *bpsFixture) path(endpoint string) string {
 	return fmt.Sprintf("/bps/%s/%s/%s", endpoint, hex.EncodeToString(f.owner), hex.EncodeToString(f.topic))
 }
 
+// dial opens the endpoint: subscribe as the fixture's identity, publish as
+// the owner.
 func (f *bpsFixture) dial(t *testing.T, endpoint string) *websocket.Conn {
 	t.Helper()
-	q := "broker=" + f.broker.String() + "&identity=" + hex.EncodeToString(f.identity)
+	if endpoint == "subscribe" {
+		return f.dialAs(t, endpoint, f.identity)
+	}
+	return f.dialAs(t, endpoint, nil)
+}
+
+func (f *bpsFixture) dialAs(t *testing.T, endpoint string, identity []byte) *websocket.Conn {
+	t.Helper()
+	q := "broker=" + f.broker.String()
+	if identity != nil {
+		q += "&identity=" + hex.EncodeToString(identity)
+	}
 	u := url.URL{Scheme: "ws", Host: f.listener, Path: f.path(endpoint), RawQuery: q}
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -272,12 +294,14 @@ func TestBPSSubscribe(t *testing.T) {
 		f := newBPSFixture(t)
 		conn := f.dial(t, "subscribe")
 		chunk := f.signedSOC(t, f.signer, bps.KindData, f.sess.challenge, 7, []byte("hello cohort"))
-		f.sess.msgs <- bps.Message{SOC: chunk, Challenge: f.sess.challenge, Index: 7}
+		f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: chunk, Challenge: f.sess.challenge, Index: 7}
 		typ, got, err := conn.ReadMessage()
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := append(append([]byte{}, f.sess.challenge...), 0, 0, 0, 0, 0, 0, 0, 7)
+		want := append([]byte{byte(bps.KindData)}, f.owner...)
+		want = append(want, f.sess.challenge...)
+		want = append(want, 0, 0, 0, 0, 0, 0, 0, 7)
 		want = append(want, chunk...)
 		if typ != websocket.BinaryMessage || !bytes.Equal(got, want) {
 			t.Fatalf("got type %d %x, want binary %x", typ, got, want)
@@ -616,4 +640,125 @@ func TestBPSPublishInvalidChallengeLength(t *testing.T) {
 		t.Fatalf("got close %d %q", ce.Code, ce.Text)
 	}
 	waitSessionClosed(t, f)
+}
+
+func TestBPSSubscribeEndOfStream(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	conn := f.dial(t, "subscribe")
+	f.sess.end(bps.ErrEndOfStream)
+	expectClose(t, conn, api.BPSCloseEndOfStream)
+}
+
+func TestBPSPublishForwardsDeliveries(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	conn := f.dial(t, "publish")
+	_ = readChallenge(t, f, conn)
+	seat := make([]byte, 20)
+	copy(seat, "bps-test-seat")
+	f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: seat, SOC: []byte("soc"), Challenge: f.sess.challenge, Index: 1}
+	typ, got, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ != websocket.BinaryMessage || got[0] != byte(bps.KindData) || !bytes.Equal(got[1:21], seat) {
+		t.Fatalf("got type %d %x", typ, got)
+	}
+}
+
+func TestBPSPublishRoster(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	conn := f.dial(t, "publish")
+	challenge := readChallenge(t, f, conn)
+	authenticate(t, f, conn, challenge)
+
+	payload, err := bps.RosterPayload([][]byte{f.identity})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ros := f.signedSOC(t, f.signer, bps.KindRoster, challenge, 0, payload)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 0, ros)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindRoster, 0, ros)
+
+	bad := f.signedSOC(t, f.signer, bps.KindRoster, challenge, 1, []byte{0x0a, 0x01, 0x01})
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 1, bad)); err != nil {
+		t.Fatal(err)
+	}
+	expectClose(t, conn, api.BPSCloseInvalidMessage)
+}
+
+func TestBPSPublishSeat(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	f.sess.granted = make(chan struct{})
+	key, _ := crypto.GenerateSecp256k1Key()
+	seatSigner := crypto.NewDefaultSigner(key)
+	seatAddr, _ := seatSigner.EthereumAddress()
+	seat := seatAddr.Bytes()
+
+	conn := f.dialAs(t, "publish", seat)
+	var m struct {
+		Type        string `json:"type"`
+		Challenge   string `json:"challenge"`
+		RosterTopic string `json:"rosterTopic"`
+	}
+	if err := conn.ReadJSON(&m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Type != "challenge" || m.RosterTopic != "" {
+		t.Fatalf("unexpected challenge message %+v", m)
+	}
+	f.bps.mu.Lock()
+	req := f.bps.req
+	f.bps.mu.Unlock()
+	if !bytes.Equal(req.Identity, seat) {
+		t.Fatalf("unexpected join request %+v", req)
+	}
+
+	// granted once a roster naming the seat has reached the stream
+	close(f.sess.granted)
+	if err := conn.ReadJSON(&m); err != nil || m.Type != "granted" {
+		t.Fatalf("want granted, got %+v %v", m, err)
+	}
+	challenge := f.sess.challenge
+	auth := f.signedSOC(t, seatSigner, bps.KindAuth, challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindAuth, 0, auth)
+	data := f.signedSOC(t, seatSigner, bps.KindData, challenge, 0, []byte("from the seat"))
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, data)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindData, 0, data)
+
+	// the roster is the owner's alone
+	payload, _ := bps.RosterPayload(nil)
+	ros := f.signedSOC(t, seatSigner, bps.KindRoster, challenge, 0, payload)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 0, ros)); err != nil {
+		t.Fatal(err)
+	}
+	expectClose(t, conn, api.BPSCloseInvalidMessage)
+}
+
+func TestBPSPublishSeatNotGranted(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	f.sess.granted = make(chan struct{})
+	conn := f.dialAs(t, "publish", f.identity)
+	_ = readChallenge(t, f, conn)
+	// a seat listens until it is granted, and may send nothing before
+	f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: []byte("soc"), Challenge: f.sess.challenge}
+	if typ, _, err := conn.ReadMessage(); err != nil || typ != websocket.BinaryMessage {
+		t.Fatalf("want a delivery, got %d %v", typ, err)
+	}
+	auth := f.signedSOC(t, f.signer, bps.KindAuth, f.sess.challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+		t.Fatal(err)
+	}
+	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }

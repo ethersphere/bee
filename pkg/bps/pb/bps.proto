@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Wire format of SWIP-74 (BPS-lite). Field and enum numbers are shared with
-// SWIP-60, which extends these messages by adding fields and values only.
+// Wire format of SWIP-74 (BPS-lite) with the admin's service kinds of SWIP-87
+// (explicit multi-publisher): EOS, ROSTER and the Roster payload. Field and enum
+// numbers are shared with SWIP-60, which extends these messages by adding fields
+// and values only.
 syntax = "proto3";
 
 package bps;
@@ -20,7 +22,7 @@ enum TopicBinding {
 message CohortSpec {
   bytes topic = 1;          // 32 bytes
   TopicBinding binding = 2; // FEED_TOPIC
-  bytes principal = 3;      // 20 bytes, required: the publisher
+  bytes principal = 3;      // 20 bytes, required: the admin
 }
 
 // Peer -> broker: the first frame on a fresh stream.
@@ -47,7 +49,15 @@ enum Kind {
   KIND_UNSPECIFIED = 0; // invalid on the wire
   DATA = 1;             // an update of the stream's session feed
   AUTH = 2;             // the empty chunk at index 0 of the session's AUTH feed: authenticates
-                        // a pending stream, a heartbeat on a publisher stream, never delivered
+                        // a pending stream, or a spectator stream a delivered roster names;
+                        // a heartbeat on a publisher stream; never delivered
+  EOS = 3;              // the empty chunk at index 0 of the admin's EOS feed: the channel is ended
+  ROSTER = 4;           // from the admin: the publisher set as of this index; payload = Roster
+}
+
+// The payload of a ROSTER chunk.
+message Roster {
+  repeated bytes publishers = 1; // 20-byte addresses: the complete set excluding the admin
 }
 
 // Every frame after the handshake. soc is the index-th update of the session feed:
