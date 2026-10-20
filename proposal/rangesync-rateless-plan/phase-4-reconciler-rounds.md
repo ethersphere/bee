@@ -1367,6 +1367,127 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   `Close`, transient failures), `TestFetchForgetIfGone`, `TestViolationMarks`. There is no new
   exported identifier, and no `pkg/node`, `go.mod` or proto change.
 
+- **(T4.5 part 2c, item 1) A fetch stream opens before the fetch rate and the claims, and a failed
+  open is never charged.** This supersedes fix round 3's (Medium 1) "A fetch stream that fails to
+  open is charged as a reset" as a whole, and narrows fix round 2's (Medium 1) reset charge: the
+  reset budget applies only to a stream whose Want claimed IDs, so only when claims and fetch rate
+  were spent. A Want now runs: stream slot (`maxFetchStreamsOut`) → open (`openFetchStream`, its
+  own `FetchTimeout`) → fetch rate, with the stream open (bounded only by the fetch's context) →
+  claims → Want and deliveries (`FetchTimeout` from the claims, as the claim deadline needs). What a
+  failed open costs now:
+  - nothing is charged and it is never a violation, whatever the cause: a reset or stalled headers
+    exchange, a peer whose inbound streams are full, no fetch handler, the open timing out, the peer
+    gone;
+  - nothing was requested (no `Undelivered`), no claim is held and no fetch rate was taken, so the
+    IDs stay free for other peers' fetches; the call ends with the error, and its other IDs are left
+    to the next round, as for any fetch error;
+  - the stream slot is held for the open, at most `FetchTimeout`. The cap still bounds streams: the
+    slot is held from the open to the stream's end, and queued fetches hold none.
+
+  The responder tolerates a stream that waits on the limiter: `handleFetch` reads the Want with the
+  handler's context and no deadline, libp2p sets no deadline on an inbound stream after the headers
+  exchange (`HeadersRWTimeout` bounds only that; `closeDeadline` only `FullClose`), and yamux has no
+  per-stream idle timeout. Such a stream holds one of the responder's `maxPeerFetchStreams` handler
+  slots, at most two per requester, as before. A stream left with nothing to claim after the wait (the
+  IDs were stored or claimed meanwhile) is reset without a Want; the responder returns a plain error,
+  not a violation. Honest-safety: `TestFetchInboundFullNotDisconnected` runs three neighbors of a
+  peer whose inbound streams stay full for five minutes of the fake clock, bursts of six queued
+  fetches each every 5 s: none scores or disconnects it, and each fetches from it once its streams
+  free up. What a peer gains: it can fail or stall every fetch open unscored. That costs this node
+  one of the peer's two stream slots per open and the peer's own fetches, not other peers' (nothing is
+  claimed); its sessions still run (Follow-ups). A verifier whose opens fail escapes its own rule, and
+  leaves its deliverer unjudged, as with any verification that ends with an error (Follow-ups).
+- **(T4.5 part 2c, item 2) This node's own resource limit is a local cause (`ErrLocal`).** Verified
+  in go-libp2p v0.49.0 (read-only): the resource manager returns `ErrStreamOrConnLimitExceeded`
+  wrapping `fmt.Errorf("cannot reserve outbound stream: %w", network.ErrResourceLimitExceeded)`, and
+  every hop up to rangesync wraps with `%w` (the scope's `wrapError`, swarm `Conn.NewStream`,
+  `BasicHost.NewStream`, bee's `newStreamForPeerID` and `NewStream`). A refusal on the peer's side
+  resets the new stream (`StreamResourceLimitExceeded`): this node sees a remote `*network.StreamError`,
+  which unwraps to `network.ErrReset` (and its transport error), never to
+  `ErrResourceLimitExceeded`. After the open, yamux ignores a failed memory reservation (it only
+  stops growing the window), so the refusal shows only at the open. `openFetchStream` wraps such an
+  error with `ErrLocal`: the reconciler's `localCause` (no backoff) and stripes (reassigned unscored,
+  as for any fetch error). Charging is moot since item 1. The check imports
+  `github.com/libp2p/go-libp2p/core/network` into `pkg/rangesync`, the first package outside
+  `pkg/p2p` to do so (no `go.mod` change). Session and Status opens are not classified (Follow-ups).
+- **(T4.5 part 2c, item 3) Docs and tests of part 2b.**
+  - Correction: fix round 3's "the headers exchange outlasts it only when `HeadersRWTimeout` is set at
+    or above `FetchTimeout`" was wrong. basichost's `IdentifyWait`, and the full multistream
+    negotiation when the peer left the protocol out of identify, obey only the caller's context, so
+    an open could stall for the whole `FetchTimeout` (15 s), which round 3 judged a stall violation
+    at once. Since item 1 the open has a context of its own and a held open is neither a violation
+    nor charged. The review's test (held open, `fetchTimeout` 100 ms → `ErrInvalidMessage`, one Fail,
+    disconnected) is adapted to that: `TestFetchStreamOpenHeld` gets `context.DeadlineExceeded`, no
+    Fail, no disconnect, no claim while it waits and no fetch rate.
+  - Status gate: the stall violation of a Want (`no deliveries within FetchTimeout`, after the
+    claims) is judged only while the peer has a Status, like the shortfall rules and the reset
+    budget. A peer whose Status is gone at the deadline (the disconnect hook ran) is not scored
+    (`TestFetchStalledHolderGone`). This narrows fix round 3's (Low 3) "A violation of a peer without
+    a Status ... is scored, each time" for stalls; a responder-side violation still is.
+  - The cross-path double Fail is covered: `TestViolationMarks` adds a requester violation then a
+    responder violation of the same peer, and the reverse, one Fail each. Both already held.
+- **(T4.5 part 2c, item 4) `peers{state}`.** `rangesync_peers{state}` is a collector that counts the
+  reconciler's peers by the state of their machine under `r.mu` when it is collected, with every
+  state reported (0 when empty): probing, unsupported, idle, reconciling, fetching, striped, and
+  removed (dropped from sessions, still connected). It is registered with the reconciler's metrics.
+  A peer backing off counts as idle; no separate label (Follow-ups).
+- **(T4.5 part 2c, item 5) Session ranges are trimmed around registered stripe ranges.** This
+  supersedes T3.2 part 2's "a range overlapping (containing or contained in) a registered one is
+  dropped and resurfaces in a later round" for the ranges sessions hand to the Striper. Prefix ranges
+  overlap only by containment:
+  - a range inside a registered range is still not registered;
+  - a session's range that contains registered ranges is trimmed (`trimStripe`): split into halves
+    until each part is covered or holds no registered range, which gives the fewest prefix ranges
+    over what is left. Each part is a job of its own, registered and removed by its own range, so the
+    worker's bookkeeping is unchanged;
+  - a bootstrap or radius job that contains registered ranges is still not registered: `started`,
+    the radius half and its cancel are those of one job, and its round tries again.
+
+  Each part counts against `maxStripeRegistry = 1024`. The walk stops at the room left; the parts past
+  it are dropped and counted once in `stripes_total{dropped}`, and `enqueueStripes` reports false.
+  The work is bounded by the room and the registry size, not by the depth of the registered ranges
+  (a covered part is exactly a registered range, so at most 1024 of them), so a peer that hands deep
+  ranges cannot make it expensive.
+- **(T4.5 part 2c, item 6) Digests compare over the session root.** This supersedes T1.11's
+  "different roots are compared as different" and extends the T4.3 fix (M2) rule. A Status
+  summarizes its sender's root; when the peer's root lies inside this node's, that root is the session
+  root, and the round compares the peer's summary with this node's summary of that range, read from
+  the fingerprint index by the new additive `Service.RangeSummary` (no address-index scan, the index's
+  own errors). The reconciler uses it through an optional interface (`rangeSummarizer`); the narrow
+  `reconciler.Service` is unchanged. `compareDigests` reports whether the digests are comparable and
+  equal:
+  - comparable and equal: the peer's round ends as an equal digest (`eventEqualDigest`);
+  - comparable and different: a round counts as finding differences (M2 now reads "a peer whose
+    digest is comparable over the session root differs", was "a peer with the same root");
+  - not comparable (this node's root lies inside the peer's, or the index cannot summarize the
+    range): different, and the interval adapts on what sessions find, as M2 had it.
+
+  `recheckSession` uses the same comparison. The takeover wait keeps its same-root rule, since only
+  equal roots give both sides the same digests. Effect: when the wide side of an in-sync nested pair
+  initiates, it no longer runs a session every round; the narrow side takes over after
+  `2 × MaxRoundInterval + jitter`, so such a pair costs one session per 60 to 90 s instead of one per
+  round. When the narrow side initiates nothing changes, and cannot without a wire change (G2): the
+  peer's Status carries only its own root's summary. `TestRangeSummary` checks that a node's
+  `RangeSummary` of a range equals the Status summary of a node whose root is that range. The round
+  reads the index under `r.mu`; the index takes only its own read locks, briefly, and never blocks on
+  the reconciler (its root-change signals are non-blocking).
+- **(T4.5 part 2c, item 7) Cleanups.** `fetch_skipped_total{reason}` keeps its name: an ID in the
+  reserve (before the claim and after it) is now `in_reserve`, and `held` is the want set's alone.
+  `(*Session).pendingReplies` moves into `PendingReplies` in `export_test.go`.
+- **(T4.5 part 2c) Tests changed by design.** `TestFetchStreamOpenCharged` becomes
+  `TestFetchStreamOpenNotCharged` (adds a peer whose inbound streams are full).
+  `TestFetchClaimRechecksReserve` sees a stream open and end without a Want, not no stream.
+  `TestFetchStalledHolder` and `TestFetchWithResultFailed/stalled` send a Status first (the gate).
+  `TestEnqueueStripesDedup` expects the super-range trimmed. `TestFetchStreamOpenHonest` keeps its
+  cases; its budget wording went.
+- **(T4.5 part 2c) Contracts and scope.** These are unchanged: the wiring, the narrow
+  `reconciler.Service` and its optional interfaces (one more, optional), the `SyncRate` guard,
+  `storer.Syncer`, `TestCombinedSyncerBothDrivers`, and the T4.x rules not superseded above. New
+  exports, all additive: `rangesync.(*Service).RangeSummary`, the `rangesync_peers{state}` metric,
+  the `in_reserve` reason. There is no `pkg/node`, `go.mod` or proto change, and no new parser of
+  peer input; `followup-fuzzing.md` gains a line for the changed invariants of the T1.10 target.
+  `Local.Symbols` cancellation stays a follow-up (not trivial), and so does the per-peer fetch credit.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1921,3 +2042,57 @@ _(sessions append here)_
   (10/s per IP), so a self-disconnecting Sybil gets ≥ 1 unscored failed Want (250 IDs) per cycle
   (≈ 100+ IDs/s), above the ≈ 70 IDs/s residual that assumes a connected Sybil. The credit (follow-up
   above) should be a hard gate before testnet and keyed so it survives reconnects, like the root excuse.
+- **(T4.5 part 2c) Resolved: the round-3 review's Lows for part 2c.** This closes items 1 to 3 of
+  "(T4.5 part 2b round-3 review, Lows; recorded by the orchestrator at landing) For T4.5 part 2c"
+  (the open before the fetch rate and the claims; this node's own limit as `ErrLocal`; the docs, the
+  held-open test, the Status gate, the cross-path test). See the Decisions log.
+- **(T4.5 part 2c) Resolved without a `pkg/p2p` change: this node's own stream limit.** This closes
+  "(T4.5 part 2b fix round 3 → p2p) This node's own stream limit charges its peers". No failed open
+  is charged any more, and the refusal is told apart through `network.ErrResourceLimitExceeded`.
+- **(T4.5 part 2c) Resolved: `peers{state}` gauge.** This closes "(T4.2) `peers{state}` gauge
+  (T4.5)" (`rangesync_peers{state}`).
+- **(T4.5 part 2c) Resolved for session ranges: stripe registry trimming.** This closes "(T4.2)
+  Stripe registry trimming (T4.3)", "(T4.3) Stripe registry trimming (T4.5)" and "(T3.2 part 2)
+  Registry granularity". Bootstrap and radius jobs are still not trimmed; their rounds retry them.
+- **(T4.5 part 2c) Resolved for the wider root: session-root summaries.** This closes "(T4.2) Compare
+  session-root summaries (T4.3)" and "(T4.3) Compare session-root summaries in `sameDigest` (T4.5)".
+  The narrower side still compares as different; only a wire change could fix that (G2 freezes it).
+- **(T4.5 part 2c) Resolved: cleanups.** This closes "(T4.5 part 1) `(*Session).pendingReplies` has
+  test callers only" and "(T4.4) `fetch_skipped_total{reason="held"}` is ambiguous (pre-existing)".
+- **(T4.5 part 2c → after phase 4) `Local.Symbols` cancellation.** Still not trivial, as "(T4.3)
+  `Local.Symbols` cancellation (T4.5 or later)" found: it needs a context in the `Local` interface
+  (the T1.8 contract), in `local.scanIDs` and in every session-test fake. The scan stays bounded
+  (`ScanLimit`, `MaxScansPerMessage`).
+- **(T4.5 part 2c) Session and Status opens refused by this node's resource manager.** Only the fetch
+  open classifies `network.ErrResourceLimitExceeded` as `ErrLocal`. A refused reconcile stream backs
+  off the peer's sessions (`eventError`), and a refused Status stream its gossip (`statusRetry`).
+  One `errors.Is` at each open would make them local causes too.
+- **(T4.5 part 2c → T4.6) A peer that fails every fetch open keeps its sessions.** Failed opens are
+  not charged, so such a peer is neither scored nor backed off: each round may run a session with it
+  whose fetch then fails. The IDs it lists are not claimed, so other peers serve them, and its
+  sessions are bounded by the rounds. If T4.6 or testnet shows the cost, a backoff of the peer's
+  sessions after failed opens (not a score) would bound it.
+- **(T4.5 part 2c → T4.6) A failed verification leaves the deliverer unjudged.** A verifier whose
+  opens fail (or whose stream resets) ends the verification with an error, and `verifyStripe` judges
+  neither it nor the deliverer. A colluding verifier can so shield a withholding deliverer from its
+  score; what the deliverer withheld comes back in later rounds. Retrying the verification with
+  another verifier would close it.
+- **(T4.5 part 2c) `peers{state}` has no backoff breakdown.** A peer backing off counts as idle. If
+  T6 needs it, a separate gauge of peers past their retry time would show it.
+- **(T4.5 part 2c → T4.6) Trimmed stripe parts are jobs of their own.** Each part is planned across
+  its covering peers and verified on its own, so trimming around deep registered ranges multiplies
+  stripe sessions. T4.6 should check that small parts cost less than the rounds they save.
+- **(T4.5 part 2c) Tests to run with `-race` on CI.** These ran with `-count=20 -cpu=1,2,4` instead,
+  and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchStreamOpenNotCharged`, `TestFetchStreamOpenLocalLimit`,
+    `TestFetchStreamOpenHeld`, `TestFetchInboundFullNotDisconnected`, `TestFetchLimiterWaitAfterOpen`,
+    `TestFetchStalledHolderGone`, `TestRangeSummary`, `TestViolationMarks` (two new cases). Changed:
+    `TestFetchClaimRechecksReserve`, `TestFetchStalledHolder`, `TestFetchWithResultFailed`,
+    `TestFetchSkipsHeld`, `TestFetchSkipsClaimed`. Re-run, because `want` and `fetch` changed:
+    `TestFetch*`, `TestFetchStreamOpenHonest`, `TestFetchForgetIfGone`, `TestFetchResetBudget`.
+  - `pkg/rangesync/reconciler`, new: `TestPeersGauge`, `TestEnqueueStripesTrimmed`,
+    `TestEnqueueStripesTrimmedTransferred`, `TestEnqueueStripesTrimmedBound`,
+    `TestRoundSessionRootDigest`. Changed: `TestEnqueueStripesDedup`. Re-run, because the round's
+    digest comparison and the stripe registry changed: `TestRound*`, `TestSessionRecheck*`,
+    `TestRadius*`, `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestSREP*`,
+    `TestWantSet*`, `TestPeerState*`.
