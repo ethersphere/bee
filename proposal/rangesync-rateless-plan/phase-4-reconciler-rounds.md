@@ -2341,3 +2341,25 @@ _(sessions append here)_
     `TestTransferStripes*`, `TestStripe*`, `TestVerifyStripes*`, `TestRoundBootstrap*`, `TestRadius*`,
     `TestResponderWantsFetched`.
   - `pkg/node`: `TestCombinedSyncerBothDrivers`.
+- **(T4.5 part 2c round-2 review; recorded by the orchestrator at landing) PRE-TESTNET BLOCKER: stripe
+  registry SyncRate pin.** The round-2 SyncRate fix bounds fetch-path pinning to ≤ 2 s per catch-up
+  episode, but the stripe-registry hold (reconciler.go ~L579) is unconditional: a higher-overlay peer
+  reports a count differing by > `LargeDiff` (session.go ~L193, its own claim), a stripe is
+  registered, and SyncRate stays ≥ guard while the stripe stalls — storage incentives off and the
+  radius pinned, for free (`pkg/puller` can't be pinned this way). Fix direction: hold for a stripe
+  only while its job stores chunks, past a grace (as for fetches). Must be fixed before any testnet
+  cohort enables rangesync (with the per-peer fetch credit follow-up). This supersedes the
+  "stripe registry hold attacker-pinnable" follow-up's T4.6 placement.
+- **(T4.5 part 2c round-2 review, Lows; recorded by the orchestrator at landing)**
+  1. Honest window: without the grace, SyncRate reads 0 from the session decision to the first stored
+     chunk; an attacker who drained the node-wide grace (or loads the fetch limiter / holds claims)
+     stretches it. Bounded: only non-striped catch-ups (< 65,536 missing, ≤ 1.6% of a 2^22 reserve);
+     reserve-worker harm needs the count within 65k of the 50% threshold and self-corrects; `pkg/puller`
+     has the same window. Accepted; T4.6 should measure first-chunk latency.
+  2. The "~128 accepted chunks per window" follow-up is wrong: one accepted chunk then a reset per
+     10 min (no missing IDs recorded; the reset budget covers it) keeps the rate > 0 — about one
+     stamped chunk per window per victim, unscored (matches `pkg/puller`'s one fresh chunk per
+     reconnect). Optional fix: `rate.Add(-n)` for a Want ending with ≥ half its claims undelivered.
+  3. Tests: `TestFetchWithProgress` lacks the `ErrOverwriteNewerChunk` and already-in-reserve
+     branches; no test pins one-chunk-then-reset; no test of an honest catch-up after the grace was
+     drained. followup-fuzzing.md still says `errOpenBackoff` (now `ErrOpenBackoff`).
