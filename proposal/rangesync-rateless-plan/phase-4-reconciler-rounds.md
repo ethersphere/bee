@@ -766,6 +766,121 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   libp2p's `FullClose` waits for the remote, so production is not affected. `pkg/p2p/streamtest`
   is left unchanged (out of scope; Follow-ups).
 
+- **(T4.5 part 1) What was left of the Phase-1 loop, and what replaced it.** After T4.1–T4.4 the
+  T1.11 skeleton still showed in three places:
+  - `round()` in `reconciler.go`, the Phase-1 loop body, grown in place to run the peer lifecycle,
+    the Status picks, admission, catch-up planning and the session decisions in one function;
+  - `peerState.fetching`, a per-peer flag next to the state machine's own Fetching state;
+  - Phase-1 wording: `ScoreThreshold` ("Phase 4 may tighten this") and `sameDigest` ("Phase 4
+    compares summaries of the session root").
+
+  `round()` is now the scheduler's round in `scheduler.go`. It runs named steps, each in the file of
+  its driver:
+  1. `trackPeersLocked` (`peers.go`): the topology into the per-peer machines (new peers in Probing,
+     departed peers through `eventDisconnected`, the Unsupported reconnect, the resend flag);
+  2. `pickDueLocked` and `probe` (`gossip.go`): the Statuses that are due;
+  3. `admitLocked`: Probing to Idle or Removed;
+  4. `planCatchUp` (`stripes_transfer.go`): the bootstrap or radius-half transfer for the stripe
+     worker;
+  5. `scheduleLocked` (`scheduler.go`): the session decisions, the start-up guard and the adaptive
+     interval.
+
+  `session`, `recheckSession`, `initiates` and `sameDigest` moved to `scheduler.go`, and `probe` to
+  `gossip.go`. `reconciler.go` keeps the types, the wiring, `SyncRate` and the scoring. This is code
+  motion: the T4.4 suite passes unchanged, apart from the machine's table tests below. The package
+  doc now names the two drivers (state machine, scheduler) and the goroutine model (P6).
+- **(T4.5 part 1) The state machine tracks the round fetch.** `peerFSM.fetching` replaces
+  `peerState.fetching`. The flag holds from `eventSessionDone` to `eventFetched`. The table gains
+  `Striped --fetched--> Striped`, for a round fetch that ends during a stripe session. `stripe-done`
+  goes to Fetching only while the round fetch runs, and to Idle otherwise. This is the machine's one
+  guarded transition: the stripe's own wants are fetched while the peer is Striped. Callers now fire
+  one event each, under the same lock as before, so no caller sees a state it did not see before.
+  Test changes:
+  - `beyond81` gains the new edge;
+  - `PeerFSMIn(Striped)` has a round fetch pending, as when the machine got there through Fetching,
+    so the literal §8.1 edge `Striped --> Fetching` still holds;
+  - `TestPeerFSMRoundFetchDuringStripe` covers both orders and a stripe with no round fetch.
+- **(T4.5 part 1) Kept, because they carry weight.**
+  - *Topology changes still run a round at once.* Deferring them like the other triggers is the
+    follow-up "(T4.3) First Busy retry on topology rounds", which the orchestrator scheduled for
+    part 2. After the split it is the `changes` case of `loop`. The tests that drive rounds through
+    topology changes with `RoundInterval = 1 h` need rework with it: `TestRoundOwnsFirstContact`,
+    the radius tests (`radiusNet.round`) and the want-set harness (`wants_test.go`).
+  - *`Options.RoundInterval`* (a fixed interval with a real-clock round timer). The node never
+    sets it (`pkg/node` passes `Options{}`), but every `newHarness` test needs it: they run rounds
+    every 10 ms in real time on a frozen fake clock (`settle()`). Its doc now says it is for tests.
+  - *The adaptive round timer.* It is §8.2's `RoundInterval` (T4.3), not a Phase-1 timer.
+  - *`eventLargeDiff`* (`Reconciling --> Striped`): the wiring does not use it. It stays so that
+    the table matches §8.1 (T4.2).
+  - *The admission pass before `planCatchUp`, and admission again in `scheduleLocked`.* Both are
+    needed (T4.2 fix): stripes must find the peers Idle, and the evaluation admits from the Status
+    it evaluates.
+  - *`peerState.sent`, `served`, `verdict` and `takeover*`.* They are not machine state: they belong
+    to the gossip, the guard, the Unsupported reconnect and the takeover.
+  - *`orderCandidates`.* The verifier uses the unlocked form.
+  - *The `ScoreThreshold` rule* ("run last"). Phase 4 does not tighten it: a violation already
+    disconnects the peer, and Busy or failing peers back off. Only the doc changed.
+- **(T4.5 part 1) Dead code.** `wantSources.len` had test callers only and moves into
+  `export_test.go`. `golangci-lint run --tests=false --enable-only unused` finds nothing else in the
+  reconciler.
+- **(T4.5 part 1) Contracts unchanged.** These do not change:
+  - `reconciler.Service`: `LocalStatus`, `SendStatusWith`, `LastStatus`, `SubscribeRootChange`,
+    `ReconcileWith`, `Fetch`;
+  - the optional `statusSubscriber` and `resultFetcher`;
+  - the wiring: `New` → `SetService` → `Start`, `Options.Scorer` and `Options.Wants`;
+  - the single `stripeWorker`;
+  - the `SyncRate` guard: registered stripes, `radiusHold`, `StartupGuardTimeout` 120 s,
+    `CatchUpMinDiff` 256;
+  - `storer.Syncer`.
+
+  No `pkg/node`, `go.mod` or proto change. There is no new parser of peer input, so no line in
+  `followup-fuzzing.md`.
+- **(T4.5 part 1) P6, measured.** `TestRangesyncOnlyGoroutines` gives the node under test a pprof
+  goroutine label (`pprof.Do` around `Start`), which every goroutine its reconciler starts inherits.
+  It counts the labeled goroutines that have a reconciler frame. That leaves out the peers' stream
+  handlers, which streamtest starts from the node's goroutines, and it stays exact while other tests
+  run in parallel.
+  - Measured: with n sessions held at the peers, 3 + n (n = 4: 7; n = 8: 11). Once converged, 3:
+    the round loop, the gossip loop and the stripe worker.
+  - Asserted: n ≤ count ≤ 3 + 2n while held, and the count polled down to 3 after convergence. The
+    node opens one session stream per neighbor and no stream of another protocol.
+
+  For comparison, the puller runs 2 × (32 − r) workers per neighbor, a historical and a live one
+  per bin: 512 for 8 neighbors at r = 0.
+- **(T4.5 part 1) Dual-mode tests.** Both live in `pkg/rangesync/reconciler/coexistence_test.go`,
+  where the `roundNode` harness (real services, reconcilers wired as in `pkg/node`) lives.
+  `roundNodeOptions` gains `now`, `streamErr` and `streamer`.
+  - `TestDualModeConverges` runs D (both protocols over one reserve) between R (rangesync only) and
+    P (pullsync only):
+    - P's rangesync streams fail as `IncompatibleStreamError`, as in libp2p, and D's machine for P
+      ends Unsupported;
+    - D pulls from P with pullsync and reconciles with R, and D and R end with the union;
+    - x, held by both P and R, is pulled while D's rangesync fetch of x is at R, so D counts one
+      `cross_protocol_duplicates_total`. The test reads it through `Service.Metrics()` and a
+      Prometheus registry, as the node exposes it. R is not scored for it;
+    - rangesync streams go to R only, pullsync streams to P only.
+  - `TestDualModeSyncRate`: the node's `SyncRate` is the sum of the drivers (`pkg/node`'s combined
+    syncer, which `TestCombinedSyncerBothDrivers` covers). The test sums them the same way. The
+    reconciler side is real: its bootstrap keeps its rate at least at `StartupGuardRate` after the
+    puller has caught up. After the bootstrap and the window its rate is 0, while pullsync keeps
+    storing and R fetches those chunks in rangesync sessions (steady state, not catch-up). The sum
+    stays above 0 while either driver catches up and reaches 0 once both have.
+  - The puller is a stand-in (`pullerStandIn`: one pullsync page per call, its rate over the window
+    on the test clock), because the real one cannot run here:
+    - the mock reserve serves one scripted `SubscribeBin` response per call, and the puller calls
+      it in a loop;
+    - its 10-minute window runs on the real clock (`pkg/rate` takes no clock, and `pkg/puller` is
+      frozen).
+
+    P pulling from a dual node is not repeated: `TestCoexistence` (T1.13) covers it.
+- **(T4.5 part 1) Part-2 follow-ups.** None became trivial or obsolete.
+  - The first Busy retry on topology rounds is now one `case` in `loop`, plus the test rework above.
+  - A `peers{state}` gauge is simpler now: the machine holds all per-peer sync state, including the
+    round fetch.
+  - The rest do not move: Status-spam escalation, local store errors in the backoff, registry
+    trimming, `sameDigest` summaries, `Local.Symbols` ctx, the stripe bounds and timer, scoring
+    undelivered IDs, the rejected-cache flush.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -1058,3 +1173,24 @@ _(sessions append here)_
      batch store; add one test through the real validator. A peer still pays nothing for rejected
      junk while this node spends a fetch token per listed junk ID (covered by the T4.5 follow-ups on
      scoring peers that don't deliver listed IDs).
+- **(T4.5 part 1) Tests to run with `-race` on CI.** The whole reconciler package ran with
+  `-count=5 -cpu=1,2,4`, and the new tests with `-count=30..40 -cpu=1,2,4`, also under CPU load.
+  - `pkg/rangesync/reconciler`, new: `TestRangesyncOnlyGoroutines`, `TestDualModeConverges`,
+    `TestDualModeSyncRate`, `TestPeerFSMRoundFetchDuringStripe`.
+  - Re-run, because `round`, `session`, the stripe release and the machine changed:
+    `TestPeerState*` (especially `TestPeerStateStripeDuringFetch`), `TestPeerFSM*`, `TestRound*`,
+    `TestRoundOwnsFirstContact`, `TestStatusGossip*`, `TestStartupGuard*`, `TestSyncRate*`,
+    `TestRadius*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestStripe*`, `TestWantSet*`,
+    `TestSREP*`, `TestPeerJoinLeave`, `TestClose`.
+- **(T4.5 part 1 → part 2) Defer topology rounds.** This is the "(T4.3) First Busy retry on topology
+  rounds" item. Make the `changes` case of `loop` a trigger, and rework the tests that drive rounds
+  through topology changes with `RoundInterval = 1 h`: `TestRoundOwnsFirstContact`,
+  `radiusNet.round` and the `wants_test.go` harness. The start-up guard should stay disarmed for a
+  peer that connects before the next round evaluates it.
+- **(T4.5 part 1) Dual mode with the real puller.** It needs a reserve whose `SubscribeBin` follows
+  its contents (the real storer, or a better mock) and a puller rate window on an injectable clock.
+  `pkg/puller` is frozen, so T6's testnet runs with both flags on are where the combined `SyncRate`
+  with the real puller gets checked.
+- **(T4.5 part 1) `(*Session).pendingReplies` has test callers only** (`pkg/rangesync/session.go`,
+  T2.x). `golangci-lint --tests=false --enable-only unused` flags it. Move it into
+  `export_test.go`. It is outside the reconciler, so it was left alone.
