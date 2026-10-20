@@ -26,6 +26,8 @@ const (
 	// blockThreshold is used to allow threshold no of blocks to be synced before a
 	// batch is usable.
 	blockThreshold = 10
+
+	devBatchDepth = 17
 )
 
 const (
@@ -64,6 +66,80 @@ type service struct {
 
 	quit chan struct{}
 	done chan struct{}
+}
+
+// DevBatchID returns a copy of the unpaid local batch id created by SeedDevBatch.
+func DevBatchID() []byte {
+	id := make([]byte, 32)
+	for i := range id {
+		id[i] = 0x01
+	}
+	return id
+}
+
+// SeedDevBatch stores an unpaid batch and stamp issuer so local uploads can
+// skip buying a stamp. The batch value is the maximum that fits in a batch
+// record, so chain-state cleanup does not expire it. The node must not use
+// this batch on a public network.
+func SeedDevBatch(store Storer, svc Service, owner []byte) error {
+	if len(owner) != 20 {
+		return errors.New("dev postage: owner must be 20 bytes")
+	}
+
+	cs := store.GetChainState()
+	if cs == nil {
+		return errors.New("dev postage: missing chain state")
+	}
+	total := cs.TotalAmount
+	if total == nil {
+		total = big.NewInt(0)
+	}
+	price := cs.CurrentPrice
+	if price == nil {
+		price = big.NewInt(0)
+	}
+	block := cs.Block
+	if block < blockThreshold {
+		block = blockThreshold
+	}
+	if block != cs.Block || cs.TotalAmount == nil || cs.CurrentPrice == nil {
+		if err := store.PutChainState(&ChainState{
+			Block:        block,
+			TotalAmount:  total,
+			CurrentPrice: price,
+		}); err != nil {
+			return fmt.Errorf("dev postage: chain state: %w", err)
+		}
+	}
+
+	batchID := DevBatchID()
+	value := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	if total.Cmp(value) >= 0 {
+		return errors.New("dev postage: chain total amount leaves no room for a local batch")
+	}
+
+	exists, err := store.Exists(batchID)
+	if err != nil {
+		return fmt.Errorf("dev postage: batch exists: %w", err)
+	}
+	if !exists {
+		if err := store.Save(&Batch{
+			ID:          batchID,
+			Value:       value,
+			Start:       0,
+			Owner:       append([]byte(nil), owner...),
+			Depth:       devBatchDepth,
+			BucketDepth: BucketDepth,
+			Immutable:   false,
+		}); err != nil {
+			return fmt.Errorf("dev postage: save batch: %w", err)
+		}
+	}
+
+	if err := svc.Add(NewStampIssuer("dev", string(owner), batchID, value, devBatchDepth, BucketDepth, 0, false)); err != nil {
+		return fmt.Errorf("dev postage: add issuer: %w", err)
+	}
+	return nil
 }
 
 // NewService constructs a new Service. wasDirty indicates whether the previous

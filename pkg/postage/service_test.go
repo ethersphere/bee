@@ -15,8 +15,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
 	pstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -471,4 +473,59 @@ func TestUpdateIssuerLabel(t *testing.T) {
 			t.Fatalf("persisted label: got %q, want %q", item.Issuer.Label(), newLabel)
 		}
 	})
+}
+
+func TestSeedDevBatch(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	defer store.Close()
+
+	stateStore := mock.NewStateStore()
+	batchStore, err := batchstore.New(stateStore, func([]byte) error { return nil }, 1<<22, log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := new(big.Int).SetBytes(bytes.Repeat([]byte{0xff}, 31))
+	if err := batchStore.PutChainState(&postage.ChainState{
+		Block:        1000,
+		TotalAmount:  total,
+		CurrentPrice: big.NewInt(1),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ps, err := postage.NewService(log.Noop, store, batchStore, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+
+	owner := bytes.Repeat([]byte{0xab}, 20)
+	if err := postage.SeedDevBatch(batchStore, ps, owner); err != nil {
+		t.Fatal(err)
+	}
+	if err := postage.SeedDevBatch(batchStore, ps, owner); err != nil {
+		t.Fatalf("second seed: %v", err)
+	}
+
+	exists, err := batchStore.Exists(postage.DevBatchID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("dev batch was not stored")
+	}
+	if got := batchStore.GetChainState().Block; got != 1000 {
+		t.Fatalf("chain block: got %d, want 1000", got)
+	}
+	if _, _, err := ps.GetStampIssuer(postage.DevBatchID()); err != nil {
+		t.Fatalf("stamp issuer: %v", err)
+	}
+	if got := len(ps.StampIssuers()); got != 1 {
+		t.Fatalf("issuers: got %d, want 1", got)
+	}
+	if err := postage.SeedDevBatch(batchStore, ps, []byte{1}); err == nil {
+		t.Fatal("short owner was accepted")
+	}
 }

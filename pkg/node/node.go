@@ -203,6 +203,7 @@ type Options struct {
 	TracingSamplingRatio          float64
 	TracingServiceName            string
 	TrxDebugMode                  bool
+	DevPostage                    bool
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
@@ -929,6 +930,16 @@ func NewBee(
 		// The snapshot rebuilt the store up to its block height, so the node can
 		// already serve postage requests while the remaining gap syncs live.
 		syncStatus.Store(true)
+	}
+
+	if o.DevPostage {
+		if !chainEnabled {
+			return nil, errors.New("dev postage requires a chain backend")
+		}
+		if err := postage.SeedDevBatch(batchStore, post, overlayEthAddress.Bytes()); err != nil {
+			return nil, fmt.Errorf("dev postage: %w", err)
+		}
+		logger.Warning("dev postage enabled; this batch was not paid for", "batch_id", hex.EncodeToString(postage.DevBatchID()))
 	}
 
 	if batchSvc != nil && chainEnabled {

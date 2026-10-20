@@ -220,6 +220,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		case op := <-cc:
 			idAddress, err := storage.IdentityAddress(op.Chunk)
 			if err != nil {
+				panic(err)
 				if op.Direct {
 					op.Err <- err
 				} else {
@@ -272,7 +273,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
-	switch _, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	switch err = nil; {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
