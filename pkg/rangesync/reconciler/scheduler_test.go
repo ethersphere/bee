@@ -533,6 +533,111 @@ func TestRoundIntervalNestedRoots(t *testing.T) {
 	round(15 * time.Second)
 }
 
+// summaryService is a fakeService that summarizes ranges of this node's
+// index with sum (the reconciler's optional rangeSummarizer).
+type summaryService struct {
+	*fakeService
+	sum func(fingerprint.Range) (fingerprint.Summary, error)
+}
+
+func (s summaryService) RangeSummary(r fingerprint.Range) (fingerprint.Summary, error) {
+	return s.sum(r)
+}
+
+// newSummaryHarness is newGossipHarness over summaryService{svc, sum}.
+func newSummaryHarness(t *testing.T, svc *fakeService, sum func(fingerprint.Range) (fingerprint.Summary, error), peers ...swarm.Address) *harness {
+	t.Helper()
+	h := &harness{
+		svc:   svc,
+		topo:  &fakeTopology{peers: peers},
+		clock: &fakeClock{now: time.Unix(1_000_000, 0)},
+	}
+	h.r = reconciler.New(self, h.topo, summaryService{fakeService: svc, sum: sum}, log.Noop, reconciler.Options{Now: h.clock.Now, After: h.clock.After})
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return h
+}
+
+// TestRoundSessionRootDigest checks the digest comparison over the session
+// root. The peer's Status summarizes its own root; when that root lies inside
+// this node's, it is the session root, and this node compares its own
+// summary of that range (RangeSummary) with the peer's:
+//   - equal: no session, and the round interval grows as for equal roots;
+//   - different: a session every round, and the interval stays at the floor
+//     however little the sessions find, as for equal roots with differing
+//     digests (the T4.3 M2 rule over comparable digests);
+//   - when the index cannot summarize the range, or this node's root lies
+//     inside the peer's (the peer's summary covers more than the session
+//     root), the digests are not comparable: a session every round, and the
+//     interval adapts on what the sessions find.
+func TestRoundSessionRootDigest(t *testing.T) {
+	t.Parallel()
+
+	peerRoot := fingerprint.NewRange(higher, 1) // inside this node's root
+	remote := withRootOf(status(3), peerRoot)
+	rounds := func(t *testing.T, h *harness, sessions bool, intervals ...time.Duration) {
+		t.Helper()
+		for i, want := range intervals {
+			before := len(h.svc.sessionOpens(higher))
+			h.r.Round()
+			if sessions {
+				waitFor(t, "session", func() bool { return len(h.svc.sessionOpens(higher)) > before })
+				waitState(t, h.r, higher, reconciler.StateIdle)
+			} else if st := peerState(h.r, higher); st != reconciler.StateIdle || len(h.svc.sessionOpens(higher)) != before {
+				// the round moves a peer it starts a session with to
+				// Reconciling before it returns
+				t.Fatalf("round %d: a session with digests equal over the session root (peer %v)", i+1, st)
+			}
+			if got := h.r.CurrentRoundInterval(); got != want {
+				t.Fatalf("round %d: interval %v, want %v", i+1, got, want)
+			}
+		}
+	}
+	summaryOf := func(sum fingerprint.Summary, err error) func(fingerprint.Range) (fingerprint.Summary, error) {
+		return func(r fingerprint.Range) (fingerprint.Summary, error) {
+			if !r.Equal(peerRoot) {
+				return fingerprint.Summary{}, fmt.Errorf("unexpected range %v", r)
+			}
+			return sum, err
+		}
+	}
+
+	t.Run("equal", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = remote
+		h := newSummaryHarness(t, svc, summaryOf(remote.Summary, nil), higher)
+		rounds(t, h, false, 10*time.Second, 20*time.Second, 30*time.Second)
+	})
+	t.Run("different", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = remote
+		h := newSummaryHarness(t, svc, summaryOf(status(4).Summary, nil), higher)
+		rounds(t, h, true, reconciler.MinRoundInterval, reconciler.MinRoundInterval, reconciler.MinRoundInterval)
+	})
+	t.Run("index cannot answer", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(10))
+		svc.remote[higher.ByteString()] = remote
+		h := newSummaryHarness(t, svc, summaryOf(remote.Summary, fingerprint.ErrBelowLeaf), higher)
+		rounds(t, h, true, 10*time.Second, 20*time.Second, 30*time.Second)
+	})
+	t.Run("this node's root inside the peer's", func(t *testing.T) {
+		t.Parallel()
+		local := selfRoot(1, 3)
+		svc := newFakeService(local)
+		svc.remote[higher.ByteString()] = withRootOf(status(3), fingerprint.NewRange(higher, 0))
+		h := newSummaryHarness(t, svc, func(fingerprint.Range) (fingerprint.Summary, error) {
+			return local.Summary, nil // equal, were it asked
+		}, higher)
+		rounds(t, h, true, 10*time.Second, 20*time.Second, 30*time.Second)
+	})
+}
+
 // TestSessionCollision: a session that finds the peer running its own
 // session with this node does not back off, and a takeover answered Busy
 // (both sides opened at once) waits for the initiator again, in either role

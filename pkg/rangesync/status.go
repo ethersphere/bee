@@ -42,6 +42,17 @@ func (s *Service) LocalStatus() (Status, error) {
 	}, nil
 }
 
+// RangeSummary returns this node's summary of r from its fingerprint index,
+// which is what a peer whose root is r sends in its Status, so the two
+// compare. r must lie within the index's root and not below its leaves: it
+// does not scan the address index. The errors are the index's:
+// fingerprint.ErrBusy while the index is not built, fingerprint.ErrOutsideRoot
+// for a range outside its root, fingerprint.ErrBelowLeaf for a range below its
+// leaves.
+func (s *Service) RangeSummary(r fingerprint.Range) (fingerprint.Summary, error) {
+	return s.index.Summary(r)
+}
+
 // SendStatus sends this node's current Status (LocalStatus) to peer, as
 // SendStatusWith does. It fails with an error wrapping fingerprint.ErrBusy
 // until the index is built.

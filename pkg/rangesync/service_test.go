@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	ggio "github.com/gogo/protobuf/io"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
@@ -29,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	ggio "github.com/gogo/protobuf/io"
 )
 
 // serviceLeafBits is the index leaf depth of the services in these tests.
@@ -338,6 +339,51 @@ func TestStatus(t *testing.T) {
 	}
 	if got := b.svc.MappingMismatches(); got != 0 {
 		t.Fatalf("mapping mismatches: %v", got)
+	}
+}
+
+// TestRangeSummary checks RangeSummary, this node's summary of a range from
+// its index: it is what a peer whose root is that range sends in its
+// Status, so the two compare. It answers for the root and the ranges down to
+// the leaves, not below them (no scan), and not before the index is built.
+func TestRangeSummary(t *testing.T) {
+	t.Parallel()
+
+	chs := stampedChunks(t, 40)
+	half := rangeOf("1")
+	a := newTestNode(t, chs...)
+	if _, err := a.svc.RangeSummary(whole); !errors.Is(err, fingerprint.ErrBusy) {
+		t.Fatalf("before the index: got %v, want %v", err, fingerprint.ErrBusy)
+	}
+	a.start(t)
+	b := newTestNodeOpts(t, nodeOpts{addr: addrIn(t, half)}, chs...)
+	b.store.SetStorageRadius(1) // b's root is half
+	b.start(t)
+
+	bst, err := b.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bst.Root.Equal(half) || bst.Summary.Count == 0 || bst.Summary.Count == uint64(len(chs)) {
+		t.Fatalf("b's status %+v, want root %v holding some of the chunks", bst, half)
+	}
+	got, err := a.svc.RangeSummary(half)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != bst.Summary {
+		t.Fatalf("summary of %v: %+v, the peer's status %+v", half, got, bst.Summary)
+	}
+	ast, err := a.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := a.svc.RangeSummary(whole); err != nil || got != ast.Summary {
+		t.Fatalf("summary of the root: %+v, %v, want %+v", got, err, ast.Summary)
+	}
+	deep := fingerprint.NewRange(half.Prefix, serviceLeafBits+1)
+	if _, err := a.svc.RangeSummary(deep); !errors.Is(err, fingerprint.ErrBelowLeaf) {
+		t.Fatalf("below the leaves: got %v, want %v", err, fingerprint.ErrBelowLeaf)
 	}
 }
 

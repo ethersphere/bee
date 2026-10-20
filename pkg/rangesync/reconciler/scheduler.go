@@ -370,14 +370,16 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 			continue
 		}
 		eligible++
-		if sameDigest(local, remote) {
+		known, equal := r.compareDigests(local, remote)
+		if known && equal {
 			st.takeoverSince = time.Time{}
 			r.fireLocked(st, eventEqualDigest)
 			continue
 		}
-		// Digests of different roots summarize different ranges: such a
-		// peer's sessions report whether they found differences (foundDiff).
-		if local.Root.Equal(remote.Root) {
+		// Digests that are not comparable over the session root summarize
+		// different ranges: such a peer's sessions report whether they found
+		// differences (foundDiff).
+		if known {
 			differs = true
 		}
 		if !r.initiates(p) {
@@ -428,12 +430,50 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 	r.foundDiff = false
 }
 
-// sameDigest reports whether the two statuses summarize the same elements.
-// Statuses with different roots are compared as different: their summaries
-// cover different ranges (comparing summaries of the session root is a
-// follow-up, see the phase-4 plan).
-func sameDigest(local, remote rangesync.Status) bool {
-	return local.Root.Equal(remote.Root) && local.Summary == remote.Summary
+// rangeSummarizer is implemented by a Service that summarizes a range of this
+// node's index (*rangesync.Service). With it, the round compares a peer's
+// digest over the session root when the peer's root lies inside this node's
+// (compareDigests).
+type rangeSummarizer interface {
+	RangeSummary(r fingerprint.Range) (fingerprint.Summary, error)
+}
+
+var _ rangeSummarizer = (*rangesync.Service)(nil)
+
+// compareDigests compares the digests of this node's Status local and a
+// peer's Status remote over their session root (rangesync.SessionRoot), and
+// reports whether they are comparable (known) and, if so, equal. A Status
+// summarizes its sender's root. With the same root the two summaries are
+// compared. When the peer's root lies inside this node's, the session root
+// is the peer's root, which the peer's summary covers: with a
+// rangeSummarizer, this node's summary of that range is compared with it.
+// Otherwise the digests are not comparable: this node's root lies inside the
+// peer's (the peer's summary covers more than the session root), or the
+// index cannot summarize the range (it is rebuilding, its root moved, or
+// the range lies below its leaves). It may be called with r.mu held:
+// RangeSummary reads the index under the index's own locks, briefly, and
+// calls nothing back.
+func (r *Reconciler) compareDigests(local, remote rangesync.Status) (known, equal bool) {
+	if local.Root.Equal(remote.Root) {
+		return true, local.Summary == remote.Summary
+	}
+	rs, ok := r.svc.(rangeSummarizer)
+	if !ok || !local.Root.ContainsRange(remote.Root) {
+		return false, false
+	}
+	sum, err := rs.RangeSummary(remote.Root)
+	if err != nil {
+		return false, false
+	}
+	return true, sum == remote.Summary
+}
+
+// sameDigest reports whether the two statuses summarize the same elements
+// over their session root (compareDigests). Digests that are not comparable
+// count as different: a session finds out.
+func (r *Reconciler) sameDigest(local, remote rangesync.Status) bool {
+	known, equal := r.compareDigests(local, remote)
+	return known && equal
 }
 
 // initiates reports whether this node starts sessions with peer: the peer
@@ -554,7 +594,7 @@ func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, gen uint6
 	switch {
 	case !r.currentLocked(peer, st, gen), st.fsm.state != stateReconciling:
 	case !have, !local.Root.Equal(root), !st.reached.Equal(local.Root):
-	case sameDigest(local, remote):
+	case r.sameDigest(local, remote):
 	case !r.initiates(peer) && st.takeoverSince.After(decided):
 	default:
 		return nil
