@@ -102,13 +102,31 @@ type nodeOpts struct {
 	hasHook func(swarm.Address)
 	// fetchRate is Options.FetchRate.
 	fetchRate int
+	// storeErr, if not nil, is called by each ReserveHasID and
+	// ReserveIterateAddr of the service; an error fails the call.
+	storeErr func() error
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
 type radiusStore struct {
 	*mockstorer.ReserveStore
-	outside func(swarm.Address) bool
-	hasHook func(swarm.Address)
+	outside  func(swarm.Address) bool
+	hasHook  func(swarm.Address)
+	storeErr func() error
+}
+
+func (s radiusStore) failed() error {
+	if s.storeErr == nil {
+		return nil
+	}
+	return s.storeErr()
+}
+
+func (s radiusStore) ReserveIterateAddr(prefix swarm.Address, bits uint8, after []byte, cb func(storer.ChunkID) (bool, error)) error {
+	if err := s.failed(); err != nil {
+		return err
+	}
+	return s.ReserveStore.ReserveIterateAddr(prefix, bits, after, cb)
 }
 
 func (s radiusStore) IsWithinStorageRadius(addr swarm.Address) bool {
@@ -116,6 +134,9 @@ func (s radiusStore) IsWithinStorageRadius(addr swarm.Address) bool {
 }
 
 func (s radiusStore) ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error) {
+	if err := s.failed(); err != nil {
+		return false, err
+	}
 	has, err := s.ReserveStore.ReserveHasID(addr, stampHash)
 	if s.hasHook != nil {
 		s.hasHook(addr)
@@ -143,7 +164,7 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	if o.streamer != nil {
 		streamer = o.streamer(n.rec)
 	}
-	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside, hasHook: o.hasHook}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	n.svc = rangesync.New(streamer, radiusStore{ReserveStore: n.store, outside: o.outside, hasHook: o.hasHook, storeErr: o.storeErr}, n.addr, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		Scorer:       n.scorer,
 		Wants:        n.addWants,
 		LeafBits:     serviceLeafBits,
@@ -710,6 +731,56 @@ func TestStatusRateLimit(t *testing.T) {
 	}
 	if got := lastCount(); got != 200 {
 		t.Fatalf("recorded count %d after a reconnect, want 200", got)
+	}
+}
+
+// TestReconcileLocalStoreError checks that a session that fails because this
+// node's reserve fails returns an error wrapping ErrLocal, and that the peer
+// is neither scored nor credited. A session whose stream fails does not wrap
+// it.
+func TestReconcileLocalStoreError(t *testing.T) {
+	t.Parallel()
+
+	storeErr := errors.New("leveldb: closed")
+	var fail atomic.Bool
+	// a is empty, so b lists its IDs, which a looks up in its reserve
+	a := newTestNodeOpts(t, nodeOpts{storeErr: func() error {
+		if fail.Load() {
+			return storeErr
+		}
+		return nil
+	}})
+	b := newTestNode(t, stampedChunks(t, 20)...)
+	a.start(t)
+	b.start(t)
+	connect(t, a, b)
+
+	fail.Store(true)
+	_, err := a.svc.Reconcile(context.Background(), b.addr)
+	if !errors.Is(err, rangesync.ErrLocal) || !errors.Is(err, storeErr) {
+		t.Fatalf("got %v, want %v wrapping %v", err, rangesync.ErrLocal, storeErr)
+	}
+	if fails, succeeds := a.scorer.get(b.addr); len(fails) != 0 || succeeds != 0 {
+		t.Fatalf("peer scored: fails %v, succeeds %d", fails, succeeds)
+	}
+
+	// a stream that fails is not a cause on this node
+	fail.Store(false)
+	c := newTestNodeOpts(t, nodeOpts{streamErr: func(swarm.Address, string, string, string) error {
+		return errors.New("stream reset")
+	}}, stampedChunks(t, 1)...)
+	c.start(t)
+	b.rec.SetProtocols(c.svc.Protocol())
+	c.rec.SetProtocols(b.svc.Protocol())
+	if err := b.svc.SendStatus(context.Background(), c.addr); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "status", func() bool {
+		_, ok := c.svc.LastStatus(b.addr)
+		return ok
+	})
+	if _, err := c.svc.Reconcile(context.Background(), b.addr); err == nil || errors.Is(err, rangesync.ErrLocal) {
+		t.Fatalf("stream error: got %v", err)
 	}
 }
 

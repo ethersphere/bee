@@ -62,6 +62,12 @@ var (
 	// ErrPeerSessionLimit is the ErrSessionLimit of a node that already runs
 	// a session with the peer, incoming or outgoing.
 	ErrPeerSessionLimit = fmt.Errorf("%w: peer", ErrSessionLimit)
+	// ErrLocal is wrapped by the errors of a session (Reconcile,
+	// ReconcileWith) or a fetch (FetchWithResult) that failed for a cause on
+	// this node: its reserve, address index or fingerprint index failed, or
+	// the index cannot answer (rebuilding, its root moved). It says nothing
+	// about the peer.
+	ErrLocal = errors.New("rangesync: local store")
 	// ErrProtocolUnsupported is returned (wrapped) by SendStatus when the
 	// peer does not support the rangesync protocol (the stream could not be
 	// negotiated, p2p.IncompatibleStreamError). The reconciler does not

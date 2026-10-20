@@ -6,7 +6,9 @@ package rangesync_test
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -304,5 +306,55 @@ func TestLocalSymbolsExhausted(t *testing.T) {
 	}
 	if want := bruteSymbols(set, r, 500, fingerprint.Level1Symbols); !slices.Equal(got, want) {
 		t.Fatalf("got %d symbols, want the %d of the cache window", len(got), len(want))
+	}
+}
+
+// TestLocalStoreErrors checks that the errors of the reserve a session's
+// Local reads wrap rangesync.ErrLocal (a cause on this node, which the
+// reconciler neither scores nor backs off), and that the error of an
+// IterateIDs callback is returned as it is.
+func TestLocalStoreErrors(t *testing.T) {
+	t.Parallel()
+
+	storeErr := errors.New("leveldb: closed")
+	var fail atomic.Bool
+	n := newTestNodeOpts(t, nodeOpts{storeErr: func() error {
+		if fail.Load() {
+			return storeErr
+		}
+		return nil
+	}}, validChunks(20)...)
+	n.start(t)
+	local := n.svc.Local()
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	small := root.Children(serviceLeafBits + 2)[5] // below the leaf depth: scanned
+
+	fnErr := errors.New("callback")
+	if err := local.IterateIDs(root, nil, func(fingerprint.ID) (bool, error) { return false, fnErr }); !errors.Is(err, fnErr) || errors.Is(err, rangesync.ErrLocal) {
+		t.Fatalf("callback error: got %v", err)
+	}
+
+	fail.Store(true)
+	for name, call := range map[string]func() error{
+		"iterate ids": func() error {
+			return local.IterateIDs(root, nil, func(fingerprint.ID) (bool, error) { return false, nil })
+		},
+		"has id": func() error {
+			_, err := local.HasID(fingerprint.ID{})
+			return err
+		},
+		"summary scan": func() error {
+			_, err := local.Summary(small)
+			return err
+		},
+		"symbols scan": func() error {
+			_, _, err := local.Symbols(small, 0, 8)
+			return err
+		},
+	} {
+		err := call()
+		if !errors.Is(err, rangesync.ErrLocal) || !errors.Is(err, storeErr) {
+			t.Errorf("%s: got %v, want %v wrapping %v", name, err, rangesync.ErrLocal, storeErr)
+		}
 	}
 }

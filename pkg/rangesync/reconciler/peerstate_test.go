@@ -555,6 +555,8 @@ func TestPeerStateLocalCauseNoBackoff(t *testing.T) {
 		fmt.Errorf("session scope: %w", rangesync.ErrInvalidScope),
 		rangesync.ErrNoStatus,
 		fmt.Errorf("%w: peer mapping 2", rangesync.ErrMappingMismatch),
+		fmt.Errorf("local lookup: %w: reserve has id: leveldb: closed", rangesync.ErrLocal),
+		fmt.Errorf("local ids: %w: iterate ids: leveldb: closed", rangesync.ErrLocal),
 		rangesync.ErrNodeSessionLimit,
 		rangesync.ErrPeerSessionLimit,
 		rangesync.ErrPeerSessionLimit,

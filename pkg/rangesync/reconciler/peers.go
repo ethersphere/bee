@@ -138,15 +138,16 @@ func (r *Reconciler) admitPeerLocked(p swarm.Address, st *peerState, local, remo
 
 // localCause reports whether a session failed with err for a cause on this
 // node, which says nothing about the peer: this node runs
-// MaxConcurrentSessions sessions, its index is rebuilding, the two Statuses
-// give no session scope (this node's root moved since the round picked the
-// peer), or the peer's Status is gone or has another Mapping (it left or is
-// about to be dropped). Such a session is retried by the next round without
-// a backoff.
+// MaxConcurrentSessions sessions, its index is rebuilding, its index or
+// reserve failed (rangesync.ErrLocal), the two Statuses give no session
+// scope (this node's root moved since the round picked the peer), or the
+// peer's Status is gone or has another Mapping (it left or is about to be
+// dropped). Such a session is retried by the next round without a backoff.
 func localCause(err error) bool {
 	for _, target := range []error{
 		rangesync.ErrNodeSessionLimit,
 		fingerprint.ErrBusy,
+		rangesync.ErrLocal,
 		rangesync.ErrDisjointRoots,
 		rangesync.ErrInvalidScope,
 		rangesync.ErrNoStatus,

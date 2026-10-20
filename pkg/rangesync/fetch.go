@@ -175,7 +175,7 @@ func (s *Service) wantCandidates(peer swarm.Address, ids []storer.ChunkID, res *
 		}
 		has, err := s.store.ReserveHasID(c.Address, c.StampHash)
 		if err != nil {
-			return nil, nil, fmt.Errorf("reserve has id: %w", err)
+			return nil, nil, fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
 		}
 		if has {
 			s.metrics.FetchSkipped.WithLabelValues("held").Inc()
@@ -233,7 +233,7 @@ func (s *Service) claim(peer swarm.Address, cands []fingerprint.ID, res *FetchRe
 				for c := range claimed {
 					s.wantSet.Release(c, peer)
 				}
-				return nil, fmt.Errorf("reserve has id: %w", err)
+				return nil, fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
 			}
 			if has {
 				s.wantSet.Done(id)
@@ -442,7 +442,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	has, err := s.store.ReserveHasID(addr, stampHash)
 	if err != nil {
 		s.undelivered(peer, id, res)
-		return fmt.Errorf("reserve has id: %w", err)
+		return fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
 	}
 	if has {
 		if !expired {
@@ -470,7 +470,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 			return nil
 		}
 		s.undelivered(peer, id, res)
-		return fmt.Errorf("reserve put: %w", err)
+		return fmt.Errorf("%w: reserve put: %w", ErrLocal, err)
 	}
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()

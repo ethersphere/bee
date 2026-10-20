@@ -49,9 +49,10 @@ func (s *Service) sessionContext(ctx context.Context) (context.Context, context.
 // fingerprint.ErrBusy until the index is built, ErrPeerBusy if the peer
 // answered Busy, and an error wrapping ErrInvalidMessage if the peer broke
 // the protocol: the stream is then reset, the peer disconnected and the
-// failure reported to the PeerScorer. Other errors (a local store error, the
-// stream failing) are not scored. A completed session is reported to the
-// PeerScorer as a success.
+// failure reported to the PeerScorer. An error of this node's index or
+// reserve (the index not built included) wraps ErrLocal. Other errors (the
+// stream failing) are not scored either. A completed session is reported to
+// the PeerScorer as a success.
 func (s *Service) Reconcile(ctx context.Context, peer swarm.Address) (wants []storer.ChunkID, err error) {
 	return s.ReconcileWith(ctx, peer, ReconcileOptions{})
 }
@@ -83,7 +84,7 @@ func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts Re
 	}
 	st, err := s.LocalStatus()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrLocal, err)
 	}
 	scope, err := NewScope(st, remote)
 	if err != nil {

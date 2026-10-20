@@ -25,6 +25,9 @@ type local struct {
 	store Store
 }
 
+// Every error of local wraps ErrLocal, except the error of an IterateIDs
+// callback: its errors come from this node's index and reserve.
+
 // Summary implements Summarizer. Errors of the index other than
 // fingerprint.ErrBelowLeaf (ErrBusy while the range is being rebuilt,
 // ErrOutsideRoot after the root moved) are returned wrapped.
@@ -34,7 +37,7 @@ func (l *local) Summary(r fingerprint.Range) (fingerprint.Summary, error) {
 		return l.scan(r)
 	}
 	if err != nil {
-		return fingerprint.Summary{}, fmt.Errorf("index summary: %w", err)
+		return fingerprint.Summary{}, fmt.Errorf("%w: index summary: %w", ErrLocal, err)
 	}
 	return s, nil
 }
@@ -51,7 +54,7 @@ func (l *local) scan(r fingerprint.Range) (fingerprint.Summary, error) {
 		return false, nil
 	})
 	if err != nil {
-		return fingerprint.Summary{}, fmt.Errorf("scan: %w", err)
+		return fingerprint.Summary{}, fmt.Errorf("%w: scan: %w", ErrLocal, err)
 	}
 	if n == 0 {
 		return fingerprint.Summary{}, nil
@@ -60,15 +63,23 @@ func (l *local) scan(r fingerprint.Range) (fingerprint.Summary, error) {
 }
 
 // IterateIDs implements Local with one ReserveIterateAddr call. fn's error is
-// returned wrapped.
+// returned as the reserve returns it; another error of the reserve wraps
+// ErrLocal.
 func (l *local) IterateIDs(r fingerprint.Range, after *fingerprint.ID, fn func(fingerprint.ID) (bool, error)) error {
 	var a []byte
 	if after != nil {
 		a = after[:]
 	}
-	return l.store.ReserveIterateAddr(r.Prefix, r.Bits, a, func(c storer.ChunkID) (bool, error) {
-		return fn(fingerprint.NewID(c.Address, c.StampHash))
+	var fnErr error
+	err := l.store.ReserveIterateAddr(r.Prefix, r.Bits, a, func(c storer.ChunkID) (bool, error) {
+		stop, err := fn(fingerprint.NewID(c.Address, c.StampHash))
+		fnErr = err
+		return stop, err
 	})
+	if err != nil && (fnErr == nil || !errors.Is(err, fnErr)) {
+		return fmt.Errorf("%w: iterate ids: %w", ErrLocal, err)
+	}
+	return err
 }
 
 // Symbols implements Local over fingerprint.Index.Symbols, whose scan path
@@ -76,7 +87,7 @@ func (l *local) IterateIDs(r fingerprint.Range, after *fingerprint.ID, fn func(f
 func (l *local) Symbols(r fingerprint.Range, start, end uint64) ([]fingerprint.CodedSymbol, bool, error) {
 	syms, exhausted, err := l.index.Symbols(r, start, end, l.scanIDs)
 	if err != nil {
-		return nil, false, fmt.Errorf("index symbols: %w", err)
+		return nil, false, fmt.Errorf("%w: index symbols: %w", ErrLocal, err)
 	}
 	return syms, exhausted, nil
 }
@@ -104,5 +115,9 @@ func (l *local) scanIDs(r fingerprint.Range, fn func(fingerprint.ID) error) erro
 
 // HasID implements Local.
 func (l *local) HasID(id fingerprint.ID) (bool, error) {
-	return l.store.ReserveHasID(id.Address(), id.StampHash())
+	has, err := l.store.ReserveHasID(id.Address(), id.StampHash())
+	if err != nil {
+		return false, fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
+	}
+	return has, nil
 }

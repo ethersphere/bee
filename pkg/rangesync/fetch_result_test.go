@@ -773,6 +773,38 @@ func TestFetchExpiredDuringStampCheck(t *testing.T) {
 	assertWantClaims(t, a, map[string]float64{"granted": 1, "expired": 1, "late": 0})
 }
 
+// TestFetchLocalStoreError checks that a fetch that fails because this
+// node's reserve fails (a lookup or a Put) returns an error wrapping
+// ErrLocal, and that the peer is not scored.
+func TestFetchLocalStoreError(t *testing.T) {
+	t.Parallel()
+
+	storeErr := errors.New("leveldb: closed")
+	for _, tc := range []struct {
+		name string
+		opts nodeOpts
+	}{
+		{name: "lookup", opts: nodeOpts{storeErr: func() error { return storeErr }}},
+		{name: "put", opts: nodeOpts{putHook: func(swarm.Chunk) error { return storeErr }}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chs := validChunks(2)
+			a := newTestNodeOpts(t, tc.opts)
+			b := newTestNode(t, chs...)
+			connect0(a, b)
+
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...))
+			if !errors.Is(err, rangesync.ErrLocal) || !errors.Is(err, storeErr) {
+				t.Fatalf("got %v, want %v wrapping %v", err, rangesync.ErrLocal, storeErr)
+			}
+			assertNotScored(t, a, b.addr)
+			assertNoClaims(t, a)
+		})
+	}
+}
+
 // TestFetchTimeoutClamped checks that a fetch timeout of the claim deadline
 // or more is clamped to half of it, so that a fetch ends before its claims
 // expire.
