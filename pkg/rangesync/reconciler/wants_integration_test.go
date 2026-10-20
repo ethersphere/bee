@@ -45,6 +45,14 @@ type roundNodeOptions struct {
 	fetchTimeout  time.Duration
 	roundInterval time.Duration
 	chunks        []swarm.Chunk
+	// now is the reconciler's clock (Options.Now); time.Now if nil.
+	now func() time.Time
+	// streamErr is the recorder's stream error (streamtest.WithStreamError);
+	// nil: none.
+	streamErr func(swarm.Address, string, string, string) error
+	// streamer, if not nil, wraps the recorder the service opens streams
+	// with.
+	streamer func(p2p.StreamerDisconnecter) p2p.StreamerDisconnecter
 }
 
 func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...swarm.Address) *roundNode {
@@ -55,9 +63,17 @@ func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...sw
 	n := &roundNode{routes: make(map[string]p2p.ProtocolSpec)}
 	n.addr = a
 	n.store = mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(o.chunks...), mockstorer.WithPutHook(o.putHook))
-	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithBaseAddr(a), streamtest.WithPeerProtocols(n.routes)))
-	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval})
-	n.svc = rangesync.New(n.rec, n.store, a, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	recOpts := []streamtest.Option{streamtest.WithBaseAddr(a), streamtest.WithPeerProtocols(n.routes)}
+	if o.streamErr != nil {
+		recOpts = append(recOpts, streamtest.WithStreamError(o.streamErr))
+	}
+	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(recOpts...))
+	var streamer p2p.StreamerDisconnecter = n.rec
+	if o.streamer != nil {
+		streamer = o.streamer(n.rec)
+	}
+	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval, Now: o.now})
+	n.svc = rangesync.New(streamer, n.store, a, nil, nil, o.validStamp, log.Noop, rangesync.Options{
 		LeafBits:     8,
 		Scorer:       n.r,
 		Wants:        n.r.Wants,
