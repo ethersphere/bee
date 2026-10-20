@@ -34,7 +34,7 @@ func TestIgnoreOldBuckets(t *testing.T) {
 
 	windowSize := 1000 * time.Millisecond
 	bucket := (windowSize / 30).Truncate(time.Millisecond)
-	covered := (windowSize + bucket - 1) / bucket * bucket
+	covered := coveredWindow(windowSize, bucket)
 	r := 100
 
 	rate := rate.New(windowSize)
@@ -120,7 +120,7 @@ func TestRateReachesZeroWithinWindow(t *testing.T) {
 
 	for _, windowSize := range []time.Duration{5 * time.Minute, time.Second} {
 		bucket := max(windowSize/30, time.Millisecond).Truncate(time.Millisecond)
-		covered := (windowSize + bucket - 1) / bucket * bucket
+		covered := coveredWindow(windowSize, bucket)
 
 		for _, offset := range []time.Duration{
 			0,
@@ -155,4 +155,10 @@ func TestRateReachesZeroWithinWindow(t *testing.T) {
 
 func setTime(ms time.Duration) time.Time {
 	return time.UnixMilli(ms.Milliseconds())
+}
+
+// coveredWindow returns the window rounded up to whole buckets.
+func coveredWindow(window, bucket time.Duration) time.Duration {
+	ws, bs := window.Milliseconds(), bucket.Milliseconds()
+	return time.Duration((ws+bs-1)/bs*bs) * time.Millisecond
 }
