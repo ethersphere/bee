@@ -408,7 +408,6 @@ func NewPutter(s storage.IndexStore, tagID uint64) (internal.PutterCloserWithRef
 // - add chunk to the chunkstore till it is synced
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swarm.Chunk) error {
-	panic("uploadputter put")
 	if _, err := storage.IdentityAddress(chunk); err != nil {
 		panic(fmt.Errorf("upload put: invalid chunk %s: %w", chunk.Address(), err))
 	}

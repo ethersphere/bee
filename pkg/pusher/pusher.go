@@ -251,7 +251,6 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 }
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
-	panic("pushDeferred")
 	loggerV1 := logger.V(1).Build()
 
 	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
