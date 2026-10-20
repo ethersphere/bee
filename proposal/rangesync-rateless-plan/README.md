@@ -168,7 +168,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T4.2 Per-peer state machine (probing, unsupported peers)
 - [x] T4.3 Round scheduler (initiator rule, adaptive interval, session caps)
 - [x] T4.4 Want-set integration in rounds + rejected cache
-- [ ] T4.5 Replace the minimal reconciler; dual-mode coexistence
+- [x] T4.5 Replace the minimal reconciler; dual-mode coexistence
 - [ ] T4.6 Neighborhood simulation / N-node integration test
 
 **Phase 5 (optional for testnet, required before mainnet)**
