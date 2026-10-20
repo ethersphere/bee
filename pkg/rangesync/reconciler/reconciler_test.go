@@ -121,6 +121,9 @@ type fakeService struct {
 	// far, this one included.
 	busyErr     map[string]error
 	sessionHook func(peer swarm.Address, n int)
+	// sendBlock, by peer, makes SendStatusWith wait until its context ends
+	// (a peer that never answers).
+	sendBlock map[string]bool
 }
 
 func newFakeService(local rangesync.Status) *fakeService {
@@ -150,6 +153,7 @@ func newFakeService(local rangesync.Status) *fakeService {
 		localBusyN:      make(map[string]int),
 		wantIDs:         make(map[string][]storer.ChunkID),
 		busyErr:         make(map[string]error),
+		sendBlock:       make(map[string]bool),
 	}
 }
 
@@ -288,7 +292,12 @@ func (s *fakeService) SendStatusWith(ctx context.Context, peer swarm.Address, st
 	s.sent[peer.ByteString()]++
 	s.statuses[peer.ByteString()] = append(s.statuses[peer.ByteString()], st)
 	calls, unsupported, err := s.sendCalls, s.unsupported[peer.ByteString()], s.sendErr[peer.ByteString()]
+	block := s.sendBlock[peer.ByteString()]
 	s.mu.Unlock()
+	if block {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if calls != nil {
 		release := make(chan struct{})
 		select {
@@ -396,10 +405,12 @@ func (s *fakeService) set(f func()) {
 }
 
 // fakeTopology is a topology whose connected peers are set by the test.
+// onEach, if not nil, is called at the start of each EachConnectedPeer.
 type fakeTopology struct {
-	mu    sync.Mutex
-	peers []swarm.Address
-	subs  []chan struct{}
+	mu     sync.Mutex
+	peers  []swarm.Address
+	subs   []chan struct{}
+	onEach func()
 }
 
 func (f *fakeTopology) SubscribeTopologyChange() (<-chan struct{}, func()) {
@@ -413,13 +424,32 @@ func (f *fakeTopology) SubscribeTopologyChange() (<-chan struct{}, func()) {
 func (f *fakeTopology) EachConnectedPeer(fn topology.EachPeerFunc, _ topology.Select) error {
 	f.mu.Lock()
 	peers := append([]swarm.Address(nil), f.peers...)
+	hook := f.onEach
 	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	for _, p := range peers {
 		if stop, _, err := fn(p, 0); err != nil || stop {
 			return err
 		}
 	}
 	return nil
+}
+
+// setPeersQuiet sets the connected peers without signaling a topology
+// change: a round that runs next finds them.
+func (f *fakeTopology) setPeersQuiet(peers ...swarm.Address) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.peers = peers
+}
+
+// setOnEach sets onEach.
+func (f *fakeTopology) setOnEach(hook func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onEach = hook
 }
 
 func (f *fakeTopology) setPeers(peers ...swarm.Address) {

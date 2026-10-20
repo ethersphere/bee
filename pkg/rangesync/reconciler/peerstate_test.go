@@ -519,7 +519,7 @@ func TestStartupGuardNewPeer(t *testing.T) {
 			svc.set(func() { svc.remote[higher.ByteString()] = status(5) })
 
 			tc.join(h)
-			waitFor(t, "first contact with the peer", func() bool { return svc.count(svc.sent, higher) == sent+1 })
+			waitFor(t, "first contact with the peer", func() bool { return svc.count(svc.sent, higher) == sent+1 && !h.r.StatusSending(higher) })
 			h.r.Succeed(lower) // the lower peer's session
 			if h.r.GuardReleased() {
 				t.Fatal("guard released before a round evaluated the peer")

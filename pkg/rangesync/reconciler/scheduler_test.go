@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -728,12 +729,89 @@ func TestTopologyChangeFloor(t *testing.T) {
 	waitFor(t, "first Busy recorded", func() bool { return h.r.PeerFailures(higher) == 1 })
 
 	h.topo.setPeers(higher, joiner)
-	waitFor(t, "first contact", func() bool { return svc.count(svc.sent, joiner) == 1 })
+	waitFor(t, "first contact", func() bool { return svc.count(svc.sent, joiner) == 1 && !h.r.StatusSending(joiner) })
 	assertSessions(t, svc, higher, 1) // the first Busy is not retried within the floor
 	assertSessions(t, svc, joiner, 0)
 	h.clock.Add(reconciler.MinRoundInterval)
 	assertSessions(t, svc, higher, 2)
 	assertSessions(t, svc, joiner, 1)
+}
+
+// TestRoundDueBeforeTopologyChange: a round that is due runs before the
+// next topology change is handled, so a stream of topology changes does not
+// stretch the round interval. Each trial holds the loop in the topology
+// change's own step, makes the round due and signals another change; the
+// round runs next. Rounds are told apart by the interval they adapt.
+func TestRoundDueBeforeTopologyChange(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newScheduledHarness(t, svc, higher)
+	waitFor(t, "first round", func() bool { return h.r.CurrentRoundInterval() == 2*reconciler.MinRoundInterval })
+
+	for i := range 20 {
+		next := status(2) // differs: the round halves the interval
+		if i%2 == 1 {
+			next = status(1) // equal: the round doubles it
+		}
+		svc.set(func() { svc.remote[higher.ByteString()] = next })
+		var (
+			mu      sync.Mutex
+			blocked = make(chan struct{})
+			release = make(chan struct{})
+			seen    []time.Duration
+			armed   = true
+		)
+		h.topo.setOnEach(func() {
+			mu.Lock()
+			if armed {
+				armed = false
+				mu.Unlock()
+				close(blocked)
+				<-release
+				return
+			}
+			seen = append(seen, h.r.CurrentRoundInterval())
+			mu.Unlock()
+		})
+		h.topo.setPeers(higher) // the loop's step for it waits on release
+		<-blocked
+		h.clock.Add(h.r.CurrentRoundInterval()) // the round is due
+		h.topo.setPeers(higher)                 // and another change is signaled
+		close(release)
+		waitFor(t, "a round and a topology step", func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(seen) >= 2
+		})
+		mu.Lock()
+		round, step := seen[0], seen[1]
+		mu.Unlock()
+		if round == step {
+			t.Fatalf("trial %d: the topology change was handled before the due round (interval %v at both)", i, round)
+		}
+		h.topo.setOnEach(nil)
+	}
+}
+
+// TestTopologyChangeDoesNotHoldRounds: a peer that connects and never
+// answers this node's first Status does not hold up the rounds, whose
+// sessions with other peers go on at the round floor.
+func TestTopologyChangeDoesNotHoldRounds(t *testing.T) {
+	t.Parallel()
+
+	silent := addr(0xf3, 0)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.sendBlock[silent.ByteString()] = true
+	h := newScheduledHarness(t, svc, higher)
+	assertSessions(t, svc, higher, 1)
+
+	h.topo.setPeers(higher, silent)
+	waitFor(t, "first contact sent", func() bool { return svc.count(svc.sent, silent) == 1 })
+	h.clock.Add(reconciler.MinRoundInterval)
+	assertSessions(t, svc, higher, 2)
 }
 
 // TestRoundIntervalServedWants: wants a peer listed in a session this node

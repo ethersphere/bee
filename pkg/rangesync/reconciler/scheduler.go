@@ -55,9 +55,11 @@ import (
 //     interval after the last round, so that rounds never run sessions with
 //     a peer faster than its session rate (rangesync.PeerSessionInterval)
 //     and a peer's first Busy is retried no sooner than that. A topology
-//     change also runs the round's first step at once (track), so that a new
-//     peer gets its first Status without waiting; its first session waits
-//     for the round.
+//     change also follows the topology at once (follow) and sends the
+//     Statuses then due off the round loop, so that a new peer gets its
+//     first Status without waiting and a peer that does not answer holds up
+//     no round; its first session waits for the round. A round that is due
+//     runs before the next trigger is handled.
 //   - Cap. The sessions this node opens, round sessions, takeovers, stripe
 //     transfers and verifications alike, take one of MaxInitiatedSessions
 //     slots first and wait for one, first come, first served. Stripe
@@ -181,10 +183,12 @@ func (r *Reconciler) wakeRound() {
 // loop runs a round at start, on the round timer and on a trigger (a
 // topology change on changes, wakeRound, a changed peer Status on statuses),
 // until Close. A trigger waits until the minimum interval has passed since
-// the last round. A topology change first runs track at once: the new peers'
-// first contacts. Triggers follow Options.Now and Options.After, and so does
-// the round timer unless Options.RoundInterval fixes the interval
-// (roundAfter).
+// the last round. A due round runs before the next trigger is handled, so
+// that a stream of triggers does not delay it. A topology change first
+// follows the topology at once and sends the new peers' first contacts off
+// the loop (followTopology). Triggers follow Options.Now and Options.After,
+// and so does the round timer unless Options.RoundInterval fixes the
+// interval (roundAfter).
 func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 	last := r.now()
 	r.round()
@@ -199,28 +203,60 @@ func (r *Reconciler) loop(changes, statuses <-chan struct{}) {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-timer:
-		case <-deferred:
-		case <-changes:
-			r.track()
-			trigger()
-			continue
-		case <-r.roundWake:
-			trigger()
-			continue
-		case _, ok := <-statuses:
-			if !ok {
-				statuses = nil // unsubscribed elsewhere
+		case <-timer: // due
+		case <-deferred: // due
+		default:
+			select {
+			case <-r.ctx.Done():
+				return
+			case <-timer:
+			case <-deferred:
+			case <-changes:
+				r.followTopology()
+				trigger()
+				continue
+			case <-r.roundWake:
+				trigger()
+				continue
+			case _, ok := <-statuses:
+				if !ok {
+					statuses = nil // unsubscribed elsewhere
+					continue
+				}
+				r.wakeGossip()
+				trigger()
 				continue
 			}
-			r.wakeGossip()
-			trigger()
-			continue
 		}
 		last, deferred = r.now(), nil
 		r.round()
 		timer = r.roundAfter(r.currentInterval())
 	}
+}
+
+// followTopology is what a topology change runs at once: it follows the
+// root and the topology into the per-peer machines and picks the Statuses
+// that are due (follow), new peers' first contacts included, and sends them
+// in a goroutine of its own, so that a peer that does not answer (up to the
+// send's timeout) holds up no round. A send that delivers a root the peer
+// lacked triggers a round, as a gossip pass does: a round that ran while the
+// send was in flight skipped the peer's session.
+func (r *Reconciler) followTopology() {
+	local, _, _, due, ok := r.follow()
+	if !ok {
+		return
+	}
+	r.wakeGossip()
+	if len(due) == 0 {
+		return
+	}
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		if r.probe(due, local) {
+			r.wakeRound()
+		}
+	}()
 }
 
 // round is one round of the scheduler. It follows the topology into the
@@ -246,17 +282,30 @@ func (r *Reconciler) round() {
 	r.scheduleLocked(local, connected, bootstrap)
 }
 
-// track is the first step of a round, which a topology change also runs on
-// its own: it follows this node's root (trackRootLocked) and the topology's
-// peers (trackPeersLocked) into the per-peer machines, and sends the
-// Statuses that are due (pickDueLocked, probe). First contacts, and a new
-// root (it makes the peers' session scopes with this node stale), go out now
-// unless the sender-side rate defers them, so that the round's evaluation
-// sees the outcome; the gossip loop sends the rest when due. It returns the
-// Status the picks were taken with, the connected peers and whether a radius
-// decrease's new half is pending; ok is false without a Status (the index is
-// not built yet).
+// track is the first step of a round: it follows the root and the topology
+// and picks the Statuses that are due (follow), then sends them (probe).
+// First contacts, and a new root (it makes the peers' session scopes with
+// this node stale), go out now unless the sender-side rate defers them, so
+// that the round's evaluation sees the outcome; the gossip loop sends the
+// rest when due. It returns follow's results.
 func (r *Reconciler) track() (local rangesync.Status, connected []swarm.Address, radiusPending, ok bool) {
+	local, connected, radiusPending, due, ok := r.follow()
+	if !ok {
+		return local, nil, false, false
+	}
+	r.probe(due, local)
+	r.wakeGossip()
+	return local, connected, radiusPending, true
+}
+
+// follow follows this node's root (trackRootLocked) and the topology's peers
+// (trackPeersLocked) into the per-peer machines and picks the Statuses that
+// are due (pickDueLocked), in the critical section that adds new peers, so
+// that their first contacts are its caller's. It returns the Status the
+// picks were taken with, the connected peers, whether a radius decrease's new
+// half is pending and the picks; ok is false without a Status (the index is
+// not built yet).
+func (r *Reconciler) follow() (local rangesync.Status, connected []swarm.Address, radiusPending bool, due []statusPick, ok bool) {
 	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 		connected = append(connected, addr)
 		return false, false, nil
@@ -267,19 +316,16 @@ func (r *Reconciler) track() (local rangesync.Status, connected []swarm.Address,
 	if err != nil {
 		r.pickMu.Unlock()
 		r.logger.Debug("no local status", "error", err)
-		return local, nil, false, false
+		return local, nil, false, nil, false
 	}
 	r.mu.Lock()
 	r.trackRootLocked(local.Root)
 	radiusPending = r.radius.pending
 	r.trackPeersLocked(connected)
-	due := r.pickDueLocked(local, r.now())
+	due = r.pickDueLocked(local, r.now())
 	r.mu.Unlock()
 	r.pickMu.Unlock()
-
-	r.probe(due, local)
-	r.wakeGossip()
-	return local, connected, radiusPending, true
+	return local, connected, radiusPending, due, true
 }
 
 // scheduleLocked starts a session with every connected peer that is
