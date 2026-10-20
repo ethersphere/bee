@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
@@ -19,8 +20,9 @@ import (
 )
 
 const (
-	// StripeTimeout bounds the transfer of one stripe: its session and the
-	// fetch of the IDs the session listed.
+	// StripeTimeout bounds one attempt of the transfer of a stripe: its
+	// session and the fetch of the IDs the session listed. See runStripe
+	// for the bound on a whole stripe.
 	StripeTimeout = 15 * time.Minute
 
 	// stripeQueue is the number of want batches of a stripe queued for
@@ -44,8 +46,11 @@ const (
 	// peer after a failure, timeout or withholding without progress.
 	maxStripeReassign = 3
 	// maxStripeRestarts bounds the restarts of one stripe with the same
-	// peer after attempts that failed with progress; past it the stripe is
-	// reassigned as if the attempt made no progress.
+	// peer after attempts that failed with progress or were deferred; past
+	// it the stripe is reassigned as if the attempt made no progress. It
+	// also bounds the restarts after attempts held up only by this node
+	// (localBusy) over the whole stripe: reassigning does not reset that
+	// budget.
 	maxStripeRestarts = 8
 	// maxStripeRegistry bounds the ranges queued for or in a striped
 	// transfer; a range past it is dropped.
@@ -240,21 +245,33 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 
 // runStripe transfers st: from its first peer, restarted with the same peer
 // while an attempt that failed stored chunks (progress, for example a stripe
-// longer than the session timeout) or was held up by a Busy cause on this node
-// (localBusy), at most maxStripeRestarts times, else reassigned to the next of its Peers
-// or, when they are exhausted, to the next eligible peer with a Status, at
-// most maxStripeReassign times. A restart re-runs FP(stripe), so it lists
-// only the IDs still missing. A session that completed with IDs requested
-// from the peer and not delivered is withholding (ErrStripeWithheld) and is
-// reassigned; IDs the want set did not grant and rejected stamps are not.
-// One that ended with IDs still deferred (ErrStripeDeferred) is restarted
-// with the same peer, blaming nobody.
+// longer than the session timeout) or ended with IDs still deferred
+// (ErrStripeDeferred, blaming nobody), at most maxStripeRestarts times per
+// peer, else reassigned to the next of its Peers or, when they are
+// exhausted, to the next eligible peer with a Status, at most
+// maxStripeReassign times. An attempt held up only by a Busy cause on this
+// node (localBusy) is restarted too, but those restarts draw on one budget
+// of maxStripeRestarts per stripe that reassigning does not reset: a cause
+// on this node is the same with every peer. A restart re-runs FP(stripe), so
+// it lists only the IDs still missing. A session that completed with IDs
+// requested from the peer and not delivered is withholding
+// (ErrStripeWithheld) and is reassigned; IDs the want set did not grant and
+// rejected stamps are not.
+//
+// Bound: a stripe makes at most (1 + maxStripeReassign) × (1 +
+// maxStripeRestarts) = 36 attempts, each of at most StripeTimeout on its
+// stripe clock (9 h at the defaults), of which at most 1 + maxStripeRestarts
+// + maxStripeReassign = 12 (3 h) when only this node holds them up. Not on
+// the stripe clock, per attempt: the wait for its slots before the clock
+// starts, and its waits to retry the peer's Busy, at most
+// maxStripeBusyRetries of stripeRetryInterval plus the wait for the slots
+// again.
 func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks, started func()) StripeResult {
 	total := StripeResult{Range: st.Range}
 	tried := make(map[string]bool)
 	next := st.Peers
 	peer, ok := r.nextStripePeer(st.Range, &next, tried)
-	for reassigns, restarts := 0, 0; ok; {
+	for reassigns, restarts, localRestarts := 0, 0, 0; ok; {
 		if !tried[peer.ByteString()] {
 			tried[peer.ByteString()] = true
 			total.Tried = append(total.Tried, peer)
@@ -277,15 +294,20 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		if res.Undelivered > 0 && (res.Err == nil || errors.Is(res.Err, ErrStripeDeferred)) {
 			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d, %d undelivered: %w", st.Range, peer, res.Stored, res.Listed, res.Undelivered, ErrStripeWithheld)
 		}
+		progress := res.Stored > 0 || errors.Is(res.Err, ErrStripeDeferred)
+		local := !progress && localBusy(res.Err) // held up by this node only
 		switch {
 		case total.Err == nil:
 			r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
 			return total
 		case ctx.Err() != nil:
 			return total
-		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) &&
-			(res.Stored > 0 || localBusy(res.Err) || errors.Is(res.Err, ErrStripeDeferred)) && restarts < maxStripeRestarts:
+		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && restarts < maxStripeRestarts &&
+			(progress || local && localRestarts < maxStripeRestarts):
 			restarts++
+			if local {
+				localRestarts++
+			}
 			continue // progress, or held up by this node: restart with the same peer
 		case reassigns == maxStripeReassign:
 			ok = false
@@ -365,11 +387,11 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // peer's Busy, and without a count for a cause on this node (localBusy). The
 // stripe timeout (stripeClock) starts once it holds them and then runs until
 // it ends, the fetch after the session included, except while it waits to
-// retry the peer's Busy; the waits for a cause on this node count, so they
-// end at the timeout, and runStripe restarts such an attempt with the same
-// peer (maxStripeRestarts) instead of reassigning it. The peer is in Striped
-// throughout (acquireStripe); the wait for its round session to end counts
-// towards the stripe timeout.
+// retry the peer's Busy with no fetch of the attempt running; the waits for
+// a cause on this node count, so they end at the timeout, and runStripe
+// restarts such an attempt with the same peer (maxStripeRestarts) instead of
+// reassigning it. The peer is in Striped throughout (acquireStripe); the
+// wait for its round session to end counts towards the stripe timeout.
 func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, started func()) StripeResult {
 	res := StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithCancelCause(ctx)
@@ -403,15 +425,18 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		fetchErr   error
 		pending    []storer.ChunkID // not granted by the want set (fetchOutcome)
 		unverified int              // stamp check failed on this node
+		queued     atomic.Int64     // want batches queued and not yet fetched
 	)
 	fetched := make(chan struct{})
 	go func() {
 		defer close(fetched)
 		for ids := range queue {
 			if fetchErr != nil {
+				queued.Add(-1)
 				continue // drain
 			}
 			out, err := r.fetchFrom(ctx, peer, ids, true)
+			queued.Add(-1)
 			res.Stored += out.stored
 			res.Undelivered += out.undelivered
 			pending = append(pending, out.pending...)
@@ -430,10 +455,12 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		Open: []fingerprint.Range{sr},
 		Wants: func(ids []storer.ChunkID) {
 			started()
+			queued.Add(1)
 			select {
 			case queue <- ids:
 				res.Listed += len(ids)
 			case <-ctx.Done(): // dropped: the stripe fails
+				queued.Add(-1)
 			}
 		},
 	}
@@ -454,8 +481,10 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			busy++
 		}
 		// wait for the retry without the slots, and off the stripe clock
-		// unless this node is the cause
-		if lastLocal == nil {
+		// unless this node is the cause or the fetch of IDs an earlier
+		// session of the attempt listed is still running (the clock bounds
+		// that fetch)
+		if lastLocal == nil && queued.Load() == 0 {
 			clock.pause()
 		}
 		releaseSlots()
@@ -471,9 +500,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			break
 		}
 		held = true
-		if lastLocal == nil {
-			clock.resume()
-		}
+		clock.resume() // a no-op when it ran through the wait
 	}
 	if held { // the session ended; its fetch does not use the slots (the clock runs on)
 		releaseSlots()
@@ -543,11 +570,12 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 }
 
 // localBusy reports whether err is a Busy for a cause on this node: its index
-// is being rebuilt (fingerprint.ErrBusy), or its session slots are taken
-// (rangesync.ErrSessionLimit: its node cap, or the peer's own session with
-// this node).
+// is being rebuilt (fingerprint.ErrBusy), or it runs MaxConcurrentSessions
+// (rangesync.ErrNodeSessionLimit). The peer's session slot on this node
+// taken (rangesync.ErrPeerSessionLimit) is the peer's Busy: only the peer's
+// own session with this node holds it, so the peer can keep it taken.
 func localBusy(err error) bool {
-	return errors.Is(err, fingerprint.ErrBusy) || errors.Is(err, rangesync.ErrSessionLimit)
+	return errors.Is(err, fingerprint.ErrBusy) || errors.Is(err, rangesync.ErrNodeSessionLimit)
 }
 
 // acquireStripeSlots takes a stripe slot, then a session slot, waiting for

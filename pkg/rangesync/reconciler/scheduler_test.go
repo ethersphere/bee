@@ -953,6 +953,95 @@ func TestStripeLocalBusy(t *testing.T) {
 	}
 }
 
+// TestStripeLocalBusyBudget: Busy answers for a cause on this node that
+// every peer gets (here this node's index rebuilding) draw on one restart
+// budget per stripe, which reassigning does not reset: the first peer gets
+// 1 + maxStripeRestarts attempts, each further peer one.
+func TestStripeLocalBusyBudget(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 20 * time.Millisecond
+	peers := []swarm.Address{addr(0xf1, 0), addr(0xf1, 1), addr(0xf1, 2), addr(0xf1, 3)} // 1 + MaxStripeReassign
+	svc := newFakeService(status(1))
+	for _, p := range peers {
+		svc.localBusyN[p.ByteString()] = 1 << 30
+	}
+	h := newStripeHarness(t, svc, timeout, time.Millisecond)
+	start := h.clock.Now()
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: peers}})[0]
+	if !errors.Is(res.Err, reconciler.ErrStripeTimeout) || !errors.Is(res.Err, fingerprint.ErrBusy) || !res.Peer.Equal(peers[3]) {
+		t.Fatalf("stripe from %s: %v; want a timeout held up by this node, from %s", res.Peer, res.Err, peers[3])
+	}
+	const attempts = 1 + reconciler.MaxStripeRestarts + reconciler.MaxStripeReassign
+	if d := h.clock.Now().Sub(start); d < timeout*attempts || d >= timeout*(attempts+1) {
+		t.Fatalf("stripe ended after %v, want %d attempts of %v", d, attempts, timeout)
+	}
+}
+
+// TestStripePeerSessionLimitIsPeerBusy: a session slot on this node that the
+// peer's own session holds (rangesync.ErrPeerSessionLimit) is the peer's
+// Busy: the peer can hold it, so it counts towards MaxStripeBusyRetries, off
+// the stripe clock, and the stripe is reassigned without a score.
+func TestStripePeerSessionLimitIsPeerBusy(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 100 * time.Millisecond // above the MaxStripeBusyRetries waits of 1 ms
+	a, b := addr(0xf1, 0), addr(0xf1, 1)
+	svc := newFakeService(status(1))
+	svc.busyN[a.ByteString()] = 1 << 30
+	svc.busyErr[a.ByteString()] = rangesync.ErrPeerSessionLimit
+	h := newStripeHarness(t, svc, timeout, time.Millisecond)
+	start := h.clock.Now()
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}})[0]
+	if res.Err != nil || !res.Peer.Equal(b) {
+		t.Fatalf("stripe from %s: %v; want done by %s", res.Peer, res.Err, b)
+	}
+	if n := len(svc.sessionOpens(a)); n != reconciler.MaxStripeBusyRetries+1 {
+		t.Fatalf("%d sessions with the peer holding the slot, want %d", n, reconciler.MaxStripeBusyRetries+1)
+	}
+	if d := h.clock.Now().Sub(start); d >= timeout {
+		t.Fatalf("stripe took %v, want less than its timeout", d)
+	}
+	if s := h.r.Score(a); s != 0 {
+		t.Fatalf("score of the peer %d", s)
+	}
+}
+
+// TestStripeBusyPauseFetchPending: the stripe clock does not pause for the
+// peer's Busy while the attempt still fetches the IDs an earlier session of
+// it listed (that session ended on a Busy cause on this node), so the
+// stripe timeout bounds that fetch.
+func TestStripeBusyPauseFetchPending(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 10 * time.Second
+	p := addr(0xf1, 0)
+	svc := newFakeService(status(1))
+	svc.wants[p.ByteString()] = 3
+	svc.sessionErrAfter[p.ByteString()] = fmt.Errorf("index: %w", fingerprint.ErrBusy) // the first session's end
+	svc.sessionHook = func(peer swarm.Address, n int) {
+		if n == 2 { // later sessions: the peer is Busy
+			svc.set(func() { svc.busyN[peer.ByteString()] = 1 << 30 })
+		}
+	}
+	calls := make(chan chan struct{}, 1)
+	svc.fetchCalls = calls // the fetch never ends on its own
+	h := newStripeHarness(t, svc, timeout, time.Second)
+	done := make(chan reconciler.StripeResult, 1)
+	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(p))[0] }()
+	select {
+	case res := <-done:
+		if !errors.Is(res.Err, reconciler.ErrStripeTimeout) {
+			t.Fatalf("stripe: %v, want a timeout", res.Err)
+		}
+		if n := len(svc.sessionOpens(p)); n > int(timeout/time.Second)+1 {
+			t.Fatalf("%d sessions, want at most %d: Busy waits paused the clock while the fetch ran", n, int(timeout/time.Second)+1)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the fetch outlived the stripe timeout: the clock paused while it ran")
+	}
+}
+
 // TestStripeBusyReassigns: an attempt whose peer stays Busy past
 // MaxStripeBusyRetries is reassigned to another peer; Busy is not scored.
 func TestStripeBusyReassigns(t *testing.T) {
