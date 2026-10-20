@@ -6,7 +6,6 @@ package reconciler
 
 import (
 	"context"
-	"errors"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -39,9 +38,10 @@ const (
 	StartupGuardRate = 1.0
 
 	// ScoreThreshold is the failure score above which a peer is
-	// deprioritized. In Phase 1 deprioritized means "run last": a round runs
-	// the sessions of peers above the threshold after those of every other
-	// peer. Phase 4 may tighten this (skip or delay such peers).
+	// deprioritized: a round starts the sessions of peers above the
+	// threshold after those of every other peer. Rounds do not skip or
+	// delay such peers: a violation already disconnects the peer, and peers
+	// that answer Busy or fail back off (peerfsm.go).
 	ScoreThreshold = 3
 	// ScoreDecayInterval is how often a peer's failure score drops by one;
 	// a success does not reset it.
@@ -94,7 +94,8 @@ type Options struct {
 	// minimum and the maximum of the adaptive interval (MinRoundInterval,
 	// MaxRoundInterval), and the round timer runs on the real clock
 	// (time.After), so that tests with a frozen fake clock still get timed
-	// rounds. Without it the round timer runs on After.
+	// rounds. Without it the round timer runs on After. It is for tests:
+	// the node leaves it zero.
 	RoundInterval time.Duration
 	// Jitter returns the jitter of a takeover wait, a fraction in [0, 1) of
 	// the round interval; rand.Float64 if nil. Tests fix it.
@@ -152,12 +153,14 @@ type score struct {
 }
 
 // Reconciler follows the topology, exchanges Status with the connected peers
-// and runs Reconcile then Fetch in rounds (scheduler.go) with every eligible
-// peer whose digest differs and whose overlay is higher than this node's, or
-// lower and silent for too long. It keeps a state machine per peer (§8.1,
-// peerfsm.go): one session per peer, round or stripe, and a backoff for peers
-// that answer Busy or fail. It owns the per-peer failure score
-// (rangesync.PeerScorer) and reports the catch-up rate (storer.Syncer).
+// (gossip.go) and runs Reconcile then Fetch in rounds (scheduler.go) with
+// every eligible peer whose digest differs and whose overlay is higher than
+// this node's, or lower and silent for too long. It keeps a state machine
+// per peer (§8.1, peerfsm.go, peers.go): one session per peer, round or
+// stripe, and a backoff for peers that answer Busy or fail. Large
+// differences go to the stripe worker (stripes_transfer.go). It owns the
+// per-peer failure score (rangesync.PeerScorer) and reports the catch-up
+// rate (storer.Syncer).
 type Reconciler struct {
 	overlay       swarm.Address
 	topo          Topology
@@ -347,257 +350,6 @@ func (r *Reconciler) Start(_ context.Context) {
 	}()
 }
 
-// round refreshes the peer set from the topology, sends the Statuses that
-// are due (first contacts, a moved root; pickDueLocked), starts a session
-// with every peer this node initiates with or takes over (scheduler.go) and
-// adapts the round interval.
-func (r *Reconciler) round() {
-	var connected []swarm.Address
-	_ = r.topo.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-		connected = append(connected, addr)
-		return false, false, nil
-	}, topology.Select{})
-
-	r.pickMu.Lock()
-	local, err := r.svc.LocalStatus()
-	if err != nil {
-		r.pickMu.Unlock()
-		r.logger.Debug("round skipped", "error", err)
-		return
-	}
-	r.mu.Lock()
-	r.trackRootLocked(local.Root)
-	radiusPending := r.radius.pending
-	present := make(map[string]bool, len(connected))
-	for _, p := range connected {
-		k := p.ByteString()
-		present[k] = true
-		st, ok := r.peers[k]
-		if !ok {
-			st = &peerState{fsm: newPeerFSM()}
-			r.peers[k] = st
-		}
-		// Without the peer's Status the peer may lack this node's too: both
-		// are forgotten on a disconnect, which a reconnect between two
-		// rounds hides from the peer set. Ask for it to be sent again.
-		remote, have := r.svc.LastStatus(p)
-		if !have && !st.sending {
-			st.resend = true
-		}
-		// A Status from a peer that did not speak rangesync, one it had not
-		// sent when it was found so (statuses are forgotten on a
-		// disconnect), shows such a reconnect: follow the new connection
-		// from a first contact.
-		if have && st.fsm.state == stateUnsupported && !st.sending && (!st.verdictHave || !equalStatus(remote, st.verdict)) {
-			st.fsm = newPeerFSM()
-			st.sent, st.lastSent = false, time.Time{}
-			r.logger.Debug("peer speaks rangesync after a reconnect", "peer_address", p)
-		}
-	}
-	for k, st := range r.peers {
-		if !present[k] {
-			r.fireLocked(st, eventDisconnected)
-			st.wakeLocked()
-			delete(r.peers, k)
-		}
-	}
-	// First contacts, and a new root (it makes the peers' session scopes
-	// with this node stale), go out now unless the sender-side rate defers
-	// them, so that the evaluation below sees the outcome. The gossip loop
-	// sends the rest when due.
-	due := r.pickDueLocked(local, r.now())
-	r.mu.Unlock()
-	r.pickMu.Unlock()
-
-	r.probe(due, local)
-	r.wakeGossip()
-	if r.ctx.Err() != nil {
-		return
-	}
-	// The peers whose Statuses are now exchanged leave Probing before any
-	// stripe is planned below, so that the stripe sessions find them Idle.
-	r.mu.Lock()
-	r.admitLocked(local, connected)
-	r.mu.Unlock()
-
-	// An empty or far-behind node transfers its root striped (§7.4) instead
-	// of one full listing per peer; its per-peer sessions wait while that
-	// transfer is in flight. After a bootstrap transfer that did not
-	// complete, one round runs the per-peer sessions before the next try.
-	// After a radius decrease only the new half is striped (§7.5), and the
-	// node is not bootstrapping however far its count is behind.
-	bootstrap := false
-	if radiusPending {
-		r.enqueueRadiusHalf()
-	} else if IsBootstrap(local, r.peerStatuses()) {
-		r.mu.Lock()
-		switch {
-		case r.bootstrapping:
-			bootstrap = true
-		case r.bootstrapFailed:
-			r.bootstrapFailed = false
-		default:
-			started := func() {
-				r.mu.Lock()
-				r.pendingReconcile--
-				r.checkGuardLocked()
-				r.mu.Unlock()
-			}
-			if r.registerStripeLocked(stripeJob{rg: local.Root, started: started, bootstrap: true}) {
-				r.bootstrapping, bootstrap = true, true
-				r.pendingReconcile++
-			}
-		}
-		r.mu.Unlock()
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	// A peer that accepts our Status but never sends its own keeps
-	// exchanged false; the guard then releases only at StartupGuardTimeout
-	// (the fallback path). Its eligibility is unknown without its Status.
-	// A differing peer this node initiates with that backs off, or that
-	// lacks this node's current root, keeps its difference unresolved, and
-	// so does the guard.
-	exchanged, eligible, unresolved, differs := true, 0, false, false
-	clear(r.awaiting)
-	var candidates []swarm.Address
-	opens := make(map[string][]fingerprint.Range)
-	now := r.now()
-	for _, p := range connected {
-		st, ok := r.peers[p.ByteString()]
-		if !ok {
-			continue
-		}
-		// admitted from the Status evaluated below, so that an exchanged,
-		// eligible peer is never left out of Idle by a Status that arrived
-		// since admitLocked
-		remote, have := r.svc.LastStatus(p)
-		r.admitPeerLocked(p, st, local, remote, have)
-		if st.fsm.state == stateUnsupported {
-			continue
-		}
-		if !st.sent || !have {
-			exchanged = false
-			st.takeoverSince = time.Time{}
-			continue
-		}
-		if !isEligible(local, remote) {
-			st.takeoverSince = time.Time{}
-			continue
-		}
-		eligible++
-		if sameDigest(local, remote) {
-			st.takeoverSince = time.Time{}
-			r.fireLocked(st, eventEqualDigest)
-			continue
-		}
-		// Digests of different roots summarize different ranges: such a
-		// peer's sessions report whether they found differences (foundDiff).
-		if local.Root.Equal(remote.Root) {
-			differs = true
-		}
-		if !r.initiates(p) {
-			if !st.served {
-				r.awaiting[p.ByteString()] = true
-			}
-			if !r.takeoverDueLocked(st, now, local.Root.Equal(remote.Root)) {
-				continue
-			}
-		}
-		if st.fsm.state == stateIdle && !st.fsm.canReconcile(now) {
-			unresolved = true // backing off
-			continue
-		}
-		// Idle and past its backoff, with no stripe session waiting for it
-		if bootstrap || st.stripeWaiters > 0 || !st.fsm.canReconcile(now) {
-			continue
-		}
-		// The peer must have this node's current root: one moved since the
-		// last Status that reached the peer may still be in flight, or
-		// deferred by the sender-side rate, and the peer would refuse the
-		// session. The gossip pass that delivers it triggers a round.
-		if !st.reached.Equal(local.Root) {
-			unresolved = true
-			continue
-		}
-		open, skip := r.radiusOpenLocked(local, remote)
-		if skip {
-			continue
-		}
-		candidates = append(candidates, p)
-		opens[p.ByteString()] = open
-	}
-	for _, p := range r.orderCandidatesLocked(candidates) {
-		st := r.peers[p.ByteString()]
-		r.fireLocked(st, eventReconcile)
-		r.pendingReconcile++
-		r.wg.Add(1)
-		go func() {
-			defer r.wg.Done()
-			r.session(p, st, opens[p.ByteString()], local.Root, now)
-		}()
-	}
-	r.guardArmed = exchanged && eligible > 0 && !unresolved
-	r.checkGuardLocked()
-	r.adaptInterval(differs || r.foundDiff)
-	r.foundDiff = false
-}
-
-// probe sends local to the picked peers, at most maxConcurrentProbes at
-// once, and records the outcome in the entry each was picked with. It
-// reports whether a send delivered a root the peer did not have from this
-// node before (a first contact or a moved root).
-func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) (newRoot bool) {
-	sem := make(chan struct{}, maxConcurrentProbes)
-	var wg sync.WaitGroup
-	for _, pk := range picks {
-		select {
-		case sem <- struct{}{}:
-		case <-r.ctx.Done():
-			wg.Wait()
-			return newRoot
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-			err := r.svc.SendStatusWith(r.ctx, pk.peer, local)
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			st := pk.st
-			if r.peers[pk.peer.ByteString()] != st {
-				return // left meanwhile, maybe with a new entry since
-			}
-			st.sending = false
-			switch {
-			case err == nil:
-				if !st.sent || !st.reached.Equal(local.Root) {
-					newRoot = true
-				}
-				st.sent, st.failed, st.statusFails = true, false, 0
-				st.reached = local.Root
-			case errors.Is(err, rangesync.ErrProtocolUnsupported):
-				if st.fsm.state != stateProbing {
-					// a reconnect the peer set did not show: a new peer
-					st.fsm = newPeerFSM()
-					st.wakeLocked()
-				}
-				r.fireLocked(st, eventUnsupported)
-				st.verdict, st.verdictHave = r.svc.LastStatus(pk.peer)
-				r.logger.Debug("peer does not support rangesync", "peer_address", pk.peer)
-			default:
-				// sent stays: an earlier Status of ours reached the peer
-				st.failed = true
-				st.statusFails++
-				r.logger.Debug("send status", "peer_address", pk.peer, "failures", st.statusFails, "error", err)
-			}
-		}()
-	}
-	wg.Wait()
-	return newRoot
-}
-
 // isEligible reports whether this node and a peer with status remote run
 // sessions: same Mapping and a valid session scope (rangesync.NewScope,
 // which applies rangesync.SessionRoot).
@@ -607,136 +359,6 @@ func isEligible(local, remote rangesync.Status) bool {
 	}
 	_, err := rangesync.NewScope(local, remote)
 	return err == nil
-}
-
-// sameDigest reports whether the two statuses summarize the same elements.
-// Statuses with different roots are compared as different: their summaries
-// cover different ranges (Phase 4 compares summaries of the session root).
-func sameDigest(local, remote rangesync.Status) bool {
-	return local.Root.Equal(remote.Root) && local.Summary == remote.Summary
-}
-
-// initiates reports whether this node starts sessions with peer: the peer
-// with the lower overlay initiates (§8.2).
-func (r *Reconciler) initiates(peer swarm.Address) bool {
-	return r.overlay.Compare(peer) < 0
-}
-
-// session runs Reconcile then Fetch with peer, whose entry st is in
-// Reconciling, then transfers the ranges the session handed to its Striper
-// (d̂ > LargeDiff) as stripes. It waits for a session slot first
-// (MaxInitiatedSessions), then rechecks the round's decision, made at
-// decided with this node's root root (recheckSession). open, if not empty,
-// is the session's opening (the old half after a radius decrease). The
-// outcome moves st on: the peer's Busy or an error back to Idle with a
-// backoff, a cause on this node (localCause) or a stale decision back to Idle
-// without one, a completed session to Fetching and, once its wants are
-// fetched, to Idle. A session that finds the peer's session slot taken on
-// this node found the peer running its own session with this node: it goes
-// back to Idle without a backoff. A takeover (the peer initiates) that finds
-// so, or is answered Busy, found the initiator alive: it also waits for the
-// initiator again.
-func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerprint.Range, root fingerprint.Range, decided time.Time) {
-	striper := new(StripeCollector)
-	release, err := r.acquireSlot(r.ctx)
-	var wants []storer.ChunkID
-	if err == nil {
-		if err = r.recheckSession(peer, st, root, decided); err == nil {
-			wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
-		}
-		release()
-	}
-	takeover := !r.initiates(peer)
-
-	r.mu.Lock()
-	r.pendingReconcile--
-	catchUp := err == nil && len(wants) >= CatchUpMinDiff
-	if catchUp {
-		r.catchUpFetches++
-	}
-	if err == nil && (len(wants) > 0 || len(striper.Ranges()) > 0) {
-		r.foundDiff = true
-	}
-	if r.peers[peer.ByteString()] == st { // not left meanwhile
-		switch {
-		case err == nil:
-			r.fireLocked(st, eventSessionDone)
-		case errors.Is(err, rangesync.ErrPeerSessionLimit), takeover && errors.Is(err, rangesync.ErrPeerBusy):
-			r.fireLocked(st, eventAborted)
-			if takeover {
-				r.restartTakeoverLocked(st, r.now())
-			}
-		case errors.Is(err, errStaleSession), localCause(err):
-			r.fireLocked(st, eventAborted)
-		case isBusy(err):
-			r.fireLocked(st, eventBusy)
-		default:
-			r.fireLocked(st, eventError)
-		}
-		if err != nil {
-			// the difference is unresolved: the next round arms the guard
-			// again, or keeps it while the peer backs off
-			r.guardArmed = false
-		}
-	}
-	r.checkGuardLocked()
-	r.mu.Unlock()
-
-	switch {
-	case errors.Is(err, errStaleSession):
-		r.metrics.Sessions.WithLabelValues("stale").Inc()
-		return // the next round decides again
-	case errors.Is(err, rangesync.ErrSessionLimit):
-		r.metrics.Sessions.WithLabelValues("session_limit").Inc()
-		return // retried after the backoff, not scored
-	case isBusy(err):
-		r.metrics.Sessions.WithLabelValues("busy").Inc()
-		return // an index is rebuilding: retried after the backoff, not scored
-	case err != nil:
-		r.metrics.Sessions.WithLabelValues("error").Inc()
-		r.logger.Debug("reconcile", "peer_address", peer, "error", err)
-		return
-	}
-	r.metrics.Sessions.WithLabelValues("ok").Inc()
-	r.fetch(peer, wants, catchUp)
-	r.mu.Lock()
-	if r.peers[peer.ByteString()] == st {
-		r.fireLocked(st, eventFetched) // during a stripe session the peer stays Striped
-	}
-	r.mu.Unlock()
-	if ranges := striper.Ranges(); len(ranges) > 0 {
-		r.enqueueStripes(ranges)
-	}
-}
-
-// errStaleSession ends a session whose round decision no longer holds when it
-// gets its slot (recheckSession).
-var errStaleSession = errors.New("reconciler: session decision stale")
-
-// recheckSession reports errStaleSession unless the decision of the round that
-// started the session with peer, made at decided with this node's root root,
-// still holds once the session has its slot: st is the peer's current entry
-// and in Reconciling, this node's root is still root and reached the peer,
-// the peer's Status is known and its digest still differs, and, for a
-// takeover, the initiator ran no session with this node since. The session
-// may have waited minutes for its slot.
-func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, root fingerprint.Range, decided time.Time) error {
-	local, err := r.svc.LocalStatus()
-	if err != nil {
-		return err
-	}
-	remote, have := r.svc.LastStatus(peer)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	switch {
-	case r.peers[peer.ByteString()] != st, st.fsm.state != stateReconciling:
-	case !have, !local.Root.Equal(root), !st.reached.Equal(local.Root):
-	case sameDigest(local, remote):
-	case !r.initiates(peer) && st.takeoverSince.After(decided):
-	default:
-		return nil
-	}
-	return errStaleSession
 }
 
 // fetch fetches ids from peer (fetchFrom: IDs the peer does not deliver are

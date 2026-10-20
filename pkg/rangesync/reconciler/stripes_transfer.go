@@ -646,6 +646,47 @@ func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
 	return true
 }
 
+// planCatchUp registers the striped transfer a round's Status local calls
+// for, and reports whether a bootstrap transfer is queued or in flight, in
+// which case the round starts no per-peer session. An empty or far-behind
+// node transfers its root striped (§7.4, IsBootstrap) instead of one full
+// listing per peer. After a bootstrap transfer that did not complete, one
+// round runs the per-peer sessions before the next try. After a radius
+// decrease (radiusPending) only the new half is striped (§7.5), and the node
+// is not bootstrapping however far its count is behind. A queued bootstrap
+// counts as a pending reconcile for the start-up guard until its first wants
+// arrive or it ends.
+func (r *Reconciler) planCatchUp(local rangesync.Status, radiusPending bool) (bootstrap bool) {
+	if radiusPending {
+		r.enqueueRadiusHalf()
+		return false
+	}
+	if !IsBootstrap(local, r.peerStatuses()) {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case r.bootstrapping:
+		return true
+	case r.bootstrapFailed:
+		r.bootstrapFailed = false
+		return false
+	}
+	started := func() {
+		r.mu.Lock()
+		r.pendingReconcile--
+		r.checkGuardLocked()
+		r.mu.Unlock()
+	}
+	if !r.registerStripeLocked(stripeJob{rg: local.Root, started: started, bootstrap: true}) {
+		return false
+	}
+	r.bootstrapping = true
+	r.pendingReconcile++
+	return true
+}
+
 // stripeWorker plans and transfers the queued ranges, one at a time, across
 // the peers with a Status, until Close. On Close it calls started of the
 // jobs still queued, so that no pending reconcile is left counted.

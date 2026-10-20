@@ -301,7 +301,13 @@ func (r *Reconciler) PeerFailures(peer swarm.Address) int {
 }
 
 // SourceIDs returns the number of IDs the id → peers map keeps at Now.
-func (r *Reconciler) SourceIDs() int { return r.sources.len(r.now()) }
+func (r *Reconciler) SourceIDs() int {
+	w := r.sources
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.prune(r.now())
+	return len(w.byID)
+}
 
 // MaxPendingPasses is maxPendingPasses.
 const MaxPendingPasses = maxPendingPasses

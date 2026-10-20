@@ -173,14 +173,6 @@ func (w *wantSources) begin(now time.Time) (end func()) {
 	}
 }
 
-// len drops the IDs no longer kept at now and returns the number kept.
-func (w *wantSources) len(now time.Time) int {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.prune(now)
-	return len(w.byID)
-}
-
 // add records peer as a source of ids, which the want set denied it at now.
 func (w *wantSources) add(now time.Time, peer swarm.Address, ids []storer.ChunkID) {
 	if len(ids) == 0 {

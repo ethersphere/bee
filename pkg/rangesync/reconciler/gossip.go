@@ -5,6 +5,8 @@
 package reconciler
 
 import (
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
@@ -179,4 +181,58 @@ func (r *Reconciler) wakeGossip() {
 	case r.gossipWake <- struct{}{}:
 	default:
 	}
+}
+
+// probe sends local to the picked peers, at most maxConcurrentProbes at
+// once, and records the outcome in the entry each was picked with. It
+// reports whether a send delivered a root the peer did not have from this
+// node before (a first contact or a moved root).
+func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) (newRoot bool) {
+	sem := make(chan struct{}, maxConcurrentProbes)
+	var wg sync.WaitGroup
+	for _, pk := range picks {
+		select {
+		case sem <- struct{}{}:
+		case <-r.ctx.Done():
+			wg.Wait()
+			return newRoot
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			err := r.svc.SendStatusWith(r.ctx, pk.peer, local)
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			st := pk.st
+			if r.peers[pk.peer.ByteString()] != st {
+				return // left meanwhile, maybe with a new entry since
+			}
+			st.sending = false
+			switch {
+			case err == nil:
+				if !st.sent || !st.reached.Equal(local.Root) {
+					newRoot = true
+				}
+				st.sent, st.failed, st.statusFails = true, false, 0
+				st.reached = local.Root
+			case errors.Is(err, rangesync.ErrProtocolUnsupported):
+				if st.fsm.state != stateProbing {
+					// a reconnect the peer set did not show: a new peer
+					st.fsm = newPeerFSM()
+					st.wakeLocked()
+				}
+				r.fireLocked(st, eventUnsupported)
+				st.verdict, st.verdictHave = r.svc.LastStatus(pk.peer)
+				r.logger.Debug("peer does not support rangesync", "peer_address", pk.peer)
+			default:
+				// sent stays: an earlier Status of ours reached the peer
+				st.failed = true
+				st.statusFails++
+				r.logger.Debug("send status", "peer_address", pk.peer, "failures", st.statusFails, "error", err)
+			}
+		}()
+	}
+	wg.Wait()
+	return newRoot
 }

@@ -7,6 +7,7 @@ package reconciler
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -32,6 +33,48 @@ func (st *peerState) wakeLocked() {
 	if st.idle != nil {
 		close(st.idle)
 		st.idle = nil
+	}
+}
+
+// trackPeersLocked follows the topology's connected peers: a new peer gets a
+// machine in Probing, a peer that left fires eventDisconnected and is
+// forgotten, and an Unsupported peer that shows a Status it had not sent at
+// the verdict gets a new machine (a reconnect the peer set did not show). A
+// peer whose Status this node lacks is asked for this node's Status again
+// (peerState.resend). r.mu must be held.
+func (r *Reconciler) trackPeersLocked(connected []swarm.Address) {
+	present := make(map[string]bool, len(connected))
+	for _, p := range connected {
+		k := p.ByteString()
+		present[k] = true
+		st, ok := r.peers[k]
+		if !ok {
+			st = &peerState{fsm: newPeerFSM()}
+			r.peers[k] = st
+		}
+		// Without the peer's Status the peer may lack this node's too: both
+		// are forgotten on a disconnect, which a reconnect between two
+		// rounds hides from the peer set. Ask for it to be sent again.
+		remote, have := r.svc.LastStatus(p)
+		if !have && !st.sending {
+			st.resend = true
+		}
+		// A Status from a peer that did not speak rangesync, one it had not
+		// sent when it was found so (statuses are forgotten on a
+		// disconnect), shows such a reconnect: follow the new connection
+		// from a first contact.
+		if have && st.fsm.state == stateUnsupported && !st.sending && (!st.verdictHave || !equalStatus(remote, st.verdict)) {
+			st.fsm = newPeerFSM()
+			st.sent, st.lastSent = false, time.Time{}
+			r.logger.Debug("peer speaks rangesync after a reconnect", "peer_address", p)
+		}
+	}
+	for k, st := range r.peers {
+		if !present[k] {
+			r.fireLocked(st, eventDisconnected)
+			st.wakeLocked()
+			delete(r.peers, k)
+		}
 	}
 }
 
