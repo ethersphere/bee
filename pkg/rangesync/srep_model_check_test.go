@@ -353,10 +353,11 @@ func TestSREPIdeal(t *testing.T) {
 // TestSREPModel runs the model at §7.8's sizes in the harness's steady mode
 // (steadyOptions) with a 50 ms latency and checks its invariants: every
 // upload reaches every node within the harness's bound, each node fetches
-// each upload it lacked exactly once (no duplicate with claims), the
-// sessions cover at least p(N − p) differences per upload, and every stream
-// stays within the model's domain (no stream reaches its capacity). It logs
-// the model's figures for the current constants and the G6 candidates.
+// each upload it lacked exactly once (no duplicate with claims), every
+// delivered chunk was a difference of a session (srepCheckDiffs), n_Δ per
+// upload stays near the synchronous p(N − p), and every stream stays within
+// the model's domain (no stream reaches its capacity). It logs the model's
+// figures for the current constants and the G6 candidates.
 func TestSREPModel(t *testing.T) {
 	t.Parallel()
 
@@ -376,8 +377,18 @@ func TestSREPModel(t *testing.T) {
 		if want := res.Uploads * (n - p.Replication); res.Fetched != want {
 			t.Errorf("N = %d: %d chunks fetched, want %d (each upload by its N − p lackers)", n, res.Fetched, want)
 		}
-		if lo := float64(p.Replication * (n - p.Replication)); res.DiffPerUpload() < lo {
-			t.Errorf("N = %d: n_Δ per upload %.1f, below p(N − p) = %v", n, res.DiffPerUpload(), lo)
+		srepCheckDiffs(t, fmt.Sprintf("N = %d", n), res)
+		// The legs of one instant progress in step (srepInstant), so the
+		// sessions of a round read the round's snapshot and n_Δ stays near
+		// the synchronous p(N − p) of srepParams.ideal: at N = 9 (one wave of
+		// sessions) 17.7–18.4 per upload over 20 seeds and Delay 0–200 ms
+		// (standard deviation at most 0.1), above it at N = 17 (a second
+		// wave, 47–53). It is not a bound: a session that starts after a
+		// fetch of the same round sees less. A random order of the legs gave
+		// 14.8 at N = 9; 0.95 p(N − p) = 17.1 lies between, 6 standard
+		// deviations below the lowest seed.
+		if lo := 0.95 * float64(p.Replication*(n-p.Replication)); res.DiffPerUpload() < lo {
+			t.Errorf("N = %d: n_Δ per upload %.1f, below 0.95 p(N − p) = %.1f", n, res.DiffPerUpload(), lo)
 		}
 		if res.Outside != 0 {
 			t.Errorf("N = %d: %d streams outside the model's domain", n, res.Outside)
@@ -398,6 +409,23 @@ func TestSREPModel(t *testing.T) {
 		if nc.Duplicates == 0 {
 			t.Errorf("N = %d without claims: no duplicate delivery", n)
 		}
+		srepCheckDiffs(t, fmt.Sprintf("N = %d without claims", n), nc)
 		t.Logf("N = %d without claims: %d duplicate deliveries (%.2f per upload)", n, nc.Duplicates, float64(nc.Duplicates)/float64(nc.Uploads))
+	}
+}
+
+// srepCheckDiffs checks a structural bound of n_Δ, which holds for every
+// seed: every chunk a fetch delivered (stored, or a duplicate) was a
+// difference of the session whose wants it came from, and a session wants
+// each of its differences on one side only, so the differences of all
+// sessions are at least the deliveries: N − p per upload with claims.
+func srepCheckDiffs(t *testing.T, what string, res *srepResult) {
+	t.Helper()
+	diffs := 0
+	for _, d := range res.Diffs {
+		diffs += d
+	}
+	if delivered := res.Fetched + res.Duplicates; diffs < delivered {
+		t.Errorf("%s: n_Δ of all sessions %d, below the %d chunks delivered", what, diffs, delivered)
 	}
 }
