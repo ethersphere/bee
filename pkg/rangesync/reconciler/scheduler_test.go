@@ -180,6 +180,55 @@ func TestRoundIntervalAdapts(t *testing.T) {
 	}
 }
 
+// TestRoundIntervalBounds: Options.MinRoundInterval and MaxRoundInterval
+// override the bounds of the adaptive interval, and the minimum is the floor
+// of a triggered round, while the round timer stays on the fake clock.
+func TestRoundIntervalBounds(t *testing.T) {
+	t.Parallel()
+
+	const lo, hi = 2 * time.Second, 8 * time.Second
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(1)
+	h := newGossipHarnessOptions(t, svc, reconciler.Options{MinRoundInterval: lo, MaxRoundInterval: hi}, higher)
+	if got := h.r.CurrentRoundInterval(); got != lo {
+		t.Fatalf("initial round interval %v, want %v", got, lo)
+	}
+	check := func(want time.Duration) {
+		t.Helper()
+		h.r.Round()
+		if got := h.r.CurrentRoundInterval(); got != want {
+			t.Fatalf("round interval %v, want %v", got, want)
+		}
+	}
+	for _, want := range []time.Duration{4 * time.Second, hi, hi} {
+		check(want)
+	}
+	svc.set(func() { svc.remote[higher.ByteString()] = status(2) })
+	for _, want := range []time.Duration{4 * time.Second, lo, lo} {
+		check(want)
+	}
+
+	// a started reconciler: a trigger waits for the overridden minimum
+	svc2 := newFakeService(status(1))
+	svc2.remote[higher.ByteString()] = status(1)
+	h2 := &harness{svc: svc2, topo: &fakeTopology{peers: []swarm.Address{higher}}, clock: &fakeClock{now: time.Unix(1_000_000, 0)}}
+	h2.r = reconciler.New(self, h2.topo, svc2, log.Noop, reconciler.Options{
+		Now: h2.clock.Now, After: h2.clock.After, MinRoundInterval: lo, MaxRoundInterval: hi,
+	})
+	t.Cleanup(func() {
+		if err := h2.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	h2.r.Start(context.Background())
+	waitFor(t, "first round", func() bool { s, _ := h2.r.PeerState(higher); return s == reconciler.StateIdle })
+	svc2.set(func() { svc2.remote[higher.ByteString()] = status(2) })
+	svc2.statusChange()
+	assertSessions(t, svc2, higher, 0)
+	h2.clock.Add(lo)
+	assertSessions(t, svc2, higher, 1)
+}
+
 // TestRoundSessionCap: a round with more differing peers than
 // MaxInitiatedSessions runs at most that many sessions at once; the others
 // wait for a slot and run once one frees.

@@ -102,6 +102,12 @@ type Options struct {
 	// rounds. Without it the round timer runs on After. It is for tests:
 	// the node leaves it zero.
 	RoundInterval time.Duration
+	// MinRoundInterval and MaxRoundInterval override MinRoundInterval and
+	// MaxRoundInterval, the bounds of the adaptive round interval (a
+	// maximum below the minimum is raised to it); the round timer stays on
+	// After. RoundInterval, if set, takes precedence. They are for
+	// simulations that tune the bounds: the node leaves them zero.
+	MinRoundInterval, MaxRoundInterval time.Duration
 	// Jitter returns the jitter of a takeover wait, a fraction in [0, 1) of
 	// the round interval; rand.Float64 if nil. Tests fix it.
 	Jitter func() float64
@@ -266,6 +272,13 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		o.After = time.After
 	}
 	minInterval, maxInterval, roundAfter := MinRoundInterval, MaxRoundInterval, o.After
+	if o.MinRoundInterval > 0 {
+		minInterval = o.MinRoundInterval
+	}
+	if o.MaxRoundInterval > 0 {
+		maxInterval = o.MaxRoundInterval
+	}
+	maxInterval = max(maxInterval, minInterval)
 	if o.RoundInterval > 0 {
 		minInterval, maxInterval, roundAfter = o.RoundInterval, o.RoundInterval, time.After
 	}
