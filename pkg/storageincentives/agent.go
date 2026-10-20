@@ -53,7 +53,7 @@ const (
 // ClaimMaxPriceBypass is the node setting for the redistribution claim.
 // When Enabled, the claim may ignore the max tx price once DelayBlocks have
 // passed since the start of the claim phase. After that there is no price cap.
-// DelayBlocks is clamped to the claim phase length.
+// DelayBlocks is clamped to the last block of the claim phase.
 type ClaimMaxPriceBypass struct {
 	DelayBlocks uint64
 	Enabled     bool
@@ -158,11 +158,13 @@ func clampClaimMaxPriceBypass(logger log.Logger, blocksPerRound, blocksPerPhase 
 	}
 
 	claimPhaseBlocks := blocksPerRound - 2*blocksPerPhase
-	if bypass.DelayBlocks > claimPhaseBlocks {
+	maxDelayBlocks := claimPhaseBlocks - 1
+	if bypass.DelayBlocks > maxDelayBlocks {
 		logger.Warning("claim max price bypass delay exceeds the claim phase, clamping",
 			"configured_blocks", bypass.DelayBlocks,
-			"claim_phase_blocks", claimPhaseBlocks)
-		bypass.DelayBlocks = claimPhaseBlocks
+			"claim_phase_blocks", claimPhaseBlocks,
+			"clamped_blocks", maxDelayBlocks)
+		bypass.DelayBlocks = maxDelayBlocks
 	}
 	return bypass
 }

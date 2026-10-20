@@ -166,11 +166,12 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		}
 
 		head := header.Number.Uint64()
-		if header.Number.Uint64() < *overrides.MaxPriceBypassFromBlock {
+		if head < *overrides.MaxPriceBypassFromBlock {
 			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s, block %d, bypass from block %d",
 				ErrTxMaxPriceDeferred, gasFeeCapWithTip, t.maxTxPrice, head, *overrides.MaxPriceBypassFromBlock)
 		}
-		t.logger.Info("max price bypass: sending above limit", "gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice, "block", head)
+		t.logger.Warning("max price bypass: sending above limit", "gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice, "block", head)
+		t.retryMetrics.RecordMaxPriceBypass()
 	}
 
 	return gasFeeCapWithTip, tip, nil

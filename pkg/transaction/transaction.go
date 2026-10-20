@@ -129,7 +129,7 @@ type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
-	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
+	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see transaction_with_retry.go.
 	// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
 	SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.

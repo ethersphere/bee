@@ -242,14 +242,37 @@ func (s retryTestSetup) estimateGasOption() backendmock.Option {
 // estimate. Options in opts replace those defaults.
 func (s retryTestSetup) newService(t *testing.T, store storage.StateStorer, cfg transaction.TransactionsRetryConfig, watch monitormock.Option, opts ...backendmock.Option) transaction.Service {
 	t.Helper()
+	return s.newServiceWithMetrics(t, store, cfg, watch, nil, opts...)
+}
+
+// retryMetricsBackend exposes a retry metrics recorder the way the wrapped backend does.
+type retryMetricsBackend struct {
+	transaction.Backend
+	recorder transaction.RetryMetricsRecorder
+}
+
+func (b retryMetricsBackend) RetryMetrics() transaction.RetryMetricsRecorder { return b.recorder }
+
+type bypassCounter struct{ bypasses atomic.Int32 }
+
+func (*bypassCounter) RecordRetryComplete(int, error) {}
+
+func (c *bypassCounter) RecordMaxPriceBypass() { c.bypasses.Add(1) }
+
+func (s retryTestSetup) newServiceWithMetrics(t *testing.T, store storage.StateStorer, cfg transaction.TransactionsRetryConfig, watch monitormock.Option, recorder transaction.RetryMetricsRecorder, opts ...backendmock.Option) transaction.Service {
+	t.Helper()
 	backendOpts := append([]backendmock.Option{
 		s.nonceOption(),
 		s.feeHistoryOption(nil),
 		s.headerOption(),
 		s.estimateGasOption(),
 	}, opts...)
+	backend := backendmock.New(backendOpts...)
+	if recorder != nil {
+		backend = retryMetricsBackend{Backend: backend, recorder: recorder}
+	}
 	svc, err := transaction.NewService(log.Noop, s.sender,
-		backendmock.New(backendOpts...),
+		backend,
 		signermock.New(s.passThroughSigner(), s.signerAddr()),
 		store,
 		s.chainID,
@@ -1665,7 +1688,8 @@ func TestSendWithRetry_MaxPriceBypassDefersBeforeBlock(t *testing.T) {
 		heads atomic.Uint64
 	)
 	doneC := make(chan struct{}, 1)
-	svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
+	var metrics bypassCounter
+	svc := s.newServiceWithMetrics(t, store, cfg, nonceWatchOn(doneC), &metrics,
 		s.headAt(&heads),
 		backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
 			txs.add(tx)
@@ -1681,6 +1705,7 @@ func TestSendWithRetry_MaxPriceBypassDefersBeforeBlock(t *testing.T) {
 	require.NotNil(t, receipt)
 	assert.Equal(t, []int64{2200}, feeCaps(txs.all()), "only the attempt at the bypass block is sent")
 	assert.EqualValues(t, 5, heads.Load(), "blocks 1-4 are deferred, block 5 sends")
+	assert.EqualValues(t, 1, metrics.bypasses.Load(), "only the attempt at the bypass block is recorded")
 }
 
 // A deferral after a broadcast keeps waiting on the pending tx. The send at the bypass block
@@ -1699,7 +1724,8 @@ func TestSendWithRetry_MaxPriceBypassKeepsPendingTx(t *testing.T) {
 		heads atomic.Uint64
 	)
 	doneC := make(chan struct{}, 1)
-	svc := s.newService(t, store, cfg, nonceWatchOn(doneC),
+	var metrics bypassCounter
+	svc := s.newServiceWithMetrics(t, store, cfg, nonceWatchOn(doneC), &metrics,
 		s.headAt(&heads),
 		backendmock.WithSendTransactionFunc(func(_ context.Context, tx *types.Transaction) error {
 			if txs.add(tx) == 2 {
@@ -1718,6 +1744,7 @@ func TestSendWithRetry_MaxPriceBypassKeepsPendingTx(t *testing.T) {
 	assert.Equal(t, []int64{2200, 2530}, feeCaps(broadcasts), "one +15% bump over the last sent tx")
 	assertTxDataUnchanged(t, broadcasts)
 	assert.EqualValues(t, 4, heads.Load(), "block 1 sends, blocks 2-3 are deferred, block 4 sends")
+	assert.EqualValues(t, 1, metrics.bypasses.Load(), "the first send fits the limit, only the replacement bypasses it")
 }
 
 // Without the option an attempt over MaxTxPrice still ends the session.
@@ -1733,7 +1760,8 @@ func TestSendWithRetry_MaxPriceWithoutBypass(t *testing.T) {
 		txs   broadcastLog
 		heads atomic.Uint64
 	)
-	svc := s.newService(t, store, cfg, nonceWatchIdle(), s.headAt(&heads), txs.sendOK())
+	var metrics bypassCounter
+	svc := s.newServiceWithMetrics(t, store, cfg, nonceWatchIdle(), &metrics, s.headAt(&heads), txs.sendOK())
 
 	_, _, err := svc.SendWithRetry(context.Background(), s.request())
 
@@ -1741,6 +1769,7 @@ func TestSendWithRetry_MaxPriceWithoutBypass(t *testing.T) {
 	require.NotErrorIs(t, err, transaction.ErrTxMaxPriceDeferred)
 	assert.Zero(t, txs.count())
 	assert.EqualValues(t, 1, heads.Load())
+	assert.Zero(t, metrics.bypasses.Load())
 }
 
 // Canceling the context ends a session that is waiting for the bypass block.

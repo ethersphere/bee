@@ -453,7 +453,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 }
 
 // Claim receives no bypass options unless the node setting is enabled. When it is,
-// bypass starts DelayBlocks into the claim phase, and a delay longer than the phase is clamped.
+// bypass starts DelayBlocks into the claim phase, and a delay past the last claim block is clamped to it.
 func TestAgentClaimPriceBypass(t *testing.T) {
 	t.Parallel()
 
@@ -478,9 +478,19 @@ func TestAgentClaimPriceBypass(t *testing.T) {
 			wantDelay: 1,
 		},
 		{
-			name:      "delay above the claim phase is clamped",
+			name:      "delay on the last claim block is kept",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: claimPhaseBlocks - 1},
+			wantDelay: claimPhaseBlocks - 1,
+		},
+		{
+			name:      "delay equal to the claim phase is clamped to its last block",
+			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: claimPhaseBlocks},
+			wantDelay: claimPhaseBlocks - 1,
+		},
+		{
+			name:      "delay above the claim phase is clamped to its last block",
 			bypass:    storageincentives.ClaimMaxPriceBypass{Enabled: true, DelayBlocks: 100},
-			wantDelay: claimPhaseBlocks,
+			wantDelay: claimPhaseBlocks - 1,
 		},
 	}
 

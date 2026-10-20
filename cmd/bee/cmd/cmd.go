@@ -397,7 +397,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Bool(optionNameClaimPriceBypass, false, "allow the redistribution claim to ignore transaction-fee-max-tx-price-wei after the configured delay into the claim phase")
-	cmd.Flags().Uint64(optionNameClaimPriceBypassBlocks, storageincentives.DefaultClaimMaxPriceBypassDelayBlocks, "blocks to wait after the claim phase starts before the claim may ignore the max tx price; 0 waits nothing. Values above the claim phase length are clamped to it. After the delay the price is not capped")
+	cmd.Flags().Uint64(optionNameClaimPriceBypassBlocks, storageincentives.DefaultClaimMaxPriceBypassDelayBlocks, "blocks to wait after the claim phase starts before the claim may ignore the max tx price; 0 waits nothing. Values beyond the last block of the claim phase are clamped to it. After the delay the price is not capped")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
