@@ -1897,3 +1897,27 @@ _(sessions append here)_
     changed: `TestFetch*`, `TestStatus*`, `TestReconcile*`.
   - `pkg/rangesync/reconciler`, re-run, because a fetch whose stream fails to open may now end a
     violation: `TestStripe*`, `TestVerifyStripes*`, `TestSREP*`, `TestWantSet*`, `TestRadius*`.
+- **(T4.5 part 2b round-3 review, Lows; recorded by the orchestrator at landing) For T4.5 part 2c.**
+  1. **Sustained open failures disconnect an honest peer.** A failed open releases the stream slot at
+     once, so queued Wants retry within milliseconds and any lasting condition (the peer's 5000
+     system inbound streams full — no per-peer cap, so one third-party connection can fill them)
+     fails every queued open: 5 opens → violation, from every honest neighbor, again after every
+     reconnect. Fix: open the stream before `fetchLimiter.Wait` and `claim` (fetch.go ~L202-218), so
+     a failed open holds no claims and no fetch rate and needs no charge (`handleFetch` has no
+     deadline for reading the Want). This also removes Low 2's false positive.
+  2. **This node's own 10k outbound stream limit is charged to the peer** (already a follow-up). Hard
+     to reach (≤ 2 streams per peer; remote inducement needs many Sybils). The rcmgr error appears to
+     wrap `network.ErrResourceLimitExceeded` through bee's `%w` chain while a remote reset unwraps
+     only to `ErrReset`, so it can be told apart without a pkg/p2p change; verify.
+  3. **Docs and test gap.** "The headers exchange outlasts FetchTimeout only when HeadersRWTimeout ≥
+     FetchTimeout" is wrong: basichost's `IdentifyWait` and the full multistream negotiation (a peer
+     omitting fetch from identify) obey only the fetch ctx, so a 15 s open stall is reachable and is
+     an immediate violation; a headers stall is always charged. Add a test (held open, fetchTimeout
+     100 ms → `ErrInvalidMessage`, one Fail, disconnected). That path has no Status gate (tiny window).
+     The cross-path double-Fail case (requester mark, then responder violation, same peer) is
+     untested.
+- **(T4.5 part 2b round-3 review) The per-peer fetch credit must survive reconnects.** A disconnect
+  clears reset tokens, missing-ID memory, offenses and the session limiter, and reconnects are cheap
+  (10/s per IP), so a self-disconnecting Sybil gets ≥ 1 unscored failed Want (250 IDs) per cycle
+  (≈ 100+ IDs/s), above the ≈ 70 IDs/s residual that assumes a connected Sybil. The credit (follow-up
+  above) should be a hard gate before testnet and keyed so it survives reconnects, like the root excuse.
