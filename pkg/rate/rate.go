@@ -5,8 +5,8 @@
 // Package rate is a thread-safe rate tracker with per second resolution.
 // Under the hood, it sums counts over a sliding window split into buckets.
 // A count stays in the rate for at least one window and at most one window
-// plus one bucket, so the rate reaches zero no earlier than one window after
-// the last Add.
+// (rounded up to whole buckets) plus one bucket, so the rate reaches zero no
+// earlier than one window after the last Add.
 package rate
 
 import (
@@ -19,21 +19,36 @@ const (
 	bucketsPerWindow = 30
 )
 
+// bucket holds the count added during one bucketSize slice of time. id is the
+// time in milliseconds divided by bucketSize, so it identifies which slice the
+// count belongs to.
+type bucket struct {
+	id    int64
+	count int
+}
+
 type Rate struct {
 	mtx        sync.Mutex
-	buckets    map[int64]int
-	windowSize int64 // window size in milliseconds
-	bucketSize int64 // bucket size in milliseconds
+	buckets    []bucket // ring buffer indexed by id modulo its length
+	windowSize int64    // window size in milliseconds
+	bucketSize int64    // bucket size in milliseconds
 	now        func() time.Time
 }
 
 // New returns a new rate tracker with a defined window size that must be greater than one millisecond.
 func New(windowSize time.Duration) *Rate {
+	// a window shorter than 1ms would make the rate divide by zero
 	ws := max(windowSize.Milliseconds(), 1)
+	// split the window into bucketsPerWindow buckets; windows shorter than
+	// bucketsPerWindow milliseconds get 1ms buckets
+	bs := max(ws/bucketsPerWindow, 1)
 	return &Rate{
-		buckets:    make(map[int64]int),
+		// one slot per bucket in the window, rounded up so the ring covers the
+		// whole window, plus the current, partly elapsed one
+		// e.g. 1s window: 33ms buckets, ceil(1000/33)=31 slots + 1 = 32
+		buckets:    make([]bucket, (ws+bs-1)/bs+1),
 		windowSize: ws,
-		bucketSize: max(ws/bucketsPerWindow, 1),
+		bucketSize: bs,
 		now:        func() time.Time { return time.Now() },
 	}
 }
@@ -47,52 +62,39 @@ func (r *Rate) Add(count int) {
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	defer r.cleanup()
 
-	r.buckets[r.currentBucket()] += count
+	id := r.now().UnixMilli() / r.bucketSize
+	b := &r.buckets[r.index(id)]
+	// the slot still holds a bucket that has left the window: start over
+	if b.id != id {
+		*b = bucket{id: id}
+	}
+	b.count += count
 }
 
 // Rate returns the per second rate over the most recent window.
 func (r *Rate) Rate() float64 {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	defer r.cleanup()
 
-	current := r.currentBucket()
-	oldest := r.oldestBucket()
+	current := r.now().UnixMilli() / r.bucketSize
+	// the ring holds exactly the buckets from oldest to current
+	oldest := current - int64(len(r.buckets)) + 1
 
 	var sum int
-	for bucket, count := range r.buckets {
-		// buckets ahead of current are left over from a backward clock jump
-		if bucket >= oldest && bucket <= current {
-			sum += count
+	for _, b := range r.buckets {
+		// stale slots are skipped and overwritten by the next Add that lands
+		// on them; ids ahead of current are left over from a backward clock jump
+		if b.id >= oldest && b.id <= current {
+			sum += b.count
 		}
 	}
 
 	return milliInSeconds * float64(sum) / float64(r.windowSize)
 }
 
-// currentBucket returns the bucket for the current time.
-// Must be called under lock.
-func (r *Rate) currentBucket() int64 {
-	return r.now().UnixMilli() / r.bucketSize
-}
-
-// oldestBucket returns the oldest bucket still inside the window. The current
-// bucket is only partly elapsed, so one extra bucket is kept to not expire
-// counts before a full window has passed.
-// Must be called under lock.
-func (r *Rate) oldestBucket() int64 {
-	return r.currentBucket() - r.windowSize/r.bucketSize
-}
-
-// cleanup removes buckets that have fallen out of the window.
-// Must be called under lock.
-func (r *Rate) cleanup() {
-	oldest := r.oldestBucket()
-	for bucket := range r.buckets {
-		if bucket < oldest {
-			delete(r.buckets, bucket)
-		}
-	}
+// index returns the ring slot for a bucket id.
+func (r *Rate) index(id int64) int {
+	n := int64(len(r.buckets))
+	return int(((id % n) + n) % n)
 }
