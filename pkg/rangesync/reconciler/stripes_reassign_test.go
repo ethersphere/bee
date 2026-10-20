@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -232,8 +233,20 @@ func TestTransferStripesWithheld(t *testing.T) {
 	})
 }
 
-// TestEnqueueStripesDedup checks the stripe registry: a range overlapping a
-// queued or in-flight range is not registered again.
+// assertStripeRanges checks the ranges registered with r, in order.
+func assertStripeRanges(t *testing.T, r *reconciler.Reconciler, want ...fingerprint.Range) {
+	t.Helper()
+	got := r.StripeRanges()
+	if !slices.EqualFunc(got, want, fingerprint.Range.Equal) {
+		t.Fatalf("registered %v, want %v", got, want)
+	}
+}
+
+// TestEnqueueStripesDedup checks the stripe registry: a range inside a
+// queued or in-flight range is not registered again, and a range that
+// contains registered ranges is trimmed to the parts they leave uncovered,
+// each registered as a range of its own, so that nothing is transferred
+// twice and nothing is left out.
 func TestEnqueueStripesDedup(t *testing.T) {
 	t.Parallel()
 
@@ -248,11 +261,110 @@ func TestEnqueueStripesDedup(t *testing.T) {
 	if r.EnqueueStripes([]fingerprint.Range{half.Child(2, 1)}) {
 		t.Fatal("sub-range of a registered range registered")
 	}
-	if r.EnqueueStripes([]fingerprint.Range{root}) {
-		t.Fatal("super-range of a registered range registered")
+	assertStripeRanges(t, r, half)
+	if !r.EnqueueStripes([]fingerprint.Range{root}) {
+		t.Fatal("super-range of a registered range not trimmed")
 	}
-	if !r.EnqueueStripes([]fingerprint.Range{root.Child(1, 1)}) {
-		t.Fatal("disjoint range not registered")
+	assertStripeRanges(t, r, half, root.Child(1, 1))
+	if r.EnqueueStripes([]fingerprint.Range{root}) {
+		t.Fatal("a covered range registered")
+	}
+	assertStripeRanges(t, r, half, root.Child(1, 1))
+}
+
+// TestEnqueueStripesTrimmed checks the trimmed parts: the fewest prefix
+// ranges that cover what the registered ranges leave of the range, around
+// several registered ranges at different depths.
+func TestEnqueueStripesTrimmed(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(self, nil, newFakeService(status(0)), log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	a, b := root.Child(4, 6), root.Child(2, 3) // 0110…, 11…
+	if !r.EnqueueStripes([]fingerprint.Range{a, b}) {
+		t.Fatal("ranges not registered")
+	}
+	if !r.EnqueueStripes([]fingerprint.Range{root}) {
+		t.Fatal("root not trimmed")
+	}
+	// 0110 and 11 leave 00, 010, 0111 and 10
+	assertStripeRanges(t, r, a, b, root.Child(2, 0), root.Child(3, 2), root.Child(4, 7), root.Child(2, 2))
+	if got := r.StripesTotal("dropped"); got != 0 {
+		t.Fatalf("stripes dropped %v, want 0", got)
+	}
+}
+
+// TestEnqueueStripesTrimmedTransferred checks that the stripe worker
+// transfers the trimmed parts of a range, and nothing of the registered
+// range they were trimmed around.
+func TestEnqueueStripesTrimmedTransferred(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	held, free := root.Child(1, 0), root.Child(1, 1)
+	svc := newFakeService(status(5))
+	svc.remote[higher.ByteString()] = status(5) // the same digest: no round session
+	h := newHarness(t, svc, higher)
+	waitFor(t, "peer admitted", func() bool { return peerState(h.r, higher) == reconciler.StateIdle })
+	h.r.HoldStripe(held) // in flight
+	if !h.r.EnqueueStripes([]fingerprint.Range{root}) {
+		t.Fatal("root not trimmed")
+	}
+	waitFor(t, "stripe of the trimmed part", func() bool {
+		for _, open := range svc.sessionOpens(higher) {
+			if len(open) == 1 && free.ContainsRange(open[0]) {
+				return true
+			}
+		}
+		return false
+	})
+	for _, open := range svc.sessionOpens(higher) {
+		for _, o := range open {
+			if held.ContainsRange(o) || o.ContainsRange(held) {
+				t.Fatalf("stripe session %v overlaps the registered range %v", open, held)
+			}
+		}
+	}
+}
+
+// TestEnqueueStripesTrimmedBound checks the registry bound with trimming:
+// the parts past MaxStripeRegistry are dropped and counted, and the range
+// reports that it was not registered whole.
+func TestEnqueueStripesTrimmedBound(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(self, nil, newFakeService(status(0)), log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	const room = 3
+	// every other range of 11 bits in the first half: the half leaves
+	// hundreds of parts uncovered
+	var held []fingerprint.Range
+	for i := uint64(0); i < 1024; i += 2 {
+		held = append(held, root.Child(11, i))
+	}
+	// the second half fills the registry up to room
+	for i := uint64(0); len(held) < reconciler.MaxStripeRegistry-room; i++ {
+		held = append(held, root.Child(11, 1024+i))
+	}
+	if !r.EnqueueStripes(held) {
+		t.Fatal("ranges not registered")
+	}
+	if r.EnqueueStripes([]fingerprint.Range{root.Child(1, 0)}) {
+		t.Fatal("a trimmed range past the bound registered whole")
+	}
+	if got := r.StripeRegistry(); got != reconciler.MaxStripeRegistry {
+		t.Fatalf("registry holds %d ranges, want %d", got, reconciler.MaxStripeRegistry)
+	}
+	got := r.StripeRanges()[len(held):]
+	if want := []fingerprint.Range{root.Child(11, 1), root.Child(11, 3), root.Child(11, 5)}; !slices.EqualFunc(got, want, fingerprint.Range.Equal) {
+		t.Fatalf("registered parts %v, want %v", got, want)
+	}
+	if got := r.StripesTotal("dropped"); got == 0 {
+		t.Fatal("dropped parts not counted")
 	}
 }
 

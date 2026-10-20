@@ -53,7 +53,8 @@ const (
 	// budget.
 	maxStripeRestarts = 8
 	// maxStripeRegistry bounds the ranges queued for or in a striped
-	// transfer; a range past it is dropped.
+	// transfer; a range past it is dropped, and so are the parts of a
+	// trimmed range past it.
 	maxStripeRegistry = 1024
 )
 
@@ -783,17 +784,48 @@ func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range) bool {
 	return all
 }
 
-// registerStripeLocked queues job for the stripe worker. A range that
-// overlaps a registered (queued or in-flight) range is not registered, so
-// that it is not transferred twice; what it misses shows up again in a
-// later round. Past maxStripeRegistry ranges it is dropped (counted as
-// stripes_total{dropped}). It reports whether job was registered.
+// registerStripeLocked queues job for the stripe worker, so that no range is
+// transferred twice. Prefix ranges overlap only by containment:
+//   - a range inside a registered (queued or in-flight) range is not
+//     registered: the registered one covers it;
+//   - a session's range (a job with no bookkeeping of its own) that contains
+//     registered ranges is trimmed to the parts they leave uncovered
+//     (trimStripe), each queued as a job of its own;
+//   - a bootstrap or radius job that contains registered ranges is not
+//     registered: its bookkeeping (started, the radius half and its cancel)
+//     is that of one job, and its round tries again.
+//
+// What a range that is not registered misses shows up again in a later
+// round. Past maxStripeRegistry ranges a range, or a trimmed part, is
+// dropped (counted as stripes_total{dropped}). It reports whether all of
+// job's range was registered.
 func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
 	rg := fingerprint.NewRange(job.rg.Prefix, job.rg.Bits)
-	if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool {
-		return o.ContainsRange(rg) || rg.ContainsRange(o)
-	}) {
+	if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.ContainsRange(rg) }) {
 		return false
+	}
+	parts := []fingerprint.Range{rg}
+	if slices.ContainsFunc(r.stripeRegistry, rg.ContainsRange) {
+		if job.started != nil || job.bootstrap || job.radius || job.ctx != nil {
+			return false
+		}
+		var whole bool
+		parts, whole = trimStripe(rg, r.stripeRegistry, maxStripeRegistry-len(r.stripeRegistry))
+		if !whole {
+			r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
+			r.logger.Debug("stripe range trimmed past the registry bound", "range", rg, "parts", len(parts))
+		}
+		if len(parts) == 0 {
+			return false
+		}
+		defer r.wakeStripes()
+		for _, p := range parts {
+			j := job
+			j.rg = p
+			r.stripeRegistry = append(r.stripeRegistry, p)
+			r.stripeQueue = append(r.stripeQueue, j)
+		}
+		return whole
 	}
 	if len(r.stripeRegistry) >= maxStripeRegistry {
 		r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
@@ -803,11 +835,46 @@ func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
 	job.rg = rg
 	r.stripeRegistry = append(r.stripeRegistry, rg)
 	r.stripeQueue = append(r.stripeQueue, job)
+	r.wakeStripes()
+	return true
+}
+
+// wakeStripes wakes the stripe worker.
+func (r *Reconciler) wakeStripes() {
 	select {
 	case r.stripeWake <- struct{}{}:
 	default:
 	}
-	return true
+}
+
+// trimStripe returns the parts of rg that no range of registry covers, as the
+// fewest prefix ranges, in address order: rg is split into its two halves
+// until each part is either covered by a registered range or holds none. It
+// returns at most room parts, and whole reports whether they are all the
+// parts; it stops looking once it has room parts, so its work is bounded by
+// room and the size of registry, not by the depth of the registered ranges.
+// No range of registry may cover rg.
+func trimStripe(rg fingerprint.Range, registry []fingerprint.Range, room int) (parts []fingerprint.Range, whole bool) {
+	whole = true
+	var walk func(r fingerprint.Range)
+	walk = func(r fingerprint.Range) {
+		switch {
+		case !whole:
+		case slices.ContainsFunc(registry, func(o fingerprint.Range) bool { return o.ContainsRange(r) }):
+			// covered by a registered range
+		case !slices.ContainsFunc(registry, r.ContainsRange):
+			if len(parts) == room {
+				whole = false
+				return
+			}
+			parts = append(parts, r)
+		default:
+			walk(r.Child(1, 0))
+			walk(r.Child(1, 1))
+		}
+	}
+	walk(rg)
+	return parts, whole
 }
 
 // planCatchUp registers the striped transfer a round's Status local calls

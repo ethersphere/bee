@@ -8,9 +8,10 @@ import (
 	"slices"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	dto "github.com/prometheus/client_model/go"
 )
 
 // GuardReleased reports whether the start-up guard of SyncRate is released.
@@ -76,6 +77,13 @@ func (r *Reconciler) VerificationDiffCount() uint64 {
 		panic(err)
 	}
 	return m.GetHistogram().GetSampleCount()
+}
+
+// StripeRanges returns the registered stripe ranges, in order.
+func (r *Reconciler) StripeRanges() []fingerprint.Range {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.stripeRegistry)
 }
 
 // StripeRegistry returns the number of registered stripe ranges.
