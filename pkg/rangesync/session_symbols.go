@@ -72,8 +72,13 @@ func Capacity(local, remote Status, r fingerprint.Range, cL, cR uint64) uint64 {
 // FirstBatch returns the size of the first symbol batch for the estimated
 // difference d: max(MinBatch, ⌈BatchFactor · d⌉ + 2).
 func FirstBatch(d uint64) uint64 {
-	d = min(d, math.MaxUint64/32) // no overflow below; such batches never fit
-	return max(MinBatch, (16*d+9)/10+2)
+	return firstBatch(d, MinBatch, BatchFactorNum, BatchFactorDen)
+}
+
+// firstBatch returns max(minBatch, ⌈num · d / den⌉ + 2) for num, den ≥ 1.
+func firstBatch(d, minBatch, num, den uint64) uint64 {
+	d = min(d, math.MaxUint64/(2*num)) // no overflow below; such batches never fit
+	return max(minBatch, (num*d+den-1)/den+2)
 }
 
 // symbolPartWireBytes bounds a Symbols part without its data: a range of 39

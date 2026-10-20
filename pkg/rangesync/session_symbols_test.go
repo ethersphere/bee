@@ -36,6 +36,76 @@ func TestFirstBatch(t *testing.T) {
 	}
 }
 
+// TestFirstBatchPinned pins FirstBatch at BatchFactor 1.6 to the formula it
+// had before it read the constant, max(MinBatch, (16d + 9) / 10 + 2) with d
+// clamped at MaxUint64 / 32, for every d below 2^20 and around the clamp:
+// computing it from BatchFactorNum and BatchFactorDen changes nothing at the
+// current constants. It fails when the constants change; update it with
+// them.
+func TestFirstBatchPinned(t *testing.T) {
+	t.Parallel()
+
+	pinned := func(d uint64) uint64 {
+		d = min(d, math.MaxUint64/32)
+		return max(4, (16*d+9)/10+2)
+	}
+	check := func(d uint64) {
+		if got, want := rangesync.FirstBatch(d), pinned(d); got != want {
+			t.Fatalf("FirstBatch(%d) = %d, pinned %d", d, got, want)
+		}
+	}
+	for d := range uint64(1 << 20) {
+		check(d)
+	}
+	for _, d := range []uint64{1 << 32, 1 << 40, 1 << 62, math.MaxUint64/32 - 1, math.MaxUint64 / 32, math.MaxUint64/32 + 1, math.MaxUint64 - 1, math.MaxUint64} {
+		check(d)
+	}
+}
+
+// TestFirstBatchFactor checks that FirstBatch is max(MinBatch, ⌈BatchFactor ·
+// d⌉ + 2) with BatchFactor the fraction BatchFactorNum / BatchFactorDen, so
+// that changing those constants changes the protocol, and with it the
+// harness and the model (srep_model_test.go), which read them. The same rule
+// with other fractions (FirstBatchOf) gives 2d + 2 at 2/1 and ⌈1.75 d⌉ + 2 at
+// 7/4, which tenths cannot express, and does not overflow.
+func TestFirstBatchFactor(t *testing.T) {
+	t.Parallel()
+
+	if got := float64(rangesync.BatchFactorNum) / float64(rangesync.BatchFactorDen); got != rangesync.BatchFactor {
+		t.Fatalf("BatchFactorNum / BatchFactorDen = %v, BatchFactor %v", got, rangesync.BatchFactor)
+	}
+	const num, den = rangesync.BatchFactorNum, rangesync.BatchFactorDen
+	for d := range uint64(100000) {
+		n0 := rangesync.FirstBatch(d)
+		if want := rangesync.FirstBatchOf(d, rangesync.MinBatch, num, den); n0 != want {
+			t.Fatalf("FirstBatch(%d) = %d, FirstBatchOf the constants %d", d, n0, want)
+		}
+		// n0 − 2 is the least integer at or above num · d / den
+		if n0 > rangesync.MinBatch && ((n0-2)*den < num*d || (n0-3)*den >= num*d) {
+			t.Fatalf("FirstBatch(%d) = %d, not ⌈%d · %d / %d⌉ + 2", d, n0, num, d, den)
+		}
+	}
+	for _, tc := range []struct{ d, minBatch, num, den, want uint64 }{
+		{0, 4, 2, 1, 4},
+		{1, 4, 2, 1, 4},
+		{2, 4, 2, 1, 6},
+		{10, 4, 2, 1, 22},
+		{45, 4, 2, 1, 92},
+		{1, 4, 7, 4, 4},
+		{2, 4, 7, 4, 6},
+		{4, 4, 7, 4, 9},
+		{10, 4, 7, 4, 20},
+		{45, 4, 7, 4, 81},
+		{2, 8, 16, 10, 8},
+		{10, 8, 16, 10, 18},
+		{math.MaxUint64, 4, 7, 4, (7*(math.MaxUint64/14)+3)/4 + 2}, // clamped, never overflows
+	} {
+		if got := rangesync.FirstBatchOf(tc.d, tc.minBatch, tc.num, tc.den); got != tc.want {
+			t.Errorf("FirstBatchOf(%d, %d, %d, %d) = %d, want %d", tc.d, tc.minBatch, tc.num, tc.den, got, tc.want)
+		}
+	}
+}
+
 func TestCapacity(t *testing.T) {
 	t.Parallel()
 

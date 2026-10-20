@@ -27,18 +27,19 @@ import (
 // default runs: enough for means within a few percent.
 const srepCheckDraws = 128
 
-// TestSREPFirstBatch checks that the model's first batch with the compiled
-// constants is rangesync.FirstBatch, and that its default BatchFactor,
-// GrowthFactor and MinBatch are the constants. FirstBatch does not read
-// BatchFactor (it computes ⌈1.6 · d⌉ as (16d + 9) / 10), so a change of the
-// constant alone would change neither the protocol nor the harness: this
-// test fails then.
+// TestSREPFirstBatch checks that the model's session constants default to the
+// compiled ones (BatchFactorNum / BatchFactorDen, GrowthFactor, MinBatch) and
+// that its first batch is rangesync.FirstBatch with them: the model computes
+// it with FirstBatch's rule (rangesync.FirstBatchOf), and FirstBatch reads the
+// constants, so a change of a constant changes the protocol, the harness and
+// the model together. A candidate fraction needs no tenths: 7/4 is ⌈1.75 d⌉ +
+// 2.
 func TestSREPFirstBatch(t *testing.T) {
 	t.Parallel()
 
 	p := srepParams{}.withDefaults()
-	if got := float64(p.BatchFactorTenths) / 10; got != rangesync.BatchFactor {
-		t.Fatalf("model BatchFactor %v, constant %v", got, rangesync.BatchFactor)
+	if want := (srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen}); p.BatchFactor != want {
+		t.Fatalf("model BatchFactor %v, constants %v", p.BatchFactor, want)
 	}
 	if p.GrowthFactor != rangesync.GrowthFactor || p.MinBatch != rangesync.MinBatch {
 		t.Fatalf("model GrowthFactor %d MinBatch %d, constants %d %d", p.GrowthFactor, p.MinBatch, rangesync.GrowthFactor, rangesync.MinBatch)
@@ -48,12 +49,29 @@ func TestSREPFirstBatch(t *testing.T) {
 			t.Fatalf("first batch of %d: model %d, FirstBatch %d", d, got, want)
 		}
 	}
-	// a G6 candidate: BatchFactor 2.0 is 2d + 2
-	p.BatchFactorTenths = 20
-	for _, tc := range []struct{ d, want int }{{0, 4}, {1, 4}, {2, 6}, {10, 22}, {45, 92}} {
-		if got := p.firstBatch(tc.d); got != tc.want {
-			t.Errorf("BatchFactor 2.0: first batch of %d is %d, want %d", tc.d, got, tc.want)
+	// G6 candidates: BatchFactor 2.0 is 2d + 2, 1.75 is ⌈1.75 d⌉ + 2
+	for _, tc := range []struct {
+		f        srepFactor
+		d, want  int
+		minBatch int
+	}{
+		{srepFactor{2, 1}, 0, 4, 4},
+		{srepFactor{2, 1}, 1, 4, 4},
+		{srepFactor{2, 1}, 2, 6, 4},
+		{srepFactor{2, 1}, 10, 22, 4},
+		{srepFactor{2, 1}, 45, 92, 4},
+		{srepFactor{7, 4}, 10, 20, 4},
+		{srepFactor{7, 4}, 45, 81, 4},
+		{srepFactor{16, 10}, 2, 8, 8},
+	} {
+		q := p
+		q.BatchFactor, q.MinBatch = tc.f, tc.minBatch
+		if got := q.firstBatch(tc.d); got != tc.want {
+			t.Errorf("BatchFactor %v, MinBatch %d: first batch of %d is %d, want %d", tc.f, tc.minBatch, tc.d, got, tc.want)
 		}
+	}
+	if got := (srepFactor{7, 4}).String(); got != "1.75" {
+		t.Errorf("7/4 prints as %q", got)
 	}
 }
 
@@ -231,15 +249,16 @@ func TestSREPSessionCost(t *testing.T) {
 	count, capR := 736, rangesync.SessionSymbolBudget
 	for _, c := range []struct {
 		name         string
-		growth, bf   int
+		growth       int
+		bf           srepFactor
 		noMoreAt45   [2]float64
 		perDiffExact [2]float64
 	}{
-		{name: "now", growth: 4, bf: 16, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{2, 2.8}},
-		{name: "GrowthFactor 2", growth: 2, bf: 16, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{1.6, 2.2}},
-		{name: "BatchFactor 2.0", growth: 4, bf: 20, noMoreAt45: [2]float64{0.9, 1}, perDiffExact: [2]float64{1.9, 2.4}},
+		{name: "now", growth: rangesync.GrowthFactor, bf: srepFactor{rangesync.BatchFactorNum, rangesync.BatchFactorDen}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{2, 2.8}},
+		{name: "GrowthFactor 2", growth: 2, bf: srepFactor{16, 10}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{1.6, 2.2}},
+		{name: "BatchFactor 2.0", growth: 4, bf: srepFactor{2, 1}, noMoreAt45: [2]float64{0.9, 1}, perDiffExact: [2]float64{1.9, 2.4}},
 	} {
-		p := srepParams{GrowthFactor: c.growth, BatchFactorTenths: c.bf}.withDefaults()
+		p := srepParams{GrowthFactor: c.growth, BatchFactor: c.bf}.withDefaults()
 		var rows []string
 		for _, d := range []int{1, 4, 10, 20, 45, 80} {
 			exact := p.sessionCost(t, table, w, d, d, count, capR)

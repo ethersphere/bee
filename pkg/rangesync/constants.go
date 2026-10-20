@@ -16,8 +16,14 @@ const (
 	// MinBatch is the smallest number of coded symbols in a first batch.
 	MinBatch = 4
 	// BatchFactor scales the estimated difference into the size of the first
-	// batch: ceil(BatchFactor * estimate) + 2 symbols.
-	BatchFactor = 1.6
+	// batch: ceil(BatchFactor * estimate) + 2 symbols. It is
+	// BatchFactorNum / BatchFactorDen, the fraction FirstBatch computes with
+	// in integers; change those to change it.
+	BatchFactor = 1.0 * BatchFactorNum / BatchFactorDen
+	// BatchFactorNum and BatchFactorDen are BatchFactor as a fraction, both at
+	// least 1.
+	BatchFactorNum = 16
+	BatchFactorDen = 10
 	// GrowthFactor is how much a symbol stream grows on each More request.
 	GrowthFactor = 4
 

@@ -27,20 +27,17 @@ import (
 // over G6's candidate constants, the hint, N, p, the upload rate and Delay.
 //
 // The harness runs with the compiled constants. To measure a G6 candidate
-// with it, change GrowthFactor, or BatchFactor together with FirstBatch
-// (which computes ⌈1.6 · d⌉ itself), in a scratch copy and run
-// TestSREPModelVsHarness there: the model follows the compiled constants
-// (srepCompiled).
+// with it, change GrowthFactor, or BatchFactorNum and BatchFactorDen (which
+// FirstBatch reads), in a scratch copy and run TestSREPModelVsHarness there:
+// the model follows the compiled constants (srepCompiled).
 
 // srepSimDraws is the number of decoder draws per difference size in the
 // tagged runs.
 const srepSimDraws = 1000
 
-// srepCompiled returns the model's parameters for the compiled constants:
-// BatchFactor as FirstBatch computes it, since FirstBatch does not read the
-// constant.
+// srepCompiled returns the model's parameters for the compiled constants.
 func srepCompiled(p srepParams) srepParams {
-	p.BatchFactorTenths = int(rangesync.FirstBatch(10)) - 2
+	p.BatchFactor = srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen}
 	p.GrowthFactor = rangesync.GrowthFactor
 	p.MinBatch = rangesync.MinBatch
 	return p
@@ -48,7 +45,7 @@ func srepCompiled(p srepParams) srepParams {
 
 // srepLabel names the session constants of p.
 func srepLabel(p srepParams) string {
-	return fmt.Sprintf("GrowthFactor %d, BatchFactor %.1f, MinBatch %d", p.GrowthFactor, float64(p.BatchFactorTenths)/10, p.MinBatch)
+	return fmt.Sprintf("GrowthFactor %d, BatchFactor %v, MinBatch %d", p.GrowthFactor, p.BatchFactor, p.MinBatch)
 }
 
 // srepFigures are the figures the model and the harness are compared on,
@@ -243,15 +240,17 @@ func TestSREPModelVsHarness(t *testing.T) {
 	}
 }
 
-// srepConfigs are the session constants G6 decides between.
+// srepConfigs are the session constants G6 decides between: "now" is the
+// compiled constants.
 var srepConfigs = []struct {
-	name                    string
-	growth, batchFactorTnth int
+	name        string
+	growth      int
+	batchFactor srepFactor
 }{
-	{name: "now", growth: 4, batchFactorTnth: 16},
-	{name: "GrowthFactor 2", growth: 2, batchFactorTnth: 16},
-	{name: "BatchFactor 2.0", growth: 4, batchFactorTnth: 20},
-	{name: "both", growth: 2, batchFactorTnth: 20},
+	{name: "now", growth: rangesync.GrowthFactor, batchFactor: srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen}},
+	{name: "GrowthFactor 2", growth: 2, batchFactor: srepFactor{16, 10}},
+	{name: "BatchFactor 2.0", growth: 4, batchFactor: srepFactor{2, 1}},
+	{name: "both", growth: 2, batchFactor: srepFactor{2, 1}},
 }
 
 // srepSweep runs the model for seeds seeds of p (Seed 1 …) and returns
@@ -288,7 +287,7 @@ func TestSREPModelG6(t *testing.T) {
 			for _, c := range srepConfigs {
 				for _, noHints := range []bool{false, true} {
 					base := srepParamsOf(steadyOptions(n, 1))
-					base.GrowthFactor, base.BatchFactorTenths, base.NoHints = c.growth, c.batchFactorTnth, noHints
+					base.GrowthFactor, base.BatchFactor, base.NoHints = c.growth, c.batchFactor, noHints
 					id := base.ideal(t, table, base.uploadRate()*base.MinRoundInterval.Seconds())
 					hint := "on"
 					if noHints {
@@ -321,7 +320,7 @@ func TestSREPModelG6(t *testing.T) {
 			for _, c := range srepConfigs[:2] {
 				for _, rate := range []float64{2, 5, 15.4, 50} {
 					p := srepParams{Nodes: n, Replication: 3, Rate: rate, Duration: 60 * time.Second, Delay: 50 * time.Millisecond, Tail: 10 * time.Second}.withDefaults()
-					p.GrowthFactor, p.BatchFactorTenths = c.growth, c.batchFactorTnth
+					p.GrowthFactor, p.BatchFactor = c.growth, c.batchFactor
 					fs := srepSweep(t, table, p, seeds)
 					fmt.Fprintf(&b, "| %d | %s | %.1f | %s | %s | %s | %s | %.0f (%.2f) |\n", n, c.name, rate,
 						srepSpreadOf(fs, func(f srepFigures) float64 { return f.DiffP50 }).format(1, 0),
@@ -346,7 +345,7 @@ func TestSREPModelG6(t *testing.T) {
 				o := steadyOptions(n, 1)
 				o.Delay, o.Base = 50*time.Millisecond, 1<<20
 				p := srepParamsOf(o)
-				p.Root, p.GrowthFactor, p.BatchFactorTenths = rangeOf("1011001110"), c.growth, c.batchFactorTnth
+				p.Root, p.GrowthFactor, p.BatchFactor = rangeOf("1011001110"), c.growth, c.batchFactor
 				fs := make([]srepFigures, 0, seeds)
 				outside := 0
 				for seed := range uint64(seeds) {
@@ -378,7 +377,7 @@ func TestSREPModelG6(t *testing.T) {
 					o := steadyOptions(n, 1)
 					o.Delay = 50 * time.Millisecond
 					p := srepParamsOf(o)
-					p.InitiatedSessions, p.GrowthFactor, p.BatchFactorTenths = slots, c.growth, c.batchFactorTnth
+					p.InitiatedSessions, p.GrowthFactor, p.BatchFactor = slots, c.growth, c.batchFactor
 					fs := srepSweep(t, table, p, seeds)
 					fmt.Fprintf(&b, "| %d | %d | %s | %s (%d) | %s | %s | %s |\n", n, slots, c.name,
 						srepSpreadOf(fs, func(f srepFigures) float64 { return f.DiffPerUpload }).format(1, 1), 3*(n-3),
@@ -404,7 +403,7 @@ func TestSREPModelG6(t *testing.T) {
 						o := steadyOptions(n, 1)
 						o.Replication, o.Delay = rep, 50*time.Millisecond
 						p := srepParamsOf(o)
-						p.MinBatch, p.GrowthFactor, p.BatchFactorTenths = minBatch, c.growth, c.batchFactorTnth
+						p.MinBatch, p.GrowthFactor, p.BatchFactor = minBatch, c.growth, c.batchFactor
 						fs := srepSweep(t, table, p, seeds)
 						fmt.Fprintf(&b, "| %d | %d | %d | %s | %s (%d) | %s | %s |\n", n, rep, minBatch, c.name,
 							srepSpreadOf(fs, func(f srepFigures) float64 { return f.DiffPerUpload }).format(1, 1), rep*(n-rep),

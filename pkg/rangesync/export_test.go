@@ -36,6 +36,10 @@ func (s *Session) PendingReplies() (withExclusion, excludedIDs, intervals int) {
 // for a peer with Status st.
 func CacheCapacity(st Status, r fingerprint.Range) uint64 { return cacheCapacity(st, r) }
 
+// FirstBatchOf returns FirstBatch's rule with minBatch for MinBatch and the
+// fraction num / den for BatchFactor: max(minBatch, ⌈num · d / den⌉ + 2).
+func FirstBatchOf(d, minBatch, num, den uint64) uint64 { return firstBatch(d, minBatch, num, den) }
+
 // DecodeCorruptions returns the value of the decode_corruption_total metric.
 func (s *Service) DecodeCorruptions() float64 {
 	return counterValue(s.metrics.DecodeCorruption)

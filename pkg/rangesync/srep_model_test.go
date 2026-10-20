@@ -12,6 +12,7 @@ import (
 	"math/bits"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -106,9 +107,10 @@ type srepParams struct {
 	Tail, Limit time.Duration
 	// Delay is the one-way latency of every message, as simOptions.Delay.
 	Delay time.Duration
-	// MinBatch, BatchFactorTenths (BatchFactor × 10) and GrowthFactor are
-	// the session constants (defaults: the compiled ones).
-	MinBatch, BatchFactorTenths, GrowthFactor int
+	// MinBatch, BatchFactor and GrowthFactor are the session constants
+	// (defaults: the compiled ones).
+	MinBatch, GrowthFactor int
+	BatchFactor            srepFactor
 	// NoHints runs without hint(R) (simOptions.NoHints), NoClaims without
 	// the want set's claims: every session's wants are fetched.
 	NoHints, NoClaims bool
@@ -152,7 +154,9 @@ func (p srepParams) withDefaults() srepParams {
 	def(&p.Batches, 4)
 	def(&p.BatchSize, 8)
 	def(&p.MinBatch, rangesync.MinBatch)
-	def(&p.BatchFactorTenths, int(math.Round(rangesync.BatchFactor*10)))
+	if p.BatchFactor == (srepFactor{}) {
+		p.BatchFactor = srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen}
+	}
 	def(&p.GrowthFactor, rangesync.GrowthFactor)
 	def(&p.InitiatedSessions, reconciler.MaxInitiatedSessions)
 	defDur(&p.BatchInterval, 17*time.Second)
@@ -179,10 +183,20 @@ func (p srepParams) uploadRate() float64 {
 	return float64(p.BatchSize) / p.BatchInterval.Seconds()
 }
 
-// firstBatch returns the first batch for the estimate d:
-// max(MinBatch, ⌈BatchFactor · d⌉ + 2), as rangesync.FirstBatch computes it.
+// srepFactor is BatchFactor as the fraction Num / Den, as
+// rangesync.BatchFactorNum and BatchFactorDen hold it; the zero value selects
+// the compiled constants.
+type srepFactor struct{ Num, Den int }
+
+func (f srepFactor) String() string {
+	return strconv.FormatFloat(float64(f.Num)/float64(f.Den), 'g', -1, 64)
+}
+
+// firstBatch returns the first batch for the estimate d with rangesync's rule
+// (FirstBatchOf): max(MinBatch, ⌈BatchFactor · d⌉ + 2), which is
+// rangesync.FirstBatch with the compiled constants.
 func (p srepParams) firstBatch(d int) int {
-	return max(p.MinBatch, (p.BatchFactorTenths*d+9)/10+2)
+	return int(rangesync.FirstBatchOf(uint64(max(d, 0)), uint64(p.MinBatch), uint64(p.BatchFactor.Num), uint64(p.BatchFactor.Den)))
 }
 
 // capacity returns cap(R) of the root for a peer holding count elements in
