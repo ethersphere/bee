@@ -99,8 +99,8 @@ func localCause(err error) bool {
 // a stripe session waits. A peer the reconciler does not follow (unknown,
 // Probing, Unsupported or Removed) is not tracked. It returns the cause of
 // ctx when ctx ends first. release, called once the stripe's session and
-// fetch have ended, moves the peer to Fetching, and to Idle unless the wants
-// of its last round session are still being fetched.
+// fetch have ended, moves the peer to Idle, or to Fetching while the wants
+// of its last round session are still being fetched (eventStripeDone).
 func (r *Reconciler) acquireStripe(ctx context.Context, peer swarm.Address) (release func(), err error) {
 	k := peer.ByteString()
 	var waiting *peerState
@@ -130,8 +130,8 @@ func (r *Reconciler) acquireStripe(ctx context.Context, peer swarm.Address) (rel
 			return func() {
 				r.mu.Lock()
 				defer r.mu.Unlock()
-				if r.peers[k] == st && r.fireLocked(st, eventStripeDone) && !st.fetching {
-					r.fireLocked(st, eventFetched)
+				if r.peers[k] == st {
+					r.fireLocked(st, eventStripeDone)
 				}
 			}, nil
 		case stateReconciling, stateStriped:

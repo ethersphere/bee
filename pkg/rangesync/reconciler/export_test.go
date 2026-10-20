@@ -177,9 +177,11 @@ func NewPeerFSM() *PeerFSM {
 	return &m
 }
 
-// PeerFSMIn returns a machine in state s.
+// PeerFSMIn returns a machine in state s. In Fetching and Striped the wants
+// of a round session are being fetched, as when the machine got there
+// through Fetching.
 func PeerFSMIn(s PeerState) *PeerFSM {
-	return &PeerFSM{state: s}
+	return &PeerFSM{state: s, fetching: s == stateFetching || s == stateStriped}
 }
 
 // Fire applies e at now.
@@ -227,7 +229,7 @@ func (r *Reconciler) PeerFetching(peer swarm.Address) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	st, ok := r.peers[peer.ByteString()]
-	return ok && st.fetching
+	return ok && st.fsm.fetching
 }
 
 // StripeWaiters returns the number of stripe sessions waiting for peer.

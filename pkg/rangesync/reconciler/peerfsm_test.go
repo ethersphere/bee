@@ -40,11 +40,13 @@ var spec81 = []transition{
 // beyond81 holds the transitions the reconciler adds to §8.1: a stripe
 // session with an idle neighbor (§7.4 assigns stripes to neighbors that run
 // no session) or with one whose last wants are being fetched (the fetch
-// does not take the session slot), a session that did not run for a cause
-// on this node, and a disconnect in every state.
+// does not take the session slot), that fetch ending during the stripe, a
+// session that did not run for a cause on this node, and a disconnect in
+// every state.
 var beyond81 = []transition{
 	{reconciler.StateIdle, reconciler.EventStripe, reconciler.StateStriped},
 	{reconciler.StateFetching, reconciler.EventStripe, reconciler.StateStriped},
+	{reconciler.StateStriped, reconciler.EventFetched, reconciler.StateStriped},
 	{reconciler.StateReconciling, reconciler.EventAborted, reconciler.StateIdle},
 	{reconciler.StateProbing, reconciler.EventDisconnected, reconciler.StateRemoved},
 	{reconciler.StateReconciling, reconciler.EventDisconnected, reconciler.StateRemoved},
@@ -99,6 +101,63 @@ func TestPeerFSMRejects(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestPeerFSMRoundFetchDuringStripe: the machine keeps track of the fetch of
+// a round session's wants across a stripe session that starts during it
+// (Fetching -> Striped). The peer is Idle only once both have ended,
+// whichever ends first. A stripe session with no round fetch pending ends in
+// Idle: its own wants are fetched while the peer is Striped.
+func TestPeerFSMRoundFetchDuringStripe(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(0, 0)
+	fire := func(t *testing.T, m *reconciler.PeerFSM, e reconciler.PeerEvent, want reconciler.PeerState) {
+		t.Helper()
+		if !m.Fire(e, now) {
+			t.Fatalf("%v rejected in %v", e, m.State())
+		}
+		if got := m.State(); got != want {
+			t.Fatalf("after %v: state %v, want %v", e, got, want)
+		}
+	}
+	// striped returns a machine in Striped; with roundFetch, the stripe
+	// started while the wants of a round session were fetched.
+	striped := func(t *testing.T, roundFetch bool) *reconciler.PeerFSM {
+		t.Helper()
+		m := reconciler.NewPeerFSM()
+		fire(t, m, reconciler.EventExchanged, reconciler.StateIdle)
+		if roundFetch {
+			fire(t, m, reconciler.EventReconcile, reconciler.StateReconciling)
+			fire(t, m, reconciler.EventSessionDone, reconciler.StateFetching)
+		}
+		fire(t, m, reconciler.EventStripe, reconciler.StateStriped)
+		return m
+	}
+
+	t.Run("round fetch ends first", func(t *testing.T) {
+		t.Parallel()
+		m := striped(t, true)
+		fire(t, m, reconciler.EventFetched, reconciler.StateStriped)
+		fire(t, m, reconciler.EventStripeDone, reconciler.StateIdle)
+	})
+	t.Run("stripe ends first", func(t *testing.T) {
+		t.Parallel()
+		m := striped(t, true)
+		fire(t, m, reconciler.EventStripeDone, reconciler.StateFetching)
+		if m.CanReconcile(now) {
+			t.Fatal("a session can start while the round fetch runs")
+		}
+		fire(t, m, reconciler.EventFetched, reconciler.StateIdle)
+	})
+	t.Run("no round fetch", func(t *testing.T) {
+		t.Parallel()
+		m := striped(t, false)
+		fire(t, m, reconciler.EventStripeDone, reconciler.StateIdle)
+		if !m.CanReconcile(now) {
+			t.Fatal("no session can start after the stripe")
+		}
+	})
 }
 
 // TestPeerFSMPullsyncOnly: a peer that does not speak rangesync ends in

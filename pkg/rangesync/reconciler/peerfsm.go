@@ -37,7 +37,11 @@ import (
 //     while its own session runs (MaxConcurrentSessionsPerPeer = 1).
 //   - Fetching --> Striped: a stripe session may also start while the wants
 //     of the peer's last session are fetched. The fetch uses its own stream,
-//     not the session slot. The peer returns to Idle once both have ended.
+//     not the session slot. The peer returns to Idle once both have ended,
+//     which the machine tracks itself (peerFSM.fetching): the fetch ending
+//     first is Striped --> Striped, and stripe done goes to Fetching only
+//     while the fetch runs. With no round fetch pending, stripe done goes
+//     to Idle: the stripe's own wants are fetched while the peer is Striped.
 //   - Reconciling --> Idle without a backoff: the session did not run for a
 //     cause on this node (eventAborted), which says nothing about the peer.
 //   - any state --> [*] on a disconnect.
@@ -166,7 +170,8 @@ var transitions = map[fsmState]map[fsmEvent]fsmState{
 		eventDisconnected: stateRemoved,
 	},
 	stateStriped: {
-		eventStripeDone:   stateFetching,
+		eventStripeDone:   stateFetching, // stateIdle with no round fetch (fire)
+		eventFetched:      stateStriped,
 		eventDisconnected: stateRemoved,
 	},
 	stateFetching: {
@@ -196,6 +201,10 @@ const (
 // peerFSM is a peer's state machine, with the backoff of its sessions.
 type peerFSM struct {
 	state fsmState
+	// fetching holds while the wants of the peer's last round session are
+	// fetched (from eventSessionDone to eventFetched), in Fetching and in a
+	// stripe session that started meanwhile.
+	fetching bool
 	// failures counts the Busy or failed sessions in a row (the streak);
 	// retryAt is when the next session may start.
 	failures int
@@ -212,7 +221,9 @@ func newPeerFSM() peerFSM {
 // error extend the streak and set the backoff (sessionBackoff). A completed
 // session or an equal digest ends the streak, and so does a quiet period of
 // maxSessionBackoff past the last backoff: a streak counts answers in a row,
-// not over the peer's lifetime. An aborted session leaves it as it is.
+// not over the peer's lifetime. An aborted session leaves it as it is. A
+// completed session starts the fetch of its wants and eventFetched ends it;
+// stripe done leads to Fetching only while that fetch runs, else to Idle.
 func (m *peerFSM) fire(e fsmEvent, now time.Time) bool {
 	next, ok := transition(m.state, e)
 	if !ok {
@@ -225,8 +236,17 @@ func (m *peerFSM) fire(e fsmEvent, now time.Time) bool {
 		}
 		m.failures++
 		m.retryAt = now.Add(sessionBackoff(m.failures))
-	case eventSessionDone, eventEqualDigest:
+	case eventSessionDone:
 		m.failures, m.retryAt = 0, time.Time{}
+		m.fetching = true
+	case eventEqualDigest:
+		m.failures, m.retryAt = 0, time.Time{}
+	case eventFetched:
+		m.fetching = false
+	case eventStripeDone:
+		if !m.fetching {
+			next = stateIdle
+		}
 	}
 	m.state = next
 	return true

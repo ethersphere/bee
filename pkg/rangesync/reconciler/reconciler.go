@@ -107,10 +107,9 @@ type Options struct {
 
 // peerState is what the reconciler keeps for a connected peer.
 type peerState struct {
-	fsm      peerFSM // the peer's state machine (§8.1, peerfsm.go)
-	sent     bool    // a Status of ours reached the peer
-	served   bool    // the peer started a session with this node (Succeed or Wants)
-	fetching bool    // the wants of the peer's last session are being fetched
+	fsm    peerFSM // the peer's state machine (§8.1, peerfsm.go)
+	sent   bool    // a Status of ours reached the peer
+	served bool    // the peer started a session with this node (Succeed or Wants)
 	// stripeWaiters counts the stripe sessions waiting for the peer to leave
 	// Reconciling or Striped (acquireStripe); rounds start no session with
 	// it meanwhile. idle, if not nil, is closed when it does, or leaves.
@@ -661,9 +660,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	if r.peers[peer.ByteString()] == st { // not left meanwhile
 		switch {
 		case err == nil:
-			if r.fireLocked(st, eventSessionDone) {
-				st.fetching = true
-			}
+			r.fireLocked(st, eventSessionDone)
 		case errors.Is(err, rangesync.ErrPeerSessionLimit), takeover && errors.Is(err, rangesync.ErrPeerBusy):
 			r.fireLocked(st, eventAborted)
 			if takeover {
@@ -704,8 +701,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, open []fingerpri
 	r.fetch(peer, wants, catchUp)
 	r.mu.Lock()
 	if r.peers[peer.ByteString()] == st {
-		st.fetching = false
-		r.fireLocked(st, eventFetched) // a stripe session in flight ends Fetching instead
+		r.fireLocked(st, eventFetched) // during a stripe session the peer stays Striped
 	}
 	r.mu.Unlock()
 	if ranges := striper.Ranges(); len(ranges) > 0 {
