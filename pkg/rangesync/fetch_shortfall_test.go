@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -114,10 +115,11 @@ func TestFetchShortfallTolerance(t *testing.T) {
 }
 
 // TestShortfallBook checks the per-peer memory of the shortfall rules: one
-// root move per peer is excused per RootExcuseInterval (the same move again
-// too), a missing ID counts when the peer leaves it missing again within
-// ShortfallWindow (at most MaxMissingPerPeer remembered), an offense repeats
-// one within ShortfallWindow, and Clear forgets the missing IDs and
+// root move per peer is excused per RootExcuseInterval, again only for the
+// fetches that started before it was first excused (not after the root
+// swung back), a missing ID counts when the peer leaves it missing again
+// within ShortfallWindow (at most MaxMissingPerPeer remembered), an offense
+// repeats one within ShortfallWindow, and Clear forgets the missing IDs and
 // offenses, not the excuse. It also checks which root moves are plausible.
 func TestShortfallBook(t *testing.T) {
 	t.Parallel()
@@ -125,18 +127,25 @@ func TestShortfallBook(t *testing.T) {
 	b := rangesync.NewShortfallBook()
 	peer, other := swarm.RandAddress(t), swarm.RandAddress(t)
 	now := time.Unix(1_000_000, 0)
+	before, after := now.Add(-time.Second), now.Add(time.Second)
 	r0, r1, r2 := rangeOf(""), rangeOf("1"), rangeOf("11")
 
-	if !b.Excuse(peer, r0, r1, now) || !b.Excuse(peer, r0, r1, now.Add(time.Minute)) {
-		t.Fatal("first move, or the same again, not excused")
+	if !b.Excuse(peer, r0, r1, before, now) {
+		t.Fatal("first move not excused")
 	}
-	if b.Excuse(peer, r1, r2, now.Add(time.Minute)) {
+	if !b.Excuse(peer, r0, r1, before, now.Add(time.Minute)) || !b.Excuse(peer, r0, r1, now, now.Add(time.Minute)) {
+		t.Fatal("the same move not excused for a fetch that ran when it was excused")
+	}
+	if b.Excuse(peer, r0, r1, after, now.Add(time.Minute)) {
+		t.Fatal("the same move excused for a fetch that started later (the root swung back)")
+	}
+	if b.Excuse(peer, r1, r2, before, now.Add(time.Minute)) {
 		t.Fatal("a second move excused within the interval")
 	}
-	if !b.Excuse(other, r0, r1, now) {
+	if !b.Excuse(other, r0, r1, before, now) {
 		t.Fatal("another peer's move not excused")
 	}
-	if !b.Excuse(peer, r1, r2, now.Add(rangesync.RootExcuseInterval)) {
+	if !b.Excuse(peer, r1, r2, after, now.Add(rangesync.RootExcuseInterval)) {
 		t.Fatal("a move after the interval not excused")
 	}
 
@@ -176,7 +185,7 @@ func TestShortfallBook(t *testing.T) {
 	if b.Offend(peer, now.Add(2*time.Minute+rangesync.ShortfallWindow)) {
 		t.Fatal("an offense after Clear repeats")
 	}
-	if b.Excuse(peer, r2, rangeOf("111"), now.Add(rangesync.RootExcuseInterval+time.Minute)) {
+	if b.Excuse(peer, r2, rangeOf("111"), after, now.Add(rangesync.RootExcuseInterval+time.Minute)) {
 		t.Fatal("Clear renewed the excuse")
 	}
 
@@ -649,34 +658,60 @@ func TestFetchShortfallAfterViolation(t *testing.T) {
 	assertFailed(t, a.scorer, b.addr)
 }
 
-// resetFetchStreamer opens fetch streams whose reads fail, as libp2p's do
-// when the peer reset the stream.
-type resetFetchStreamer struct{ p2p.StreamerDisconnecter }
+// resetFetchStreamer opens fetch streams that end in a reset where the peer
+// closes them, as libp2p's do when the peer resets the stream: the
+// deliveries before still arrive. hook, if set, runs before each reset;
+// while off is set, streams close as usual.
+type resetFetchStreamer struct {
+	p2p.StreamerDisconnecter
+	hook func()
+	off  *atomic.Bool
+}
 
 func (s resetFetchStreamer) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
 	st, err := s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
-	if err != nil || stream != rangesync.FetchStreamName {
+	if err != nil || stream != rangesync.FetchStreamName || s.off != nil && s.off.Load() {
 		return st, err
 	}
-	return resetReadStream{st}, nil
+	return resetOnEOFStream{Stream: st, hook: s.hook}, nil
 }
 
-type resetReadStream struct{ p2p.Stream }
+type resetOnEOFStream struct {
+	p2p.Stream
+	hook func()
+}
 
-func (resetReadStream) Read([]byte) (int, error) { return 0, errPeerReset }
+func (s resetOnEOFStream) Read(p []byte) (int, error) {
+	n, err := s.Stream.Read(p)
+	if errors.Is(err, io.EOF) {
+		if s.hook != nil {
+			s.hook()
+		}
+		return n, errPeerReset
+	}
+	return n, err
+}
 
-// TestFetchResetBudget checks that fetch streams a peer resets without a
-// delivery are charged to a budget per peer: MaxFetchResets of them are not
-// scored (an honest peer resets a stream that fails on its side), the next
-// one is a violation. A disconnect clears the budget.
+// resetStreams returns a nodeOpts streamer of resetFetchStreamer.
+func resetStreams(hook func(), off *atomic.Bool) func(p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+	return func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+		return resetFetchStreamer{StreamerDisconnecter: s, hook: hook, off: off}
+	}
+}
+
+// TestFetchResetBudget checks that fetch streams a peer resets with IDs
+// undelivered are charged to a budget per peer: MaxFetchResets of them, then
+// one per FetchResetInterval, are not scored (an honest peer resets a stream
+// that fails on its side), the next one is a violation. A disconnect clears
+// the budget.
 func TestFetchResetBudget(t *testing.T) {
 	t.Parallel()
 
-	a := newTestNodeOpts(t, nodeOpts{streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
-		return resetFetchStreamer{s}
-	}})
+	clock := newFakeClock()
+	a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: resetStreams(nil, nil)}))
 	b := newTestNode(t)
 	connect0(a, b)
+	sendRoot(t, b, a, whole)
 	fetch := func() error {
 		t.Helper()
 		_, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole))
@@ -690,6 +725,10 @@ func TestFetchResetBudget(t *testing.T) {
 			t.Fatalf("reset %d: %v", i+1, err)
 		}
 	}
+	clock.Add(rangesync.FetchResetInterval) // one more refills
+	if err := fetch(); errors.Is(err, rangesync.ErrInvalidMessage) {
+		t.Fatalf("reset after the refill: %v", err)
+	}
 	assertNotScored(t, a, b.addr)
 	if err := fetch(); !errors.Is(err, rangesync.ErrInvalidMessage) {
 		t.Fatalf("reset past the budget: got %v, want %v", err, rangesync.ErrInvalidMessage)
@@ -699,7 +738,225 @@ func TestFetchResetBudget(t *testing.T) {
 	if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
 		t.Fatal(err)
 	}
-	if err := fetch(); errors.Is(err, rangesync.ErrInvalidMessage) {
-		t.Fatalf("reset after a reconnect: %v", err)
+	sendRoot(t, b, a, whole)
+	for i := range rangesync.MaxFetchResets {
+		if err := fetch(); errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("reset %d after a reconnect: %v", i+1, err)
+		}
+	}
+}
+
+// TestFetchResetAfterOneDelivery checks that a delivery does not make a
+// reset free: a peer that lists junk, delivers one chunk (here one this node
+// rejects, an unknown batch, which does not count against it) and resets
+// the stream is charged, so it is a violation past the budget. The IDs lost
+// to the reset are not judged blatant.
+func TestFetchResetAfterOneDelivery(t *testing.T) {
+	t.Parallel()
+
+	a := newTestNodeOpts(t, nodeOpts{
+		streamer: resetStreams(nil, nil),
+		validStamp: func(swarm.Chunk) (swarm.Chunk, error) {
+			return nil, fmt.Errorf("batchstore get: %w, %w", storage.ErrNotFound, postage.ErrNotFound)
+		},
+	})
+	chs := chunksInRange(rangesync.MaxFetchResets+1, whole)
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	for i, ch := range chs {
+		ids := append(idsOf(t, ch), missingIDs(t, rangesync.MaxWantIDs-1, whole)...)
+		res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+		if res.Rejected != 1 {
+			t.Fatalf("fetch %d: rejected %d, want 1", i, res.Rejected)
+		}
+		if got, want := errors.Is(err, rangesync.ErrInvalidMessage), i == rangesync.MaxFetchResets; got != want || err == nil {
+			t.Fatalf("fetch %d: %v (a violation: %v, want %v)", i, err, got, want)
+		}
+	}
+	assertFailed(t, a.scorer, b.addr)
+}
+
+// TestFetchResetHonest checks that resets which are not the peer's doing
+// are never charged: fetches this node ends (its context), streams that
+// fail because the peer disconnected (its Status is gone), and the streams
+// of a peer already reported for a violation, which is being disconnected
+// (one score, not one per fetch that fails with it).
+func TestFetchResetHonest(t *testing.T) {
+	t.Parallel()
+
+	const fetches = rangesync.MaxFetchResets + 2
+
+	t.Run("this node's cancellations", func(t *testing.T) {
+		t.Parallel()
+
+		a := newTestNode(t)
+		b := newTestNode(t)
+		wanted, release := make(chan struct{}), make(chan struct{})
+		t.Cleanup(func() { close(release) })
+		fakeHolder(a, b, func(*pb.Want, protobuf.Writer) {
+			wanted <- struct{}{}
+			<-release
+		})
+		b.rec.SetProtocols(a.svc.Protocol())
+		sendRoot(t, b, a, whole)
+		for range fetches {
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() {
+				_, err := a.svc.FetchWithResult(ctx, b.addr, missingIDs(t, 1, whole))
+				done <- err
+			}()
+			<-wanted
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("got %v, want %v", err, context.Canceled)
+			}
+		}
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("the peer disconnected", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			a, b       *testNode
+			disconnect atomic.Bool
+		)
+		disconnect.Store(true)
+		a = newTestNodeOpts(t, nodeOpts{streamer: resetStreams(func() {
+			if !disconnect.Load() {
+				return
+			}
+			if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+				t.Error(err)
+			}
+		}, nil)})
+		b = newTestNode(t)
+		connect0(a, b)
+		reset := func() {
+			t.Helper()
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("got %v, want a reset", err)
+			}
+		}
+		for range fetches {
+			sendRoot(t, b, a, whole) // the reconnect
+			reset()
+		}
+		// nothing was left charged: after the last reconnect, the whole
+		// budget remains for the peer's own resets
+		sendRoot(t, b, a, whole)
+		disconnect.Store(false)
+		for range rangesync.MaxFetchResets {
+			reset()
+		}
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("after a violation", func(t *testing.T) {
+		t.Parallel()
+
+		var off atomic.Bool
+		off.Store(true)
+		a := newTestNodeOpts(t, nodeOpts{streamer: resetStreams(nil, &off)})
+		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		// a blatant shortfall: a violation, while the peer stays connected
+		// in this test
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, rangesync.MaxWantIDs, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+		off.Store(false)
+		for range fetches {
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Fatalf("got %v, want a reset", err)
+			}
+		}
+		assertFailed(t, a.scorer, b.addr)
+	})
+}
+
+// TestFetchShortfallExcuseOscillation checks that a root that swings back
+// and forth gets one move excused: after a radius increase is excused, the
+// same increase again, once the root moved back, does not excuse a later
+// fetch, whose junk away from the peer's overlay is then blatant.
+func TestFetchShortfallExcuseOscillation(t *testing.T) {
+	t.Parallel()
+
+	clock := newFakeClock()
+	var (
+		a, b *testNode
+		mu   sync.Mutex
+		next *fingerprint.Range // b's root to send at the next delivery
+	)
+	a = clock.set(newTestNodeOpts(t, nodeOpts{validStamp: func(ch swarm.Chunk) (swarm.Chunk, error) {
+		mu.Lock()
+		root := next
+		next = nil
+		mu.Unlock()
+		if root != nil {
+			sendRoot(t, b, a, *root)
+		}
+		return ch, nil
+	}}))
+	delivered := chunksInRange(4, rangeOf("1"))
+	b = newTestNodeOpts(t, nodeOpts{addr: addrIn(t, rangeOf("1"))}, delivered...)
+	connect0(a, b)
+	upper := rangeOf("1")
+	swing := func(chs []swarm.Chunk) error {
+		t.Helper()
+		sendRoot(t, b, a, whole)
+		mu.Lock()
+		next = &upper
+		mu.Unlock()
+		_, err := a.svc.FetchWithResult(context.Background(), b.addr, append(idsOf(t, chs...), missingIDs(t, rangesync.BlatantMinIDs-2, rangeOf("0"))...))
+		return err
+	}
+
+	if err := swing(delivered[:2]); err != nil {
+		t.Fatalf("first swing: %v", err)
+	}
+	assertNotScored(t, a, b.addr)
+	clock.Add(time.Second)
+	if err := swing(delivered[2:]); !errors.Is(err, rangesync.ErrInvalidMessage) {
+		t.Fatalf("second swing: got %v, want %v", err, rangesync.ErrInvalidMessage)
+	}
+	assertShortfallScored(t, a, b.addr, 1, true)
+}
+
+// TestFetchShortfallAfterPeerViolation checks that once a peer was reported
+// for a violation, which disconnects it, its other fetches within
+// ViolationGrace are not judged or recorded: they fail with it, and one
+// violation is one score.
+func TestFetchShortfallAfterPeerViolation(t *testing.T) {
+	t.Parallel()
+
+	clock := newFakeClock()
+	a := clock.set(newTestNode(t))
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, rangesync.MaxWantIDs, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+		t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+	}
+	missing := missingIDs(t, 5, whole)
+	for range 3 { // an offense the second time, a violation the third, if judged
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missing); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertShortfallScored(t, a, b.addr, 1, true)
+
+	// past the grace the peer is judged again (here it stayed connected):
+	// missing once more, the IDs are a first offense
+	clock.Add(rangesync.ViolationGrace)
+	for range 2 {
+		_, _ = a.svc.FetchWithResult(context.Background(), b.addr, missing)
+	}
+	fails, _ := a.scorer.get(b.addr)
+	if len(fails) != 2 || !errors.Is(fails[1], rangesync.ErrFetchShortfall) || errors.Is(fails[1], rangesync.ErrInvalidMessage) {
+		t.Fatalf("scorer fails %v, want a first offense after the violation", fails)
 	}
 }

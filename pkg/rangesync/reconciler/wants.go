@@ -56,6 +56,9 @@ type fetchOutcome struct {
 	// for a cause on this node (FetchResult.Unverified): not the peer's
 	// fault, and not asked for again within the fetch's stripe attempt.
 	unverified int
+	// outsideRoot is how many of undelivered were not requested because
+	// they lie outside the peer's root (FetchResult.OutsideRoot).
+	outsideRoot int
 }
 
 // fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
@@ -76,7 +79,7 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, res.Undelivered, catchUp)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
-	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified)}, err
+	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified), outsideRoot: res.OutsideRoot}, err
 }
 
 // retry fetches ids, which failed did not deliver (or delivered invalid, or

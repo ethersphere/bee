@@ -77,6 +77,9 @@ type FetchResult struct {
 	// them). Their claims were released, or never made, so they can be
 	// requested from another peer.
 	Undelivered []storer.ChunkID
+	// OutsideRoot is how many of Undelivered were not requested because
+	// they lie outside the peer's root: the peer was not asked for them.
+	OutsideRoot int
 	// Held are the IDs not requested because another fetch held their
 	// claim (wantset.Held), through another peer or this one. The peer is
 	// another source of them should that claim end without the chunk.
@@ -121,8 +124,8 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // end with Done when it was stored, with Reject when it was rejected, and
 // with Release otherwise, on every return. Before the IDs of
 // each Want are claimed, it waits for one of the fetch streams this node
-// opens to peer (at most maxFetchStreamsOut at once, one fewer than the
-// peer's own limit, whatever runs the fetches), then for the node-wide fetch
+// opens to peer (at most maxFetchStreamsOut at once, half the peer's own
+// limit, whatever runs the fetches), then for the node-wide fetch
 // rate (Options.FetchRate). A holder that has not finished within
 // Options.FetchTimeout of the Want is a violation. Close ends a running
 // fetch.
@@ -150,16 +153,16 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // ErrFetchShortfall, a repeat is a violation. Held, deferred and unverified
 // IDs, rejections that depend on the chain state or on this node's reserve,
 // and the IDs of a Want that failed do not count. No ID outside the peer's
-// root by its last Status is requested. A fetch stream that fails without a
-// delivery (the peer reset it) is a violation past maxFetchResets, then one
-// per fetchResetInterval, per peer.
+// root by its last Status is requested. A fetch stream that fails with IDs
+// undelivered (the peer reset it) is a violation past maxFetchResets, then
+// one per fetchResetInterval, per peer.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(s.ctx, cancel) // Close ends the fetch
 	defer stop()
 
-	var sf shortfall
+	sf := shortfall{startedAt: s.now()}
 	if st, ok := s.LastStatus(peer); ok {
 		sf.start, sf.hasStart = st.Root, true
 	}
@@ -247,6 +250,7 @@ func (s *Service) wantCandidates(peer swarm.Address, ids []storer.ChunkID, res *
 			// the peer's root moved away from it since it listed it
 			s.metrics.FetchSkipped.WithLabelValues("outside_peer_root").Inc()
 			res.Undelivered = append(res.Undelivered, chunkID(id))
+			res.OutsideRoot++
 			continue
 		}
 		r := s.wantSet.PeekPicked(id, peer, len(cands))
@@ -402,8 +406,8 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 // deliveries until the peer closes the stream, recording the peer's
 // shortfall in sf: the Want's IDs as requested, those still undelivered
 // when the peer closed the stream as missing, and the stamps invalid on
-// every node. A stream that fails without a delivery takes one of the
-// peer's fetch resets (maxFetchResets), past which it is a violation.
+// every node. A stream that fails with claimed IDs undelivered takes one
+// of the peer's fetch resets (chargeReset), past which it is a violation.
 // Every claim in claimed is ended before it returns.
 func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
 	// claimed holds the IDs not delivered yet
@@ -418,15 +422,14 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
 	defer cancel()
-	delivered := 0
 	stalled := func(err error) error {
 		switch {
 		case parent.Err() != nil:
 			return err // this node ended the fetch
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
 			return s.initiatorViolation(peer, invalid("no deliveries within %s", s.fetchTimeout))
-		case delivered == 0 && !s.fetchResets.Allow(peer.ByteString(), 1):
-			return s.initiatorViolation(peer, invalid("fetch streams fail without a delivery, past %d: %v", maxFetchResets, err))
+		case len(claimed) > 0 && s.chargeReset(peer):
+			return s.initiatorViolation(peer, invalid("fetch streams fail with ids undelivered, past %d: %v", maxFetchResets, err))
 		}
 		return err
 	}
@@ -470,7 +473,6 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 			}
 			return stalled(fmt.Errorf("read delivery: %w", err))
 		}
-		delivered++
 		s.metrics.BytesChunks.WithLabelValues(dirIn).Add(float64(wireSize(&d)))
 		err := s.deliver(ctx, peer, claimed, &d, res, sf)
 		if errors.Is(err, ErrInvalidMessage) {

@@ -73,6 +73,7 @@ func readMessage(ctx context.Context, r protobuf.Reader, m wireMessage) error {
 // the p2p layer disconnect the peer. rangesync does not blocklist.
 func (s *Service) violation(peer swarm.Address, stream p2p.Stream, err error) error {
 	_ = stream.Reset()
+	s.shortfalls.markViolation(peer, s.now())
 	s.metrics.InvalidMessage.Inc()
 	s.scorer.Fail(peer, err)
 	s.logger.Debug("invalid message from peer, disconnecting", "peer_address", peer, "error", err)

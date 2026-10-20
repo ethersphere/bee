@@ -162,7 +162,7 @@ type Service struct {
 	sessionLimiter  *ratelimit.Limiter // per peer, sessions served
 	statusLimiter   *ratelimit.Limiter // per peer, statuses received
 	statusDrops     *ratelimit.Limiter // per peer, statuses over the rate
-	fetchResets     *ratelimit.Limiter // per peer, fetch streams failed without a delivery
+	fetchResets     *peerBudget        // per peer, fetch streams failed with ids undelivered
 	shortfalls      *shortfallBook     // per peer, the fetch shortfall's memory
 	now             func() time.Time
 
@@ -244,7 +244,7 @@ func New(
 		sessionLimiter:   ratelimit.New(PeerSessionInterval, PeerSessionBurst),
 		statusLimiter:    ratelimit.New(PeerStatusInterval, PeerStatusBurst),
 		statusDrops:      ratelimit.New(PeerStatusDropInterval, PeerStatusDropBurst),
-		fetchResets:      ratelimit.New(fetchResetInterval, maxFetchResets),
+		fetchResets:      newPeerBudget(fetchResetInterval, maxFetchResets),
 		shortfalls:       newShortfallBook(),
 		now:              time.Now,
 		index:            index,
@@ -319,7 +319,7 @@ func (s *Service) disconnected(peer p2p.Peer) error {
 	s.sessionLimiter.Clear(peer.Address.ByteString())
 	s.statusLimiter.Clear(peer.Address.ByteString())
 	s.statusDrops.Clear(peer.Address.ByteString())
-	s.fetchResets.Clear(peer.Address.ByteString())
+	s.fetchResets.clear(peer.Address)
 	s.shortfalls.clear(peer.Address)
 	s.peerSessions.clear(peer.Address)
 	return nil

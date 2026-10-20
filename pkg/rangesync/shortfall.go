@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -24,8 +26,11 @@ import (
 //     invalid on every node (stampInvalid).
 //   - A missing ID that left the peer's root since the fetch started is
 //     excused when the root moved by a plausible radius increase
-//     (plausibleStep), one such move per peer per rootExcuseInterval. The
-//     fetch requests no ID outside the peer's root by its last Status.
+//     (plausibleStep), one such move per peer per rootExcuseInterval, and
+//     only for the fetches that were running when it was first excused
+//     (the concurrent fetches of one radius increase), so a root that swings
+//     back and forth gets one move excused. The fetch requests no ID outside
+//     the peer's root by its last Status.
 //   - Blatant: when at least half of at least blatantMinIDs requested IDs
 //     fall short, the fetch is a violation at once (scored, disconnected).
 //   - Otherwise a missing ID counts only when the peer left it missing
@@ -38,8 +43,14 @@ import (
 //     reported to the PeerScorer without a disconnect (the fetch's error
 //     wraps ErrFetchShortfall); a second offense within shortfallWindow is a
 //     violation.
-//   - Nothing is judged without a Status of the peer (it disconnected), after
-//     the fetch reported a violation, or while the Service closes.
+//   - Nothing is judged, and nothing is recorded for the peer, without a
+//     Status of the peer (it disconnected), after a violation of the peer
+//     (this fetch's, or another's within violationGrace), or while the
+//     Service closes.
+//   - Apart from the shortfall, a fetch stream that fails with IDs still
+//     undelivered (a reset by the peer, not this node ending the fetch nor
+//     the fetch timeout) takes one of the peer's maxFetchResets, then one per
+//     fetchResetInterval; past them it is a violation.
 const (
 	// shortfallMin and shortfallRatio set the shortfall a fetch tolerates
 	// from its peer (shortfallTolerance): at most shortfallMin IDs, or
@@ -63,11 +74,15 @@ const (
 	// missing IDs: radius increases are rare.
 	rootExcuseInterval = 10 * time.Minute
 	// maxFetchResets and fetchResetInterval bound the fetch streams of one
-	// peer that fail without a delivery (a reset instead of a close): a
+	// peer that fail with IDs undelivered (a reset instead of a close): a
 	// burst of maxFetchResets, then one per fetchResetInterval. Past them a
 	// failure is a violation.
 	maxFetchResets     = 4
 	fetchResetInterval = time.Minute
+	// violationGrace is how long after a violation of a peer the shortfall
+	// rules and the reset budget leave it alone: it is being disconnected,
+	// and its other fetches fail with it.
+	violationGrace = time.Minute
 )
 
 // ErrFetchShortfall is wrapped by the error of a fetch whose peer fell short
@@ -94,10 +109,11 @@ type shortfall struct {
 	missing   []fingerprint.ID // requested and not delivered when the peer closed the stream
 	invalid   int              // delivered with a stamp invalid on every node (stampInvalid)
 
-	// start is the peer's root when the fetch started; hasStart reports
-	// that the peer had a Status then.
-	start    fingerprint.Range
-	hasStart bool
+	// start is the peer's root when the fetch started at startedAt;
+	// hasStart reports that the peer had a Status then.
+	start     fingerprint.Range
+	hasStart  bool
+	startedAt time.Time
 
 	// The classification of missing[:classified] against root, the peer's
 	// root at the last judgment: counted of them count. asked records that
@@ -166,12 +182,12 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 		return nil
 	default:
 	}
-	remote, ok := s.LastStatus(peer)
-	if !ok {
-		return nil // the peer disconnected: its root is unknown
-	}
 	now := s.now()
-	excuse := func(from, to fingerprint.Range) bool { return s.shortfalls.excuse(peer, from, to, now) }
+	remote, ok := s.LastStatus(peer)
+	if !ok || s.shortfalls.violated(peer, now) {
+		return nil // the peer disconnected (its root is unknown), or is being disconnected
+	}
+	excuse := func(from, to fingerprint.Range) bool { return s.shortfalls.excuse(peer, from, to, sf.startedAt, now) }
 	short := sf.classify(remote.Root, excuse) + sf.invalid
 	if sf.requested >= blatantMinIDs && 2*short >= sf.requested {
 		return s.initiatorViolation(peer, fmt.Errorf("%w: %w: %d of %d requested ids not delivered or with an invalid stamp (%d)", ErrInvalidMessage, ErrFetchShortfall, short, sf.requested, sf.invalid))
@@ -179,6 +195,8 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 	if !end {
 		return nil
 	}
+	// a disconnect meanwhile clears what the book records for the peer
+	defer s.forgetIfGone(peer)
 	counted := s.shortfalls.relisted(peer, sf.counting(), now) + sf.invalid
 	if counted <= shortfallTolerance(sf.requested) {
 		return nil
@@ -192,14 +210,39 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 	return reason
 }
 
+// chargeReset takes one of peer's fetch resets, for a fetch stream that
+// failed with IDs undelivered, and reports whether its budget was spent
+// (maxFetchResets, then one per fetchResetInterval). Nothing is charged for
+// a peer whose Status is gone (it disconnected) or that is being
+// disconnected for a violation.
+func (s *Service) chargeReset(peer swarm.Address) (spent bool) {
+	now := s.now()
+	if _, ok := s.LastStatus(peer); !ok || s.shortfalls.violated(peer, now) {
+		return false
+	}
+	defer s.forgetIfGone(peer)
+	return !s.fetchResets.take(peer, now)
+}
+
+// forgetIfGone clears what the shortfall rules and the reset budget keep for
+// peer when its Status is gone: it disconnected while they recorded, after
+// the disconnect hook cleared them.
+func (s *Service) forgetIfGone(peer swarm.Address) {
+	if _, ok := s.LastStatus(peer); !ok {
+		s.shortfalls.clear(peer)
+		s.fetchResets.clear(peer)
+	}
+}
+
 // shortfallBook keeps what the shortfall rules remember per peer: the IDs it
-// left missing and its last offense, forgotten on a disconnect, and its last
-// excused root move, kept across reconnects so that a reconnect does not
-// renew it. It is safe for concurrent use.
+// left missing, its last offense and its last violation, forgotten on a
+// disconnect, and its last excused root move, kept across reconnects so that
+// a reconnect does not renew it. It is safe for concurrent use.
 type shortfallBook struct {
-	mu      sync.Mutex
-	peers   map[string]*peerShortfall
-	excuses map[string]rootExcuse
+	mu         sync.Mutex
+	peers      map[string]*peerShortfall
+	excuses    map[string]rootExcuse
+	violations map[string]time.Time
 }
 
 // peerShortfall is what the book keeps for one peer.
@@ -218,7 +261,11 @@ type rootExcuse struct {
 }
 
 func newShortfallBook() *shortfallBook {
-	return &shortfallBook{peers: make(map[string]*peerShortfall), excuses: make(map[string]rootExcuse)}
+	return &shortfallBook{
+		peers:      make(map[string]*peerShortfall),
+		excuses:    make(map[string]rootExcuse),
+		violations: make(map[string]time.Time),
+	}
 }
 
 // peerLocked returns the entry of peer, created if missing. b.mu must be
@@ -233,10 +280,12 @@ func (b *shortfallBook) peerLocked(peer swarm.Address) *peerShortfall {
 }
 
 // excuse reports whether the move of peer's root from from to to excuses the
-// IDs that left it, at now: the first move within rootExcuseInterval does,
-// and so does the same move again (the concurrent fetches of one radius
-// increase).
-func (b *shortfallBook) excuse(peer swarm.Address, from, to fingerprint.Range, now time.Time) bool {
+// IDs that left it, for a fetch that started at started, at now: the first
+// move within rootExcuseInterval does, and the same move does again for a
+// fetch that started before it was first excused (the concurrent fetches of
+// one radius increase), not for a later one (the same move after the root
+// moved back).
+func (b *shortfallBook) excuse(peer swarm.Address, from, to fingerprint.Range, started, now time.Time) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for k, e := range b.excuses {
@@ -245,10 +294,30 @@ func (b *shortfallBook) excuse(peer swarm.Address, from, to fingerprint.Range, n
 		}
 	}
 	if e, ok := b.excuses[peer.ByteString()]; ok {
-		return e.from.Equal(from) && e.to.Equal(to)
+		return e.from.Equal(from) && e.to.Equal(to) && !started.After(e.at)
 	}
 	b.excuses[peer.ByteString()] = rootExcuse{from: from, to: to, at: now}
 	return true
+}
+
+// markViolation records that peer was reported for a violation at now.
+func (b *shortfallBook) markViolation(peer swarm.Address, now time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.violations[peer.ByteString()] = now
+}
+
+// violated reports whether peer was reported for a violation within
+// violationGrace before now.
+func (b *shortfallBook) violated(peer swarm.Address, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	at, ok := b.violations[peer.ByteString()]
+	if ok && now.Sub(at) >= violationGrace {
+		delete(b.violations, peer.ByteString())
+		return false
+	}
+	return ok
 }
 
 // relisted records ids as left missing by peer at now, and returns how many
@@ -294,8 +363,42 @@ func (b *shortfallBook) offend(peer swarm.Address, now time.Time) (repeat bool) 
 	return repeat
 }
 
-// clear forgets the missing IDs and the offenses of peer.
+// clear forgets the missing IDs, the offenses and the violation of peer.
 func (b *shortfallBook) clear(peer swarm.Address) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.peers, peer.ByteString())
+	delete(b.violations, peer.ByteString())
+}
+
+// peerBudget is a budget of events per peer on an injected clock: burst
+// events back to back, then one per every. It is safe for concurrent use.
+type peerBudget struct {
+	mu    sync.Mutex
+	every time.Duration
+	burst int
+	peers map[string]*rate.Limiter
+}
+
+func newPeerBudget(every time.Duration, burst int) *peerBudget {
+	return &peerBudget{every: every, burst: burst, peers: make(map[string]*rate.Limiter)}
+}
+
+// take takes one event of peer's budget at now and reports whether there
+// was one.
+func (b *peerBudget) take(peer swarm.Address, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	l, ok := b.peers[peer.ByteString()]
+	if !ok {
+		l = rate.NewLimiter(rate.Every(b.every), b.burst)
+		b.peers[peer.ByteString()] = l
+	}
+	return l.AllowN(now, 1)
+}
+
+// clear forgets peer's budget.
+func (b *peerBudget) clear(peer swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.peers, peer.ByteString())

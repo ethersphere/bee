@@ -184,6 +184,8 @@ const (
 	BlatantMinIDs      = blatantMinIDs
 	MaxMissingPerPeer  = maxMissingPerPeer
 	MaxFetchResets     = maxFetchResets
+	FetchResetInterval = fetchResetInterval
+	ViolationGrace     = violationGrace
 )
 
 // PlausibleStep reports whether a root move from from to to excuses the IDs
@@ -195,8 +197,8 @@ type ShortfallBook struct{ b *shortfallBook }
 
 func NewShortfallBook() ShortfallBook { return ShortfallBook{newShortfallBook()} }
 
-func (b ShortfallBook) Excuse(peer swarm.Address, from, to fingerprint.Range, now time.Time) bool {
-	return b.b.excuse(peer, from, to, now)
+func (b ShortfallBook) Excuse(peer swarm.Address, from, to fingerprint.Range, started, now time.Time) bool {
+	return b.b.excuse(peer, from, to, started, now)
 }
 
 func (b ShortfallBook) Relisted(peer swarm.Address, ids []fingerprint.ID, now time.Time) int {

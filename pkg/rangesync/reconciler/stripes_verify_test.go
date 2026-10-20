@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -330,6 +332,63 @@ func TestVerifyStripesVerifierShortfallTolerated(t *testing.T) {
 	v := h.r.VerifyStripes(context.Background(), res)[0]
 	if v.Err != nil || v.Diff != 50 || v.Stored != 49 {
 		t.Fatalf("diff %d, stored %d, err %v", v.Diff, v.Stored, v.Err)
+	}
+	if got := h.r.Score(other); got != 0 {
+		t.Fatalf("verifier score %d, want 0", got)
+	}
+}
+
+// outsideRootService is a fakeService whose fetches report results
+// (FetchWithResult): the IDs it does not store are Undelivered, and the
+// first outside[peer] of them lie outside the peer's root (OutsideRoot):
+// the peer was not asked for them.
+type outsideRootService struct {
+	*fakeService
+	outside map[string]int
+}
+
+func (s *outsideRootService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (rangesync.FetchResult, error) {
+	n, err := s.Fetch(ctx, peer, ids)
+	res := rangesync.FetchResult{Stored: n, Undelivered: ids[n:]}
+	res.OutsideRoot = min(s.outside[peer.ByteString()], len(res.Undelivered))
+	return res, err
+}
+
+// TestVerifyStripesVerifierOutsideRoot (T4.5 part 2b fix round 2): a verifier
+// whose root narrows during the verification (its radius grew) is not asked
+// for the listed IDs outside its new root, and they do not count against it:
+// it is not scored.
+func TestVerifyStripesVerifierOutsideRoot(t *testing.T) {
+	t.Parallel()
+
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.remote[other.ByteString()] = status(2)
+	svc.wants[higher.ByteString()] = 100
+	svc.wants[other.ByteString()] = 50
+	svc.withholdN[other.ByteString()] = 10 // the 10 outside its root
+	osvc := &outsideRootService{fakeService: svc, outside: map[string]int{other.ByteString(): 10}}
+	h := &harness{svc: svc, topo: &fakeTopology{peers: []swarm.Address{higher, other}}, clock: &fakeClock{now: time.Unix(1_000_000, 0)}}
+	h.r = reconciler.New(self, h.topo, osvc, log.Noop, reconciler.Options{
+		Now:           h.clock.Now,
+		After:         h.clock.After,
+		RoundInterval: 10 * time.Millisecond,
+	})
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	h.r.Start(context.Background())
+	waitFor(t, "status", func() bool { return svc.count(svc.sent, other) > 0 && svc.count(svc.sent, higher) > 0 })
+	waitAdmitted(t, h.r, higher, other)
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	v := h.r.VerifyStripes(context.Background(), res)[0]
+	if v.Err != nil || v.Diff != 50 || v.Stored != 40 || v.Undelivered != 0 {
+		t.Fatalf("diff %d, stored %d, undelivered %d, err %v", v.Diff, v.Stored, v.Undelivered, v.Err)
 	}
 	if got := h.r.Score(other); got != 0 {
 		t.Fatalf("verifier score %d, want 0", got)

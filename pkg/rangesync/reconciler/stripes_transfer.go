@@ -126,8 +126,10 @@ type StripeResult struct {
 	Err error
 
 	// ran reports that an attempt ran a session with Peer: it was answered
-	// other than Busy, or listed IDs.
-	ran bool
+	// other than Busy, or listed IDs. outsideRoot is how many of
+	// Undelivered were not requested because they lie outside Peer's root.
+	ran         bool
+	outsideRoot int
 }
 
 // TransferStripes transfers stripes (§7.4): for each, it opens a session
@@ -467,6 +469,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			queued.Add(-1)
 			res.Stored += out.stored
 			res.Undelivered += out.undelivered
+			res.outsideRoot += out.outsideRoot
 			pending = append(pending, out.pending...)
 			unverified += out.unverified
 			if out.stored > 0 {
@@ -609,6 +612,7 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 		out, err := r.fetchFrom(ctx, peer, pending, true)
 		res.Stored += out.stored
 		res.Undelivered += out.undelivered
+		res.outsideRoot += out.outsideRoot
 		unverified += out.unverified
 		if out.stored > 0 {
 			r.rate.Add(out.stored)

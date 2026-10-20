@@ -181,6 +181,7 @@ func (s *Service) acquireSession(peer swarm.Address) (release func(), err error)
 // initiatorViolation disconnects peer for the violation err and reports it
 // to the scorer; the caller resets the stream. It returns err.
 func (s *Service) initiatorViolation(peer swarm.Address, err error) error {
+	s.shortfalls.markViolation(peer, s.now())
 	s.metrics.InvalidMessage.Inc()
 	s.scorer.Fail(peer, err)
 	s.logger.Debug("invalid message from peer, disconnecting", "peer_address", peer, "error", err)

@@ -53,7 +53,9 @@ type VerifyResult struct {
 	// Diff is the number of IDs the verification session listed; Stored
 	// the number of chunks fetched (and validated) for them, the
 	// difference the deliverer is judged on; Undelivered the number of IDs
-	// requested from the verifier that it did not deliver, its shortfall.
+	// requested from the verifier that it did not deliver, its shortfall
+	// (not those outside its root by its last Status, which it was not
+	// asked for).
 	Diff, Stored, Undelivered int
 	// Err is ErrStripeNotDone or ErrNoVerifier for a stripe not verified,
 	// or the error of the verification session or its fetch.
@@ -139,7 +141,7 @@ func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (s
 func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks) VerifyResult {
 	v := VerifyResult{Range: res.Range, Deliverer: res.Peer, Verifier: verifier}
 	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {})
-	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered, t.Err
+	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered-t.outsideRoot, t.Err
 	if v.Err != nil {
 		// an incomplete verification says nothing about the deliverer
 		return v
