@@ -65,3 +65,8 @@ func (s *Syncer) StreamLimitExceededCount() float64 {
 	}
 	return m.GetCounter().GetValue()
 }
+
+// SyncInProgress returns the number of incoming sync handlers that run now.
+func (s *Syncer) SyncInProgress() int32 {
+	return s.syncInProgress.Load()
+}

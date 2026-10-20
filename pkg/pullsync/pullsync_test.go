@@ -16,10 +16,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -96,6 +98,59 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 		_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
+		}
+	})
+}
+
+// chunkReserve is a reserve. Its bin subscription gets a chunk only when the test sends one.
+type chunkReserve struct {
+	*mock.ReserveStore
+	chunks chan *storer.BinC
+}
+
+func (r *chunkReserve) SubscribeBin(context.Context, uint8, uint64) (<-chan *storer.BinC, func(), <-chan error) {
+	return r.chunks, func() {}, make(chan error)
+}
+
+// TestIncoming_HalfClosedStream checks that the handler sends the offer to a client
+// that closes its write side after the request. Only a stream reset stops the request.
+func TestIncoming_HalfClosedStream(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		reserve := &chunkReserve{ReserveStore: mock.NewReserve(), chunks: make(chan *storer.BinC)}
+		validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+		ps := newPullSyncWithReserve(t, nil, pullsync.DefaultMaxPage, validStamp, reserve)
+		recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+
+		stream, err := recorder.NewStream(context.Background(), swarm.ZeroAddress, nil, pullsync.ProtocolName, pullsync.ProtocolVersion, pullsync.StreamName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, r := protobuf.NewWriterAndReader(stream)
+		if err := w.WriteMsg(&pb.Get{Bin: 0, Start: 1}); err != nil {
+			t.Fatal(err)
+		}
+		cw, ok := stream.(interface{ CloseWrite() error })
+		if !ok {
+			t.Fatal("stream cannot close its write side")
+		}
+		if err := cw.CloseWrite(); err != nil {
+			t.Fatal(err)
+		}
+
+		synctest.Wait()
+		if got := ps.SyncInProgress(); got != 1 {
+			t.Fatalf("got %d handlers in progress after the client closed its write side, want 1", got)
+		}
+
+		addr := swarm.RandAddress(t)
+		reserve.chunks <- &storer.BinC{Address: addr, BatchID: swarm.RandAddress(t).Bytes(), BinID: 1, StampHash: swarm.RandAddress(t).Bytes()}
+
+		var offer pb.Offer
+		if err := r.ReadMsg(&offer); err != nil {
+			t.Fatal(err)
+		}
+		if len(offer.Chunks) != 1 || !bytes.Equal(offer.Chunks[0].Address, addr.Bytes()) {
+			t.Fatalf("got offer %v, want one chunk %s", offer.Chunks, addr)
 		}
 	})
 }
@@ -441,6 +496,18 @@ func newPullSyncWithStamperValidator(
 	t.Helper()
 
 	storage := mock.NewReserve(o...)
+	return newPullSyncWithReserve(t, s, maxPage, validStamp, storage), storage
+}
+
+func newPullSyncWithReserve(
+	t *testing.T,
+	s p2p.Streamer,
+	maxPage uint64,
+	validStamp postage.ValidStampFn,
+	storage storer.Reserve,
+) *pullsync.Syncer {
+	t.Helper()
+
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	socHandler := func(*soc.SOC) {}
@@ -460,5 +527,5 @@ func newPullSyncWithStamperValidator(
 			t.Errorf("failed closing pullsync: %v", err)
 		}
 	})
-	return ps, storage
+	return ps
 }

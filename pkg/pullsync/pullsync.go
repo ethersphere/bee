@@ -180,7 +180,11 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	// make an offer to the upstream peer in return for the requested range
+	stopWatch := s.watchStream(stream, cancel)
 	offer, err := s.makeOffer(ctx, rn)
+	if stopErr := stopWatch(); stopErr != nil {
+		return fmt.Errorf("stop stream watch: %w", stopErr)
+	}
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -425,6 +429,43 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 type collectAddrsResult struct {
 	chs     []*storer.BinC
 	topmost uint64
+}
+
+// watchStream cancels the request when the peer resets the stream.
+// The handler does not read the stream while it waits for chunks, so it cannot see a reset.
+// The handler context stops only when the peer disconnects.
+// The peer sends nothing before it gets the offer, so the read returns only when the stream ends.
+// If the peer only closes its write side, the read returns io.EOF. The peer can still read
+// the offer, so the request continues without a watch.
+// Call the returned function before the next read from the stream. It stops the watch.
+// If the stream does not support read deadlines, the function does not watch the stream.
+func (s *Syncer) watchStream(stream p2p.Stream, cancel context.CancelFunc) (stop func() error) {
+	ds, ok := stream.(interface{ SetReadDeadline(time.Time) error })
+	if !ok || ds.SetReadDeadline(time.Time{}) != nil {
+		return func() error { return nil }
+	}
+
+	var stopped atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		n, err := stream.Read(make([]byte, 1))
+		if stopped.Load() || (n == 0 && errors.Is(err, io.EOF)) {
+			return
+		}
+		s.metrics.AbandonedRequests.Inc()
+		cancel()
+	}()
+
+	return func() error {
+		stopped.Store(true)
+		// stop the read. If this fails, the read can continue, and the caller resets the stream.
+		if err := ds.SetReadDeadline(time.Now()); err != nil {
+			return err
+		}
+		<-done
+		return ds.SetReadDeadline(time.Time{})
+	}
 }
 
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
