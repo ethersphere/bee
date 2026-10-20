@@ -135,6 +135,11 @@ type Options struct {
 	// ClaimDeadline / 2, so that a stalled holder releases the claims
 	// before they expire.
 	FetchTimeout time.Duration
+	// Now returns the current time; time.Now if nil. It drives the backoff
+	// of fetch stream opens and the windows of the fetch shortfall rules and
+	// of the fetch reset budget, not the fetch timeout. Tests set a fake
+	// clock.
+	Now func() time.Time
 }
 
 var _ io.Closer = (*Service)(nil)
@@ -216,6 +221,9 @@ func New(
 	if o.FetchRate <= 0 {
 		o.FetchRate = DefaultFetchRate
 	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
 	if unwrap == nil {
 		unwrap = func(swarm.Chunk) {}
 	}
@@ -248,7 +256,7 @@ func New(
 		statusDrops:      ratelimit.New(PeerStatusDropInterval, PeerStatusDropBurst),
 		fetchResets:      newPeerBudget(fetchResetInterval, maxFetchResets),
 		shortfalls:       newShortfallBook(),
-		now:              time.Now,
+		now:              o.Now,
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
 		local:            &local{index: index, store: store},

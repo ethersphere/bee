@@ -1626,6 +1626,41 @@ func (h *heldOpens) NewStream(ctx context.Context, addr swarm.Address, hd p2p.He
 	}
 }
 
+// TestFetchDisconnectClearsOpenBackoff (T4.5 part 2c fix round 2) checks
+// that a disconnect clears the backoff of the peer's fetch stream opens
+// through the service's disconnect hook: after a failed open the peer's
+// fetches fail at once while the backoff runs, but once it disconnected and
+// reconnected its next fetch opens a stream at once.
+func TestFetchDisconnectClearsOpenBackoff(t *testing.T) {
+	t.Parallel()
+
+	clock := newFakeClock()
+	h := newHeldOpens()
+	h.hold.Store(true)
+	close(h.release) // every held open fails at once
+	a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: h.wrap}))
+	chs := validChunks(1)
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+
+	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); err == nil || errors.Is(err, rangesync.ErrOpenBackoff) {
+		t.Fatalf("got %v, want a failed open", err)
+	}
+	h.hold.Store(false) // the peer's opens would succeed now
+	if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); !errors.Is(err, rangesync.ErrOpenBackoff) {
+		t.Fatalf("got %v, want %v", err, rangesync.ErrOpenBackoff)
+	}
+	if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+		t.Fatal(err)
+	}
+	sendRoot(t, b, a, whole) // the reconnect, within the backoff
+	if res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); err != nil || res.Stored != 1 {
+		t.Fatalf("after the reconnect: stored %d, %v", res.Stored, err)
+	}
+	assertNotScored(t, a, b.addr)
+}
+
 // TestFetchStreamOpenHonest checks that stream opens that fail for no fault
 // of the peer are not charged (no failed open is, TestFetchStreamOpenNotCharged):
 //   - an open that finds the peer gone (p2p.ErrPeerNotFound), whose Status

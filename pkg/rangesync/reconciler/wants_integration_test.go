@@ -47,8 +47,9 @@ type roundNodeOptions struct {
 	fetchTimeout  time.Duration
 	roundInterval time.Duration
 	chunks        []swarm.Chunk
-	// now is the reconciler's clock (Options.Now); time.Now if nil.
-	now func() time.Time
+	// now is the reconciler's clock (Options.Now) and svcNow the service's
+	// (rangesync.Options.Now); time.Now if nil.
+	now, svcNow func() time.Time
 	// streamErr is the recorder's stream error (streamtest.WithStreamError);
 	// nil: none.
 	streamErr func(swarm.Address, string, string, string) error
@@ -80,6 +81,7 @@ func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...sw
 		Scorer:       n.r,
 		Wants:        n.r.Wants,
 		FetchTimeout: o.fetchTimeout,
+		Now:          o.svcNow,
 	})
 	n.r.SetService(n.svc)
 	t.Cleanup(func() {

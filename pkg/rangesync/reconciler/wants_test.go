@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1307,40 +1306,56 @@ func TestWantsServedFetcher(t *testing.T) {
 	noFetch("after its queue drained")
 }
 
-// stallFetchOpens is a streamer whose fetch stream opens wait until their
-// context ends (a peer that stalls every headers exchange), and that counts
-// them.
+// stallFetchOpens is a streamer whose fetch stream opens wait until the
+// test ends them, then fail (a peer that stalls each headers exchange for as
+// long as it likes and then resets it), or until their context ends. Each
+// open sends opens the channel that ends it.
 type stallFetchOpens struct {
 	p2p.StreamerDisconnecter
-	opens atomic.Int64
+	opens chan chan struct{}
 }
 
 func (s *stallFetchOpens) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
 	if stream != rangesync.FetchStreamName {
 		return s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
 	}
-	s.opens.Add(1)
-	<-ctx.Done()
-	return nil, fmt.Errorf("send headers: %w", ctx.Err())
+	end := make(chan struct{})
+	select {
+	case s.opens <- end:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("send headers: %w", ctx.Err())
+	}
+	select {
+	case <-end:
+		return nil, errors.New("send headers: read message: stream reset")
+	case <-ctx.Done():
+		return nil, fmt.Errorf("send headers: %w", ctx.Err())
+	}
 }
 
-// TestWantsStalledOpens is the review's attack on the served fetches: a peer
-// starts sessions with this node faster than two stalled fetch opens per
-// fetch timeout drain their fetches, each listing the same junk IDs (at least
-// CatchUpMinDiff, so each counts towards SyncRate), and stalls every fetch
-// stream open. Nothing is claimed or scored. The peer's served fetches are
-// merged into one fetcher, and its first stalled open backs off its opens,
-// so the later batches fail at once: at most one catch-up fetch of the peer
-// is in flight, no open after the backoff, and the count ends as soon as the
-// sessions stop, so the peer cannot hold SyncRate above 0.
+// TestWantsStalledOpens is the review's attack on the served fetches, over a
+// real service, with the reconciler and the service on one fake clock: a
+// peer starts sessions with this node faster than its fetches drain, each
+// listing the same junk IDs (at least CatchUpMinDiff, so each counts as
+// catch-up), and stalls every fetch stream open for as long as it likes.
+// Nothing is claimed or scored. The peer's served fetches are merged into
+// one fetcher, its stalled opens back off its opens, and the batches in
+// between fail at once: at most one catch-up fetch of the peer is in flight,
+// and no open starts while the backoff runs. Each probe after a backoff, and
+// the first open after a reconnect (a disconnect clears the backoff), holds
+// a catch-up fetch in flight for as long as the peer stalls it, but SyncRate
+// reads 0 once the catch-up grace is spent (T4.5 part 2c fix round 2), which
+// none of them renews.
 func TestWantsStalledOpens(t *testing.T) {
 	t.Parallel()
 
-	const arrivals = 80 // one per 25 ms, 2 s
-	stall := new(stallFetchOpens)
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	stall := &stallFetchOpens{opens: make(chan chan struct{})}
 	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{
-		fetchTimeout:  100 * time.Millisecond,
+		fetchTimeout:  10 * time.Second, // the peer ends each stall before
 		roundInterval: time.Hour,
+		now:           clock.Now,
+		svcNow:        clock.Now,
 		streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
 			stall.StreamerDisconnecter = s
 			return stall
@@ -1352,24 +1367,92 @@ func TestWantsStalledOpens(t *testing.T) {
 	b.rec.SetProtocols(a.svc.Protocol())
 	exchangeStatus(t, a, b)
 	a.r.Start(context.Background())
+	clock.Add(reconciler.StartupGuardTimeout) // no neighbor: the guard ends at its timeout
 
 	junk := make([]storer.ChunkID, reconciler.CatchUpMinDiff)
 	for i := range junk {
 		junk[i] = chunkIDOf(t, chunktesting.GenerateTestRandomChunk())
 	}
 	maxInFlight := 0
-	for range arrivals {
+	list := func() {
 		a.r.Wants(b.addr, junk)
 		maxInFlight = max(maxInFlight, a.r.CatchUpFetches())
-		time.Sleep(25 * time.Millisecond)
 	}
+	// open lists junk until a fetch stream open to the peer starts and
+	// returns the channel that ends it
+	open := func(what string) chan struct{} {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			list()
+			select {
+			case end := <-stall.opens:
+				return end
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+		t.Fatalf("no %s", what)
+		return nil
+	}
+	// noOpen lists junk and checks that no open starts
+	noOpen := func(when string) {
+		t.Helper()
+		for range 5 {
+			list()
+			select {
+			case <-stall.opens:
+				t.Fatalf("a fetch stream open %s", when)
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}
+	// stalled holds the open that end ends for the fetch timeout on the
+	// clock while the peer keeps listing, checking SyncRate, then ends it
+	stalled := func(end chan struct{}) {
+		t.Helper()
+		for range 3 {
+			list()
+			clock.Add(rangesync.ClaimDeadline / 6)
+			if got := a.r.SyncRate(); got != 0 {
+				t.Fatalf("sync rate %v while an open stalls, want 0", got)
+			}
+		}
+		close(end)
+		waitFor(t, "no catch-up fetch in flight", func() bool { return a.r.CatchUpFetches() == 0 })
+	}
+
+	end := open("first open")
+	if got := a.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v within the catch-up grace", got)
+	}
+	stalled(end)
+	backoff := 5 * time.Second // rangesync's base open backoff, doubling
+	for range 4 {
+		noOpen("while the backoff runs")
+		clock.Add(backoff)
+		end = open("probe after the backoff")
+		if got := a.r.SyncRate(); got != 0 {
+			t.Fatalf("sync rate %v as a probe starts, want 0", got)
+		}
+		stalled(end)
+		backoff *= 2
+	}
+	// a reconnect clears the backoff: the next open starts at once
+	noOpen("while the backoff runs")
+	if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+		t.Fatal(err)
+	}
+	exchangeStatus(t, a, b)
+	end = open("open after the reconnect")
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v as the open after a reconnect starts, want 0", got)
+	}
+	stalled(end)
+	noOpen("while the backoff runs")
+
 	if maxInFlight > 1 {
 		t.Fatalf("%d catch-up fetches of the peer in flight at once, want at most 1", maxInFlight)
 	}
-	if o := stall.opens.Load(); o > 1 {
-		t.Fatalf("%d fetch stream opens, want 1 (the one before the backoff)", o)
-	}
-	waitFor(t, "no catch-up fetch in flight", func() bool { return a.r.CatchUpFetches() == 0 })
 	if score := a.r.Score(b.addr); score != 0 {
 		t.Fatalf("peer scored %d", score)
 	}
