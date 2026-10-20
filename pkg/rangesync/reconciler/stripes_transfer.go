@@ -804,13 +804,11 @@ func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
 	if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.ContainsRange(rg) }) {
 		return false
 	}
-	parts := []fingerprint.Range{rg}
 	if slices.ContainsFunc(r.stripeRegistry, rg.ContainsRange) {
 		if job.started != nil || job.bootstrap || job.radius || job.ctx != nil {
 			return false
 		}
-		var whole bool
-		parts, whole = trimStripe(rg, r.stripeRegistry, maxStripeRegistry-len(r.stripeRegistry))
+		parts, whole := trimStripe(rg, r.stripeRegistry, maxStripeRegistry-len(r.stripeRegistry))
 		if !whole {
 			r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
 			r.logger.Debug("stripe range trimmed past the registry bound", "range", rg, "parts", len(parts))
