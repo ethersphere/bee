@@ -5,6 +5,8 @@
 package rangesync
 
 import (
+	"time"
+
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -154,3 +156,6 @@ const (
 	LevelBucket = levelBucket
 	LevelDeep   = levelDeep
 )
+
+// FetchTimeout returns the timeout of one Want.
+func (s *Service) FetchTimeout() time.Duration { return s.fetchTimeout }

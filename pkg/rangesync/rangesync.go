@@ -122,8 +122,9 @@ type Options struct {
 	// Fetch. Zero means DefaultFetchRate.
 	FetchRate int
 	// FetchTimeout bounds one Want, from opening its stream to the last
-	// Delivery. Zero means ClaimDeadline / 2, so that a stalled holder
-	// releases the claims before they expire.
+	// Delivery. Zero, and values of ClaimDeadline or more, mean
+	// ClaimDeadline / 2, so that a stalled holder releases the claims
+	// before they expire.
 	FetchTimeout time.Duration
 }
 
@@ -194,7 +195,7 @@ func New(
 	if o.Scorer == nil {
 		o.Scorer = noopScorer{}
 	}
-	if o.FetchTimeout <= 0 {
+	if o.FetchTimeout <= 0 || o.FetchTimeout >= ClaimDeadline {
 		o.FetchTimeout = ClaimDeadline / 2
 	}
 	if o.FetchRate <= 0 {

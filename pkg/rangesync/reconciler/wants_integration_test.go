@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -81,8 +82,14 @@ func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...sw
 	return n
 }
 
-// connect routes n's streams to each peer through spec (the peer's protocol
+// start routes n's streams to each peer through spec (the peer's protocol
 // if nil) and exchanges Statuses, then starts n's reconciler.
+//
+// Each peer holds n's Status before the reconciler starts. streamtest's
+// FullClose returns before the remote handler has stored a Status (libp2p's
+// waits for it), so the Status of the first round's probe may not have
+// arrived when that round's sessions open, which the peer would answer Busy
+// (no Status of n), and the next round is an hour away.
 func (n *roundNode) start(t *testing.T, peers []*stripeNode, specs map[string]p2p.ProtocolSpec) {
 	t.Helper()
 	for _, p := range peers {
@@ -92,13 +99,7 @@ func (n *roundNode) start(t *testing.T, peers []*stripeNode, specs map[string]p2
 		}
 		n.routes[p.addr.String()] = spec
 		p.rec.SetProtocols(n.svc.Protocol())
-		if err := p.svc.SendStatus(context.Background(), n.addr); err != nil {
-			t.Fatal(err)
-		}
-		waitFor(t, "status", func() bool {
-			_, ok := n.svc.LastStatus(p.addr)
-			return ok
-		})
+		exchangeStatus(t, n, p)
 	}
 	n.r.Start(context.Background())
 }
@@ -222,6 +223,9 @@ type srep struct {
 	b1, b2              *stripeNode
 	x, y, z             swarm.Chunk
 	b1Wanted, b1Proceed chan struct{}
+	// started is taken before A's reconciler starts, so before any fetch
+	// (and its fetch timeout) starts.
+	started time.Time
 }
 
 func newSREP(t *testing.T, fetchTimeout time.Duration, stall bool) *srep {
@@ -237,6 +241,7 @@ func newSREP(t *testing.T, fetchTimeout time.Duration, stall bool) *srep {
 	s.b1 = newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(b1Addr)), b1Addr, append(base, s.x, s.y)...)
 	s.b2 = newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(b2Addr)), b2Addr, append(base, s.x, s.z)...)
 	s.a = newRoundNode(t, addr(0x10, 0), roundNodeOptions{fetchTimeout: fetchTimeout, roundInterval: time.Hour, chunks: base}, b1Addr, b2Addr)
+	s.started = time.Now()
 	s.a.start(t, []*stripeNode{s.b1, s.b2}, map[string]p2p.ProtocolSpec{
 		b1Addr.String(): wrapStream(s.b1.svc.Protocol(), rangesync.FetchStreamName, signalThen(s.b1Wanted, s.b1Proceed, done)),
 		b2Addr.String(): wrapStream(s.b2.svc.Protocol(), rangesync.ReconcileStreamName, waitThen(s.b1Wanted, done)),
@@ -286,15 +291,16 @@ func TestSREPStallRetry(t *testing.T) {
 	const fetchTimeout = time.Second
 	s := newSREP(t, fetchTimeout, true)
 	waitClosed(t, "B1's Want", s.b1Wanted)
-	wanted := time.Now()
 	waitFor(t, "z from B2", func() bool { return s.a.has(t, s.z) })
 	if w := s.a.wantsTo(t, s.b2.addr); len(w) != 1 || len(w[0]) != 1 || !w[0][0].Equal(s.z.Address()) {
 		t.Fatalf("wants to B2 %v, want one of z (x denied)", w)
 	}
 
 	waitFor(t, "x from B2", func() bool { return s.a.has(t, s.x) })
-	if elapsed := time.Since(wanted); elapsed < fetchTimeout {
-		t.Fatalf("x fetched %s after B1's Want, before the fetch timeout %s", elapsed, fetchTimeout)
+	// B1's fetch, and its timeout, started after s.started: x can be stored
+	// no sooner than the timeout after it
+	if elapsed := time.Since(s.started); elapsed < fetchTimeout {
+		t.Fatalf("x fetched %s after the start, before B1's fetch timeout %s", elapsed, fetchTimeout)
 	}
 	if n := s.a.deliveriesOf(t, s.x, s.b1.addr, s.b2.addr); n != 1 {
 		t.Fatalf("x delivered %d times, want 1", n)
@@ -372,4 +378,85 @@ func TestRejectedNotRefetchedEachRound(t *testing.T) {
 			}
 		})
 	}
+}
+
+// badSignature returns ch with a stamp whose signature does not recover (an
+// invalid recovery code).
+func badSignature(ch swarm.Chunk) swarm.Chunk {
+	st := ch.Stamp()
+	sig := append([]byte(nil), st.Sig()...)
+	sig[len(sig)-1] = 0
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(postage.NewStamp(st.BatchID(), st.Index(), st.Timestamp(), sig))
+}
+
+// recoverStamp is a stamp validator that fails as postage.ValidStamp does
+// when a signature does not recover: with the raw recovery error.
+func recoverStamp(ch swarm.Chunk) (swarm.Chunk, error) {
+	if _, err := postage.RecoverBatchOwner(ch.Address(), ch.Stamp()); err != nil {
+		return nil, err
+	}
+	return ch, nil
+}
+
+// TestStripeBadSignatures (T4.4 fix round 2): a stripe peer that lists IDs
+// it made up on a real batch and delivers them with stamps whose signatures
+// do not recover cannot pin the stripe. The IDs are rejected, not deferred:
+// the stripe is not asked for them again, completes in one session (and so
+// can be verified), and the valid chunks are stored.
+func TestStripeBadSignatures(t *testing.T) {
+	t.Parallel()
+
+	const bad = 8 // streamtest deadlocks past 16 deliveries per Want
+	good := chunktesting.GenerateTestRandomChunks(2)
+	chunks := append([]swarm.Chunk(nil), good...)
+	for _, ch := range chunktesting.GenerateTestRandomChunks(bad) {
+		chunks = append(chunks, badSignature(ch))
+	}
+	bAddr := addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, chunks...)
+	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{validStamp: recoverStamp, roundInterval: time.Hour}, bAddr)
+	a.routes[bAddr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.SetStripeRetryInterval(time.Millisecond)
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := a.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{bAddr}}})[0]
+	if res.Err != nil {
+		t.Fatalf("stripe failed: %v", res.Err)
+	}
+	if res.Listed != len(chunks) || res.Stored != len(good) || res.Undelivered != 0 || res.Deferred != 0 {
+		t.Fatalf("listed %d, stored %d, undelivered %d, deferred %d", res.Listed, res.Stored, res.Undelivered, res.Deferred)
+	}
+	if n := len(streamRecords(t, &a.stripeNode, bAddr, rangesync.ReconcileStreamName)); n != 1 {
+		t.Fatalf("%d sessions with the peer, want 1", n)
+	}
+	if n := len(a.wantsTo(t, bAddr)); n != 1 {
+		t.Fatalf("%d wants to the peer, want 1 (no IDs asked for again)", n)
+	}
+	for i, ch := range chunks {
+		if got, want := a.has(t, ch), i < len(good); got != want {
+			t.Fatalf("chunk %d stored %v, want %v", i, got, want)
+		}
+	}
+	if got := a.r.Score(bAddr); got != 0 {
+		t.Fatalf("peer score %d", got)
+	}
+}
+
+// exchangeStatus has a and b send each other their Status and waits until
+// each holds the other's.
+func exchangeStatus(t *testing.T, a *roundNode, b *stripeNode) {
+	t.Helper()
+	if err := a.svc.SendStatus(context.Background(), b.addr); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.svc.SendStatus(context.Background(), a.addr); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "statuses", func() bool {
+		_, ab := b.svc.LastStatus(a.addr)
+		_, ba := a.svc.LastStatus(b.addr)
+		return ab && ba
+	})
 }

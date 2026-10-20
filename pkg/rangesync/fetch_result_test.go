@@ -447,8 +447,8 @@ func testPeerN(i int) swarm.Address {
 
 // TestFetchStampCheckFailure checks that only stamp validator errors about
 // the stamp itself reject the ID for RejectTTL. Any other error (a batch
-// store failure) releases the claim and defers the ID, which a later fetch
-// requests again; neither is the peer's fault.
+// store failure) releases the claim and reports the ID Unverified, which a
+// later fetch requests again; neither is the peer's fault.
 func TestFetchStampCheckFailure(t *testing.T) {
 	t.Parallel()
 
@@ -496,10 +496,10 @@ func TestFetchStampCheckFailure(t *testing.T) {
 					t.Fatalf("%+v", res)
 				}
 			} else {
-				if res.Rejected != 0 || len(res.Undelivered) != 0 {
+				if res.Rejected != 0 || len(res.Undelivered) != 0 || len(res.Deferred) != 0 {
 					t.Fatalf("%+v", res)
 				}
-				assertChunkIDs(t, res.Deferred, ids...)
+				assertChunkIDs(t, res.Unverified, ids...)
 			}
 			if l := a.svc.WantSet().Len(); l != 0 {
 				t.Fatalf("want set holds %d claims", l)
@@ -522,5 +522,131 @@ func TestFetchStampCheckFailure(t *testing.T) {
 			}
 			assertNotScored(t, a, b.addr)
 		})
+	}
+}
+
+// badSignature returns ch with a stamp whose signature does not recover (an
+// invalid recovery code), as a peer that makes up stamps on a real batch
+// would deliver it.
+func badSignature(ch swarm.Chunk) swarm.Chunk {
+	st := ch.Stamp()
+	sig := append([]byte(nil), st.Sig()...)
+	sig[len(sig)-1] = 0
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(postage.NewStamp(st.BatchID(), st.Index(), st.Timestamp(), sig))
+}
+
+// recoverStamp is a stamp validator that fails as postage.ValidStamp does
+// when the signature does not recover: with the raw recovery error, before
+// any check with a sentinel error.
+func recoverStamp(ch swarm.Chunk) (swarm.Chunk, error) {
+	if _, err := postage.RecoverBatchOwner(ch.Address(), ch.Stamp()); err != nil {
+		return nil, err
+	}
+	return ch, nil
+}
+
+// TestFetchBadSignatureRejected checks that a delivered stamp whose
+// signature does not recover is rejected for RejectTTL although the stamp
+// validator's error has no sentinel: it is the stamp's fault, so the ID is
+// not Unverified, and a later fetch does not request it again.
+func TestFetchBadSignatureRejected(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(2)
+	bad := badSignature(chs[0])
+	a := newTestNodeOpts(t, nodeOpts{validStamp: recoverStamp})
+	b := newTestNode(t, bad, chs[1])
+	connect0(a, b)
+
+	ids := idsOf(t, bad, chs[1])
+	for range 2 {
+		res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Rejected != 1 || len(res.Unverified) != 0 || len(res.Deferred) != 0 || len(res.Undelivered) != 0 {
+			t.Fatalf("%+v", res)
+		}
+	}
+	if !a.svc.WantSet().IsRejected(fpID(ids[0])) {
+		t.Fatal("bad signature not rejected")
+	}
+	if n := len(sentWants(t, a, b.addr)); n != 1 {
+		t.Fatalf("%d wants, want 1", n)
+	}
+	assertStored(t, a, true, ids[1])
+	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchPeekSkipsLimiter checks that IDs the want set would not grant
+// (here held by another claim) are skipped before the fetch limiter wait,
+// so they cost no fetch rate.
+func TestFetchPeekSkipsLimiter(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(1)
+	a := newTestNodeOpts(t, nodeOpts{fetchRate: 1}) // a token every second once the burst is gone
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+	if !a.svc.DrainFetchLimiter() {
+		t.Fatal("fetch limiter burst not taken")
+	}
+	ids := idsOf(t, chs...)
+	if r := a.svc.WantSet().Claim(fpID(ids[0]), swarm.RandAddress(t)); r != wantset.Granted {
+		t.Fatal(r)
+	}
+
+	start := time.Now()
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("fetch of a held ID waited %s for the fetch limiter", elapsed)
+	}
+	assertChunkIDs(t, res.Held, ids...)
+	assertWantClaims(t, a, map[string]float64{"denied": 1, "granted": 0})
+}
+
+// TestFetchExpiredDuringPut checks that a claim that expires while Put
+// blocks (Put ignores ctx and waits for the reserve's batch lock) is counted
+// as expired, not late: the delivery arrived in time.
+func TestFetchExpiredDuringPut(t *testing.T) {
+	t.Parallel()
+
+	const deadline = 50 * time.Millisecond
+	chs := validChunks(1)
+	a := newTestNodeOpts(t, nodeOpts{putHook: func(swarm.Chunk) error {
+		time.Sleep(2 * deadline)
+		return nil
+	}})
+	a.svc.SetWantSet(wantset.New(deadline, rangesync.RejectTTL))
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...))
+	if err != nil || res.Stored != 1 {
+		t.Fatalf("%+v, %v", res, err)
+	}
+	assertWantClaims(t, a, map[string]float64{"granted": 1, "expired": 1, "late": 0})
+}
+
+// TestFetchTimeoutClamped checks that a fetch timeout of the claim deadline
+// or more is clamped to half of it, so that a fetch ends before its claims
+// expire.
+func TestFetchTimeoutClamped(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ set, want time.Duration }{
+		{0, rangesync.ClaimDeadline / 2},
+		{time.Second, time.Second},
+		{rangesync.ClaimDeadline - time.Nanosecond, rangesync.ClaimDeadline - time.Nanosecond},
+		{rangesync.ClaimDeadline, rangesync.ClaimDeadline / 2},
+		{2 * rangesync.ClaimDeadline, rangesync.ClaimDeadline / 2},
+	} {
+		n := newTestNodeOpts(t, nodeOpts{fetchTimeout: tc.set})
+		if got := n.svc.FetchTimeout(); got != tc.want {
+			t.Errorf("FetchTimeout %s: got %s, want %s", tc.set, got, tc.want)
+		}
 	}
 }

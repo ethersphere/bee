@@ -184,6 +184,40 @@ func TestHeldBy(t *testing.T) {
 	held(3, 1, false)
 }
 
+// TestPeek checks that Peek reports what Claim would return without
+// recording a claim.
+func TestPeek(t *testing.T) {
+	t.Parallel()
+
+	c := newClock()
+	s := wantset.NewWithClock(testDeadline, testRejectTTL, 3, 2, wantset.MaxRejected, c.Now)
+	peek := func(id, peer int, want wantset.Result) {
+		t.Helper()
+		if got := s.Peek(testID(id), testPeer(peer)); got != want {
+			t.Fatalf("Peek(id %d, peer %d) = %v, want %v", id, peer, got, want)
+		}
+	}
+
+	peek(1, 1, wantset.Granted)
+	checkLen(t, s, 0)
+	checkClaim(t, s, 1, 1, wantset.Granted)
+	peek(1, 2, wantset.Held)
+	checkClaim(t, s, 2, 1, wantset.Granted)
+	peek(3, 1, wantset.PeerFull)
+	peek(3, 2, wantset.Granted)
+	checkClaim(t, s, 3, 2, wantset.Granted)
+	peek(4, 2, wantset.Full)
+	s.Reject(testID(5))
+	peek(5, 3, wantset.Rejected)
+	checkLen(t, s, 3)
+	c.Advance(testDeadline)
+	peek(1, 2, wantset.Granted)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	peek(1, 2, wantset.Closed)
+}
+
 // TestReject_Closed checks that a closed set rejects nothing and reports no
 // rejected IDs and no claims.
 func TestReject_Closed(t *testing.T) {
@@ -250,27 +284,38 @@ func TestModelReject(t *testing.T) {
 		return n
 	}
 
+	expect := func(i, p int) wantset.Result {
+		if _, ok := rejected[i]; ok {
+			return wantset.Rejected
+		}
+		if _, ok := claims[i]; ok {
+			return wantset.Held
+		}
+		if len(claims) >= maxClaims {
+			return wantset.Full
+		}
+		if held(p) >= maxPerPeer {
+			return wantset.PeerFull
+		}
+		return wantset.Granted
+	}
+
 	for op := range ops {
 		i, p := rnd.IntN(ids), rnd.IntN(peers)
 		now := c.Now()
 		prune(now)
-		switch k := rnd.IntN(12); {
+		switch k := rnd.IntN(13); {
 		case k < 5:
-			var want wantset.Result
-			if _, ok := rejected[i]; ok {
-				want = wantset.Rejected
-			} else if _, ok := claims[i]; ok {
-				want = wantset.Held
-			} else if len(claims) >= maxClaims {
-				want = wantset.Full
-			} else if held(p) >= maxPerPeer {
-				want = wantset.PeerFull
-			} else {
-				want = wantset.Granted
+			want := expect(i, p)
+			if want == wantset.Granted {
 				claims[i] = entry{peer: p, expires: now.Add(testDeadline)}
 			}
 			if got := s.Claim(testID(i), testPeer(p)); got != want {
 				t.Fatalf("op %d: Claim(id %d, peer %d) = %v, want %v", op, i, p, got, want)
+			}
+		case k == 12:
+			if got, want := s.Peek(testID(i), testPeer(p)), expect(i, p); got != want {
+				t.Fatalf("op %d: Peek(id %d, peer %d) = %v, want %v", op, i, p, got, want)
 			}
 		case k < 6:
 			delete(claims, i)

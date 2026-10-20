@@ -51,6 +51,9 @@ type wantService struct {
 	callGate chan chan struct{}
 	// afterFetch, if not nil, is called after each fetch with its peer.
 	afterFetch func(peer swarm.Address)
+	// unverified holds the IDs whose stamp check fails on this node when
+	// delivered (FetchResult.Unverified).
+	unverified map[fingerprint.ID]bool
 	// claimed, by peer, is closed when a fetch from the peer first claims.
 	claimed map[string]chan struct{}
 	// stored holds the IDs stored; deliveries the peers that delivered
@@ -68,6 +71,7 @@ func newWantService(local rangesync.Status) *wantService {
 		holds:       make(map[string]map[fingerprint.ID]bool),
 		stall:       make(map[string]chan struct{}),
 		pause:       make(map[string]chan struct{}),
+		unverified:  make(map[fingerprint.ID]bool),
 		claimed:     make(map[string]chan struct{}),
 		stored:      make(map[fingerprint.ID]bool),
 		deliveries:  make(map[fingerprint.ID][]swarm.Address),
@@ -187,6 +191,11 @@ func (s *wantService) fetchWithResult(ctx context.Context, peer swarm.Address, i
 	defer s.wmu.Unlock()
 	for _, c := range granted {
 		id := fpID(c)
+		if s.holds[k][id] && s.unverified[id] {
+			s.ws.Release(id, peer)
+			res.Unverified = append(res.Unverified, c)
+			continue
+		}
 		if !s.holds[k][id] {
 			s.ws.Release(id, peer)
 			res.Undelivered = append(res.Undelivered, c)
@@ -809,5 +818,38 @@ func TestVerifyStripesUndeliveredOnly(t *testing.T) {
 	}
 	if h.r.Score(v.Verifier) != 0 || h.r.Score(higher) != 0 {
 		t.Fatalf("scores verifier %d, deliverer %d, want 0", h.r.Score(v.Verifier), h.r.Score(higher))
+	}
+}
+
+// TestStripeUnverified (T4.4 fix round 2): an ID delivered with a stamp this
+// node cannot check (a batch store error) makes the stripe fail with
+// ErrStripeDeferred, blaming nobody, but is not asked for again within the
+// attempt: only IDs the want set did not grant are, so a peer cannot make
+// the stripe ask by how it delivers. The restarts ask once each.
+func TestStripeUnverified(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x, y := testChunkID(1), testChunkID(2)
+	svc := newWantService(status(1))
+	svc.lists(higher, x, y)
+	svc.unverified[fpID(x)] = true
+	r := newStripeReconciler(t, svc)
+	res := r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+	if !errors.Is(res.Err, reconciler.ErrStripeDeferred) || errors.Is(res.Err, reconciler.ErrStripeWithheld) {
+		t.Fatalf("got %v, want %v", res.Err, reconciler.ErrStripeDeferred)
+	}
+	if res.Deferred != 1 || res.Undelivered != 0 || res.Stored != 1 {
+		t.Fatalf("deferred %d, undelivered %d, stored %d, want 1, 0, 1", res.Deferred, res.Undelivered, res.Stored)
+	}
+	attempts := 1 + reconciler.MaxStripeRestarts
+	if n := len(svc.sessionOpens(higher)); n != attempts {
+		t.Fatalf("%d sessions, want %d", n, attempts)
+	}
+	if n := len(svc.fetchesFrom(higher)); n != attempts {
+		t.Fatalf("%d fetches, want %d (one per attempt, none asking again)", n, attempts)
+	}
+	if got := r.Score(higher); got != 0 {
+		t.Fatalf("peer score %d", got)
 	}
 }

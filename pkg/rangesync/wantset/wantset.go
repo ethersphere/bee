@@ -173,10 +173,41 @@ func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := s.now()
+	if r := s.check(id, peer, now); r != Granted {
+		return r
+	}
+	p := s.peers[string(peer.Bytes())]
+	if p == nil {
+		p = &peerClaims{key: string(peer.Bytes())}
+		s.peers[p.key] = p
+	}
+	p.n++
+	s.claims[id] = s.expiry.PushBack(&claim{
+		id:      id,
+		peer:    p,
+		expires: now.Add(s.deadline),
+	})
+	return Granted
+}
+
+// Peek reports what Claim would return for id and peer now, without
+// recording a claim. A caller that has to wait before it claims (for a rate
+// limiter) skips the IDs Peek does not grant, so as not to wait for them; it
+// claims the others after the wait, as the outcome may have changed.
+func (s *Set) Peek(id fingerprint.ID, peer swarm.Address) Result {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.check(id, peer, s.now())
+}
+
+// check returns the outcome of a claim of id by peer at now, Granted when
+// nothing stops it, without recording one. s.mu must be held.
+func (s *Set) check(id fingerprint.ID, peer swarm.Address, now time.Time) Result {
 	if s.closed {
 		return Closed
 	}
-	now := s.now()
 	s.expire(now)
 	if s.isRejected(id, now) {
 		return Rejected
@@ -191,20 +222,9 @@ func (s *Set) Claim(id fingerprint.ID, peer swarm.Address) Result {
 	if len(s.claims) >= s.maxClaims {
 		return Full
 	}
-	p := s.peers[string(peer.Bytes())]
-	if p != nil && p.n >= s.maxPerPeer {
+	if p := s.peers[string(peer.Bytes())]; p != nil && p.n >= s.maxPerPeer {
 		return PeerFull
 	}
-	if p == nil {
-		p = &peerClaims{key: string(peer.Bytes())}
-		s.peers[p.key] = p
-	}
-	p.n++
-	s.claims[id] = s.expiry.PushBack(&claim{
-		id:      id,
-		peer:    p,
-		expires: now.Add(s.deadline),
-	})
 	return Granted
 }
 

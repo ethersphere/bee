@@ -47,9 +47,13 @@ type fetchOutcome struct {
 	// not deliver; without a resultFetcher, every ID not stored.
 	undelivered int
 	// pending are the IDs the want set did not grant (another fetch held
-	// the claim, or the set was full) or whose stamp check failed for a
-	// cause that may pass: neither stored nor the peer's fault yet.
+	// the claim, or the set or the peer's share was full): neither stored
+	// nor the peer's fault yet, worth asking for again once claims end.
 	pending []storer.ChunkID
+	// unverified is the number of IDs delivered whose stamp check failed
+	// for a cause on this node (FetchResult.Unverified): not the peer's
+	// fault, and not asked for again within the fetch's stripe attempt.
+	unverified int
 }
 
 // fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
@@ -70,7 +74,7 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, res.Undelivered, catchUp)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
-	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending}, err
+	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified)}, err
 }
 
 // retry fetches ids, which failed did not deliver (or delivered invalid, or

@@ -64,6 +64,14 @@ func newRadiusNet(t *testing.T, radius uint8, own, all []swarm.Chunk) *radiusNet
 	n.r = reconciler.New(n.a.addr, n.topo, n.a.svc, log.Noop, reconciler.Options{RoundInterval: time.Hour})
 	t.Cleanup(func() { _ = n.r.Close() })
 	n.r.Start(context.Background())
+	// streamtest's FullClose returns before the remote handler has stored a
+	// Status (libp2p's waits for it), so the handler of the first round's
+	// Status can still be pending when a later one is sent, and store after
+	// it, overwriting a moved root with the old one. Wait until the peers
+	// hold it.
+	for _, p := range n.peers {
+		waitFor(t, "first status", func() bool { _, ok := p.svc.LastStatus(n.a.addr); return ok })
+	}
 	return n
 }
 

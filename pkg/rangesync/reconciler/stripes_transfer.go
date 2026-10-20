@@ -71,10 +71,10 @@ var (
 	ErrStripeWithheld = errors.New("reconciler: stripe withheld")
 	// ErrStripeDeferred is the error of a stripe whose session completed
 	// with IDs the want set did not grant (another fetch held their claim,
-	// or it was full) or whose stamp check failed for a cause that may
-	// pass, still neither stored nor rejected after maxPendingPasses: a
-	// cause on this node, nobody's fault. The stripe is restarted with the
-	// same peer.
+	// or it was full), still neither stored nor rejected after
+	// maxPendingPasses, or with IDs whose stamp check failed for a cause on
+	// this node (FetchResult.Unverified): nobody's fault. The stripe is
+	// restarted with the same peer.
 	ErrStripeDeferred = errors.New("reconciler: stripe deferred by the want set")
 )
 
@@ -98,11 +98,12 @@ type StripeResult struct {
 	// whose stamp was rejected and IDs stored meanwhile are listed but
 	// neither stored nor undelivered.
 	Listed, Stored, Undelivered int
-	// Deferred is the number of IDs the want set did not grant, or whose
-	// stamp check failed for a cause that may pass, still pending when the
-	// last attempt ended (ErrStripeDeferred). Rejected IDs (an invalid or
-	// older stamp) are deliberately not fetched and count as done: the
-	// rounds fetch them after RejectTTL if they are still listed.
+	// Deferred is the number of IDs the want set did not grant, still
+	// pending when the last attempt ended, and of IDs whose stamp check
+	// failed for a cause on this node in it (ErrStripeDeferred). Rejected
+	// IDs (an invalid or older stamp, or a signature that does not recover)
+	// are deliberately not fetched and count as done: the rounds fetch them
+	// after RejectTTL if they are still listed.
 	Deferred int
 	// PeerStored is the number of chunks Peer itself stored (over its
 	// restarts); Stored also counts the peers the stripe was reassigned
@@ -399,8 +400,9 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 
 	queue := make(chan []storer.ChunkID, stripeQueue)
 	var (
-		fetchErr error
-		pending  []storer.ChunkID // not granted by the want set (fetchOutcome)
+		fetchErr   error
+		pending    []storer.ChunkID // not granted by the want set (fetchOutcome)
+		unverified int              // stamp check failed on this node
 	)
 	fetched := make(chan struct{})
 	go func() {
@@ -413,6 +415,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			res.Stored += out.stored
 			res.Undelivered += out.undelivered
 			pending = append(pending, out.pending...)
+			unverified += out.unverified
 			if out.stored > 0 {
 				r.rate.Add(out.stored)
 			}
@@ -480,9 +483,9 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	close(queue)
 	<-fetched
 	if fetchErr == nil && err == nil && ctx.Err() == nil && len(pending) > 0 {
-		pending, fetchErr = r.resolvePending(ctx, peer, pending, &res)
+		pending, unverified, fetchErr = r.resolvePending(ctx, peer, pending, unverified, &res)
 	}
-	res.Deferred = len(pending)
+	res.Deferred = len(pending) + unverified
 
 	switch {
 	case errors.Is(context.Cause(ctx), ErrStripeTimeout) && lastLocal != nil:
@@ -495,40 +498,45 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		res.Err = fmt.Errorf("reconcile: %w", err)
 	case ctx.Err() != nil:
 		res.Err = ctx.Err()
-	case len(pending) > 0:
-		res.Err = fmt.Errorf("stripe %s from %s: %d IDs deferred: %w", sr, peer, len(pending), ErrStripeDeferred)
+	case res.Deferred > 0:
+		res.Err = fmt.Errorf("stripe %s from %s: %d IDs deferred, %d unverified: %w", sr, peer, len(pending), unverified, ErrStripeDeferred)
 	}
 	return res
 }
 
 // resolvePending requests pending, IDs of a stripe the want set did not
-// grant or whose stamp check failed for a cause that may pass, from peer
-// again, stripeRetry apart, at most maxPendingPasses times, until none is
-// left: an ID another fetch stored meanwhile is skipped, one whose claim
-// ended without the chunk is claimed for the stripe peer, which then
-// delivers it or withholds it (Undelivered). It adds the outcome to res and
-// returns the IDs still pending, and the error of a failed fetch.
-func (r *Reconciler) resolvePending(ctx context.Context, peer swarm.Address, pending []storer.ChunkID, res *StripeResult) ([]storer.ChunkID, error) {
+// grant, from peer again, stripeRetry apart, at most maxPendingPasses
+// times, until none is left: an ID another fetch stored meanwhile is
+// skipped, one whose claim ended without the chunk is claimed for the stripe
+// peer, which then delivers it, withholds it (Undelivered) or delivers it
+// with a stamp this node rejects or cannot check (unverified). Only IDs the
+// want set did not grant are asked for again: a peer cannot make the stripe
+// ask for IDs by how it delivers them. A pass waits for the fetch rate only
+// for the IDs the want set would grant (wantset.Set.Peek). It adds the
+// outcome to res and returns the IDs still pending, the unverified count
+// and the error of a failed fetch.
+func (r *Reconciler) resolvePending(ctx context.Context, peer swarm.Address, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
 	for pass := 0; len(pending) > 0 && pass < maxPendingPasses; pass++ {
 		t := time.NewTimer(r.stripeRetry)
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return pending, nil
+			return pending, unverified, nil
 		case <-t.C:
 		}
 		out, err := r.fetchFrom(ctx, peer, pending, true)
 		res.Stored += out.stored
 		res.Undelivered += out.undelivered
+		unverified += out.unverified
 		if out.stored > 0 {
 			r.rate.Add(out.stored)
 		}
 		if err != nil {
-			return out.pending, fmt.Errorf("fetch: %w", err)
+			return out.pending, unverified, fmt.Errorf("fetch: %w", err)
 		}
 		pending = out.pending
 	}
-	return pending, nil
+	return pending, unverified, nil
 }
 
 // localBusy reports whether err is a Busy for a cause on this node: its index
