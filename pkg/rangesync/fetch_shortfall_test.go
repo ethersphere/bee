@@ -15,8 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/network"
-
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -984,13 +982,11 @@ func withoutStream(spec p2p.ProtocolSpec, name string) p2p.ProtocolSpec {
 // errInboundFull is the open of a fetch stream to a peer whose inbound
 // streams are all taken: its resource manager resets the new stream, which
 // libp2p's NewStream reports from the headers exchange as a remote reset.
-var errInboundFull = fmt.Errorf("send headers: read message: %w", &network.StreamError{ErrorCode: network.StreamResourceLimitExceeded, Remote: true})
+var errInboundFull = errors.New("send headers: read message: stream reset (remote): code: 0x1002")
 
 // errOutboundFull is the open of a fetch stream that this node's own resource
-// manager refuses (its outbound streams are all taken), wrapped as libp2p and
-// bee's p2p layer wrap it.
-var errOutboundFull = fmt.Errorf("new stream for peerid: create stream /swarm/rangesync/1.0.0/fetch: failed to open stream: transient: %w",
-	fmt.Errorf("cannot reserve outbound stream: %w", network.ErrResourceLimitExceeded))
+// manager refuses (its outbound streams are all taken).
+var errOutboundFull = errors.New("new stream for peerid: create stream: failed to open stream: transient: cannot reserve outbound stream: resource limit exceeded")
 
 // fetchStreamErr returns a nodeOpts streamErr that fails fetch stream opens
 // with err while fail returns true; nil fail: always.
@@ -1003,14 +999,59 @@ func fetchStreamErr(err error, fail func() bool) func(swarm.Address, string, str
 	}
 }
 
+// countOpens is a streamer that counts the fetch stream opens it is asked
+// for, whatever they end with.
+type countOpens struct {
+	p2p.StreamerDisconnecter
+	opens *atomic.Int64
+}
+
+func (c countOpens) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream == rangesync.FetchStreamName {
+		c.opens.Add(1)
+	}
+	return c.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+}
+
+// stallOpens is a streamer whose fetch stream opens wait until their context
+// ends while stall is set (a peer that never answers the headers exchange),
+// and that counts them.
+type stallOpens struct {
+	p2p.StreamerDisconnecter
+	stall atomic.Bool
+	opens atomic.Int64
+}
+
+func newStallOpens() *stallOpens {
+	s := new(stallOpens)
+	s.stall.Store(true)
+	return s
+}
+
+// wrap is a nodeOpts streamer of s.
+func (s *stallOpens) wrap(x p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+	s.StreamerDisconnecter = x
+	return s
+}
+
+func (s *stallOpens) NewStream(ctx context.Context, addr swarm.Address, hd p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream != rangesync.FetchStreamName || !s.stall.Load() {
+		return s.StreamerDisconnecter.NewStream(ctx, addr, hd, protocol, version, stream)
+	}
+	s.opens.Add(1)
+	<-ctx.Done()
+	return nil, fmt.Errorf("send headers: %w", ctx.Err())
+}
+
 // TestFetchStreamOpenNotCharged checks that a fetch stream that fails to open
 // is never charged: the stream opens before the Want takes its fetch rate and
 // claims its IDs, so a failed open spent neither. However often the open
 // fails (the peer resets or stalls the headers exchange, its inbound streams
-// are full, it serves no fetch stream), the peer is neither scored nor
-// disconnected, nothing was requested (no Undelivered), no claim is held and
-// no fetch rate was taken. Every fetch runs this path, a verifier's among
-// them.
+// are full, it serves no fetch stream, or this node's own resource manager
+// refuses it), the peer is neither scored nor disconnected, nothing was
+// requested (no Undelivered), no claim is held and no fetch rate was taken.
+// Each open here is a probe after the backoff of the last one. Every fetch
+// runs this path, a verifier's among them.
 func TestFetchStreamOpenNotCharged(t *testing.T) {
 	t.Parallel()
 
@@ -1021,32 +1062,45 @@ func TestFetchStreamOpenNotCharged(t *testing.T) {
 		{"headers reset", errOpenFailed},
 		{"headers stalled", fmt.Errorf("send headers: read message: %w", context.DeadlineExceeded)},
 		{"inbound streams full", errInboundFull},
+		{"this node's resource limit", errOutboundFull},
 		{"no fetch handler", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			o := nodeOpts{fetchRate: 1} // the burst is not refilled meanwhile
+			var opens atomic.Int64
+			clock := newFakeClock()
+			o := nodeOpts{
+				fetchRate: 1, // the burst is not refilled meanwhile
+				streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+					return countOpens{StreamerDisconnecter: s, opens: &opens}
+				},
+			}
 			if tc.err != nil {
 				o.streamErr = fetchStreamErr(tc.err, nil)
 			}
-			a := newTestNodeOpts(t, o)
+			a := clock.set(newTestNodeOpts(t, o))
 			b := newTestNode(t)
 			connect0(a, b)
 			if tc.err == nil {
 				a.rec.SetProtocols(withoutStream(b.svc.Protocol(), rangesync.FetchStreamName))
 			}
 			sendRoot(t, b, a, whole)
-			for i := range 4 * rangesync.MaxFetchResets {
+			const fetches = 4 * rangesync.MaxFetchResets
+			for i := range fetches {
 				ids := missingIDs(t, 2, whole)
 				res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
-				if err == nil || errors.Is(err, rangesync.ErrInvalidMessage) || errors.Is(err, rangesync.ErrLocal) {
-					t.Fatalf("fetch %d: got %v, want an unscored failed open of the peer", i, err)
+				if err == nil || errors.Is(err, rangesync.ErrInvalidMessage) || errors.Is(err, rangesync.ErrOpenBackoff) {
+					t.Fatalf("fetch %d: got %v, want an unscored failed open", i, err)
 				}
 				if len(res.Undelivered) != 0 {
 					t.Fatalf("fetch %d: undelivered %v, want none requested", i, res.Undelivered)
 				}
 				assertNoClaims(t, a, ids...)
+				clock.Add(rangesync.MaxOpenBackoff) // past the backoff
+			}
+			if got := opens.Load(); got != fetches {
+				t.Fatalf("%d opens, want %d", got, fetches)
 			}
 			assertNotScored(t, a, b.addr)
 			if !a.svc.DrainFetchLimiter() {
@@ -1056,50 +1110,27 @@ func TestFetchStreamOpenNotCharged(t *testing.T) {
 	}
 }
 
-// TestFetchStreamOpenLocalLimit checks a fetch stream that this node's own
-// resource manager refuses: a cause on this node, so the error wraps
-// rangesync.ErrLocal, and the peer is not charged. libp2p tells it apart from
-// a refusal on the peer's side: this node's refusal wraps
-// network.ErrResourceLimitExceeded, the peer's is a reset (network.ErrReset)
-// and does not.
-func TestFetchStreamOpenLocalLimit(t *testing.T) {
-	t.Parallel()
-
-	if !errors.Is(errInboundFull, network.ErrReset) || errors.Is(errInboundFull, network.ErrResourceLimitExceeded) {
-		t.Fatalf("a refusal on the peer's side %v: want a reset only", errInboundFull)
-	}
-	a := newTestNodeOpts(t, nodeOpts{streamErr: fetchStreamErr(errOutboundFull, nil)})
-	b := newTestNode(t)
-	connect0(a, b)
-	sendRoot(t, b, a, whole)
-	for i := range 2 * rangesync.MaxFetchResets {
-		ids := missingIDs(t, 1, whole)
-		_, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
-		if !errors.Is(err, rangesync.ErrLocal) || !errors.Is(err, network.ErrResourceLimitExceeded) || errors.Is(err, rangesync.ErrInvalidMessage) {
-			t.Fatalf("fetch %d: got %v, want %v", i, err, rangesync.ErrLocal)
-		}
-		assertNoClaims(t, a, ids...)
-	}
-	assertNotScored(t, a, b.addr)
-}
-
 // TestFetchStreamOpenHeld checks a fetch stream open that the peer holds up
 // past the fetch timeout. libp2p's NewStream obeys only the fetch's context
 // in its wait for identify, its protocol negotiation and the headers
 // exchange, so a peer can hold an open for the whole timeout. The open ends
 // with the context's error and is neither a stall violation nor charged: the
 // Want takes no fetch rate and claims nothing until its stream is open, so
-// only the stream slot is held meanwhile (MaxFetchStreamsOut per peer).
+// only the stream slot is held meanwhile. It backs off the peer's opens:
+// fetches fail at once (ErrOpenBackoff) for OpenBackoffBase, then one probes,
+// and a held probe doubles the backoff.
 func TestFetchStreamOpenHeld(t *testing.T) {
 	t.Parallel()
 
 	h := newHeldOpens()
 	h.hold.Store(true)
-	a := newTestNodeOpts(t, nodeOpts{streamer: h.wrap, fetchTimeout: 100 * time.Millisecond, fetchRate: 1})
+	clock := newFakeClock()
+	a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: h.wrap, fetchTimeout: 100 * time.Millisecond, fetchRate: 1}))
 	b := newTestNode(t)
 	connect0(a, b)
 	sendRoot(t, b, a, whole)
-	for i := range rangesync.MaxFetchResets + 2 {
+	held := func(i int) {
+		t.Helper()
 		ids := missingIDs(t, 2, whole)
 		type result struct {
 			res rangesync.FetchResult
@@ -1112,29 +1143,300 @@ func TestFetchStreamOpenHeld(t *testing.T) {
 		}()
 		<-h.entered
 		if l := a.svc.WantSet().Len(); l != 0 {
-			t.Fatalf("fetch %d: %d claims held while the stream opens, want none", i, l)
+			t.Fatalf("open %d: %d claims held while the stream opens, want none", i, l)
 		}
 		r := <-done
 		if !errors.Is(r.err, context.DeadlineExceeded) || errors.Is(r.err, rangesync.ErrInvalidMessage) {
-			t.Fatalf("fetch %d: got %v, want an unscored %v", i, r.err, context.DeadlineExceeded)
+			t.Fatalf("open %d: got %v, want an unscored %v", i, r.err, context.DeadlineExceeded)
 		}
 		if len(r.res.Undelivered) != 0 {
-			t.Fatalf("fetch %d: undelivered %v, want none requested", i, r.res.Undelivered)
+			t.Fatalf("open %d: undelivered %v, want none requested", i, r.res.Undelivered)
 		}
 		assertNoClaims(t, a, ids...)
 	}
+	backedOff := func() {
+		t.Helper()
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 2, whole)); !errors.Is(err, rangesync.ErrOpenBackoff) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrOpenBackoff)
+		}
+		if n := len(h.entered); n != 0 {
+			t.Fatalf("%d opens during the backoff", n)
+		}
+	}
+	held(0)
+	backedOff()
+	clock.Add(rangesync.OpenBackoffBase)
+	held(1) // the probe
+	clock.Add(rangesync.OpenBackoffBase)
+	backedOff() // doubled
+	clock.Add(rangesync.OpenBackoffBase)
+	held(2)
 	assertNotScored(t, a, b.addr)
 	if !a.svc.DrainFetchLimiter() {
 		t.Fatal("held opens took fetch rate")
 	}
 }
 
+// TestFetchStalledOpensBackOff checks the fetch calls of a peer that stalls
+// every fetch stream open, from the review's proof of concept: its served
+// sessions' fetches of the same junk IDs arrive faster than two stalled
+// opens per fetch timeout drain them, and nothing is claimed, so they would
+// never be merged, nor scored. The first stalled open backs off the peer's
+// opens, so the calls queued behind it and the later ones fail at once,
+// unscored and without a claim: the calls in flight stay few instead of
+// growing with the arrivals.
+func TestFetchStalledOpensBackOff(t *testing.T) {
+	t.Parallel()
+
+	const arrivals = 80 // one per 25 ms, 2 s
+	st := newStallOpens()
+	clock := newFakeClock() // the backoff does not end meanwhile
+	a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: st.wrap, fetchTimeout: 100 * time.Millisecond}))
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	ids := missingIDs(t, 256, whole) // the same junk listing every session
+
+	var inFlight, maxInFlight, backedOff atomic.Int64
+	var wg sync.WaitGroup
+	for range arrivals {
+		wg.Go(func() {
+			n := inFlight.Add(1)
+			defer inFlight.Add(-1)
+			for m := maxInFlight.Load(); n > m && !maxInFlight.CompareAndSwap(m, n); m = maxInFlight.Load() {
+			}
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+			if err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+				t.Errorf("got %v, want an unscored failed fetch", err)
+			}
+			if errors.Is(err, rangesync.ErrOpenBackoff) {
+				backedOff.Add(1)
+			}
+		})
+		time.Sleep(25 * time.Millisecond)
+	}
+	wg.Wait()
+	// before the first stalled open ends (100 ms) a few calls arrive; after
+	// it every call fails at once (generous for a loaded scheduler)
+	if m := maxInFlight.Load(); m > 12 {
+		t.Fatalf("%d fetch calls in flight at once, want a few", m)
+	}
+	if o := st.opens.Load(); o > rangesync.MaxFetchStreamsOut {
+		t.Fatalf("%d opens, want at most %d (the ones before the backoff)", o, rangesync.MaxFetchStreamsOut)
+	}
+	if n := backedOff.Load(); n < arrivals-12 {
+		t.Fatalf("%d of %d calls backed off", n, arrivals)
+	}
+	assertNoClaims(t, a, ids...)
+	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchStreamWaitersBounded checks the bound on the fetch calls that
+// wait for a peer's stream slots: past MaxFetchWaiters a call fails at once
+// (ErrFetchQueueFull), unscored and without a claim. When the opens holding
+// the slots fail, the waiters fail at once too: the opens back off.
+func TestFetchStreamWaitersBounded(t *testing.T) {
+	t.Parallel()
+
+	const extra = 3
+	h := newHeldOpens()
+	h.hold.Store(true)
+	a := newTestNodeOpts(t, nodeOpts{streamer: h.wrap}) // held opens keep their slots
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	total := rangesync.MaxFetchStreamsOut + rangesync.MaxFetchWaiters + extra
+	errs := make(chan error, total)
+	for range total {
+		go func() {
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole))
+			errs <- err
+		}()
+	}
+	next := func() error {
+		t.Helper()
+		select {
+		case err := <-errs:
+			return err
+		case <-time.After(5 * time.Second):
+			t.Fatal("fetch did not return")
+			return nil
+		}
+	}
+	for range extra {
+		if err := next(); !errors.Is(err, rangesync.ErrFetchQueueFull) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrFetchQueueFull)
+		}
+	}
+	for range rangesync.MaxFetchStreamsOut {
+		<-h.entered
+	}
+	close(h.release) // the held opens fail
+	backedOff := 0
+	for range total - extra {
+		err := next()
+		if err == nil || errors.Is(err, rangesync.ErrInvalidMessage) || errors.Is(err, rangesync.ErrFetchQueueFull) {
+			t.Fatalf("got %v, want a failed open or a backoff", err)
+		}
+		if errors.Is(err, rangesync.ErrOpenBackoff) {
+			backedOff++
+		}
+	}
+	if backedOff != rangesync.MaxFetchWaiters {
+		t.Fatalf("%d waiters backed off, want %d", backedOff, rangesync.MaxFetchWaiters)
+	}
+	assertNoClaims(t, a)
+	assertNotScored(t, a, b.addr)
+}
+
+// scriptedOpens is a streamer whose fetch stream opens each wait for the
+// test: an open sends a channel on opens and waits for the error it gets on
+// it (nil: it opens) or for its context.
+type scriptedOpens struct {
+	p2p.StreamerDisconnecter
+	opens chan chan error
+}
+
+func (s scriptedOpens) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	if stream != rangesync.FetchStreamName {
+		return s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+	}
+	c := make(chan error, 1)
+	select {
+	case s.opens <- c:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	select {
+	case err := <-c:
+		if err != nil {
+			return nil, err
+		}
+	case <-ctx.Done():
+		return nil, fmt.Errorf("send headers: %w", ctx.Err())
+	}
+	return s.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+}
+
+// TestFetchBackoffSlotsBusy checks that a fetch call fails at once while the
+// peer's opens back off, without waiting for one of its stream slots: here
+// both are taken, by a fetch whose holder is slow and by the probe after the
+// backoff, which may hold its slot for the fetch timeout.
+func TestFetchBackoffSlotsBusy(t *testing.T) {
+	t.Parallel()
+
+	sc := scriptedOpens{opens: make(chan chan error)}
+	clock := newFakeClock()
+	a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+		sc.StreamerDisconnecter = s
+		return sc
+	}}))
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	wanted, stall := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(stall) })
+	fakeHolder(a, b, func(*pb.Want, protobuf.Writer) {
+		close(wanted)
+		<-stall
+	})
+	fetch := func() <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole))
+			done <- err
+		}()
+		return done
+	}
+
+	_ = fetch()
+	(<-sc.opens) <- nil // opens; its holder stalls
+	<-wanted
+	failed := fetch()
+	(<-sc.opens) <- errOpenFailed
+	if err := <-failed; err == nil || errors.Is(err, rangesync.ErrOpenBackoff) {
+		t.Fatalf("got %v, want a failed open", err)
+	}
+	clock.Add(rangesync.OpenBackoffBase)
+	probe := fetch()
+	probeOpen := <-sc.opens // both slots are taken now
+	select {
+	case err := <-fetch():
+		if !errors.Is(err, rangesync.ErrOpenBackoff) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrOpenBackoff)
+		}
+	case <-sc.opens:
+		t.Fatal("an open while the probe runs")
+	case <-time.After(time.Second):
+		t.Fatal("a fetch waits for a slot while the opens back off")
+	}
+	probeOpen <- errOpenFailed
+	if err := <-probe; err == nil {
+		t.Fatal("the probe opened")
+	}
+	assertNotScored(t, a, b.addr)
+}
+
+// TestOpenGate checks the backoff of a peer's fetch stream opens: a failed
+// open backs them off for the base, doubling with each failed probe up to
+// the maximum; opens that began before the failure count with it; after the
+// backoff one open probes at a time; a probe this node aborts leaves the
+// backoff as it was; a success or Clear ends it.
+func TestOpenGate(t *testing.T) {
+	t.Parallel()
+
+	const base, maxBackoff = time.Second, 4 * time.Second
+	g := rangesync.NewOpenGate(base, maxBackoff)
+	p := swarm.RandAddress(t)
+	now := time.Unix(1_000_000, 0)
+	begin := func(at time.Time, wantProbe, wantOK bool) {
+		t.Helper()
+		if ok := g.Allowed(p, at); ok != wantOK {
+			t.Fatalf("allowed at %v: %v, want %v", at.Sub(now), ok, wantOK)
+		}
+		if probe, ok := g.Begin(p, at); probe != wantProbe || ok != wantOK {
+			t.Fatalf("begin at %v: probe %v ok %v, want %v %v", at.Sub(now), probe, ok, wantProbe, wantOK)
+		}
+	}
+
+	// two opens in flight fail: one backoff of base
+	begin(now, false, true)
+	begin(now, false, true)
+	g.End(p, now, rangesync.OpenFailed, false)
+	g.End(p, now, rangesync.OpenFailed, false)
+	begin(now.Add(base-1), false, false)
+	// the probe; a second open waits for it
+	begin(now.Add(base), true, true)
+	begin(now.Add(base), false, false)
+	// an aborted probe leaves the backoff
+	g.End(p, now.Add(base), rangesync.OpenAborted, true)
+	begin(now.Add(base), true, true)
+	// a failed probe doubles it, up to the maximum
+	at := now.Add(base)
+	for _, wait := range []time.Duration{2 * base, 4 * base, maxBackoff, maxBackoff} {
+		g.End(p, at, rangesync.OpenFailed, true)
+		begin(at.Add(wait-1), false, false)
+		at = at.Add(wait)
+		begin(at, true, true)
+	}
+	// a success ends it
+	g.End(p, at, rangesync.OpenSucceeded, true)
+	begin(at, false, true)
+	g.End(p, at, rangesync.OpenFailed, false)
+	begin(at, false, false)
+	g.Clear(p)
+	begin(at, false, true)
+}
+
 // TestFetchInboundFullNotDisconnected is the honest-safety check of failed
 // opens. A peer whose inbound streams stay full for minutes (its system-wide
 // inbound streams, which one third-party connection can fill, as there is no
-// per-peer cap) fails every fetch stream open of its neighbors, the fetches
-// queued behind the stream slots included. No neighbor scores or disconnects
-// it, and each fetches from it once its streams free up.
+// per-peer cap) and that holds each fetch stream open for the whole fetch
+// timeout fails every open of its neighbors, the fetches queued behind the
+// stream slots included. No neighbor scores or disconnects it. Each one's
+// opens back off on its clock: one probe per backoff, doubling, and the
+// fetches in between fail at once. Each neighbor fetches from the peer once
+// its streams free up and the backoff ends.
 func TestFetchInboundFullNotDisconnected(t *testing.T) {
 	t.Parallel()
 
@@ -1143,15 +1445,18 @@ func TestFetchInboundFullNotDisconnected(t *testing.T) {
 		span      = 5 * time.Minute
 		step      = 5 * time.Second
 		burst     = 3 * rangesync.MaxFetchStreamsOut // queued behind the slots
+		// probes after 0, 5, 15, 35, 75 and 155 s (rangesync.OpenBackoffBase
+		// doubling), and the second slot's open at the start
+		maxOpens = 7
 	)
-	var full atomic.Bool
-	full.Store(true)
 	chs := validChunks(neighbors)
 	b := newTestNode(t, chs...)
 	clock := newFakeClock()
 	as := make([]*testNode, neighbors)
+	stalls := make([]*stallOpens, neighbors)
 	for i := range as {
-		as[i] = clock.set(newTestNodeOpts(t, nodeOpts{streamErr: fetchStreamErr(errInboundFull, full.Load)}))
+		stalls[i] = newStallOpens()
+		as[i] = clock.set(newTestNodeOpts(t, nodeOpts{streamer: stalls[i].wrap, fetchTimeout: 100 * time.Millisecond}))
 		connect0(as[i], b)
 		sendRoot(t, b, as[i], whole) // b's recorder now opens streams to as[i]
 	}
@@ -1173,9 +1478,15 @@ func TestFetchInboundFullNotDisconnected(t *testing.T) {
 		}
 		clock.Add(step)
 	}
-	full.Store(false)
 	for i, a := range as {
 		assertNotScored(t, a, b.addr)
+		if got := stalls[i].opens.Load(); got == 0 || got > maxOpens {
+			t.Fatalf("neighbor %d opened %d streams in %s, want 1 to %d", i, got, span, maxOpens)
+		}
+		stalls[i].stall.Store(false) // the streams free up
+	}
+	clock.Add(rangesync.MaxOpenBackoff)
+	for i, a := range as {
 		ids := idsOf(t, chs[i])
 		if res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids); err != nil || res.Stored != 1 {
 			t.Fatalf("neighbor %d after the streams freed up: stored %d, %v", i, res.Stored, err)
@@ -1319,17 +1630,47 @@ func TestFetchStreamOpenHonest(t *testing.T) {
 		sendRoot(t, b, a, whole)
 		fail := func() {
 			t.Helper()
-			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
-				t.Fatalf("got %v, want a failed open", err)
+			if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) || errors.Is(err, rangesync.ErrOpenBackoff) {
+				t.Fatalf("got %v, want a failed open, not backed off", err)
 			}
 		}
 		for range 2 * rangesync.MaxFetchResets {
-			fail()
+			fail() // a peer that is gone does not back off the opens
 		}
-		// nothing was charged: the whole budget remains
 		openErr.Store(&errOpenFailed)
-		for range rangesync.MaxFetchResets {
-			fail()
+		fail()
+		assertNotScored(t, a, b.addr)
+	})
+
+	t.Run("a peer that disconnects while its open fails", func(t *testing.T) {
+		t.Parallel()
+
+		// the disconnect hook clears the backoff before the failure is
+		// recorded, which must not back off the reconnected peer's opens
+		h := newHeldOpens()
+		h.hold.Store(true)
+		a := newTestNodeOpts(t, nodeOpts{streamer: h.wrap})
+		chs := validChunks(1)
+		b := newTestNode(t, chs...)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+		done := make(chan error, 1)
+		go func() {
+			_, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole))
+			done <- err
+		}()
+		<-h.entered
+		if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+			t.Fatal(err)
+		}
+		h.hold.Store(false)
+		close(h.release)
+		if err := <-done; err == nil || errors.Is(err, rangesync.ErrOpenBackoff) {
+			t.Fatalf("got %v, want a failed open", err)
+		}
+		sendRoot(t, b, a, whole) // the reconnect
+		if res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...)); err != nil || res.Stored != 1 {
+			t.Fatalf("after the reconnect: stored %d, %v", res.Stored, err)
 		}
 		assertNotScored(t, a, b.addr)
 	})
@@ -1350,7 +1691,12 @@ func TestFetchStreamOpenHonest(t *testing.T) {
 				_, err := a.svc.FetchWithResult(ctx, b.addr, missingIDs(t, 1, whole))
 				done <- err
 			}()
-			<-h.entered
+			// an open this node canceled does not back off the next one
+			select {
+			case <-h.entered:
+			case err := <-done:
+				t.Fatalf("fetch did not open: %v", err)
+			}
 			cancel()
 			if err := <-done; !errors.Is(err, context.Canceled) {
 				t.Fatalf("got %v, want %v", err, context.Canceled)
@@ -1376,16 +1722,19 @@ func TestFetchStreamOpenHonest(t *testing.T) {
 	t.Run("transient failures", func(t *testing.T) {
 		t.Parallel()
 
+		// a transient failure fails the opens in flight, at most
+		// MaxFetchStreamsOut, and backs off the peer's opens for
+		// OpenBackoffBase, unscored: the fetches queued behind them fail at
+		// once without a claim, and the fetches after the backoff succeed
 		const fetches = 3 * rangesync.MaxFetchStreamsOut
 		clock := newFakeClock()
 		h := newHeldOpens()
 		a := clock.set(newTestNodeOpts(t, nodeOpts{streamer: h.wrap}))
-		chs := validChunks(fetches + 4*rangesync.MaxFetchStreamsOut)
+		chs := validChunks(fetches + 2)
 		b := newTestNode(t, chs...)
 		connect0(a, b)
 		sendRoot(t, b, a, whole)
 
-		// one failure hits every open in flight: at most MaxFetchStreamsOut
 		h.hold.Store(true)
 		errs := make(chan error, fetches)
 		for _, ch := range chs[:fetches] {
@@ -1399,34 +1748,32 @@ func TestFetchStreamOpenHonest(t *testing.T) {
 		}
 		h.hold.Store(false) // the opens after the failure succeed
 		close(h.release)
-		failed := 0
+		failed, backedOff := 0, 0
 		for range fetches {
 			err := <-errs
-			if errors.Is(err, rangesync.ErrInvalidMessage) {
-				t.Fatalf("a transient failure is a violation: %v", err)
-			}
-			if err != nil {
+			switch {
+			case err == nil || errors.Is(err, rangesync.ErrInvalidMessage):
+				t.Fatalf("got %v, want an unscored failure", err)
+			case errors.Is(err, rangesync.ErrOpenBackoff):
+				backedOff++
+			default:
 				failed++
 			}
 		}
-		if failed != rangesync.MaxFetchStreamsOut || h.maxWaiting.Load() != rangesync.MaxFetchStreamsOut {
-			t.Fatalf("%d opens failed, %d at once, want %d", failed, h.maxWaiting.Load(), rangesync.MaxFetchStreamsOut)
+		if failed != rangesync.MaxFetchStreamsOut || h.maxWaiting.Load() != rangesync.MaxFetchStreamsOut || backedOff != fetches-rangesync.MaxFetchStreamsOut {
+			t.Fatalf("%d opens failed, %d at once, %d fetches backed off", failed, h.maxWaiting.Load(), backedOff)
 		}
+		assertNoClaims(t, a, idsOf(t, chs[:fetches]...)...)
 
-		// a second failure right after it, and a third later: none is charged
-		event := func(chs []swarm.Chunk) {
-			t.Helper()
-			h.hold.Store(true)
-			defer h.hold.Store(false)
-			for _, ch := range chs {
-				if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, ch)); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
-					t.Fatalf("got %v, want a failed open", err)
-				}
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs[fetches])); !errors.Is(err, rangesync.ErrOpenBackoff) {
+			t.Fatalf("during the backoff: got %v, want %v", err, rangesync.ErrOpenBackoff)
+		}
+		clock.Add(rangesync.OpenBackoffBase)
+		for _, ch := range chs[fetches:] {
+			if res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, ch)); err != nil || res.Stored != 1 {
+				t.Fatalf("after the backoff: stored %d, %v", res.Stored, err)
 			}
 		}
-		event(chs[fetches : fetches+rangesync.MaxFetchStreamsOut])
-		clock.Add(2 * rangesync.FetchResetInterval)
-		event(chs[fetches+rangesync.MaxFetchStreamsOut : fetches+2*rangesync.MaxFetchStreamsOut])
 		assertNotScored(t, a, b.addr)
 	})
 }

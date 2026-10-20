@@ -64,10 +64,9 @@ var (
 	ErrPeerSessionLimit = fmt.Errorf("%w: peer", ErrSessionLimit)
 	// ErrLocal is wrapped by the errors of a session (Reconcile,
 	// ReconcileWith) or a fetch (FetchWithResult) that failed for a cause on
-	// this node: its reserve, address index or fingerprint index failed, the
-	// index cannot answer (rebuilding, its root moved), or, for a fetch, its
-	// resource manager refused the fetch stream. It says nothing about the
-	// peer.
+	// this node: its reserve, address index or fingerprint index failed, or
+	// the index cannot answer (rebuilding, its root moved). It says nothing
+	// about the peer.
 	ErrLocal = errors.New("rangesync: local store")
 	// ErrProtocolUnsupported is returned (wrapped) by SendStatus when the
 	// peer does not support the rangesync protocol (the stream could not be
@@ -182,6 +181,7 @@ type Service struct {
 	reconcileStreams *peerStreamLimiter
 	fetchStreams     *peerStreamLimiter
 	fetchStreamsOut  *peerSlots         // maxFetchStreamsOut, requester side
+	opens            *openGate          // per peer, backoff of failed fetch stream opens
 	peerSessions     *peerStreamLimiter // MaxConcurrentSessionsPerPeer
 	sessions         chan struct{}      // MaxConcurrentSessions tokens
 
@@ -257,7 +257,8 @@ func New(
 		statusStreams:    newPeerStreamLimiter(maxPeerStatusStreams),
 		reconcileStreams: newPeerStreamLimiter(maxPeerReconcileStreams),
 		fetchStreams:     newPeerStreamLimiter(maxPeerFetchStreams),
-		fetchStreamsOut:  newPeerSlots(maxFetchStreamsOut),
+		fetchStreamsOut:  newPeerSlots(maxFetchStreamsOut, maxFetchWaiters),
+		opens:            newOpenGate(openBackoffBase, maxOpenBackoff),
 		peerSessions:     newPeerStreamLimiter(MaxConcurrentSessionsPerPeer),
 		sessions:         make(chan struct{}, MaxConcurrentSessions),
 		ctx:              ctx,
@@ -308,8 +309,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 // disconnected forgets the peer's status, stream slots, delivery, session
-// and status limits, its dropped statuses, its failed fetch streams and the
-// missing IDs and offenses of its fetch shortfall.
+// and status limits, its dropped statuses, its failed fetch streams, the
+// missing IDs and offenses of its fetch shortfall and the backoff of its
+// fetch stream opens.
 func (s *Service) disconnected(peer p2p.Peer) error {
 	s.statusMu.Lock()
 	delete(s.statuses, peer.Address.ByteString())
@@ -324,6 +326,7 @@ func (s *Service) disconnected(peer p2p.Peer) error {
 	s.fetchResets.clear(peer.Address)
 	s.shortfalls.clear(peer.Address)
 	s.peerSessions.clear(peer.Address)
+	s.opens.clear(peer.Address)
 	return nil
 }
 

@@ -11,8 +11,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/network"
-
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -40,6 +38,18 @@ const (
 	// the handler's next delivery fails, after its wait for the peer's
 	// delivery rate, so the other half leaves room for two such handlers.
 	maxFetchStreamsOut = maxPeerFetchStreams / 2
+	// maxFetchWaiters bounds the fetch calls that wait for one of a peer's
+	// fetch stream slots; past it a call fails at once (errFetchQueueFull).
+	// Honest fetches from one peer are few: a round fetch, its retries one
+	// at a time, the served sessions' fetcher, and the stripe sessions.
+	maxFetchWaiters = 16
+
+	// openBackoffBase and maxOpenBackoff set how long a peer's fetch stream
+	// opens wait after one failed: openBackoffBase after the first failed
+	// open, doubling with each further one up to maxOpenBackoff, until an
+	// open succeeds or the peer disconnects (openGate).
+	openBackoffBase = 5 * time.Second
+	maxOpenBackoff  = 5 * time.Minute
 
 	// handleMaxChunksPerSecond is the number of chunks per second the fetch
 	// handler delivers to one peer, the same budget as pullsync's handler.
@@ -63,9 +73,17 @@ const (
 	skippedInReserve = "in_reserve"
 )
 
-// errNoStampValidator rejects every delivery of a Service created without a
-// stamp validator.
-var errNoStampValidator = errors.New("rangesync: no stamp validator")
+var (
+	// errNoStampValidator rejects every delivery of a Service created
+	// without a stamp validator.
+	errNoStampValidator = errors.New("rangesync: no stamp validator")
+	// errOpenBackoff fails a fetch from a peer whose fetch stream opens back
+	// off after a failed one (openGate), at once, without a claim.
+	errOpenBackoff = errors.New("rangesync: fetch stream opens to the peer back off")
+	// errFetchQueueFull fails a fetch from a peer that maxFetchWaiters other
+	// fetch calls wait for, at once, without a claim.
+	errFetchQueueFull = errors.New("rangesync: too many fetches wait for the peer")
+)
 
 // FetchResult is the outcome of FetchWithResult. Every ID passed is in at
 // most one of its parts; the IDs in none were not requested for a cause that
@@ -164,8 +182,11 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // root by its last Status is requested. A fetch stream that fails with IDs
 // undelivered (the peer reset it) is a violation past maxFetchResets, then
 // one per fetchResetInterval, per peer. A fetch stream that fails to open is
-// never charged: it took no fetch rate and holds no claim. When this node's
-// own resource manager refused it, the error wraps ErrLocal.
+// never charged: it took no fetch rate and holds no claim. It backs off the
+// peer's opens instead (openGate): until the backoff ends, the peer's fetch
+// calls fail at once, unscored and without a claim, and then one open probes
+// the peer. A call also fails at once while maxFetchWaiters others wait for
+// the peer's stream slots.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -211,7 +232,12 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 // and the claims, so that an open that fails or stalls spends neither and is
 // not charged to the peer; the waits come before the claims, so that they
 // cannot outlast them. The slot is held from the open to the stream's end.
+// While the peer's opens back off (openGate), it fails at once, before and
+// after the wait for the slot.
 func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall) error {
+	if !s.opens.allowed(peer, s.now) {
+		return errOpenBackoff
+	}
 	release, err := s.fetchStreamsOut.acquire(ctx, peer)
 	if err != nil {
 		return fmt.Errorf("fetch stream slot: %w", err)
@@ -239,25 +265,38 @@ func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerpr
 	return s.fetch(ctx, peer, stream, claimed, res, sf)
 }
 
-// openFetchStream opens a fetch stream to peer within fetchTimeout. libp2p's
+// openFetchStream opens a fetch stream to peer within fetchTimeout, through
+// the peer's open gate (openGate): it fails at once while the peer's opens
+// back off, and a failed open starts or extends the backoff. libp2p's
 // NewStream obeys only the context in its wait for identify, its protocol
 // negotiation and the headers exchange (HeadersRWTimeout bounds only the
 // last), so the timeout bounds the whole open. A failed open is not charged
 // to the peer: the caller has taken no fetch rate and claimed nothing yet.
-// When this node's own resource manager refused the stream (its error wraps
-// network.ErrResourceLimitExceeded; a refusal on the peer's side is a reset,
-// network.ErrReset, and does not), the error wraps ErrLocal.
+// An open this node ends (ctx) or that finds the peer gone
+// (p2p.ErrPeerNotFound) does not back off. Nor does a failure recorded for
+// a peer whose Status is gone meanwhile: it disconnected, and the
+// disconnect hook may have cleared its gate before.
 func (s *Service) openFetchStream(ctx context.Context, peer swarm.Address) (p2p.Stream, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
-	defer cancel()
-	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
-	if err != nil {
-		if errors.Is(err, network.ErrResourceLimitExceeded) {
-			return nil, fmt.Errorf("%w: new stream: %w", ErrLocal, err)
-		}
-		return nil, fmt.Errorf("new stream: %w", err)
+	probe, ok := s.opens.begin(peer, s.now)
+	if !ok {
+		return nil, errOpenBackoff
 	}
-	return stream, nil
+	octx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
+	defer cancel()
+	stream, err := s.streamer.NewStream(octx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
+	switch {
+	case err == nil:
+		s.opens.end(peer, s.now, openSucceeded, probe)
+		return stream, nil
+	case ctx.Err() != nil, errors.Is(err, p2p.ErrPeerNotFound):
+		s.opens.end(peer, s.now, openAborted, probe)
+	default:
+		s.opens.end(peer, s.now, openFailed, probe)
+		if _, ok := s.LastStatus(peer); !ok {
+			s.opens.clear(peer)
+		}
+	}
+	return nil, fmt.Errorf("new stream: %w", err)
 }
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of

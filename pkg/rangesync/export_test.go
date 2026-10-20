@@ -62,7 +62,45 @@ func (s *Service) Local() Local {
 const (
 	MaxPeerFetchStreams = maxPeerFetchStreams
 	MaxFetchStreamsOut  = maxFetchStreamsOut
+	MaxFetchWaiters     = maxFetchWaiters
+	OpenBackoffBase     = openBackoffBase
+	MaxOpenBackoff      = maxOpenBackoff
 )
+
+var (
+	ErrOpenBackoff    = errOpenBackoff
+	ErrFetchQueueFull = errFetchQueueFull
+)
+
+// OpenOutcome is how a fetch stream open ended.
+type OpenOutcome = openOutcome
+
+const (
+	OpenSucceeded = openSucceeded
+	OpenFailed    = openFailed
+	OpenAborted   = openAborted
+)
+
+// OpenGate exposes the backoff of a peer's fetch stream opens.
+type OpenGate struct{ g *openGate }
+
+func NewOpenGate(base, maxBackoff time.Duration) OpenGate {
+	return OpenGate{newOpenGate(base, maxBackoff)}
+}
+
+func at(t time.Time) func() time.Time { return func() time.Time { return t } }
+
+func (g OpenGate) Allowed(peer swarm.Address, now time.Time) bool { return g.g.allowed(peer, at(now)) }
+
+func (g OpenGate) Begin(peer swarm.Address, now time.Time) (probe, ok bool) {
+	return g.g.begin(peer, at(now))
+}
+
+func (g OpenGate) End(peer swarm.Address, now time.Time, outcome OpenOutcome, probe bool) {
+	g.g.end(peer, at(now), outcome, probe)
+}
+
+func (g OpenGate) Clear(peer swarm.Address) { g.g.clear(peer) }
 
 var ErrStreamLimitExceeded = errStreamLimitExceeded
 
