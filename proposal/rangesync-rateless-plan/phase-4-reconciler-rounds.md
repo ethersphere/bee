@@ -2973,3 +2973,18 @@ _(sessions append here)_
   - changed: `TestNeighborhoodConverges` (the "no hints" subtest), `TestSimStream` (the helpers'
     `t`), and through the harness's teardown order every neighborhood test.
   - `TestNeighborhoodTeardown`'s watchdog is 30 s, for a teardown that takes milliseconds.
+- **(T4.6 part 1 round-3 review, Lows; recorded by the orchestrator at landing) For T4.6 part 3.**
+  1. If `TestNeighborhoodTeardown`'s watchdog `t.Fatal` fires, the cleanup's second `close()` blocks in
+     `r.Close`'s `closeOnce.Do` (neighborhood_sim_test.go ~L559) behind the stuck first call, so the
+     test still hangs until the go test timeout and the `Errorf` is lost without `-v`. Make a second
+     `close()` return at once (atomic "closing" flag) or panic with a goroutine dump.
+  2. The teardown check relies on run 2 repeating run 1's timeline exactly; the harness is not quite
+     repeatable (TestNeighborhoodDelay varied 118–119 steps / 2489–2490 B over 32 loaded runs).
+     Teardown passed 66/66; on divergence the message "protocol timing moved" misleads — mention
+     nondeterminism or retry with the next candidate. Part 3 must treat the harness as
+     near-deterministic and report spreads.
+  3. No test covers the `errSimClosed` path or the harness closing a parked `FullClose`/read.
+  4. Estimated ~40 s for `TestNeighborhoodTeardown` under `-race` (150 ms Settle); fine under the 30 m
+     CI timeout, optionally skip under `-short`.
+  5. Nit: the "bound from above" AC-B1 claim needs measured pullsync ≥ 102 B per offer (what the
+     harness counts), not 100 B.
