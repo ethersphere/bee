@@ -8,8 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -954,4 +958,56 @@ func TestPeerStateResetIgnoresStaleRuns(t *testing.T) {
 		<-newDone
 		waitState(t, h.r, higher, reconciler.StateIdle)
 	})
+}
+
+// peersGauge returns the peers{state} gauge that r reports through its
+// Metrics, as the node registers them, by state.
+func peersGauge(t *testing.T, r *reconciler.Reconciler) map[string]float64 {
+	t.Helper()
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(r.Metrics()...)
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mf := range mfs {
+		if !strings.HasSuffix(mf.GetName(), "_rangesync_peers") {
+			continue
+		}
+		out := make(map[string]float64)
+		for _, m := range mf.GetMetric() {
+			out[m.GetLabel()[0].GetValue()] = m.GetGauge().GetValue()
+		}
+		return out
+	}
+	t.Fatal("peers not reported")
+	return nil
+}
+
+// TestPeersGauge checks the peers{state} gauge: the connected peers the
+// reconciler follows, by the state of their machine, with every state
+// reported. A peer dropped from sessions (here another Mapping) is removed
+// while it stays connected; a peer that leaves is not counted.
+func TestPeersGauge(t *testing.T) {
+	t.Parallel()
+
+	probing, unsupported, idle, removed := addr(0xa0, 0), addr(0xb0, 0), addr(0xc0, 0), addr(0xd0, 0)
+	svc := newFakeService(status(1))
+	// probing: its Status never arrives
+	svc.unsupported[unsupported.ByteString()] = true
+	svc.remote[idle.ByteString()] = status(1) // the same digest
+	other := status(1)
+	other.Mapping++
+	svc.remote[removed.ByteString()] = other
+	svc.remote[higher.ByteString()] = status(2) // a session, held
+	svc.peerGate[higher.ByteString()] = make(chan struct{})
+	h := newHarness(t, svc, probing, unsupported, idle, removed, higher)
+
+	zero := map[string]float64{"probing": 0, "unsupported": 0, "idle": 0, "reconciling": 0, "fetching": 0, "striped": 0, "removed": 0}
+	want := maps.Clone(zero)
+	want["probing"], want["unsupported"], want["idle"], want["removed"], want["reconciling"] = 1, 1, 1, 1, 1
+	waitFor(t, "peer states", func() bool { return maps.Equal(peersGauge(t, h.r), want) })
+
+	h.topo.setPeers()
+	waitFor(t, "peers gone", func() bool { return maps.Equal(peersGauge(t, h.r), zero) })
 }

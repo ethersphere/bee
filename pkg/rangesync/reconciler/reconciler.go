@@ -12,13 +12,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the name of the reconciler's logger.
@@ -298,8 +299,20 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		cancel:        cancel,
 	}
 	r.interval.Store(int64(minInterval))
-	r.metrics = newMetrics(r.SyncRate, func() float64 { return r.currentInterval().Seconds() })
+	r.metrics = newMetrics(r.SyncRate, func() float64 { return r.currentInterval().Seconds() }, r.peerStates)
 	return r
+}
+
+// peerStates returns the number of followed peers in each state, for the
+// peers{state} gauge.
+func (r *Reconciler) peerStates() map[fsmState]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	counts := make(map[fsmState]int, len(stateNames))
+	for _, st := range r.peers {
+		counts[st.fsm.state]++
+	}
+	return counts
 }
 
 // SetService sets the Service when it was nil at New. It must be called

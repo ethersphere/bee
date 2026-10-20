@@ -5,8 +5,9 @@
 package reconciler
 
 import (
-	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 // metrics are the reconciler's metrics.
@@ -26,9 +27,12 @@ type metrics struct {
 	VerificationDiff prometheus.Histogram
 	// RoundInterval is the current adaptive round interval (§8.2).
 	RoundInterval prometheus.GaugeFunc
+	// Peers is the number of connected peers the reconciler follows, by the
+	// state of their machine (§8.1), read when collected.
+	Peers peersCollector
 }
 
-func newMetrics(syncRate, roundInterval func() float64) metrics {
+func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmState]int) metrics {
 	const subsystem = "rangesync"
 
 	return metrics{
@@ -69,9 +73,37 @@ func newMetrics(syncRate, roundInterval func() float64) metrics {
 			Name:      "round_interval_seconds",
 			Help:      "Current adaptive interval between reconciliation rounds.",
 		}, roundInterval),
+		Peers: peersCollector{
+			desc: prometheus.NewDesc(
+				prometheus.BuildFQName(m.Namespace, subsystem, "peers"),
+				"Connected peers the reconciler follows, by the state of their machine.",
+				[]string{"state"}, nil,
+			),
+			count: peers,
+		},
 	}
 }
 
 func (m metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff, m.RoundInterval}
+	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff, m.RoundInterval, m.Peers}
+}
+
+// peersCollector is the peers{state} gauge: count returns the number of
+// peers in each state when it is collected, and every state is reported, 0
+// when no peer is in it. Removed counts the peers dropped from sessions
+// (disjoint neighborhoods or another Mapping) that are still connected.
+type peersCollector struct {
+	desc  *prometheus.Desc
+	count func() map[fsmState]int
+}
+
+var _ prometheus.Collector = peersCollector{}
+
+func (c peersCollector) Describe(ch chan<- *prometheus.Desc) { ch <- c.desc }
+
+func (c peersCollector) Collect(ch chan<- prometheus.Metric) {
+	counts := c.count()
+	for s := stateProbing; s <= stateRemoved; s++ {
+		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, float64(counts[s]), s.String())
+	}
 }
