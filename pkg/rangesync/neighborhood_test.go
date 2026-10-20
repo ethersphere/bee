@@ -75,9 +75,9 @@ func TestNeighborhoodSREP(t *testing.T) {
 }
 
 // TestNeighborhoodRoundBounds checks that the simulation's bounds of the
-// adaptive round interval reach the reconcilers: with a maximum of 8 s, a
-// node runs a round at least every 8 s (the default maximum, 30 s, gives
-// about half as many over the run's two minutes).
+// adaptive round interval reach the reconcilers: after the quiet tail every
+// node's interval is at the overridden maximum, and an upload converges
+// within the bound of the overridden minimum.
 func TestNeighborhoodRoundBounds(t *testing.T) {
 	t.Parallel()
 
@@ -85,12 +85,12 @@ func TestNeighborhoodRoundBounds(t *testing.T) {
 	o := simOptions{Nodes: 3, Replication: 1, Seed: 3, Batches: 1, BatchSize: 1, MinRoundInterval: lo, MaxRoundInterval: hi}
 	res := runNeighborhood(t, o)
 	for i, n := range res.Nodes {
-		if want := int(res.End/hi) - 1; n.Rounds < want {
-			t.Errorf("node %d ran %d rounds in %v, want at least %d", i, n.Rounds, res.End, want)
+		if n.RoundInterval != hi {
+			t.Errorf("node %d: round interval %v after the tail, want %v", i, n.RoundInterval, hi)
 		}
 	}
-	if res.Batches[0].Convergence > 2*rangesync.StatusMinInterval+lo {
-		t.Errorf("converged in %v, bound %v", res.Batches[0].Convergence, 2*rangesync.StatusMinInterval+lo)
+	if bound := 2*rangesync.StatusMinInterval + lo; res.Batches[0].Convergence > bound {
+		t.Errorf("converged in %v, bound %v", res.Batches[0].Convergence, bound)
 	}
 }
 

@@ -1807,6 +1807,18 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     `PairwiseDiffBuckets`, and `PairwiseDiffHalf` (renamed).
   - There is no `pkg/node`, `pkg/p2p`, `go.mod` or proto change, no libp2p import in
     `pkg/rangesync`, no new parser of peer input, and no `*_fuzz_test.go`.
+- **(T4.6 part 1) Correction: `TestNeighborhoodRoundBounds` reads the interval gauge, not round
+  counts.** This corrects the "Round interval bounds as reconciler options" entry above. The first
+  version counted each node's rounds over the run, and it failed in 2 of 30 loaded runs (10 or 11
+  rounds against at least 14). On the quiet stretches a round runs in the loop goroutine with no call
+  in flight. If that goroutine is starved for longer than `Settle` before it re-arms its timer, the
+  harness moves to a later timer, and the round runs late. The test now checks each node's
+  `round_interval_seconds` after the quiet tail (`simNodeResult.RoundInterval`: the overridden
+  maximum, 8 s, against 30 s without the option), which does not depend on timing. A mutation that
+  drops the option still fails it. The other assertions do not count rounds over idle stretches. A
+  late round can only lengthen one convergence by one timer step, and 60 more loaded runs at
+  `-cpu=1,2,4` stayed within the bound. Waiting until every fired timer channel is read would not
+  help: about 80% of them are abandoned, because the gossip loop re-arms on every wake.
 
 ## Follow-ups
 _(sessions append here)_

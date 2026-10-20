@@ -199,8 +199,10 @@ type simNodeResult struct {
 	// rangesync stored in its reserve, and Deliveries the rangesync
 	// Deliveries it received.
 	Uploads, Stored, Deliveries int
-	// Rounds counts the node's rounds in the whole run.
-	Rounds int
+	// Rounds counts the node's rounds in the whole run, and RoundInterval is
+	// its round interval at the end (round_interval_seconds).
+	Rounds        int
+	RoundInterval time.Duration
 	// MetadataIn and MetadataOut are bytes_metadata{in,out}, ChunksIn and
 	// ChunksOut bytes_chunks{in,out}.
 	MetadataIn, MetadataOut, ChunksIn, ChunksOut float64
@@ -721,6 +723,9 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 		}
 		for r, v := range c.claims {
 			nr.WantClaims[r] = v - base.claims[r]
+		}
+		for _, m := range gathered(nb.tb, n.r.Metrics(), "_round_interval_seconds") {
+			nr.RoundInterval = time.Duration(m.GetGauge().GetValue() * float64(time.Second))
 		}
 		for _, k := range delivered[n] {
 			nr.Deliveries += k
