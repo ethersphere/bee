@@ -1042,6 +1042,114 @@ func TestStripeBusyPauseFetchPending(t *testing.T) {
 	}
 }
 
+// TestStripeClockCheckedAfterWaits: an attempt whose timeout ran out while
+// it waited, for its peer's round session to end or for its slots after a
+// Busy answer, starts no session after the wait, even when the clock's
+// goroutine has not seen the expiry (here it never does).
+func TestStripeClockCheckedAfterWaits(t *testing.T) {
+	t.Parallel()
+
+	const (
+		timeout = time.Hour
+		retry   = 7 * time.Second
+	)
+	newStripes := func(t *testing.T, svc *fakeService, peers ...swarm.Address) (*harness, *stripeWaits) {
+		t.Helper()
+		h := &harness{svc: svc, topo: &fakeTopology{peers: peers}, clock: &fakeClock{now: time.Unix(1_000_000, 0)}}
+		w := newStripeWaits(h.clock, retry, false)
+		h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{Now: h.clock.Now, After: w.after, StripeTimeout: timeout})
+		h.r.SetStripeRetryInterval(retry)
+		t.Cleanup(func() {
+			w.close()
+			_ = h.r.Close()
+		})
+		return h, w
+	}
+
+	t.Run("peer", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(1))
+		svc.remote[higher.ByteString()] = status(1)
+		h, _ := newStripes(t, svc, higher)
+		h.r.Round()
+		waitState(t, h.r, higher, reconciler.StateIdle)
+		gate := make(chan struct{})
+		svc.set(func() {
+			svc.remote[higher.ByteString()] = status(2)
+			svc.peerGate[higher.ByteString()] = gate
+			svc.reconErr[higher.ByteString()] = errors.New("stream reset") // the round session's end
+		})
+		h.r.Round() // a round session holds the peer
+		waitFor(t, "round session", func() bool { return len(svc.sessionOpens(higher)) == 1 })
+		done := make(chan reconciler.StripeResult, 1)
+		go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(higher))[0] }()
+		waitFor(t, "stripe waiting for the peer", func() bool { return h.r.StripeWaiters(higher) == 1 })
+
+		h.clock.Add(timeout)
+		close(gate)
+		res := <-done
+		if !errors.Is(res.Err, reconciler.ErrStripeTimeout) {
+			t.Fatalf("stripe: %v, want a timeout", res.Err)
+		}
+		if n := len(svc.sessionOpens(higher)); n != 1 {
+			t.Fatalf("%d sessions, want only the round session: the stripe's started past its timeout", n)
+		}
+	})
+
+	t.Run("slots", func(t *testing.T) {
+		t.Parallel()
+		p := addr(0xf1, 0)
+		svc := newFakeService(status(1))
+		svc.wants[p.ByteString()] = 3
+		svc.sessionErrAfter[p.ByteString()] = fmt.Errorf("index: %w", fingerprint.ErrBusy)
+		svc.sessionHook = func(peer swarm.Address, n int) {
+			if n == 2 { // later sessions: the peer is Busy
+				svc.set(func() { svc.busyN[peer.ByteString()] = 1 << 30 })
+			}
+		}
+		calls := make(chan chan struct{}, 1)
+		svc.fetchCalls = calls // the fetch runs on, so the clock does not pause for the peer's Busy
+		gates := make([]chan struct{}, reconciler.MaxStripeSessions)
+		blockers := make([]swarm.Address, len(gates))
+		for i := range gates {
+			blockers[i] = addr(0xf2, byte(i))
+			gates[i] = make(chan struct{})
+			svc.peerGate[blockers[i].ByteString()] = gates[i]
+		}
+		t.Cleanup(func() {
+			for _, g := range gates[1:] {
+				close(g)
+			}
+		})
+		h, w := newStripes(t, svc)
+		done := make(chan reconciler.StripeResult, 1)
+		go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(p))[0] }()
+		w.recv(t) <- h.clock.Now() // after the first session (Busy here)
+		wait := w.recv(t)          // after the second (the peer's Busy)
+		go h.r.TransferStripes(context.Background(), stripesTo(blockers...))
+		waitFor(t, "stripe slots taken", func() bool { return h.r.StripeSlotsTaken() == reconciler.MaxStripeSessions })
+		wait <- h.clock.Now()
+		settle() // the stripe waits for its slots
+
+		h.clock.Add(timeout)
+		close(gates[0])
+		select {
+		case res := <-done:
+			if !errors.Is(res.Err, reconciler.ErrStripeTimeout) {
+				t.Fatalf("stripe: %v, want a timeout", res.Err)
+			}
+		case c := <-w.waits:
+			c <- h.clock.Now()
+			t.Fatal("the stripe ran a session past its timeout")
+		case <-time.After(5 * time.Second):
+			t.Fatal("stripe did not end")
+		}
+		if n := len(svc.sessionOpens(p)); n != 2 {
+			t.Fatalf("%d sessions, want 2", n)
+		}
+	})
+}
+
 // TestStripeBusyReassigns: an attempt whose peer stays Busy past
 // MaxStripeBusyRetries is reassigned to another peer; Busy is not scored.
 func TestStripeBusyReassigns(t *testing.T) {

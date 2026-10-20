@@ -424,7 +424,12 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		}
 	}()
 	clock.resume()
-	if hold.unstripe, err = r.acquireStripe(ctx, peer); err != nil {
+	hold.unstripe, err = r.acquireStripe(ctx, peer)
+	if err == nil {
+		clock.expireIfDue() // the wait for the peer may have outlasted the timeout
+		err = context.Cause(ctx)
+	}
+	if err != nil {
 		res.Err = err
 		if errors.Is(err, ErrStripeTimeout) {
 			res.Err = fmt.Errorf("stripe %s from %s: waiting for the peer: %w", sr, peer, ErrStripeTimeout)
@@ -514,6 +519,10 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		}
 		held = true
 		clock.resume() // a no-op when it ran through the wait
+		// the wait for the slots may have outlasted the timeout
+		if clock.expireIfDue(); ctx.Err() != nil {
+			break
+		}
 	}
 	if held { // the session ended; its fetch does not use the slots (the clock runs on)
 		releaseSlots()
@@ -576,6 +585,12 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 		}
 		if err := r.holdPeer(ctx, locks, peer, hold); err != nil {
 			return pending, unverified, fmt.Errorf("waiting for the peer: %w", err)
+		}
+		clock.expireIfDue() // taking the peer back may have outlasted the timeout
+		select {
+		case <-ctx.Done():
+			return pending, unverified, nil
+		default:
 		}
 		out, err := r.fetchFrom(ctx, peer, pending, true)
 		res.Stored += out.stored
@@ -699,7 +714,10 @@ func (c *stripeClock) pause() {
 
 // expireIfDue calls expire when the running clock has run out, whether or
 // not its goroutine has seen the expiry yet. The attempt checks it after each
-// session answer and each wait, so that it starts nothing past its timeout.
+// session answer and after each wait the clock runs through (for its peer,
+// for its slots, to retry, to take its peer back for an ask), so that it
+// starts no session and no ask past its timeout. A fetch already running
+// ends once the clock's goroutine cancels it.
 func (c *stripeClock) expireIfDue() {
 	if c.stop != nil && c.now().Sub(c.since) >= c.left {
 		c.expire()
