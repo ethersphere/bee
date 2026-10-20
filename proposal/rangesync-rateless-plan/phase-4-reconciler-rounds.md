@@ -1563,6 +1563,113 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 - **(T4.5 part 2c fix round 1) Contracts and scope.** Unchanged as in part 2c. No exported identifier
   is added; the new errors are unexported. There is no `pkg/node`, `go.mod` or proto change.
 
+- **(T4.5 part 2c fix round 2, High) A catch-up fetch in flight holds `SyncRate` up only while the
+  stored-chunk rate is above 0 or within a node-wide catch-up grace.** This supersedes, for catch-up
+  fetches in flight, T1.11's "`SyncRate` is at least `StartupGuardRate` (1.0) while a catch-up fetch
+  is in flight" (phase 1, "T1.11 score/rate"), T3.2 part 1's "`TransferStripes` holds
+  `catchUpFetches` for its whole run ... so SyncRate reports at least `StartupGuardRate` throughout"
+  and T3.5's "on top of `catchUpFetches`" (phase 3), part 1's contract "the `SyncRate` guard" as far as
+  it held catch-up fetches in flight, and fix round 1's "A catch-up batch counts towards `SyncRate`
+  while it runs". The review's attack: a catch-up fetch held `SyncRate` at 1 until it ended, stored
+  chunks or not. (a) A Sybil whose served session lists 256 or more junk IDs starts a probe and stalls
+  it for the fetch timeout (15 s); the storage incentives agent samples `isFullySynced` once per
+  phase at a time derived from the public round, so one Sybil covered about 60% of its 25 s poll and
+  two about all of it. (b) A disconnect clears the open backoff and a fresh overlay costs about
+  2^depth hashes, so a reconnecting Sybil held a probe about 75% of the time, which also defeats the
+  reserve worker's 15-minute tick. (c) A held Want (the open succeeds, the IDs are claimed, the Want
+  is held for 14.9 s, then reset) pins it the same way for one reset token. The rule now:
+  - The chunks a catch-up stores count towards the rate as they are stored, not when the fetch
+    returns: the new additive `rangesync.(*Service).FetchWithProgress` calls back per stored chunk,
+    and the reconciler uses it through an optional interface (`progressFetcher`). A Service without
+    it (the tests' fakes) counts at the end, as before. Stripe transfers and their verification
+    count the same way.
+  - A catch-up fetch in flight raises `SyncRate` to `StartupGuardRate` only while the rate is above 0
+    (a catch-up stored a chunk within the window) or the catch-up grace holds. The grace
+    (`catchUpGrace = 2 s`) is one budget for the node: it drains while any catch-up fetch is in flight
+    and is refilled, to 2 s, only when a catch-up stores a chunk. It is never renewed per peer, per
+    fetch, per overlay or with time.
+  - Unchanged: a registered stripe range, a pending radius half (at most `radiusHold`) and the
+    start-up guard (at most `StartupGuardTimeout`) each hold `SyncRate` at least at
+    `StartupGuardRate`, as T3.5 and T1.11 have them; `CatchUpMinDiff`; the 10-minute window.
+  - Rejected: a grace per fetch, since the attacker starts fetches at will (a served session per
+    `PeerSessionInterval`, new overlays, reconnects that clear the backoff): a reconnecting Sybil
+    would hold the rate for about grace / (grace + reconnect time). A grace refilled with time, since
+    the attacker would save it for the sampling instant of each round.
+
+  Numbers. Honest: a catch-up's first chunk needs an open, the fetch rate (a full burst at the start
+  of a catch-up), the claims, the Want and one delivery, well under 2 s on a working link. From then
+  on the rate is above 0 for 10 to 20 minutes after the last chunk stored, so a catch-up that keeps
+  storing, however slowly, keeps `SyncRate` above 0 and the radius does not drop under it. A catch-up
+  whose first chunk takes longer than the grace, with no catch-up chunk in the window, reads 0 until
+  that chunk: accepted (the reserve worker ticks every 15 minutes, the agent samples once per phase),
+  and the same if an attacker drained the grace first. Attacker: at most 2 s of `SyncRate` above 0
+  per catch-up episode of this node (a refill needs a chunk this node lacked, accepted and stored),
+  whatever the number of peers, overlays, reconnects, stalled opens or held Wants. Before, 15 s per
+  probe per peer. Even timed perfectly, 2 s cover the agent's sample within its 25 s poll with about 8%
+  chance, once per episode, and the end of an episode is not the attacker's to choose. Keeping the
+  window itself above 0 needs chunks this node accepts (Follow-ups).
+
+  Tests: `TestSyncRateStallingPeers` (fake clock; stalled opens and held Wants that claimed their IDs;
+  after the first 2 s, 0 throughout 360 staggered stalls from eight overlays over 30 minutes, at most
+  four in flight, the same overlays coming back as reconnects; a stored catch-up refills the grace
+  once), `TestWantsStalledOpens` (real service, see Low 5), `TestSyncRateCatchUpStoring` (honest, real
+  service: a catch-up that stored one chunk reads at least `StartupGuardRate` past the grace and above
+  0 within the window, 0 with its fetch in flight after two windows without a chunk, above 0 once it
+  stores the rest), `TestFetchWithProgress`. Changed by design: `TestSyncRateLargeCatchUp` (also 0
+  past the grace while nothing is stored). Passing unchanged: `TestSyncRate*`, `TestStartupGuard*`,
+  `TestDualModeSyncRate`, `TestWantSetCatchUpRetry` (its 1 s advance stays within the grace) and
+  `pkg/node`'s `TestCombinedSyncerBothDrivers`.
+- **(T4.5 part 2c fix round 2, Low 1) An open backoff is the peer's Busy for stripes.** This
+  supersedes fix round 1's (High) "stripes are reassigned unscored" for a peer whose opens back off.
+  An open backoff failed a stripe's fetch at once without progress, so a stripe tried each covering
+  peer in turn within microseconds and could end; under this node's own stream refusal every peer
+  backs off for up to `maxOpenBackoff`. Now:
+  - `rangesync.ErrOpenBackoff` is exported (was `errOpenBackoff`) and
+    `rangesync.(*Service).FetchOpensBackOff(peer)` reports the backoff (a probe in flight included);
+    the reconciler reads it through an optional interface (`openBackoffReporter`).
+  - A stripe attempt opens no session with a peer whose opens back off: that counts as the peer's
+    Busy (off the stripe clock, `stripeRetryInterval` apart, at most `maxStripeBusyRetries`), after
+    which the stripe is reassigned, as for Busy. An attempt whose session ran and whose fetch found
+    the backoff is restarted with the same peer (within `maxStripeRestarts`), so its next attempt
+    waits the same way.
+  - `stripePeers` leaves peers whose opens back off out of `ready`, so `planStripes`, the
+    reassignment fallback of `nextStripePeer` and `verifier` choose other covering peers first, and
+    such a peer only when no other covers the range. A stripe's own planned peers are not re-checked
+    when it starts; the Busy wait covers them.
+
+  Nothing is scored. Tests: `TestTransferStripesOpenBackoff` (waited for; reassigned once the waits
+  run out, no session with the peer; restarted after its fetch found the backoff),
+  `TestStripePlanAvoidsOpenBackoff`.
+- **(T4.5 part 2c fix round 2, Low 2) The served queue skips the IDs of the running batch and of the
+  batch before.** This narrows fix round 1's "merged without duplicates". A session that completed
+  while the peer's batch ran could list again an ID the batch was asking for; when the peer had
+  evicted it meanwhile (honest churn), the next batch asked again, `relisted` counted it as junk
+  listed again, and two such fetches within `shortfallWindow` disconnected an honest peer
+  (`TestWantsServedChurn` before the fix: asked twice, scored 1). The queue's `seen` is now seeded
+  with the running batch's IDs and, from the second batch on, with the batch before's too. An ID that
+  a dropped listing needed for another cause (held by another claim, deferred) comes back with the
+  next session, as any ID past `maxServedPending`. Tests: `TestWantsServedChurn` (real service),
+  `TestWantsServedBatchesNotRequeued`.
+- **(T4.5 part 2c fix round 2, Low 4) A probe that ends after `clear` leaves a newer backoff alone.**
+  `openGate.begin` returns the backoff a probe belongs to, and `end` resets `probing`, or counts a
+  failure, only on that backoff. Before, a probe whose backoff a disconnect cleared reset `probing` on
+  the peer's newer backoff (two probes at once) and counted as its failure. `TestOpenGate` covers it.
+- **(T4.5 part 2c fix round 2, Low 5) Tests.** `TestFetchDisconnectClearsOpenBackoff` fails once the
+  disconnect hook no longer clears the open backoff (it backs off before the disconnect, so the
+  `LastStatus` check in `openFetchStream` does not mask it). `TestWantsStalledOpens` now runs the
+  reconciler and the service on one fake clock, reaches four probes and a reconnect, and checks that
+  `SyncRate` reads 0 at each, that no open starts while the backoff runs and that at most one catch-up
+  fetch is in flight; its old comment claimed the peer "cannot hold `SyncRate` above 0" without
+  reaching a probe. For it, `rangesync.Options.Now` (additive) sets the service's clock, which the open
+  backoff and the shortfall windows run on (nil: `time.Now`); the fetch timeout stays on the real
+  clock.
+- **(T4.5 part 2c fix round 2) Contracts and scope.** Unchanged: the wiring, the narrow
+  `reconciler.Service` (two more optional interfaces), `storer.Syncer`, `TestCombinedSyncerBothDrivers`
+  and the T4.x rules not superseded above. New exports, all additive:
+  `rangesync.(*Service).FetchWithProgress`, `rangesync.(*Service).FetchOpensBackOff`,
+  `rangesync.ErrOpenBackoff` (was unexported) and `rangesync.Options.Now`. There is no `pkg/node`,
+  `go.mod` or proto change, no libp2p import in `pkg/rangesync`, and no new parser of peer input.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -2192,3 +2299,45 @@ _(sessions append here)_
     `TestStartupGuardNestedInitiator`. Changed: `TestSyncRateSteadyStateUploads`. Re-run, because
     `Wants` and the round's takeover changed: `TestStartupGuard*`, `TestSyncRate*`, `TestRound*`,
     `TestWantSet*`, `TestSREP*`, `TestDualMode*`, `TestResponderWantsFetched`.
+- **(T4.5 part 2c fix round 2) Resolved: the review's High and Lows 1, 2, 4 and 5.** See the
+  Decisions log. This resolves "(T4.5 part 2c fix round 1) A probe can still hold `SyncRate` up part
+  of the time": a probe, a held Want or any catch-up fetch that stores nothing now holds it for at
+  most `catchUpGrace` (2 s) per catch-up episode, node-wide.
+- **(T4.5 part 2c fix round 2 → T4.6) The stripe registry hold is attacker-pinnable (by inspection,
+  not measured).** A registered stripe range holds `SyncRate` at least at `StartupGuardRate` until its
+  job (transfer and verification) ends (T3.5, unchanged here). A peer this node initiates sessions
+  with (it picks a higher overlay) can report, for a range, a count above this node's by more than
+  `LargeDiff`, which hands the range to the Striper; a stripe of the job planned on that peer, or on
+  another Sybil covering it, can be held without progress for up to `sessionTimeout` (10 min) per
+  attempt, through `maxStripeReassign` reassignments, and the next round's session can register the
+  range again. A radius decrease's half registered for a transfer is held the same way; unregistered,
+  it is bounded by `radiusHold` per decrease, and decreases are this node's own. The start-up guard is
+  bounded by `StartupGuardTimeout` per start. A fix would bound the registry hold like the catch-up
+  grace (hold only while a registered job stores chunks, past a grace), or demand that a large count
+  difference be confirmed by a second peer before striping.
+- **(T4.5 part 2c fix round 2) The rate window can be kept above 0 by delivering accepted chunks.** A
+  catch-up that stores one chunk per window keeps `SyncRate` above 0. A session counts as catch-up
+  from `CatchUpMinDiff` wants, and a fetch of 64 or more requested IDs with half of them missing is a
+  blatant violation, so an attacker must deliver about half of each such session's wants: about 128
+  chunks this node lacks, in its radius, with valid stamps, per window (fresh uploads, since this
+  node holds what its neighbors hold). Tolerated: the node then really stores new data. If T6 shows it
+  matters, counting only chunks that a second peer also lists would close it.
+- **(T4.5 part 2c fix round 2 → T4.6) Measure the first-chunk latency of catch-up fetches.** A
+  catch-up whose first chunk takes longer than `catchUpGrace`, with no catch-up chunk in the window,
+  reads 0 until it arrives. If T4.6 or testnet shows first chunks near 2 s, raise the grace; it bounds
+  an attacker the same way, once per episode.
+- **(T4.5 part 2c fix round 2) Correction to "(T4.5 part 2c) Tests to run with `-race` on CI".**
+  `TestFetchStreamOpenLocalLimit` is gone since fix round 1 (its case moved into
+  `TestFetchStreamOpenNotCharged`); leave it out of that list.
+- **(T4.5 part 2c fix round 2) Tests to run with `-race` on CI.** These ran with `-count=20
+  -cpu=1,2,4` instead, and the three packages with `-count=5 -cpu=1,2,4`.
+  - `pkg/rangesync`, new: `TestFetchWithProgress`, `TestFetchDisconnectClearsOpenBackoff`. Changed:
+    `TestOpenGate`. Re-run, because the fetch path and the open gate changed: `TestFetch*`.
+  - `pkg/rangesync/reconciler`, new: `TestSyncRateStallingPeers`, `TestSyncRateCatchUpStoring`,
+    `TestWantsServedChurn`, `TestWantsServedBatchesNotRequeued`, `TestTransferStripesOpenBackoff`,
+    `TestStripePlanAvoidsOpenBackoff`. Changed: `TestWantsStalledOpens`, `TestSyncRateLargeCatchUp`.
+    Re-run, because `SyncRate`, the catch-up count, the served queue and the stripe attempts changed:
+    `TestSyncRate*`, `TestStartupGuard*`, `TestWantSet*`, `TestWants*`, `TestSREP*`, `TestDualMode*`,
+    `TestTransferStripes*`, `TestStripe*`, `TestVerifyStripes*`, `TestRoundBootstrap*`, `TestRadius*`,
+    `TestResponderWantsFetched`.
+  - `pkg/node`: `TestCombinedSyncerBothDrivers`.
