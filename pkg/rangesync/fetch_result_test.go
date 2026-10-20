@@ -99,6 +99,8 @@ func TestFetchWithResultFailed(t *testing.T) {
 		chs := validChunks(2)
 		a := newTestNodeOpts(t, nodeOpts{fetchTimeout: 100 * time.Millisecond})
 		b := newTestNode(t)
+		connect0(a, b)
+		sendRoot(t, b, a, whole) // a stall is judged only with a Status
 		stall := make(chan struct{})
 		t.Cleanup(func() { close(stall) })
 		fakeHolder(a, b, func(*pb.Want, protobuf.Writer) { <-stall })
@@ -354,7 +356,8 @@ func TestFetchExpiredClaim(t *testing.T) {
 // (§7.8, fetched once): while a fetch from B2 waits for the fetch limiter, a
 // fetch from B1 claims x, stores it and ends its claim. B2's claim is then
 // granted, but x is not requested again: no Want, no second delivery and no
-// cross protocol duplicate.
+// cross protocol duplicate. B2's fetch stream, which opened before the wait,
+// ends without a Want, which B2 does not hold against this node.
 func TestFetchClaimRechecksReserve(t *testing.T) {
 	t.Parallel()
 
@@ -391,8 +394,20 @@ func TestFetchClaimRechecksReserve(t *testing.T) {
 	if res.Stored != 0 || len(res.Undelivered) != 0 || len(res.Held) != 0 || len(res.Deferred) != 0 {
 		t.Fatalf("%+v", res)
 	}
-	if _, err := a.rec.Records(b2.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName); !errors.Is(err, streamtest.ErrRecordsNotFound) {
-		t.Fatalf("x requested from B2 after B1 stored it: %v", err)
+	if n := len(sentWants(t, a, b2.addr)); n != 0 {
+		t.Fatalf("x requested from B2 after B1 stored it: %d wants", n)
+	}
+	records, err := a.rec.Records(b2.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range records {
+		if err := r.Err(); errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("B2 found a violation in a stream without a Want: %v", err)
+		}
+	}
+	if fails, _ := b2.scorer.get(a.addr); len(fails) != 0 {
+		t.Fatalf("B2 scored this node: %v", fails)
 	}
 	if d := a.svc.CrossProtocolDuplicates(); d != 0 {
 		t.Fatalf("cross protocol duplicates %v, want 0", d)

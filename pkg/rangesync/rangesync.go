@@ -64,9 +64,10 @@ var (
 	ErrPeerSessionLimit = fmt.Errorf("%w: peer", ErrSessionLimit)
 	// ErrLocal is wrapped by the errors of a session (Reconcile,
 	// ReconcileWith) or a fetch (FetchWithResult) that failed for a cause on
-	// this node: its reserve, address index or fingerprint index failed, or
-	// the index cannot answer (rebuilding, its root moved). It says nothing
-	// about the peer.
+	// this node: its reserve, address index or fingerprint index failed, the
+	// index cannot answer (rebuilding, its root moved), or, for a fetch, its
+	// resource manager refused the fetch stream. It says nothing about the
+	// peer.
 	ErrLocal = errors.New("rangesync: local store")
 	// ErrProtocolUnsupported is returned (wrapped) by SendStatus when the
 	// peer does not support the rangesync protocol (the stream could not be
@@ -129,8 +130,9 @@ type Options struct {
 	// FetchRate is the node-wide limit of chunks requested per second by
 	// Fetch. Zero means DefaultFetchRate.
 	FetchRate int
-	// FetchTimeout bounds one Want, from opening its stream to the last
-	// Delivery. Zero, and values of ClaimDeadline or more, mean
+	// FetchTimeout bounds the opening of a fetch stream, and one Want from
+	// its claims to the last Delivery; the fetch rate wait between the two
+	// is not bounded by it. Zero, and values of ClaimDeadline or more, mean
 	// ClaimDeadline / 2, so that a stalled holder releases the claims
 	// before they expire.
 	FetchTimeout time.Duration

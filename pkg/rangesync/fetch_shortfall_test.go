@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
+
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -979,15 +981,37 @@ func withoutStream(spec p2p.ProtocolSpec, name string) p2p.ProtocolSpec {
 	return spec
 }
 
-// TestFetchStreamOpenCharged checks that a fetch stream that fails while it
-// opens is charged as a reset: by then the Want took its fetch rate and holds
-// its claims. A peer can make the open fail by resetting the headers
-// exchange, by stalling it for the headers timeout (shorter than the fetch
-// timeout, so not a stall of the fetch), or by not serving the fetch stream.
-// MaxFetchResets such failures are not scored, the next one is a violation,
-// and every claim is released. Every fetch runs this path, a verifier's
-// among them.
-func TestFetchStreamOpenCharged(t *testing.T) {
+// errInboundFull is the open of a fetch stream to a peer whose inbound
+// streams are all taken: its resource manager resets the new stream, which
+// libp2p's NewStream reports from the headers exchange as a remote reset.
+var errInboundFull = fmt.Errorf("send headers: read message: %w", &network.StreamError{ErrorCode: network.StreamResourceLimitExceeded, Remote: true})
+
+// errOutboundFull is the open of a fetch stream that this node's own resource
+// manager refuses (its outbound streams are all taken), wrapped as libp2p and
+// bee's p2p layer wrap it.
+var errOutboundFull = fmt.Errorf("new stream for peerid: create stream /swarm/rangesync/1.0.0/fetch: failed to open stream: transient: %w",
+	fmt.Errorf("cannot reserve outbound stream: %w", network.ErrResourceLimitExceeded))
+
+// fetchStreamErr returns a nodeOpts streamErr that fails fetch stream opens
+// with err while fail returns true; nil fail: always.
+func fetchStreamErr(err error, fail func() bool) func(swarm.Address, string, string, string) error {
+	return func(_ swarm.Address, _, _, stream string) error {
+		if stream == rangesync.FetchStreamName && (fail == nil || fail()) {
+			return err
+		}
+		return nil
+	}
+}
+
+// TestFetchStreamOpenNotCharged checks that a fetch stream that fails to open
+// is never charged: the stream opens before the Want takes its fetch rate and
+// claims its IDs, so a failed open spent neither. However often the open
+// fails (the peer resets or stalls the headers exchange, its inbound streams
+// are full, it serves no fetch stream), the peer is neither scored nor
+// disconnected, nothing was requested (no Undelivered), no claim is held and
+// no fetch rate was taken. Every fetch runs this path, a verifier's among
+// them.
+func TestFetchStreamOpenNotCharged(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -996,19 +1020,15 @@ func TestFetchStreamOpenCharged(t *testing.T) {
 	}{
 		{"headers reset", errOpenFailed},
 		{"headers stalled", fmt.Errorf("send headers: read message: %w", context.DeadlineExceeded)},
+		{"inbound streams full", errInboundFull},
 		{"no fetch handler", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var o nodeOpts
+			o := nodeOpts{fetchRate: 1} // the burst is not refilled meanwhile
 			if tc.err != nil {
-				o.streamErr = func(_ swarm.Address, _, _, stream string) error {
-					if stream == rangesync.FetchStreamName {
-						return tc.err
-					}
-					return nil
-				}
+				o.streamErr = fetchStreamErr(tc.err, nil)
 			}
 			a := newTestNodeOpts(t, o)
 			b := newTestNode(t)
@@ -1017,21 +1037,219 @@ func TestFetchStreamOpenCharged(t *testing.T) {
 				a.rec.SetProtocols(withoutStream(b.svc.Protocol(), rangesync.FetchStreamName))
 			}
 			sendRoot(t, b, a, whole)
-			for i := range rangesync.MaxFetchResets + 1 {
+			for i := range 4 * rangesync.MaxFetchResets {
 				ids := missingIDs(t, 2, whole)
 				res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
-				if got, want := errors.Is(err, rangesync.ErrInvalidMessage), i == rangesync.MaxFetchResets; err == nil || got != want {
-					t.Fatalf("fetch %d: %v (a violation: %v, want %v)", i, err, got, want)
+				if err == nil || errors.Is(err, rangesync.ErrInvalidMessage) || errors.Is(err, rangesync.ErrLocal) {
+					t.Fatalf("fetch %d: got %v, want an unscored failed open of the peer", i, err)
 				}
-				assertChunkIDs(t, res.Undelivered, ids...)
+				if len(res.Undelivered) != 0 {
+					t.Fatalf("fetch %d: undelivered %v, want none requested", i, res.Undelivered)
+				}
 				assertNoClaims(t, a, ids...)
 			}
-			assertFailed(t, a.scorer, b.addr)
-			if !a.rec.IsDisconnected(b.addr) {
-				t.Fatal("peer not disconnected")
+			assertNotScored(t, a, b.addr)
+			if !a.svc.DrainFetchLimiter() {
+				t.Fatal("failed opens took fetch rate")
 			}
 		})
 	}
+}
+
+// TestFetchStreamOpenLocalLimit checks a fetch stream that this node's own
+// resource manager refuses: a cause on this node, so the error wraps
+// rangesync.ErrLocal, and the peer is not charged. libp2p tells it apart from
+// a refusal on the peer's side: this node's refusal wraps
+// network.ErrResourceLimitExceeded, the peer's is a reset (network.ErrReset)
+// and does not.
+func TestFetchStreamOpenLocalLimit(t *testing.T) {
+	t.Parallel()
+
+	if !errors.Is(errInboundFull, network.ErrReset) || errors.Is(errInboundFull, network.ErrResourceLimitExceeded) {
+		t.Fatalf("a refusal on the peer's side %v: want a reset only", errInboundFull)
+	}
+	a := newTestNodeOpts(t, nodeOpts{streamErr: fetchStreamErr(errOutboundFull, nil)})
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	for i := range 2 * rangesync.MaxFetchResets {
+		ids := missingIDs(t, 1, whole)
+		_, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+		if !errors.Is(err, rangesync.ErrLocal) || !errors.Is(err, network.ErrResourceLimitExceeded) || errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("fetch %d: got %v, want %v", i, err, rangesync.ErrLocal)
+		}
+		assertNoClaims(t, a, ids...)
+	}
+	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchStreamOpenHeld checks a fetch stream open that the peer holds up
+// past the fetch timeout. libp2p's NewStream obeys only the fetch's context
+// in its wait for identify, its protocol negotiation and the headers
+// exchange, so a peer can hold an open for the whole timeout. The open ends
+// with the context's error and is neither a stall violation nor charged: the
+// Want takes no fetch rate and claims nothing until its stream is open, so
+// only the stream slot is held meanwhile (MaxFetchStreamsOut per peer).
+func TestFetchStreamOpenHeld(t *testing.T) {
+	t.Parallel()
+
+	h := newHeldOpens()
+	h.hold.Store(true)
+	a := newTestNodeOpts(t, nodeOpts{streamer: h.wrap, fetchTimeout: 100 * time.Millisecond, fetchRate: 1})
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	for i := range rangesync.MaxFetchResets + 2 {
+		ids := missingIDs(t, 2, whole)
+		type result struct {
+			res rangesync.FetchResult
+			err error
+		}
+		done := make(chan result, 1)
+		go func() {
+			res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+			done <- result{res, err}
+		}()
+		<-h.entered
+		if l := a.svc.WantSet().Len(); l != 0 {
+			t.Fatalf("fetch %d: %d claims held while the stream opens, want none", i, l)
+		}
+		r := <-done
+		if !errors.Is(r.err, context.DeadlineExceeded) || errors.Is(r.err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("fetch %d: got %v, want an unscored %v", i, r.err, context.DeadlineExceeded)
+		}
+		if len(r.res.Undelivered) != 0 {
+			t.Fatalf("fetch %d: undelivered %v, want none requested", i, r.res.Undelivered)
+		}
+		assertNoClaims(t, a, ids...)
+	}
+	assertNotScored(t, a, b.addr)
+	if !a.svc.DrainFetchLimiter() {
+		t.Fatal("held opens took fetch rate")
+	}
+}
+
+// TestFetchInboundFullNotDisconnected is the honest-safety check of failed
+// opens. A peer whose inbound streams stay full for minutes (its system-wide
+// inbound streams, which one third-party connection can fill, as there is no
+// per-peer cap) fails every fetch stream open of its neighbors, the fetches
+// queued behind the stream slots included. No neighbor scores or disconnects
+// it, and each fetches from it once its streams free up.
+func TestFetchInboundFullNotDisconnected(t *testing.T) {
+	t.Parallel()
+
+	const (
+		neighbors = 3
+		span      = 5 * time.Minute
+		step      = 5 * time.Second
+		burst     = 3 * rangesync.MaxFetchStreamsOut // queued behind the slots
+	)
+	var full atomic.Bool
+	full.Store(true)
+	chs := validChunks(neighbors)
+	b := newTestNode(t, chs...)
+	clock := newFakeClock()
+	as := make([]*testNode, neighbors)
+	for i := range as {
+		as[i] = clock.set(newTestNodeOpts(t, nodeOpts{streamErr: fetchStreamErr(errInboundFull, full.Load)}))
+		connect0(as[i], b)
+		sendRoot(t, b, as[i], whole) // b's recorder now opens streams to as[i]
+	}
+	for elapsed := time.Duration(0); elapsed < span; elapsed += step {
+		var wg sync.WaitGroup
+		for _, a := range as {
+			for range burst {
+				wg.Go(func() {
+					ids := missingIDs(t, 2, whole)
+					if _, err := a.svc.FetchWithResult(context.Background(), b.addr, ids); err == nil || errors.Is(err, rangesync.ErrInvalidMessage) {
+						t.Errorf("got %v, want an unscored failed open", err)
+					}
+				})
+			}
+		}
+		wg.Wait()
+		if t.Failed() {
+			t.FailNow()
+		}
+		clock.Add(step)
+	}
+	full.Store(false)
+	for i, a := range as {
+		assertNotScored(t, a, b.addr)
+		ids := idsOf(t, chs[i])
+		if res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids); err != nil || res.Stored != 1 {
+			t.Fatalf("neighbor %d after the streams freed up: stored %d, %v", i, res.Stored, err)
+		}
+		assertNoClaims(t, a, ids...)
+	}
+}
+
+// TestFetchLimiterWaitAfterOpen checks the order of a Want's waits: its
+// stream opens first, then it waits for the fetch rate with the stream open
+// and no claim held, and the fetch timeout starts with the claims. The
+// peer's handler waits for the Want meanwhile (it has no deadline to read
+// it), and serves it once it arrives, however long after the open.
+func TestFetchLimiterWaitAfterOpen(t *testing.T) {
+	t.Parallel()
+
+	opened := make(chan struct{}, 1)
+	opens := func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+		return openSignal{StreamerDisconnecter: s, opened: opened}
+	}
+	chs := validChunks(1)
+	// a token per 500 ms once the burst is gone: the wait outlasts the timeout
+	a := newTestNodeOpts(t, nodeOpts{streamer: opens, fetchRate: 2, fetchTimeout: 100 * time.Millisecond})
+	b := newTestNode(t, chs...)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	if !a.svc.DrainFetchLimiter() {
+		t.Fatal("fetch limiter burst not taken")
+	}
+	ids := idsOf(t, chs...)
+	type result struct {
+		res rangesync.FetchResult
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		res, err := a.svc.FetchWithResult(context.Background(), b.addr, ids)
+		done <- result{res, err}
+	}()
+	<-opened
+	if l := a.svc.WantSet().Len(); l != 0 {
+		t.Fatalf("%d claims held when the stream opened, want none until the fetch rate", l)
+	}
+	r := <-done
+	if r.err != nil || r.res.Stored != 1 {
+		t.Fatalf("stored %d, %v", r.res.Stored, r.err)
+	}
+	assertNotScored(t, a, b.addr)
+	records, err := a.rec.Records(b.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range records {
+		if err := r.Err(); err != nil {
+			t.Fatalf("peer's fetch handler: %v", err)
+		}
+	}
+}
+
+// openSignal is a streamer that signals each fetch stream it opened.
+type openSignal struct {
+	p2p.StreamerDisconnecter
+	opened chan struct{}
+}
+
+func (o openSignal) NewStream(ctx context.Context, addr swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
+	s, err := o.StreamerDisconnecter.NewStream(ctx, addr, h, protocol, version, stream)
+	if err == nil && stream == rangesync.FetchStreamName {
+		select {
+		case o.opened <- struct{}{}:
+		default:
+		}
+	}
+	return s, err
 }
 
 // heldOpens is a streamer whose fetch stream opens wait while hold is set:
@@ -1075,15 +1293,12 @@ func (h *heldOpens) NewStream(ctx context.Context, addr swarm.Address, hd p2p.He
 }
 
 // TestFetchStreamOpenHonest checks that stream opens that fail for no fault
-// of the peer are never charged, and that honest transient failures cannot
-// spend the budget:
+// of the peer are not charged (no failed open is, TestFetchStreamOpenNotCharged):
 //   - an open that finds the peer gone (p2p.ErrPeerNotFound), whose Status
 //     the disconnect hook has not cleared yet;
 //   - an open this node ends (its context, Close);
 //   - a transient failure fails at most MaxFetchStreamsOut opens at once (the
-//     fetches queued behind them open after it), so it takes at most that
-//     many of the MaxFetchResets: two such events back to back cost nothing,
-//     and one per two FetchResetIntervals is refilled.
+//     fetches queued behind them hold no stream slot and open after it).
 func TestFetchStreamOpenHonest(t *testing.T) {
 	t.Parallel()
 
@@ -1198,7 +1413,7 @@ func TestFetchStreamOpenHonest(t *testing.T) {
 			t.Fatalf("%d opens failed, %d at once, want %d", failed, h.maxWaiting.Load(), rangesync.MaxFetchStreamsOut)
 		}
 
-		// a second failure right after it, and a third two refills later
+		// a second failure right after it, and a third later: none is charged
 		event := func(chs []swarm.Chunk) {
 			t.Helper()
 			h.hold.Store(true)
@@ -1448,4 +1663,51 @@ func TestViolationMarks(t *testing.T) {
 		}
 		assertFailed(t, a.scorer, p.addr)
 	})
+
+	// the same peer breaks the protocol on both sides of a: as the holder
+	// of a fetch of a, and as the requester of a fetch a serves
+	invalidWant := func(t *testing.T, a, b *testNode) {
+		t.Helper()
+		s, err := b.rec.NewStream(context.Background(), a.addr, nil, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := protobuf.NewWriter(s).WriteMsg(&pb.Want{}); err != nil {
+			t.Fatal(err)
+		}
+		_ = s.FullClose()
+		records, err := b.rec.Records(a.addr, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.FetchStreamName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertDisconnect(t, records[len(records)-1].Err())
+	}
+	// an unsolicited delivery: a marked peer is not judged by the shortfall
+	// rules, but a protocol violation still disconnects it
+	unsolicitedFetch := func(t *testing.T, a, b *testNode) {
+		t.Helper()
+		unsolicited(t, a, b)
+		if _, err := a.svc.FetchWithResult(context.Background(), b.addr, missingIDs(t, 1, whole)); !errors.Is(err, rangesync.ErrInvalidMessage) {
+			t.Fatalf("got %v, want %v", err, rangesync.ErrInvalidMessage)
+		}
+	}
+	for _, tc := range []struct {
+		name          string
+		first, second func(t *testing.T, a, b *testNode)
+	}{
+		{"requester mark, then responder violation", unsolicitedFetch, invalidWant},
+		{"responder mark, then requester violation", invalidWant, unsolicitedFetch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := newTestNode(t)
+			b := newTestNode(t)
+			connect0(a, b)
+			sendRoot(t, b, a, whole)
+			tc.first(t, a, b)
+			tc.second(t, a, b) // b stays connected in this test
+			assertFailed(t, a.scorer, b.addr)
+		})
+	}
 }

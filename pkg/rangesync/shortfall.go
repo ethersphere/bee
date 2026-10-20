@@ -49,12 +49,13 @@ import (
 //     Service closes. A violation marks the peer only while it has a
 //     Status, and a peer marked already is not reported again.
 //   - Apart from the shortfall, a fetch stream that fails with IDs still
-//     undelivered (a reset by the peer, or an open that fails while the
-//     peer is connected; not this node ending the fetch nor the fetch
-//     timeout) takes one of the peer's maxFetchResets, then one per
-//     fetchResetInterval; past them it is a violation. The requester opens
-//     at most maxFetchStreamsOut streams to a peer, so one transient failure
-//     takes at most that many.
+//     undelivered (a reset by the peer; not this node ending the fetch nor
+//     the fetch timeout) takes one of the peer's maxFetchResets, then one
+//     per fetchResetInterval; past them it is a violation. Only a stream
+//     whose Want claimed IDs is charged: a stream that fails to open has
+//     taken no fetch rate and claimed nothing, and is never charged. The
+//     requester opens at most maxFetchStreamsOut streams to a peer, so one
+//     transient failure takes at most that many.
 const (
 	// shortfallMin and shortfallRatio set the shortfall a fetch tolerates
 	// from its peer (shortfallTolerance): at most shortfallMin IDs, or
@@ -216,10 +217,9 @@ func (s *Service) judgeShortfall(peer swarm.Address, sf *shortfall, end bool) er
 }
 
 // chargeReset takes one of peer's fetch resets, for a fetch stream that
-// failed, or failed to open, with IDs undelivered, and reports whether its
-// budget was spent
-// (maxFetchResets, then one per fetchResetInterval). Nothing is charged for
-// a peer whose Status is gone (it disconnected) or that is being
+// failed with claimed IDs undelivered, and reports whether its budget was
+// spent (maxFetchResets, then one per fetchResetInterval). Nothing is
+// charged for a peer whose Status is gone (it disconnected) or that is being
 // disconnected for a violation.
 func (s *Service) chargeReset(peer swarm.Address) (spent bool) {
 	_, ok := s.LastStatus(peer)

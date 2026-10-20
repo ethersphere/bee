@@ -11,6 +11,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
+
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -65,7 +67,8 @@ var errNoStampValidator = errors.New("rangesync: no stamp validator")
 // says nothing about the peer and needs nothing more: outside the storage
 // radius, in the reserve already (found before or right after the claim, or
 // at delivery: the cross protocol duplicates), not granted because the want
-// set is closed, or not looked at because the fetch ended with an error.
+// set is closed, or not requested because the fetch ended with an error (a
+// fetch stream that failed to open among them).
 type FetchResult struct {
 	// Stored is the number of chunks stored.
 	Stored int
@@ -116,19 +119,19 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // reserve holds already and the IDs the want set would not grant now
 // (wantset.Set.PeekPicked: rejected within RejectTTL, held by another claim,
 // or the set or the peer's share full, the Want's earlier candidates
-// counted), so that they cost no fetch rate, then the IDs it does not grant
-// when claimed and, once claimed, the IDs another fetch stored meanwhile
-// (during the fetch limiter wait); when none remains no stream is opened.
-// While a fetch holds the claim on an ID no other fetch requests it, so a
-// chunk is delivered twice only after a claim expired. The claims of an ID
-// end with Done when it was stored, with Reject when it was rejected, and
-// with Release otherwise, on every return. Before the IDs of
-// each Want are claimed, it waits for one of the fetch streams this node
-// opens to peer (at most maxFetchStreamsOut at once, half the peer's own
-// limit, whatever runs the fetches), then for the node-wide fetch
-// rate (Options.FetchRate). A holder that has not finished within
-// Options.FetchTimeout of the Want is a violation. Close ends a running
-// fetch.
+// counted), so that they cost no fetch rate; when none remains no stream is
+// opened. Then it takes one of the fetch streams this node opens to peer (at
+// most maxFetchStreamsOut at once, half the peer's own limit, whatever runs
+// the fetches), opens the stream within Options.FetchTimeout, waits for the
+// node-wide fetch rate (Options.FetchRate) with the stream open, and claims
+// the IDs. It drops the IDs it is not granted and, once claimed, the IDs
+// another fetch stored meanwhile (during the fetch limiter wait); when none
+// remains it ends the stream without a Want. While a fetch holds the claim
+// on an ID no other fetch requests it, so a chunk is delivered twice only
+// after a claim expired. The claims of an ID end with Done when it was
+// stored, with Reject when it was rejected, and with Release otherwise, on
+// every return. A holder that has not finished within Options.FetchTimeout
+// of the claims is a violation. Close ends a running fetch.
 //
 // Deliveries are validated as pullsync.Sync validates them. A delivery that
 // was not requested (or delivered twice), does not decode or is neither a
@@ -154,9 +157,10 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // IDs, rejections that depend on the chain state or on this node's reserve,
 // and the IDs of a Want that failed do not count. No ID outside the peer's
 // root by its last Status is requested. A fetch stream that fails with IDs
-// undelivered (the peer reset it), or fails to open while the peer is
-// connected, is a violation past maxFetchResets, then one per
-// fetchResetInterval, per peer.
+// undelivered (the peer reset it) is a violation past maxFetchResets, then
+// one per fetchResetInterval, per peer. A fetch stream that fails to open is
+// never charged: it took no fetch rate and holds no claim. When this node's
+// own resource manager refused it, the error wraps ErrLocal.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res FetchResult, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -196,26 +200,59 @@ func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids [
 }
 
 // want requests cands from peer in one Want: it takes one of the peer's
-// fetch stream slots (maxFetchStreamsOut), then waits for the fetch rate,
-// claims cands and fetches the claimed IDs, recording the peer's shortfall
-// in sf. The waits come before the claims, so that they cannot outlast them.
+// fetch stream slots (maxFetchStreamsOut), opens the stream, waits for the
+// fetch rate, claims cands and fetches the claimed IDs on the stream,
+// recording the peer's shortfall in sf. The open comes before the fetch rate
+// and the claims, so that an open that fails or stalls spends neither and is
+// not charged to the peer; the waits come before the claims, so that they
+// cannot outlast them. The slot is held from the open to the stream's end.
 func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall) error {
 	release, err := s.fetchStreamsOut.acquire(ctx, peer)
 	if err != nil {
 		return fmt.Errorf("fetch stream slot: %w", err)
 	}
 	defer release()
+	stream, err := s.openFetchStream(ctx, peer)
+	if err != nil {
+		return err
+	}
 	if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
+		_ = stream.Reset()
 		return fmt.Errorf("fetch limiter: %w", err)
 	}
 	claimed, err := s.claim(peer, cands, res)
 	if err != nil {
+		_ = stream.Reset()
 		return err
 	}
 	if len(claimed) == 0 {
+		// nothing left to ask for: end the stream without a Want, which the
+		// peer's handler does not hold against this node
+		_ = stream.Reset()
 		return nil
 	}
-	return s.fetch(ctx, peer, claimed, res, sf)
+	return s.fetch(ctx, peer, stream, claimed, res, sf)
+}
+
+// openFetchStream opens a fetch stream to peer within fetchTimeout. libp2p's
+// NewStream obeys only the context in its wait for identify, its protocol
+// negotiation and the headers exchange (HeadersRWTimeout bounds only the
+// last), so the timeout bounds the whole open. A failed open is not charged
+// to the peer: the caller has taken no fetch rate and claimed nothing yet.
+// When this node's own resource manager refused the stream (its error wraps
+// network.ErrResourceLimitExceeded; a refusal on the peer's side is a reset,
+// network.ErrReset, and does not), the error wraps ErrLocal.
+func (s *Service) openFetchStream(ctx context.Context, peer swarm.Address) (p2p.Stream, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
+	defer cancel()
+	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
+	if err != nil {
+		if errors.Is(err, network.ErrResourceLimitExceeded) {
+			return nil, fmt.Errorf("%w: new stream: %w", ErrLocal, err)
+		}
+		return nil, fmt.Errorf("new stream: %w", err)
+	}
+	return stream, nil
 }
 
 // wantCandidates returns at most MaxWantIDs distinct IDs from the start of
@@ -403,16 +440,17 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 	res.Undelivered = append(res.Undelivered, chunkID(id))
 }
 
-// fetch sends one Want of the claimed IDs to peer and handles the
-// deliveries until the peer closes the stream, recording the peer's
-// shortfall in sf: the Want's IDs as requested, those still undelivered
-// when the peer closed the stream as missing, and the stamps invalid on
-// every node. A stream that fails with claimed IDs undelivered, or fails to
-// open while the peer is connected (not p2p.ErrPeerNotFound), takes one of
-// the peer's fetch resets (chargeReset), past which it is a violation;
-// this node ending the fetch does not. Every claim in claimed is ended
-// before it returns.
-func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
+// fetch sends one Want of the claimed IDs to peer on stream, which it ends,
+// and handles the deliveries until the peer closes the stream, recording the
+// peer's shortfall in sf: the Want's IDs as requested, those still
+// undelivered when the peer closed the stream as missing, and the stamps
+// invalid on every node. A holder that has not finished within fetchTimeout
+// of the claims is a violation, judged only while the peer has a Status
+// (the rules judge no peer that disconnected). A stream that fails with
+// claimed IDs undelivered takes one of the peer's fetch resets
+// (chargeReset), past which it is a violation; this node ending the fetch
+// does not. Every claim in claimed is ended before it returns.
+func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stream, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall) (err error) {
 	// claimed holds the IDs not delivered yet
 	defer func() {
 		for id := range claimed {
@@ -430,6 +468,9 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 		case parent.Err() != nil:
 			return err // this node ended the fetch
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			if _, ok := s.LastStatus(peer); !ok {
+				return err // the peer disconnected: not judged
+			}
 			return s.initiatorViolation(peer, invalid("no deliveries within %s", s.fetchTimeout))
 		case len(claimed) > 0 && s.chargeReset(peer):
 			return s.initiatorViolation(peer, invalid("fetch streams fail with ids undelivered, past %d: %v", maxFetchResets, err))
@@ -442,17 +483,6 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, claimed map[fin
 		want.IDs = append(want.IDs, EncodeID(id))
 	}
 
-	stream, err := s.streamer.NewStream(ctx, peer, nil, ProtocolName, ProtocolVersion, FetchStreamName)
-	if err != nil {
-		err = fmt.Errorf("new stream: %w", err)
-		if errors.Is(err, p2p.ErrPeerNotFound) {
-			return err // the peer is gone: nothing to charge
-		}
-		// The Want took its fetch rate and holds its claims: an open the
-		// peer fails (it resets or stalls the headers exchange, or serves no
-		// fetch stream) is charged as a reset.
-		return stalled(err)
-	}
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()

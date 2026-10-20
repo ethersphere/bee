@@ -642,6 +642,8 @@ func TestFetchStalledHolder(t *testing.T) {
 	chs := validChunks(1)
 	a := newTestNodeOpts(t, nodeOpts{fetchTimeout: 100 * time.Millisecond})
 	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
 	stall := make(chan struct{})
 	t.Cleanup(func() { close(stall) })
 	fakeHolder(a, b, func(*pb.Want, protobuf.Writer) { <-stall })
@@ -655,6 +657,36 @@ func TestFetchStalledHolder(t *testing.T) {
 		t.Fatal("peer not disconnected")
 	}
 	assertFailed(t, a.scorer, b.addr)
+	assertNoClaims(t, a, ids...)
+}
+
+// TestFetchStalledHolderGone checks the Status gate of the stall violation: a
+// holder whose Status is gone when the fetch times out (the disconnect hook
+// ran while the Want waited) is not judged, as by every other rule of the
+// fetch. The claims are released all the same.
+func TestFetchStalledHolderGone(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(1)
+	a := newTestNodeOpts(t, nodeOpts{fetchTimeout: 100 * time.Millisecond})
+	b := newTestNode(t)
+	connect0(a, b)
+	sendRoot(t, b, a, whole)
+	stall := make(chan struct{})
+	t.Cleanup(func() { close(stall) })
+	fakeHolder(a, b, func(*pb.Want, protobuf.Writer) {
+		if err := a.svc.Protocol().DisconnectIn(p2p.Peer{Address: b.addr}); err != nil {
+			t.Error(err)
+		}
+		<-stall
+	})
+
+	ids := idsOf(t, chs...)
+	_, err := a.svc.Fetch(context.Background(), b.addr, ids)
+	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, rangesync.ErrInvalidMessage) {
+		t.Fatalf("got %v, want an unscored %v", err, context.DeadlineExceeded)
+	}
+	assertNotScored(t, a, b.addr)
 	assertNoClaims(t, a, ids...)
 }
 
