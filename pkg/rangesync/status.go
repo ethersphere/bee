@@ -141,8 +141,11 @@ func (s *Service) LastStatus(peer swarm.Address) (Status, bool) {
 // over the peer's rate (PeerStatusBurst, then one per PeerStatusInterval) is
 // dropped unread and counted (status_rate_limited_total): the stream is
 // reset, so the sender sees a failed send and retries later, and the peer is
-// neither disconnected nor scored. A recorded Status that differs from the
-// peer's last one is signaled to the SubscribeStatus subscribers.
+// neither disconnected nor scored, unless it keeps sending over its rate:
+// past PeerStatusDropBurst dropped Statuses, then one per
+// PeerStatusDropInterval, a Status over the rate is a violation. A recorded
+// Status that differs from the peer's last one is signaled to the
+// SubscribeStatus subscribers.
 func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	release, ok := s.statusStreams.acquire(p.Address)
 	if !ok {
@@ -152,8 +155,11 @@ func (s *Service) handleStatus(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	// As with the session limiter, this can recreate the entry of a peer
 	// that just disconnected; it is cleared on its next disconnect.
 	if !s.statusLimiter.Allow(p.Address.ByteString(), 1) {
-		_ = stream.Reset()
 		s.metrics.StatusRateLimited.Inc()
+		if !s.statusDrops.Allow(p.Address.ByteString(), 1) {
+			return s.violation(p.Address, stream, invalid("status spam: over the rate after %d dropped statuses", PeerStatusDropBurst))
+		}
+		_ = stream.Reset()
 		s.logger.Debug("peer status over the rate, dropped", "peer_address", p.Address)
 		return errStatusRateLimit
 	}

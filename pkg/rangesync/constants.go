@@ -86,6 +86,14 @@ const (
 	// back; after it, one per PeerStatusInterval. Statuses over the rate are
 	// dropped unread (proposal §9, Status spam).
 	PeerStatusBurst = 4
+	// PeerStatusDropBurst is the number of Statuses over its rate a peer may
+	// send (each dropped) back to back; after it, one per
+	// PeerStatusDropInterval. A Status over the rate past them is a
+	// violation: the peer keeps sending faster than PeerStatusBurst and
+	// PeerStatusInterval allow (proposal §9, Status spam). An honest sender
+	// stays a Status below the receiver's rate (the reconciler's sender-side
+	// cap), so only delayed arrivals drop any of its Statuses, far fewer.
+	PeerStatusDropBurst = 2 * PeerStatusBurst
 )
 
 // Session memory budget of the symbol path (proposal §6.4, T4.3). A session
@@ -140,6 +148,11 @@ const (
 	// which sends a neighbor at most one Status per StatusMinInterval apart
 	// from the first contact and a radius change, never hits it.
 	PeerStatusInterval = StatusMinInterval / 2
+	// PeerStatusDropInterval is the interval at which a peer regains one
+	// dropped Status of PeerStatusDropBurst. A peer that sends at most a
+	// quarter more Statuses than its rate is not escalated: a dropped
+	// Status costs this node a stream reset before anything is read.
+	PeerStatusDropInterval = 4 * PeerStatusInterval
 
 	// ClaimDeadline is how long a claimed ID stays in the want set before it
 	// can be claimed through another peer.

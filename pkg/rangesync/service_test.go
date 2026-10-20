@@ -784,6 +784,74 @@ func TestReconcileLocalStoreError(t *testing.T) {
 	}
 }
 
+// TestStatusSpamEscalated checks that persistent Status spam is a
+// violation: a peer may send PeerStatusDropBurst Statuses over its rate
+// (each dropped, neither scored nor disconnected), then the next one over the
+// rate disconnects it and is reported to the PeerScorer. A disconnect clears
+// the count.
+func TestStatusSpamEscalated(t *testing.T) {
+	t.Parallel()
+
+	b := newTestNode(t)
+	b.start(t)
+	p := newRawPeer(t, b)
+	st := rangesync.EncodeStatus(rangesync.Status{
+		Root:     fingerprint.NewRange(swarm.ZeroAddress, 0),
+		LeafBits: serviceLeafBits,
+		Mapping:  fingerprint.DefaultMapperID,
+	})
+	// send writes st on a status stream and returns the handler's error; a
+	// handler that resets the stream may beat the write
+	send := func() error {
+		t.Helper()
+		s := p.open(t, rangesync.StatusStreamName)
+		_ = protobuf.NewWriter(s).WriteMsg(st)
+		_ = s.FullClose()
+		records := p.records(t, rangesync.StatusStreamName)
+		return records[len(records)-1].Err()
+	}
+	// spam sends Statuses until the peer is disconnected and checks the
+	// number dropped before: PeerStatusDropBurst, plus one per
+	// PeerStatusDropInterval that passed meanwhile
+	spam := func() {
+		t.Helper()
+		start := time.Now()
+		before := b.svc.StatusRateLimited()
+		scored, _ := b.scorer.get(p.addr)
+		for {
+			err := send()
+			if errors.As(err, new(*p2p.DisconnectError)) {
+				assertDisconnect(t, err)
+				if fails, _ := b.scorer.get(p.addr); len(fails) != len(scored)+1 {
+					t.Fatalf("scorer fails %v, want one more than %v", fails, scored)
+				}
+				dropped := int(b.svc.StatusRateLimited()-before) - 1
+				refilled := int(time.Since(start) / rangesync.PeerStatusDropInterval)
+				if dropped < rangesync.PeerStatusDropBurst || dropped > rangesync.PeerStatusDropBurst+refilled {
+					t.Fatalf("disconnected after %d dropped statuses, want %d (+%d refilled)", dropped, rangesync.PeerStatusDropBurst, refilled)
+				}
+				return
+			}
+			if fails, _ := b.scorer.get(p.addr); len(fails) != len(scored) {
+				t.Fatalf("peer scored before it was disconnected: %v", fails)
+			}
+			if b.svc.StatusRateLimited()-before > float64(rangesync.PeerStatusDropBurst+1+int(time.Since(start)/rangesync.PeerStatusDropInterval)) {
+				t.Fatal("status spam not escalated")
+			}
+		}
+	}
+
+	// a status token may refill while the test runs: count the drops, not
+	// the sends
+	spam()
+	assertFailed(t, b.scorer, p.addr)
+
+	if err := b.svc.Protocol().DisconnectIn(p2p.Peer{Address: p.addr}); err != nil {
+		t.Fatal(err)
+	}
+	spam() // the disconnect cleared the dropped statuses
+}
+
 func TestReconcileEqual(t *testing.T) {
 	t.Parallel()
 

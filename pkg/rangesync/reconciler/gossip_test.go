@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -385,6 +387,165 @@ func TestStatusGossipWithinPeerRate(t *testing.T) {
 	sent := svc.sentStatuses(lower)
 	if last := sent[len(sent)-1]; !last.Root.Equal(local.Root) || last.Summary != local.Summary {
 		t.Fatalf("peer's last status %+v, want %+v", last, local)
+	}
+}
+
+// statusReceiver models a peer's inbound Status limits (rangesync's
+// handleStatus): the rate (PeerStatusBurst, PeerStatusInterval), and the
+// budget of Statuses over it (PeerStatusDropBurst, PeerStatusDropInterval)
+// past which the next one over the rate is a violation.
+type statusReceiver struct {
+	rate, drops *rate.Limiter
+	dropped     int
+	escalated   bool
+}
+
+func newStatusReceiver() *statusReceiver {
+	return &statusReceiver{
+		rate:  rate.NewLimiter(rate.Every(rangesync.PeerStatusInterval), rangesync.PeerStatusBurst),
+		drops: rate.NewLimiter(rate.Every(rangesync.PeerStatusDropInterval), rangesync.PeerStatusDropBurst),
+	}
+}
+
+// arrive handles the Statuses arriving at the given times, in order.
+func (r *statusReceiver) arrive(times []time.Time) {
+	for _, at := range times {
+		if r.rate.AllowN(at, 1) {
+			continue
+		}
+		r.dropped++
+		if !r.drops.AllowN(at, 1) {
+			r.escalated = true
+		}
+	}
+}
+
+// honestStatusSends runs the honest sender's Status schedule to one peer
+// for 20 minutes of the fake clock, with a summary change every 100 ms, a
+// burst of six radius changes (100 ms apart) every flapEvery steps of 100 ms
+// and a reconnect (a first contact) every five minutes. It returns the
+// clock's start, the times the Statuses were sent and the times the peer
+// reconnected.
+func honestStatusSends(t *testing.T, flapEvery int) (start time.Time, sends, reconnects []time.Time) {
+	t.Helper()
+	const (
+		step           = 100 * time.Millisecond
+		steps          = 12000
+		flaps          = 6
+		reconnectEvery = 3000
+	)
+	narrow := fingerprint.NewRange(addr(0x80, 0), 1)
+	whole := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	svc := newFakeService(status(1))
+	svc.remote[lower.ByteString()] = status(1)
+	h := newGossipHarness(t, svc, lower)
+	g := newGossipLog(h, lower)
+	start = h.clock.Now()
+	h.r.Round() // first contact
+	g.record()
+
+	root := whole
+	for i := range steps {
+		h.clock.Add(step)
+		if i%reconnectEvery == reconnectEvery/2 {
+			h.topo.setPeersQuiet()
+			h.r.Round() // the peer leaves
+			h.clock.Add(step)
+			h.topo.setPeersQuiet(lower)
+			reconnects = append(reconnects, h.clock.Now())
+			h.r.Round() // and comes back
+			g.record()
+		}
+		flap := i%flapEvery < flaps
+		svc.set(func() {
+			svc.local.Summary = fingerprint.Summary{Count: uint64(i + 2), Digest: [32]byte{byte(i), byte(i >> 8)}}
+			if flap {
+				if root.Equal(whole) {
+					root = narrow
+				} else {
+					root = whole
+				}
+				svc.local.Root = root
+			}
+		})
+		if flap || i%10 == 0 { // the round that sees each radius change, then one per second
+			h.r.Round()
+			g.record()
+		}
+		h.r.Gossip()
+		g.record()
+	}
+	sends = g.times[lower.ByteString()]
+	if len(sends) < steps/50 {
+		t.Fatalf("%d statuses sent, want at least %d", len(sends), steps/50)
+	}
+	return start, sends, reconnects
+}
+
+// TestStatusGossipNeverEscalated (T4.5 part 2b): the honest sender's Status
+// schedule (honestStatusSends) never reaches the receiver's spam escalation,
+// with radius changes every two minutes, every 20 s, and back to back (every
+// 3 s, far more than a reserve's radius moves). Its sends arrive at a model
+// of the receiver (statusReceiver):
+//   - on time: nothing is dropped;
+//   - delayed by up to the send's timeout (10 s), at random, or so that all
+//     the sends of each 10 s arrive at once (bunched);
+//   - with the receiver's limits cleared on each reconnect, as rangesync's
+//     disconnect hook does, and kept across them (a Status of the old
+//     connection handled after the hook).
+//
+// The sender stays a Status below the receiver's rate (T4.1), so only the
+// delays drop any, and fewer than the drop budget refills.
+func TestStatusGossipNeverEscalated(t *testing.T) {
+	t.Parallel()
+
+	const sendTimeout = 10 * time.Second
+	for _, flapEvery := range []int{1200, 200, 30} {
+		start, sends, reconnects := honestStatusSends(t, flapEvery)
+		rnd := rand.New(rand.NewPCG(7, uint64(flapEvery)))
+		for _, d := range []struct {
+			name  string
+			delay func(at time.Time) time.Duration
+		}{
+			{"on time", func(time.Time) time.Duration { return 0 }},
+			{"random delays", func(time.Time) time.Duration { return time.Duration(rnd.Int64N(int64(sendTimeout))) }},
+			{"bunched", func(at time.Time) time.Duration { return sendTimeout - at.Sub(start)%sendTimeout }},
+		} {
+			name := fmt.Sprintf("radius changes every %d steps, %s", flapEvery, d.name)
+			// the arrivals of each connection, in order
+			conns := make([][]time.Time, len(reconnects)+1)
+			for _, at := range sends {
+				c, _ := slices.BinarySearchFunc(reconnects, at, func(r, at time.Time) int {
+					if r.After(at) {
+						return 1
+					}
+					return -1
+				})
+				conns[c] = append(conns[c], at.Add(d.delay(at)))
+			}
+			var all []time.Time
+			dropped := 0
+			for _, arrivals := range conns {
+				slices.SortFunc(arrivals, time.Time.Compare)
+				cleared := newStatusReceiver() // on each reconnect
+				cleared.arrive(arrivals)
+				if cleared.escalated {
+					t.Fatalf("%s: an honest sender was escalated (%d dropped)", name, cleared.dropped)
+				}
+				dropped += cleared.dropped
+				all = append(all, arrivals...)
+			}
+			slices.SortFunc(all, time.Time.Compare)
+			kept := newStatusReceiver() // across reconnects
+			kept.arrive(all)
+			if kept.escalated {
+				t.Fatalf("%s, limits kept across reconnects: an honest sender was escalated (%d dropped)", name, kept.dropped)
+			}
+			if d.name == "on time" && dropped != 0 {
+				t.Fatalf("%s: %d dropped, want 0", name, dropped)
+			}
+			t.Logf("%s: %d of %d statuses dropped (%d with limits kept across reconnects)", name, dropped, len(sends), kept.dropped)
+		}
 	}
 }
 

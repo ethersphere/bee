@@ -159,6 +159,7 @@ type Service struct {
 	deliveryLimiter *ratelimit.Limiter // per peer, holder side
 	sessionLimiter  *ratelimit.Limiter // per peer, sessions served
 	statusLimiter   *ratelimit.Limiter // per peer, statuses received
+	statusDrops     *ratelimit.Limiter // per peer, statuses over the rate
 
 	index   *fingerprint.Index
 	indexer *Indexer
@@ -237,6 +238,7 @@ func New(
 		deliveryLimiter:  ratelimit.New(handleRateLimit, MaxWantIDs),
 		sessionLimiter:   ratelimit.New(PeerSessionInterval, PeerSessionBurst),
 		statusLimiter:    ratelimit.New(PeerStatusInterval, PeerStatusBurst),
+		statusDrops:      ratelimit.New(PeerStatusDropInterval, PeerStatusDropBurst),
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
 		local:            &local{index: index, store: store},
@@ -296,7 +298,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 // disconnected forgets the peer's status, stream slots, delivery, session
-// and status limits.
+// and status limits, and its dropped statuses.
 func (s *Service) disconnected(peer p2p.Peer) error {
 	s.statusMu.Lock()
 	delete(s.statuses, peer.Address.ByteString())
@@ -307,6 +309,7 @@ func (s *Service) disconnected(peer p2p.Peer) error {
 	s.deliveryLimiter.Clear(peer.Address.ByteString())
 	s.sessionLimiter.Clear(peer.Address.ByteString())
 	s.statusLimiter.Clear(peer.Address.ByteString())
+	s.statusDrops.Clear(peer.Address.ByteString())
 	s.peerSessions.clear(peer.Address)
 	return nil
 }
