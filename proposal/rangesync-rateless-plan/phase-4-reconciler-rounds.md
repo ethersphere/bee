@@ -4453,3 +4453,31 @@ _(sessions append here)_
   depends on 4 (its one use is session_symbols.go ~L403). Recorded, not measured: each More on the
   scan path reruns `Local.Symbols(r, 0, end)` (session_symbols.go ~L125), so GF2 about doubles an
   honest scan stream's reads.
+- **(T4.6 part 3 round-2 review; recorded by the orchestrator at landing, G6 2026-10-21) Notes for
+  the AC-B2 fix task (T4.7).** These refine the round-2 AC-B2 candidates; the G6 numbers and constants
+  are unaffected.
+  1. **Candidate C covers the leak only in the first session.** C caps only the answer to an
+     `Items{Reply}`, which exists only while node 0's root count is exactly 0. From the next round node 0
+     holds IDs and splits the root; the initiator then lists every count-0 child through
+     `DecisionSendItems` (not a Reply answer; ~18 MB per empty child at 2^22, and stripes fill in prefix
+     order, so most children are empty early) and still stripes non-empty children past `LargeDiff`
+     regardless of direction. C needs B for the descent.
+  2. **B and C don't combine:** B sends no listing, so C's hand-over trigger ("listing far shorter than
+     the gap") never fires; a lacking node that is responder to all its peers (the highest overlay, with
+     a non-bootstrap deficit past `LargeDiff` in a child) then starves, breaking constraint (c). **Only A
+     closes every case.** The scaled acceptance test should add a responder-only-lacking-node case.
+  3. The round-2 text "hands each child past `LargeDiff` to its StripeCollector" is wrong for count-0
+     children: the count-0 check comes first in `Decide`, so they go to `DecisionSendItems`. The "~75%"
+     figure assumes uniform filling.
+  4. A and C need more than stated: a responder Striper needs a new `rangesync.Options` field plus
+     wiring in `pkg/node` (node.go ~L1208); A and B reorder §6.3's normative rule and C truncates its
+     normative answer (old responders read it as complete) — list the proposal text to change.
+  5. A defers small differences while it declines (new uploads and §7.7 differences wait too); state it.
+  6. Acceptance text: tie "with takeovers firing" to a Base (they fired only at Base 100000); check that
+     no peer registers a range it already holds; "ratio … about 1,100" is the scaled `LargeDiff`.
+  7. Q9: ~97/s is an estimate assuming uniform uploads, not a bound; reserve.go also overwrites
+     immutable batches. The overwrite pin hits the whole neighborhood (the registry pin one node) and
+     costs the attacker only pushsync bandwidth — keep it a T6.3 item, but say so.
+  8. The GrowthFactor text list misses proposal L467 (§4.3.7, "More(R, up to 4 × b)").
+  9. The decision sheet should state that GrowthFactor 2 and the per-node cap land before T6.1
+     (EXECUTION.md §6, G6 row) — done in T4.7.
