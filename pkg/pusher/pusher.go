@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -265,7 +266,14 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		)
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
-	switch err = nil; {
+	// Temporary: skip the real push. About 30% of chunks get a shallow
+	// receipt and are retried; the rest are reported as synced.
+	if rand.Float64() <= 0.3 {
+		err = pushsync.ErrShallowReceipt
+	} else {
+		err = nil
+	}
+	switch {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
