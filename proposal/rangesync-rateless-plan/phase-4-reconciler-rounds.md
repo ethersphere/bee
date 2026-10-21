@@ -3653,6 +3653,66 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     bound); `TestSREPModelG6` (64 s), `TestSREPModelG6Part3` (536 s). Then `go test -tags=sim
     ./pkg/rangesync/... -skip 'TestG6|TestSREPModelVsHarness|TestSREPModelG6'`: the other 1316
     tests and subtests (`TestNeighborhood*` included) pass.
+- **(T4.7 part 1 fix round 2) A registry full of claims does not hold a radius half back;
+  `TestSyncRateRadiusHalfRegistryFull` rewritten.** The verifier's failure: the test timed out
+  "waiting for decrease seen" (21 / 18 / 13 of 30 runs alone at `-cpu` 1 / 2 / 4, none on
+  rangesync/phase-4; bisected to 002c6460).
+  - *Cause (the verifier's reading, confirmed).* Since 002c6460 an own job is registered on top of a
+    full registry, and since 3992a351 `HoldStripe` holds own jobs. The test's 1024 held ranges lie in
+    the old half, so they neither overlap nor contain the new half: the round after the decrease
+    registers it (1025 ranges; read with the fetches gated) and, with nothing gating its fetches,
+    transfers and verifies it within about 10 ms. In 43 of 90 runs here `RadiusPending` was first
+    polled after the half had ended; the other runs passed without the half ever waiting (it ended
+    within the 100 ms `settle`, before the "blocked half registered" check). So in no run did the
+    test test a half that a full registry held back. Fix round 1 did not see it: its nine package
+    stress runs ran before 002c6460, and after it only `TestOwnJobPreemptsClaims`,
+    `TestEnqueueStripes*` and `TestClaimCaps` were run again.
+  - *Decision: the code is right; the test changes.* Since fix round 1 everything in the registry
+    besides the own jobs is a peer's claim. If a registry full of claims could drop the half, peers
+    whose claims fill it would keep the half unregistered for `radiusHold` (10 minutes). After that
+    `SyncRate` reads 0, and the reserve worker can lower the radius again before the half is
+    transferred. That is the dependence on peers' claims that fix round 1 removed. The registry stays
+    bounded by this node's own state. A claim is registered only while fewer than
+    `maxStripeRegistry` ranges are registered, own ones counted. Own jobs come from two places
+    only, each guarded by a flag that is set when the job is registered and cleared, under the same
+    lock, when the worker removes it: `planCatchUp` (`r.bootstrapping`) and `enqueueRadiusHalf`
+    (`r.radius.striping`). An own job is never trimmed into parts. So the registry holds at most
+    `maxStripeRegistry` + 2 = 1026 ranges. The only code change is to two comments in radius.go:
+    `radiusHold`'s list of reasons no longer has "full registry", and its overlap, like the refusal
+    comment in `enqueueRadiusHalf`, is with another own transfer.
+  - *The test.* `TestSyncRateRadiusHalfRegistryFull` fills the registry with `MaxStripeRegistry`
+    claims inside the old half (new export_test helper `HoldClaims`: claims of no peer, registered,
+    not queued), gates the fetches and lowers the root. The half is then registered on top (1025
+    ranges), a further claim is refused and the registry stays at 1025, and the half's stripe
+    sessions open. With the claims released and the clock past the window (nothing stored, the
+    catch-up grace spent), `SyncRate` is ≥ `StartupGuardRate` from the half's transfer alone. Once
+    the gate opens the half is done (a stripe done, nothing registered, the half no longer pending),
+    and past the window `SyncRate` reads 0. The test keeps the old one's intent: the rate is held
+    while the half runs, and the half is transferred. The waiting itself stays pinned by
+    `TestSyncRateRadiusHalfUncovered` and `TestSyncRateRadiusHalfOverlap`. Without 002c6460's rule
+    (own `room = 1` reverted) the test times out "waiting for half registered", as
+    `TestOwnJobPreemptsClaims/full registry` fails. 300 of 300 runs alone (`-count=100 -cpu=1,2,4`)
+    pass.
+  - *Superseded:* in "(T3.5 review) Radius decrease before registration" (phase 3), "full registry"
+    among the reasons a pending half is not registered: since 002c6460 a registry of claims never
+    refuses it, and, with fix round 1's preemption, "overlap with a registered range" means an own
+    range. Also its "Tested per no-op path
+    (`TestSyncRateRadiusHalf{Uncovered,Overlap,RegistryFull}`)": RegistryFull now tests the
+    registered-on-top path, and the no-op paths are Uncovered and Overlap.
+    This narrows "(T3.2 part 2 review) Bounds", "The registry holds at most `maxStripeRegistry =
+    1024` ranges; past it a range is dropped", to the claims, own ones counted. Up to two own
+    transfers go on top (1026), and none is dropped. `radiusHold`, `maxRadiusAttempts` and the
+    SyncRate rule of T3.5 are unchanged.
+  - *The fix-round-1 `TestSyncRateBootstrap` failure* was that test's own (`syncrate_test.go:45`,
+    "sync rate 0 during the bootstrap transfer"), in a package run before 002c6460, not this one.
+    Its follow-up stands.
+  - Checks: `go build ./pkg/rangesync/...`; `go vet` on the reconciler package, also with
+    `-tags=sim`; `GOTOOLCHAIN=go1.26.1 make lint`, and `golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues; gofumpt and gci on the three changed files only (no change).
+    Stress: `go test ./pkg/rangesync/reconciler/ -count=10 -cpu=1,2,4`, run twice, had no failure
+    (138 s each), `TestSyncRateBootstrap` included (60 runs); `go test ./pkg/rangesync/ -count=3
+    -cpu=1,2,4` had no failure (270 s). No `-race` (no C compiler; Follow-ups). No pkg/pullsync,
+    pkg/puller, go.mod, proto or `*_fuzz_test.go` change.
 
 ## Follow-ups
 _(sessions append here)_
@@ -4997,3 +5057,8 @@ _(sessions append here)_
   re-run every `TestStripe*`, `TestTransferStripes*`, `TestEnqueueStripes*`,
   `TestRoundBootstrap*`, `TestRadius*`, `TestSyncRate*`, `TestVerifyStripes*` (the registry's
   entries and the stripe worker's claim context changed).
+- **(T4.7 part 1 fix round 2) Tests to run with `-race` on CI.** They were run with `-count=100
+  -cpu=1,2,4` alone and in the package stress instead (no C compiler here). Changed:
+  `TestSyncRateRadiusHalfRegistryFull`. It was rewritten: the stripe worker, the rounds and the
+  test's own registry edits (`HoldClaims`, `EnqueueStripes`, `ReleaseStripe`) all reach the
+  registry under `r.mu` while the half's transfer runs.
