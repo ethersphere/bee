@@ -25,11 +25,13 @@ import (
 //	go test ./pkg/rangesync/ -tags=sim -run 'TestG6' -v -timeout 120m
 //
 // The harness runs the compiled constants, and every table names them
-// (g6Label). G6's candidates are measured in scratch builds with the constant
-// changed: GrowthFactor, BatchFactorNum and BatchFactorDen (FirstBatch reads
-// them), reconciler.MaxInitiatedSessions. Runs go one after another, each
-// torn down before the next (a subtest each), so that no run starves
-// another's goroutines (simOptions.Settle).
+// (g6Label). G6's candidates were measured in scratch builds with the
+// constant changed: GrowthFactor, BatchFactorNum and BatchFactorDen
+// (FirstBatch reads them); the initiated-session cap is per node since T4.7
+// part 2, and a run can fix it instead (simOptions.InitiatedSessions, for
+// example 8, the constant before G6). Runs go one after another, each torn
+// down before the next (a subtest each), so that no run starves another's
+// goroutines (simOptions.Settle).
 
 // g6Runs runs o(seed) for seeds 1 … seeds, each in a subtest named by name
 // and the seed, and returns their figures and the wall time of all of them;
@@ -52,26 +54,29 @@ func g6Runs(t *testing.T, name string, seeds int, o func(seed uint64) simOptions
 
 // g6Share and the other getters read one figure.
 var (
-	g6Share     = func(f g6Figures) float64 { return f.Share }
-	g6SPD       = func(f g6Figures) float64 { return f.SymbolsPerDiff }
-	g6Mores     = func(f g6Figures) float64 { return f.MoresPerUpload }
-	g6Trips     = func(f g6Figures) float64 { return f.RoundTrips }
-	g6Conv      = func(f g6Figures) float64 { return f.BatchConv }
-	g6MaxConv   = func(f g6Figures) float64 { return f.MaxConv }
-	g6Metadata  = func(f g6Figures) float64 { return f.Metadata }
-	g6DiffP50   = func(f g6Figures) float64 { return f.Diff.P50 }
-	g6DiffP99   = func(f g6Figures) float64 { return f.Diff.P99 }
-	g6DiffMax   = func(f g6Figures) float64 { return f.Diff.Max }
-	g6BothP99   = func(f g6Figures) float64 { return f.DiffBoth.P99 }
-	g6WantsP50  = func(f g6Figures) float64 { return f.Wants.P50 }
-	g6WantsP99  = func(f g6Figures) float64 { return f.Wants.P99 }
-	g6WantsMax  = func(f g6Figures) float64 { return f.Wants.Max }
-	g6CatchUp   = func(f g6Figures) float64 { return float64(f.CatchUp) }
-	g6Refused   = func(f g6Figures) float64 { return f.Refused }
-	g6Stale     = func(f g6Figures) float64 { return f.Stale }
-	g6Zero      = func(f g6Figures) float64 { return f.ZeroShare }
-	g6Sessions  = func(f g6Figures) float64 { return f.Sessions }
-	g6Exhausted = func(f g6Figures) float64 { return f.exhausted() }
+	g6Share        = func(f g6Figures) float64 { return f.Share }
+	g6SPD          = func(f g6Figures) float64 { return f.SymbolsPerDiff }
+	g6Mores        = func(f g6Figures) float64 { return f.MoresPerUpload }
+	g6Trips        = func(f g6Figures) float64 { return f.RoundTrips }
+	g6Conv         = func(f g6Figures) float64 { return f.BatchConv }
+	g6MaxConv      = func(f g6Figures) float64 { return f.MaxConv }
+	g6Metadata     = func(f g6Figures) float64 { return f.Metadata }
+	g6DiffP50      = func(f g6Figures) float64 { return f.Diff.P50 }
+	g6DiffP99      = func(f g6Figures) float64 { return f.Diff.P99 }
+	g6DiffMax      = func(f g6Figures) float64 { return f.Diff.Max }
+	g6BothP99      = func(f g6Figures) float64 { return f.DiffBoth.P99 }
+	g6WantsP50     = func(f g6Figures) float64 { return f.Wants.P50 }
+	g6WantsP99     = func(f g6Figures) float64 { return f.Wants.P99 }
+	g6WantsMax     = func(f g6Figures) float64 { return f.Wants.Max }
+	g6CatchUp      = func(f g6Figures) float64 { return float64(f.CatchUp) }
+	g6Refused      = func(f g6Figures) float64 { return f.Refused }
+	g6Busy         = func(f g6Figures) float64 { return f.Busy }
+	g6SessionLimit = func(f g6Figures) float64 { return f.SessionLimit }
+	g6ServedBusy   = func(f g6Figures) float64 { return f.ServedBusy }
+	g6Stale        = func(f g6Figures) float64 { return f.Stale }
+	g6Zero         = func(f g6Figures) float64 { return f.ZeroShare }
+	g6Sessions     = func(f g6Figures) float64 { return f.Sessions }
+	g6Exhausted    = func(f g6Figures) float64 { return f.exhausted() }
 )
 
 // g6Steady returns the steady mode (steadyOptions: 24 batches 1.3 s apart)
@@ -85,49 +90,113 @@ func g6Steady(nodes int, seed uint64, rate float64) simOptions {
 // TestG6Constants measures the session constants the harness is built with
 // (Q3, BatchFactor, AC-B1) at the steady load, ~15 uploads per second, for
 // N = 9 and 17: Delay 0, 50, 100 and 200 ms with hint(R), and 50 and 200 ms
-// without, 6 seeds each. The share is of AC-B1's baseline, N(N − 1) × 102 B
-// per upload; "wire" divides by pullsync's bytes on the wire instead
-// (srepPullsyncWire, 1.09× at this load).
+// without, 6 seeds each. The initiated sessions are capped per node (the
+// compiled rule, "per node"); at N = 17 every row also runs with the
+// constant cap of 8 before G6 ("8", the control: G6's GrowthFactor 2 rows).
+// At N = 9 the two caps run the same sessions: no node has more than 8
+// higher-overlay peers, and the per-node cap is at least 8. The share is of
+// AC-B1's baseline, N(N − 1) × 102 B per upload; "wire" divides by
+// pullsync's bytes on the wire instead (srepPullsyncWire, 1.09× at this
+// load). Busy and session-limit answers are the opening side's (reconciler
+// sessions_total), Busy given the serving side's (session_busy_total).
 func TestG6Constants(t *testing.T) {
 	const seeds = 6
-	tbl := &g6Table{header: []string{"N", "Delay", "hint", "share %", "wire %", "symbols/diff", "Mores/upload", "round trips/session", "convergence mean, max s", "n_Δ p50, p99, max", "wants p99, max", "refused, stale /upload", "zero %", "wall"}}
+	tbl := &g6Table{header: []string{"N", "cap", "Delay", "hint", "share %", "wire %", "symbols/diff", "Mores/upload", "round trips/session", "convergence mean, max s", "n_Δ p50, p99, max", "wants p99, max", "Busy, session limit, Busy given /upload", "stale /upload", "zero %", "wall"}}
 	for _, n := range []int{9, 17} {
-		for _, row := range []struct {
-			delay   time.Duration
-			noHints bool
-		}{{0, false}, {50 * time.Millisecond, false}, {100 * time.Millisecond, false}, {200 * time.Millisecond, false}, {50 * time.Millisecond, true}, {200 * time.Millisecond, true}} {
-			hint := "on"
-			if row.noHints {
-				hint = "off"
-			}
-			name := fmt.Sprintf("N=%d/Delay=%v/hint=%s", n, row.delay, hint)
-			fs, wall := g6Runs(t, name, seeds, func(seed uint64) simOptions {
-				o := steadyOptions(n, seed)
-				o.Delay, o.NoHints = row.delay, row.noHints
-				return o
-			})
-			if len(fs) == 0 {
-				continue
-			}
-			o := steadyOptions(n, 1)
-			wire := srepPullsyncACB1(n) / srepPullsyncWire(n, float64(o.BatchSize)/o.BatchInterval.Seconds())
-			share := g6SpreadOf(fs, g6Share)
-			tbl.add(fmt.Sprint(n), row.delay.String(), hint,
-				share.format(100, 1), fmt.Sprintf("%.1f", 100*share.mean*wire),
-				g6SpreadOf(fs, g6SPD).short(1, 2), g6SpreadOf(fs, g6Mores).short(1, 2), g6SpreadOf(fs, g6Trips).short(1, 2),
-				fmt.Sprintf("%.2f, %.2f", g6SpreadOf(fs, g6Conv).mean, g6SpreadOf(fs, g6MaxConv).hi),
-				fmt.Sprintf("%.0f, %.0f, %.0f", g6SpreadOf(fs, g6DiffP50).mean, g6SpreadOf(fs, g6DiffP99).mean, g6SpreadOf(fs, g6DiffMax).hi),
-				fmt.Sprintf("%.0f, %.0f", g6SpreadOf(fs, g6WantsP99).mean, g6SpreadOf(fs, g6WantsMax).hi),
-				fmt.Sprintf("%.3f, %.3f", g6SpreadOf(fs, g6Refused).mean, g6SpreadOf(fs, g6Stale).mean),
-				g6SpreadOf(fs, g6Zero).short(100, 1), wall.Round(time.Second).String())
-			for _, f := range fs {
-				if f.Duplicates != 0 || f.RateExceeded != 0 || f.exhausted() != 0 {
-					t.Errorf("%s: %d duplicates, %d over a rate, %v exhausted", name, f.Duplicates, f.RateExceeded, f.exhausted())
+		caps := []int{0}
+		if n == 17 {
+			caps = append(caps, 8)
+		}
+		for _, slots := range caps {
+			for _, row := range []struct {
+				delay   time.Duration
+				noHints bool
+			}{{0, false}, {50 * time.Millisecond, false}, {100 * time.Millisecond, false}, {200 * time.Millisecond, false}, {50 * time.Millisecond, true}, {200 * time.Millisecond, true}} {
+				hint := "on"
+				if row.noHints {
+					hint = "off"
+				}
+				capName := "per node"
+				if slots > 0 {
+					capName = fmt.Sprint(slots)
+				}
+				name := fmt.Sprintf("N=%d/cap=%s/Delay=%v/hint=%s", n, capName, row.delay, hint)
+				fs, wall := g6Runs(t, name, seeds, func(seed uint64) simOptions {
+					o := steadyOptions(n, seed)
+					o.Delay, o.NoHints, o.InitiatedSessions = row.delay, row.noHints, slots
+					return o
+				})
+				if len(fs) == 0 {
+					continue
+				}
+				o := steadyOptions(n, 1)
+				wire := srepPullsyncACB1(n) / srepPullsyncWire(n, float64(o.BatchSize)/o.BatchInterval.Seconds())
+				share := g6SpreadOf(fs, g6Share)
+				tbl.add(fmt.Sprint(n), capName, row.delay.String(), hint,
+					share.format(100, 1), fmt.Sprintf("%.1f", 100*share.mean*wire),
+					g6SpreadOf(fs, g6SPD).short(1, 2), g6SpreadOf(fs, g6Mores).short(1, 2), g6SpreadOf(fs, g6Trips).short(1, 2),
+					fmt.Sprintf("%.2f, %.2f", g6SpreadOf(fs, g6Conv).mean, g6SpreadOf(fs, g6MaxConv).hi),
+					fmt.Sprintf("%.0f, %.0f, %.0f", g6SpreadOf(fs, g6DiffP50).mean, g6SpreadOf(fs, g6DiffP99).mean, g6SpreadOf(fs, g6DiffMax).hi),
+					fmt.Sprintf("%.0f, %.0f", g6SpreadOf(fs, g6WantsP99).mean, g6SpreadOf(fs, g6WantsMax).hi),
+					fmt.Sprintf("%.3f, %.3f, %.3f", g6SpreadOf(fs, g6Busy).mean, g6SpreadOf(fs, g6SessionLimit).mean, g6SpreadOf(fs, g6ServedBusy).mean),
+					fmt.Sprintf("%.3f", g6SpreadOf(fs, g6Stale).mean),
+					g6SpreadOf(fs, g6Zero).short(100, 1), wall.Round(time.Second).String())
+				for _, f := range fs {
+					if f.Duplicates != 0 || f.RateExceeded != 0 || f.exhausted() != 0 {
+						t.Errorf("%s: %d duplicates, %d over a rate, %v exhausted", name, f.Duplicates, f.RateExceeded, f.exhausted())
+					}
 				}
 			}
 		}
 	}
 	t.Logf("%s; steady load, %d seeds; mean ± sd (range):%s", g6Label(), seeds, tbl)
+}
+
+// TestG6InitiatedCap measures the per-node initiated-session cap
+// (reconciler.InitiatedSessionCap) past N = 17, where a node's sessions, one
+// per peer, no longer fit its MaxConcurrentSessions tokens: N = 17, 25 and
+// 33 at the steady load (~15 uploads per second), Delay 50 ms, 3 seeds, the
+// per-node cap against the constant cap of 8 before G6. Busy and
+// session-limit answers are the opening side's, Busy given the serving
+// side's; served min is the fewest completed sessions per lower-overlay peer
+// that a node served (0 would be a node whose served sessions starved), and
+// unpaired the pairs with no completed session (either side opening, which
+// then converge through the others), both from the first upload.
+func TestG6InitiatedCap(t *testing.T) {
+	const seeds = 3
+	tbl := &g6Table{header: []string{"N", "cap", "share %", "convergence mean, max s", "sessions/upload", "Busy, session limit, Busy given /upload", "stale /upload", "served min, unpaired pairs", "n_Δ p50, p99", "wants max", "wall"}}
+	for _, n := range []int{17, 25, 33} {
+		for _, slots := range []int{0, 8} {
+			capName := "per node"
+			if slots > 0 {
+				capName = fmt.Sprint(slots)
+			}
+			name := fmt.Sprintf("N=%d/cap=%s", n, capName)
+			fs, wall := g6Runs(t, name, seeds, func(seed uint64) simOptions {
+				o := steadyOptions(n, seed)
+				o.Delay, o.InitiatedSessions = 50*time.Millisecond, slots
+				return o
+			})
+			if len(fs) == 0 {
+				continue
+			}
+			tbl.add(fmt.Sprint(n), capName, g6SpreadOf(fs, g6Share).format(100, 1),
+				fmt.Sprintf("%.2f, %.2f", g6SpreadOf(fs, g6Conv).mean, g6SpreadOf(fs, g6MaxConv).hi),
+				g6SpreadOf(fs, g6Sessions).short(1, 2),
+				fmt.Sprintf("%.3f, %.3f, %.3f", g6SpreadOf(fs, g6Busy).mean, g6SpreadOf(fs, g6SessionLimit).mean, g6SpreadOf(fs, g6ServedBusy).mean),
+				fmt.Sprintf("%.3f", g6SpreadOf(fs, g6Stale).mean),
+				fmt.Sprintf("%.1f, %.0f", g6SpreadOf(fs, func(f g6Figures) float64 { return f.ServedMin }).lo, g6SpreadOf(fs, func(f g6Figures) float64 { return f.Unpaired }).hi),
+				fmt.Sprintf("%.0f, %.0f", g6SpreadOf(fs, g6DiffP50).mean, g6SpreadOf(fs, g6DiffP99).mean),
+				fmt.Sprintf("%.0f", g6SpreadOf(fs, g6WantsMax).hi),
+				wall.Round(time.Second).String())
+			for _, f := range fs {
+				if f.Duplicates != 0 || f.RateExceeded != 0 || f.ServedMin == 0 {
+					t.Errorf("%s: %d duplicates, %d over a rate, served min %v", name, f.Duplicates, f.RateExceeded, f.ServedMin)
+				}
+			}
+		}
+	}
+	t.Logf("%s; steady load, Delay 50 ms, %d seeds; mean ± sd (range), served min the smallest of the seeds, unpaired the most:%s", g6Label(), seeds, tbl)
 }
 
 // TestG6Load measures the differences and the wants per session (Q9, Q2)

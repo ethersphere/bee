@@ -46,23 +46,28 @@ func srepLabel(p srepParams) string {
 	return fmt.Sprintf("GrowthFactor %d, BatchFactor %v, MinBatch %d", p.GrowthFactor, p.BatchFactor, p.MinBatch)
 }
 
-// srepConfig is a set of session constants.
+// srepConfig is a set of session constants and the initiated-session cap,
+// slots: 0 for the per-node cap (reconciler.InitiatedSessionCap), otherwise
+// a constant one (srepParams.InitiatedSessions, simOptions.InitiatedSessions).
 type srepConfig struct {
 	name   string
 	growth int
 	bf     srepFactor
+	slots  int
 }
 
-// apply returns p with c's constants and the compiled MinBatch.
+// apply returns p with c's constants and cap, and the compiled MinBatch.
 func (c srepConfig) apply(p srepParams) srepParams {
-	p.GrowthFactor, p.BatchFactor, p.MinBatch = c.growth, c.bf, rangesync.MinBatch
+	p.GrowthFactor, p.BatchFactor, p.MinBatch, p.InitiatedSessions = c.growth, c.bf, rangesync.MinBatch, c.slots
 	return p
 }
 
-// same reports whether c and d have the same constants.
-func (c srepConfig) same(d srepConfig) bool { return c.growth == d.growth && c.bf == d.bf }
+// same reports whether c and d have the same constants and cap.
+func (c srepConfig) same(d srepConfig) bool {
+	return c.growth == d.growth && c.bf == d.bf && c.slots == d.slots
+}
 
-// srepConfigCompiled is the compiled constants.
+// srepConfigCompiled is the compiled constants, with the per-node cap.
 var srepConfigCompiled = srepConfig{
 	name:   "now",
 	growth: rangesync.GrowthFactor,
@@ -70,13 +75,15 @@ var srepConfigCompiled = srepConfig{
 }
 
 // srepConfigs are the session constants G6 decided between: "now" is the
-// compiled constants (GrowthFactor 2 and BatchFactor 1.6 since T4.7 part 2),
-// "GrowthFactor 4" those before G6.
+// compiled constants (GrowthFactor 2 and BatchFactor 1.6, with the per-node
+// cap, since T4.7 part 2), "GrowthFactor 4, 8 slots" those before G6. G6
+// measured the candidates with the constant cap of 8.
 var srepConfigs = []srepConfig{
 	srepConfigCompiled,
-	{name: "GrowthFactor 4", growth: 4, bf: srepFactor{16, 10}},
-	{name: "BatchFactor 2.0", growth: 2, bf: srepFactor{2, 1}},
-	{name: "GrowthFactor 4, BatchFactor 2.0", growth: 4, bf: srepFactor{2, 1}},
+	{name: "GrowthFactor 4, 8 slots", growth: 4, bf: srepFactor{16, 10}, slots: 8},
+	{name: "8 slots", growth: 2, bf: srepFactor{16, 10}, slots: 8},
+	{name: "BatchFactor 2.0, 8 slots", growth: 2, bf: srepFactor{2, 1}, slots: 8},
+	{name: "GrowthFactor 4, BatchFactor 2.0, 8 slots", growth: 4, bf: srepFactor{2, 1}, slots: 8},
 }
 
 // srepFigures are the figures the model and the harness are compared on,
@@ -252,9 +259,12 @@ func (r srepRow) String() string {
 // n_Δ, the symbols and the differences between configurations: at a Delay.
 // At Delay 0 the harness's goroutines of one instant are not fully in step,
 // so a later session can read after a fetch of the same instant: at N = 17
-// its n_Δ is 7–11% above the model's, and the model's symbols per
-// difference are 2–11% above its own, which partly cancels in the share
-// (still checked, within srepShareTol, but no evidence).
+// its n_Δ was 7–11% above the model's with the constant cap of 8, and the
+// model's symbols per difference 2–11% above its own, which partly cancelled
+// in the share. With the per-node cap (up to 16 sessions of one instant,
+// T4.7 part 2) its n_Δ is ~27% above and its share not repeatable (47.3 and
+// 52.8% in two runs of the same seeds, against the model's 38%): at Delay 0
+// the compiled constants' figures and records are logged, not checked.
 func (r srepRow) validated() bool { return r.delay > 0 }
 
 // options returns the harness's options of the row for seed.
@@ -290,6 +300,7 @@ const (
 type srepRef struct {
 	growth                                   int
 	bf                                       srepFactor
+	slots                                    int // as srepConfig.slots
 	row                                      srepRow
 	n                                        int
 	share, shareSD, diff, diffSD, spd, spdSD float64
@@ -306,8 +317,8 @@ func (r srepRef) String() string {
 	if r.row.delay > 0 {
 		delay = fmt.Sprintf("%d * time.Millisecond", r.row.delay.Milliseconds())
 	}
-	return fmt.Sprintf("{%d, srepFactor{%d, %d}, srepRow{%d, %s, %v}, %d, %.4f, %.4f, %.2f, %.2f, %.3f, %.3f},",
-		r.growth, r.bf.Num, r.bf.Den, r.row.n, delay, r.row.noHints, r.n, r.share, r.shareSD, r.diff, r.diffSD, r.spd, r.spdSD)
+	return fmt.Sprintf("{%d, srepFactor{%d, %d}, %d, srepRow{%d, %s, %v}, %d, %.4f, %.4f, %.2f, %.2f, %.3f, %.3f},",
+		r.growth, r.bf.Num, r.bf.Den, r.slots, r.row.n, delay, r.row.noHints, r.n, r.share, r.shareSD, r.diff, r.diffSD, r.spd, r.spdSD)
 }
 
 // srepRefOf returns the record of the harness's figures fs of row with c.
@@ -315,13 +326,13 @@ func srepRefOf(c srepConfig, row srepRow, fs []srepFigures) srepRef {
 	share := srepSpreadOf(fs, func(f srepFigures) float64 { return f.Share })
 	diff := srepSpreadOf(fs, func(f srepFigures) float64 { return f.DiffPerUpload })
 	spd := srepSpreadOf(fs, func(f srepFigures) float64 { return f.SymbolsPerDiff })
-	return srepRef{growth: c.growth, bf: c.bf, row: row, n: len(fs), share: share.mean, shareSD: share.sd, diff: diff.mean, diffSD: diff.sd, spd: spd.mean, spdSD: spd.sd}
+	return srepRef{growth: c.growth, bf: c.bf, slots: c.slots, row: row, n: len(fs), share: share.mean, shareSD: share.sd, diff: diff.mean, diffSD: diff.sd, spd: spd.mean, spdSD: spd.sd}
 }
 
 // srepRecorded returns the record of row with c in srepHarnessRef.
 func srepRecorded(c srepConfig, row srepRow) (srepRef, bool) {
 	for _, r := range srepHarnessRef {
-		if r.growth == c.growth && r.bf == c.bf && r.row == row {
+		if r.growth == c.growth && r.bf == c.bf && r.slots == c.slots && r.row == row {
 			return r, true
 		}
 	}
@@ -331,46 +342,58 @@ func srepRecorded(c srepConfig, row srepRow) (srepRef, bool) {
 // srepHarnessRef holds the harness's records of every row of
 // TestSREPModelVsHarness with each of srepConfigs, srepHarnessSeeds seeds
 // each, measured in scratch copies with the constants changed
-// (TestSREPModelVsHarness logs the records of the compiled constants). A
-// change of the protocol that moves the harness's figures fails the record
-// check of TestSREPModelVsHarness; record them again then.
+// (TestSREPModelVsHarness logs the records of the compiled constants): those
+// with 8 slots at G6 (T4.6 part 2), with the constant cap of 8 before G6,
+// those of the compiled constants with the per-node cap (slots 0) in T4.7
+// part 2. A change of the protocol that moves the harness's figures fails
+// the record check of TestSREPModelVsHarness; record them again then.
 var srepHarnessRef = []srepRef{
+	// the compiled constants, GrowthFactor 2, BatchFactor 1.6, the per-node
+	// cap (T4.7 part 2)
+	{2, srepFactor{16, 10}, 0, srepRow{9, 0, false}, 6, 0.5919, 0.0115, 18.20, 0.18, 2.162, 0.058},
+	{2, srepFactor{16, 10}, 0, srepRow{9, 50 * time.Millisecond, false}, 6, 0.5966, 0.0069, 18.16, 0.12, 2.197, 0.043},
+	{2, srepFactor{16, 10}, 0, srepRow{9, 200 * time.Millisecond, false}, 6, 0.5986, 0.0075, 18.03, 0.07, 2.231, 0.037},
+	{2, srepFactor{16, 10}, 0, srepRow{9, 50 * time.Millisecond, true}, 6, 0.5972, 0.0108, 18.16, 0.15, 2.180, 0.046},
+	{2, srepFactor{16, 10}, 0, srepRow{17, 0, false}, 6, 0.5280, 0.0288, 55.43, 3.06, 2.557, 0.099},
+	{2, srepFactor{16, 10}, 0, srepRow{17, 50 * time.Millisecond, false}, 6, 0.3934, 0.0043, 43.48, 0.12, 2.306, 0.031},
+	{2, srepFactor{16, 10}, 0, srepRow{17, 200 * time.Millisecond, false}, 6, 0.3995, 0.0148, 43.10, 1.45, 2.369, 0.057},
+	{2, srepFactor{16, 10}, 0, srepRow{17, 50 * time.Millisecond, true}, 6, 0.3934, 0.0060, 43.52, 0.15, 2.277, 0.043},
 	// GrowthFactor 4, BatchFactor 1.6 (the constants before G6)
-	{4, srepFactor{16, 10}, srepRow{9, 0, false}, 6, 0.7806, 0.0261, 18.30, 0.13, 3.088, 0.135},
-	{4, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7688, 0.0170, 18.13, 0.05, 3.064, 0.093},
-	{4, srepFactor{16, 10}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7204, 0.0238, 18.06, 0.10, 2.844, 0.127},
-	{4, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, true}, 6, 0.8044, 0.0176, 18.17, 0.08, 3.226, 0.091},
-	{4, srepFactor{16, 10}, srepRow{17, 0, false}, 6, 0.6477, 0.0138, 52.86, 1.53, 3.478, 0.062},
-	{4, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6213, 0.0200, 49.64, 0.62, 3.484, 0.112},
-	{4, srepFactor{16, 10}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6623, 0.0397, 54.79, 1.05, 3.355, 0.191},
-	{4, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0124, 49.15, 0.75, 3.315, 0.094},
-	// GrowthFactor 2, BatchFactor 1.6 (compiled since T4.7 part 2)
-	{2, srepFactor{16, 10}, srepRow{9, 0, false}, 6, 0.6066, 0.0153, 18.49, 0.25, 2.192, 0.044},
-	{2, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.5951, 0.0048, 18.16, 0.11, 2.189, 0.027},
-	{2, srepFactor{16, 10}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.5975, 0.0094, 18.04, 0.14, 2.225, 0.036},
-	{2, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, true}, 6, 0.5957, 0.0098, 18.19, 0.09, 2.171, 0.048},
-	{2, srepFactor{16, 10}, srepRow{17, 0, false}, 6, 0.5051, 0.0289, 53.87, 1.98, 2.483, 0.084},
-	{2, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.4860, 0.0115, 49.46, 1.03, 2.559, 0.062},
-	{2, srepFactor{16, 10}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.5215, 0.0078, 53.89, 0.42, 2.537, 0.070},
-	{2, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.4430, 0.0092, 48.52, 0.52, 2.316, 0.071},
+	{4, srepFactor{16, 10}, 8, srepRow{9, 0, false}, 6, 0.7806, 0.0261, 18.30, 0.13, 3.088, 0.135},
+	{4, srepFactor{16, 10}, 8, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7688, 0.0170, 18.13, 0.05, 3.064, 0.093},
+	{4, srepFactor{16, 10}, 8, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7204, 0.0238, 18.06, 0.10, 2.844, 0.127},
+	{4, srepFactor{16, 10}, 8, srepRow{9, 50 * time.Millisecond, true}, 6, 0.8044, 0.0176, 18.17, 0.08, 3.226, 0.091},
+	{4, srepFactor{16, 10}, 8, srepRow{17, 0, false}, 6, 0.6477, 0.0138, 52.86, 1.53, 3.478, 0.062},
+	{4, srepFactor{16, 10}, 8, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6213, 0.0200, 49.64, 0.62, 3.484, 0.112},
+	{4, srepFactor{16, 10}, 8, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6623, 0.0397, 54.79, 1.05, 3.355, 0.191},
+	{4, srepFactor{16, 10}, 8, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0124, 49.15, 0.75, 3.315, 0.094},
+	// GrowthFactor 2, BatchFactor 1.6, 8 slots
+	{2, srepFactor{16, 10}, 8, srepRow{9, 0, false}, 6, 0.6066, 0.0153, 18.49, 0.25, 2.192, 0.044},
+	{2, srepFactor{16, 10}, 8, srepRow{9, 50 * time.Millisecond, false}, 6, 0.5951, 0.0048, 18.16, 0.11, 2.189, 0.027},
+	{2, srepFactor{16, 10}, 8, srepRow{9, 200 * time.Millisecond, false}, 6, 0.5975, 0.0094, 18.04, 0.14, 2.225, 0.036},
+	{2, srepFactor{16, 10}, 8, srepRow{9, 50 * time.Millisecond, true}, 6, 0.5957, 0.0098, 18.19, 0.09, 2.171, 0.048},
+	{2, srepFactor{16, 10}, 8, srepRow{17, 0, false}, 6, 0.5051, 0.0289, 53.87, 1.98, 2.483, 0.084},
+	{2, srepFactor{16, 10}, 8, srepRow{17, 50 * time.Millisecond, false}, 6, 0.4860, 0.0115, 49.46, 1.03, 2.559, 0.062},
+	{2, srepFactor{16, 10}, 8, srepRow{17, 200 * time.Millisecond, false}, 6, 0.5215, 0.0078, 53.89, 0.42, 2.537, 0.070},
+	{2, srepFactor{16, 10}, 8, srepRow{17, 50 * time.Millisecond, true}, 6, 0.4430, 0.0092, 48.52, 0.52, 2.316, 0.071},
 	// GrowthFactor 4, BatchFactor 2.0
-	{4, srepFactor{2, 1}, srepRow{9, 0, false}, 6, 0.6913, 0.0200, 18.32, 0.14, 2.637, 0.088},
-	{4, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7107, 0.0199, 18.18, 0.09, 2.768, 0.111},
-	{4, srepFactor{2, 1}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7062, 0.0177, 18.04, 0.13, 2.775, 0.089},
-	{4, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, true}, 6, 0.8076, 0.0246, 18.15, 0.04, 3.245, 0.129},
-	{4, srepFactor{2, 1}, srepRow{17, 0, false}, 6, 0.6212, 0.0191, 52.35, 1.32, 3.334, 0.077},
-	{4, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6121, 0.0183, 49.59, 0.14, 3.422, 0.113},
-	{4, srepFactor{2, 1}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6378, 0.0165, 54.62, 0.73, 3.225, 0.074},
-	{4, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0121, 49.13, 0.87, 3.316, 0.105},
+	{4, srepFactor{2, 1}, 8, srepRow{9, 0, false}, 6, 0.6913, 0.0200, 18.32, 0.14, 2.637, 0.088},
+	{4, srepFactor{2, 1}, 8, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7107, 0.0199, 18.18, 0.09, 2.768, 0.111},
+	{4, srepFactor{2, 1}, 8, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7062, 0.0177, 18.04, 0.13, 2.775, 0.089},
+	{4, srepFactor{2, 1}, 8, srepRow{9, 50 * time.Millisecond, true}, 6, 0.8076, 0.0246, 18.15, 0.04, 3.245, 0.129},
+	{4, srepFactor{2, 1}, 8, srepRow{17, 0, false}, 6, 0.6212, 0.0191, 52.35, 1.32, 3.334, 0.077},
+	{4, srepFactor{2, 1}, 8, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6121, 0.0183, 49.59, 0.14, 3.422, 0.113},
+	{4, srepFactor{2, 1}, 8, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6378, 0.0165, 54.62, 0.73, 3.225, 0.074},
+	{4, srepFactor{2, 1}, 8, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0121, 49.13, 0.87, 3.316, 0.105},
 	// GrowthFactor 2, BatchFactor 2.0
-	{2, srepFactor{2, 1}, srepRow{9, 0, false}, 6, 0.6137, 0.0130, 18.25, 0.18, 2.264, 0.059},
-	{2, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.6224, 0.0088, 18.13, 0.17, 2.333, 0.042},
-	{2, srepFactor{2, 1}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.6397, 0.0084, 18.04, 0.17, 2.440, 0.039},
-	{2, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, true}, 6, 0.5989, 0.0086, 18.18, 0.11, 2.187, 0.044},
-	{2, srepFactor{2, 1}, srepRow{17, 0, false}, 6, 0.5118, 0.0254, 52.53, 2.26, 2.617, 0.068},
-	{2, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.5229, 0.0076, 49.77, 0.96, 2.797, 0.040},
-	{2, srepFactor{2, 1}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.5566, 0.0111, 53.80, 1.01, 2.764, 0.044},
-	{2, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.4492, 0.0089, 48.75, 0.62, 2.348, 0.052},
+	{2, srepFactor{2, 1}, 8, srepRow{9, 0, false}, 6, 0.6137, 0.0130, 18.25, 0.18, 2.264, 0.059},
+	{2, srepFactor{2, 1}, 8, srepRow{9, 50 * time.Millisecond, false}, 6, 0.6224, 0.0088, 18.13, 0.17, 2.333, 0.042},
+	{2, srepFactor{2, 1}, 8, srepRow{9, 200 * time.Millisecond, false}, 6, 0.6397, 0.0084, 18.04, 0.17, 2.440, 0.039},
+	{2, srepFactor{2, 1}, 8, srepRow{9, 50 * time.Millisecond, true}, 6, 0.5989, 0.0086, 18.18, 0.11, 2.187, 0.044},
+	{2, srepFactor{2, 1}, 8, srepRow{17, 0, false}, 6, 0.5118, 0.0254, 52.53, 2.26, 2.617, 0.068},
+	{2, srepFactor{2, 1}, 8, srepRow{17, 50 * time.Millisecond, false}, 6, 0.5229, 0.0076, 49.77, 0.96, 2.797, 0.040},
+	{2, srepFactor{2, 1}, 8, srepRow{17, 200 * time.Millisecond, false}, 6, 0.5566, 0.0111, 53.80, 1.01, 2.764, 0.044},
+	{2, srepFactor{2, 1}, 8, srepRow{17, 50 * time.Millisecond, true}, 6, 0.4492, 0.0089, 48.75, 0.62, 2.348, 0.052},
 }
 
 // The tolerances of TestSREPModelVsHarness: the difference of two means
@@ -396,22 +419,22 @@ const (
 
 // srepFigureNames are the figures a comparison reports, with their scale and
 // precision, and the tolerance of the checked ones (tol > 0): relative to the
-// harness's mean when rel is set, otherwise absolute in the figure's unit. A
-// component (n_Δ and the symbols) is checked only at a Delay
-// (srepRow.validated).
+// harness's mean when rel is set, otherwise absolute in the figure's unit.
+// The share and its components (n_Δ and the symbols) are checked only at a
+// Delay (atDelay, srepRow.validated).
 var srepFigureNames = []struct {
-	name      string
-	get       func(srepFigures) float64
-	scale     float64
-	prec      int
-	tol       float64
-	rel       bool
-	component bool
+	name    string
+	get     func(srepFigures) float64
+	scale   float64
+	prec    int
+	tol     float64
+	rel     bool
+	atDelay bool
 }{
-	{name: "share of pullsync %", get: func(f srepFigures) float64 { return f.Share }, scale: 100, prec: 1, tol: srepShareTol},
-	{name: "n_Δ per upload", get: func(f srepFigures) float64 { return f.DiffPerUpload }, scale: 1, prec: 1, tol: srepDiffTol, rel: true, component: true},
-	{name: "symbols per difference", get: func(f srepFigures) float64 { return f.SymbolsPerDiff }, scale: 1, prec: 2, tol: srepSymbolsTol, rel: true, component: true},
-	{name: "n_Δ p50 per session", get: func(f srepFigures) float64 { return f.DiffP50 }, scale: 1, prec: 0, tol: 0.15, rel: true, component: true},
+	{name: "share of pullsync %", get: func(f srepFigures) float64 { return f.Share }, scale: 100, prec: 1, tol: srepShareTol, atDelay: true},
+	{name: "n_Δ per upload", get: func(f srepFigures) float64 { return f.DiffPerUpload }, scale: 1, prec: 1, tol: srepDiffTol, rel: true, atDelay: true},
+	{name: "symbols per difference", get: func(f srepFigures) float64 { return f.SymbolsPerDiff }, scale: 1, prec: 2, tol: srepSymbolsTol, rel: true, atDelay: true},
+	{name: "n_Δ p50 per session", get: func(f srepFigures) float64 { return f.DiffP50 }, scale: 1, prec: 0, tol: 0.15, rel: true, atDelay: true},
 	{name: "batch convergence s", get: func(f srepFigures) float64 { return f.BatchConv }, scale: 1, prec: 2, tol: 1},
 	{name: "longest batch convergence s", get: func(f srepFigures) float64 { return f.MaxConv }, scale: 1, prec: 2, tol: 1},
 	{name: "Mores per upload", get: func(f srepFigures) float64 { return f.MoresPerUpload }, scale: 1, prec: 2},
@@ -465,11 +488,11 @@ func srepCompare(t *testing.T, what string, m, h srepSpread, tol float64, rel bo
 // standard error, from the spread over the seeds of both sides: the harness
 // is not exactly repeatable (one seed's share moves by up to 3 points between
 // runs), and the bound widens by the spread the run measured. Checked:
-//   - the share of AC-B1's pullsync within 3 points;
-//   - n_Δ per upload and the symbols per difference within 6% each, so that
-//     errors in the two cannot cancel in the share beyond that, and the
-//     median n_Δ per session within 15%: at a Delay only (srepRow.validated;
-//     at Delay 0 they are logged);
+//   - the share of AC-B1's pullsync within 3 points, n_Δ per upload and the
+//     symbols per difference within 6% each, so that errors in the two
+//     cannot cancel in the share beyond that, and the median n_Δ per session
+//     within 15%: at a Delay only (srepRow.validated; at Delay 0 they are
+//     logged);
 //   - the mean and the longest convergence of a batch within 1 s;
 //   - no duplicate delivery on either side.
 //
@@ -481,10 +504,10 @@ func srepCompare(t *testing.T, what string, m, h srepSpread, tol float64, rel bo
 // in scratch copies with the constants changed: the model runs every
 // candidate, and its absolute figures, its differences from the compiled
 // constants and its hint(R) differences are checked against the records. The
-// live harness must match the record of the compiled constants (the share
-// within 1.5 points, n_Δ and the symbols within 3%), so that a record that no
-// longer describes the code fails. The test logs the records of the compiled
-// constants.
+// live harness must match the record of the compiled constants at a Delay
+// (the share within 1.5 points, n_Δ and the symbols within 3%), so that a
+// record that no longer describes the code fails. The test logs the records
+// of the compiled constants.
 func TestSREPModelVsHarness(t *testing.T) {
 	table := newSREPDecodeTable(srepSimDraws, 7)
 	share := func(f srepFigures) float64 { return f.Share }
@@ -530,7 +553,7 @@ func TestSREPModelVsHarness(t *testing.T) {
 				m, h := srepSpreadOf(ms, f.get), srepSpreadOf(hs, f.get)
 				fmt.Fprintf(&b, "\n  %s: %s | %s", f.name, m.formatSD(f.scale, f.prec), h.formatSD(f.scale, f.prec))
 				if f.tol > 0 {
-					fmt.Fprintf(&b, " | %s", srepCompare(t, fmt.Sprintf("%v: %s", row, f.name), m, h, f.tol, f.rel, f.scale, f.prec, !f.component || row.validated()))
+					fmt.Fprintf(&b, " | %s", srepCompare(t, fmt.Sprintf("%v: %s", row, f.name), m, h, f.tol, f.rel, f.scale, f.prec, !f.atDelay || row.validated()))
 				}
 			}
 			if m, h := srepSpreadOf(ms, func(f srepFigures) float64 { return f.Duplicates }), srepSpreadOf(hs, func(f srepFigures) float64 { return f.Duplicates }); m.hi != 0 || h.hi != 0 {
@@ -572,9 +595,9 @@ func TestSREPModelVsHarness(t *testing.T) {
 				continue
 			}
 			fmt.Fprintf(&b, " // live − recorded: share %s, n_Δ %s, symbols %s",
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: share", row), live.spread(live.share, live.shareSD), rec.spread(rec.share, rec.shareSD), srepRecordTol, false, 100, 1, true),
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: n_Δ per upload", row), live.spread(live.diff, live.diffSD), rec.spread(rec.diff, rec.diffSD), srepRecordRelTol, true, 1, 1, true),
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: symbols per difference", row), live.spread(live.spd, live.spdSD), rec.spread(rec.spd, rec.spdSD), srepRecordRelTol, true, 1, 2, true))
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: share", row), live.spread(live.share, live.shareSD), rec.spread(rec.share, rec.shareSD), srepRecordTol, false, 100, 1, row.validated()),
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: n_Δ per upload", row), live.spread(live.diff, live.diffSD), rec.spread(rec.diff, rec.diffSD), srepRecordRelTol, true, 1, 1, row.validated()),
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: symbols per difference", row), live.spread(live.spd, live.spdSD), rec.spread(rec.spd, rec.spdSD), srepRecordRelTol, true, 1, 2, row.validated()))
 		}
 		t.Log(b.String())
 	})
@@ -737,19 +760,18 @@ func TestSREPModelG6(t *testing.T) {
 	})
 
 	t.Run("initiated sessions", func(t *testing.T) {
-		// MaxInitiatedSessions (8) against a slot per peer: at N = 17 the
-		// lowest overlays open up to 16 sessions per round, in two waves of
-		// 8, and the second wave meets peers that fetched from the first.
-		// The model does not cap the sessions a node serves
-		// (MaxConcurrentSessions), so 16 slots is a bound, not a design.
-		// The gain is not validated: it runs through the second wave's
-		// hints, where the model's symbols per difference sit above the
-		// harness's (TestSREPModelVsHarness), and the harness cannot run 16
-		// slots without a scratch edit.
+		// The constant cap before G6 (8) against a slot per peer (16) and
+		// the per-node cap (0: reconciler.InitiatedSessionCap, T4.7 part 2):
+		// at N = 17 the lowest overlays open up to 16 sessions per round, in
+		// two waves of 8 with the constant cap, and the second wave meets
+		// peers that fetched from the first. The model does not cap the
+		// sessions a node serves (MaxConcurrentSessions), which at N ≤ 17
+		// never refuses a session (one per peer); the harness measures the
+		// cap (TestG6Constants, TestG6InitiatedCap).
 		var b strings.Builder
-		b.WriteString("| N | slots | constants | n_Δ per upload (p(N − p)) | share % | symbols/diff | batch convergence s |\n")
+		b.WriteString("| N | slots (0: per node) | constants | n_Δ per upload (p(N − p)) | share % | symbols/diff | batch convergence s |\n")
 		for _, n := range []int{9, 17} {
-			for _, slots := range []int{8, 16} {
+			for _, slots := range []int{8, 16, 0} {
 				for _, c := range srepConfigs[:2] {
 					o := steadyOptions(n, 1)
 					o.Delay = 50 * time.Millisecond
