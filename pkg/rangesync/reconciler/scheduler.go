@@ -525,7 +525,8 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 
 // session runs Reconcile then Fetch with peer, whose entry st is in
 // Reconciling with machine generation gen, then transfers the ranges the
-// session handed to its Striper (d̂ > LargeDiff) as stripes. It waits for a
+// session handed to its Striper (ranges this node lacks by more than
+// LargeDiff, or at all inside a running transfer) as stripes. It waits for a
 // session slot first (MaxInitiatedSessions), then rechecks the round's
 // decision, made at decided with this node's root root (recheckSession).
 // Once the peer has another entry or machine (currentLocked) neither the

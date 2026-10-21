@@ -30,8 +30,10 @@ const (
 	// ItemsPageSize is the largest number of IDs in one Items part.
 	ItemsPageSize = 1024
 
-	// LargeDiff is the estimated difference above which the initiator hands a
-	// range to the reconciler for a striped transfer instead of reconciling it.
+	// LargeDiff is the count difference above which the side of a session
+	// that holds fewer elements in a range, initiator or responder, hands
+	// the range to its reconciler for a striped transfer instead of
+	// reconciling it (DecisionStripe). Options.LargeDiff scales it in tests.
 	LargeDiff = 65536
 )
 
@@ -112,7 +114,7 @@ const (
 // elsewhere: the cached symbol prefixes a session copies when a symbol
 // stream starts (at most cap(R) symbols per open stream), the listed IDs
 // kept for the peer's Reply pages (MaxPendingReplies), the wants a session
-// returns (a range with an estimated difference above LargeDiff goes to the
+// returns (a range this node lacks by more than LargeDiff goes to the
 // Striper instead), and one Message in each direction (MaxMessageBytes).
 const (
 	// DecoderBytesPerID bounds the memory a decoder keeps per recovered ID:
