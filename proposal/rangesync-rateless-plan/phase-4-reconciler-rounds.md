@@ -2443,6 +2443,262 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
       `TestCombinedSyncerBothDrivers` passes at `-count=3`.
     - `make build`, `make lint`, `golangci-lint --build-tags sim` and `go vet` (default and
       `-tags=sim`) are clean.
+- **(T4.6 part 3) G6 summary: the measured inputs and a recommendation per question.** No production
+  constant changed; the user decides at G6. How it was measured:
+  - The harness (`runNeighborhood`) in its steady mode (`steadyOptions`: 24 batches of 20 uploads
+    1.3 s apart, ~15.4 uploads per second, p = 3), N = 9 and 17, 6 seeds per row, Delay 0, 50, 100
+    and 200 ms with hint(R) and 50 and 200 ms without (`TestG6Constants`). Every candidate ran in a
+    scratch build with only its constant changed: `GrowthFactor` 2 and 3, `BatchFactorNum` 20 (2.0),
+    both, and `reconciler.MaxInitiatedSessions` 16 alone and with `GrowthFactor` 2. Load, round
+    interval, catch-up, bootstrap and fault runs are `TestG6Load`, `TestG6RoundInterval`,
+    `TestG6Catchup`, `TestG6Bootstrap` and `TestG6FetchOpenFails` (all `-tags=sim`, next entries).
+    The model (`TestSREPModelG6Part3`) covers the grids and loads past the harness's reach.
+  - A share is metadata per upload over AC-B1's baseline, N(N − 1) × 102 B. Delay 0 rows are outside
+    the validated domain (part 2 fix round 1: the goroutines of one instant are not in step) and
+    back no verdict. One seed's share moves by up to 3 points between runs, so a difference counts
+    only when the 6-seed spreads separate.
+
+  **Q2, cache sizes (`RootSymbols` 4096, `Level1Symbols` 512, `BucketSymbols` 32).** Steady state
+  (`TestG6Load`, Delay 50 ms, 4 seeds; a quantile is the mean over the seeds, a max the largest):
+
+  | N | uploads/s | n_Δ per session p50 / p99 / max (exact side) | n_Δ p99, both sides | wants per side p50 / p99 / max | first batch of the largest n_Δ | streams exhausted |
+  |---|---|---|---|---|---|---|
+  | 9 | 15.4 | 40 / 54 / 58 | 61 | 20 / 32 / 35 | 95 | 0 |
+  | 9 | 50 | 131 / 168 / 184 | 190 | 65 / 96 / 104 | 297 | 0 |
+  | 9 | 100 | 260 / 327 / 343 | 368 | 129 / 184 / 203 | 551 | 0 |
+  | 17 | 15.4 | 27 / 64 / 82 | 98 | 11 / 38 / 82 | 134 | 0 |
+  | 17 | 50 | 86 / 190 / 259 | 306 | 37 / 84 / 169 | 417 | 0 |
+  | 17 | 100 | 176 / 365 / 484 | 601 | 76 / 170 / 400 | 777 | 0 |
+
+  With a reserve past `ScanLimit` (Base 5000, so cap(R) = `RootSymbols`) at 50 uploads per second
+  the figures are the same (max n_Δ 174 and 214) and no stream exhausted. Catch-up (`TestG6Catchup`:
+  N = 5, one node rejoins lacking Lag chunks of a 70000-chunk reserve, so the root and level-1
+  streams end at their caches; Delay 50 ms, 2 seeds; every one of the 4 peers runs its own session
+  over the same difference, and the want set de-duplicates only the fetches):
+
+  | Lag | caught up | path | split children | exhausted | symbols per missing chunk, per session | symbols of the next sessions |
+  |---|---|---|---|---|---|---|
+  | 300 | 0.85 s | one root stream | 0 | 0 | 1.61 | 1988 (≈ the catch-up's 1928) |
+  | 1000 | 1.08 s | one root stream | 0 | 0 | 1.60 | 6450 (6408) |
+  | 2500 | 1.85 s | one root stream | 0 | 0 | 1.60 | 16052 (16008) |
+  | 4000 | 2.62 s | root split, 16 level-1 streams | 64 | 0 | 1.63 | 186 |
+  | 6000 | 3.97 s | level-1 ranges split again (to the harness's leaves, the scan path) | 1088 | 68 | 2.73 | 68 |
+  | 12000 | 6.90 s | the same, 3 sessions per peer | 1280 | 350 | 1.93 | 116 |
+
+  At Lag 6000 every session stops at `SessionSymbolBudget` (16384 symbols, exactly 4 × 16384 in all)
+  and its remaining ranges answer exhausted and fall back to item lists: the session budget, not a
+  cache, bounds a catch-up at ~6000 per session. Its longest session took 9 round trips (4 below Lag
+  4000).
+
+  Recommendation: **keep 4096 / 512 / 32**, and confirm T2.6's "keep `BucketSymbols` 32".
+  - The steady state never leaves the root stream's cached prefix: at 100 uploads per second the
+    largest difference needs a first batch of 777 symbols (19% of `RootSymbols`; the root splits
+    only past d̂ = 2558), and no stream exhausted a cache in any of the ~460 steady-state runs that
+    count it (`TestG6Constants` asserts it, `TestG6Load` reports it).
+  - The caches matter for catch-ups only. One root stream resolves up to ~2500 missing chunks at
+    1.60 symbols each per session; up to ~5000 the root splits once into level-1 streams (1.63);
+    past that the level-1 ranges split again, onto bucket caches in production (32 symbols, ~18 by
+    the estimate) or the scan path in the harness (8 leaf bits). A split costs a round trip and 16
+    Fingerprints per split range, ~1% of the bytes. At 15 uploads per second an absent node misses
+    ~15 chunks per second, so ~3 minutes away reach the first split and ~6 the second.
+  - Memory (§5.3, of ~21 MB): root 0.36 MB, level-1 0.7 MB, bucket Fenwick 11.5 MB. Doubling
+    `Level1Symbols` (+0.7 MB) would move the second split to ~10,000 missing; doubling `RootSymbols`
+    (+0.36 MB) the first to ~5100. Neither shows in the steady state; T6.3 can show how often
+    catch-ups of that size happen. `BucketSymbols` 16 saves 5.5 MB but descends at d ≈ 8–11 per
+    bucket run (T2.6); bucket-cache streams appear only below a second split and for nested session
+    roots (below).
+  - Not measured (every harness node is at radius 0): nested session roots. A peer one bit deeper
+    has a session root one bit below this node's root, which this node serves from the bucket cache
+    (`cacheCapacity`: 32 symbols at a depth ≤ `LeafBits`) when it holds more than `ScanLimit` there,
+    so such a session's stream exhausts past ~20 differences and splits (by inspection; Follow-ups).
+  - Found: a catch-up's hint(R) sizes the next session's first batch. After a catch-up that decoded
+    at the root (Lag ≤ 2500), each pair's next first batch is `FirstBatch(Lag)` for a difference of
+    1–4 (the table's last column): the catch-up's symbol bytes once more (Follow-ups).
+
+  **Q3, request-driven vs streamed batches, and `GrowthFactor`.** Harness, hint(R) on, 6 seeds;
+  share at Delay 50 / 100 / 200 ms (sd ≤ 2.7 points, ≤ 1.4 for `GrowthFactor` 2), the rest at 50 ms:
+
+  | constants | N | share % | Mores per upload | round trips per session | convergence mean, longest |
+  |---|---|---|---|---|---|
+  | `GrowthFactor` 4 (now) | 9 | 77.5 / 76.4 / 72.3 | 0.25 | 4.51 | 3.39 s, 5.90 s |
+  | `GrowthFactor` 3 | 9 | 68.0 / 69.9 / 67.1 | 0.28 | 4.57 | 3.41 s, 5.90 s |
+  | `GrowthFactor` 2 | 9 | 59.8 / 60.6 / 59.9 | 0.36 | 4.79 | 3.43 s, 6.10 s |
+  | `GrowthFactor` 2, no hint | 9 | 59.7 / – / 59.2 | 1.40 | 7.02 | 3.68 s, 6.10 s |
+  | `GrowthFactor` 4 (now) | 17 | 61.7 / 61.6 / 65.6 | 0.90 | 4.48 | 3.73 s, 6.45 s |
+  | `GrowthFactor` 3 | 17 | 55.1 / 55.0 / 59.9 | 0.98 | 4.55 | 3.74 s, 6.55 s |
+  | `GrowthFactor` 2 | 17 | 48.3 / 49.1 / 52.1 | 1.22 | 4.68 | 3.76 s, 6.55 s |
+  | `GrowthFactor` 2, no hint | 17 | 44.7 / – / 46.2 | 4.10 | 6.35 | 3.98 s, 6.55 s |
+
+  Streamed batches (the model from the same sessions' decoder thresholds K: a responder that streams
+  on until a stop arrives overshoots K by what the line carries in a round trip, and saves the
+  `More`s; 10 seeds, Delay 50 ms, hint on):
+
+  | N | constants | `More`s per decoded stream | symbols per stream, request-driven / oracle K | streamed, 100 KB/s × 100 ms | 1 MB/s × 100 ms | 1 MB/s × 400 ms |
+  |---|---|---|---|---|---|---|
+  | 9 | `GrowthFactor` 4 | 0.57 | 127 / 62 | 184, +2.1 KB per upload | 1282, +43 KB | 4940, +178 KB |
+  | 9 | `GrowthFactor` 2 | 0.80 | 88 / 62 | 184, +3.5 KB | 1282, +44 KB | 4940, +179 KB |
+  | 17 | `GrowthFactor` 4 | 0.53 | 104 / 46 | 168, +8.9 KB | 1266, +162 KB | 4924, +672 KB |
+  | 17 | `GrowthFactor` 2 | 0.72 | 76 / 46 | 168, +12.8 KB | 1265, +166 KB | 4924, +676 KB |
+
+  Recommendation: **`GrowthFactor` 2** (this revises T2.6's "keep 4"), **keep the request-driven
+  `More`** (T2.6 confirmed) and **keep hint(R)**.
+  - `GrowthFactor` 2 is 12–18 points below now at N = 9 and 12.5–13.5 at N = 17, at every Delay; the
+    spreads separate. Its cost: +0.28 and +0.20 round trips per session (28 and 20 ms at 50 ms one
+    way), +0.03–0.04 s of mean convergence and +0.1–0.2 s of the longest. `GrowthFactor` 3 takes the
+    same round trips for half the gain, so there is no reason to stop there.
+  - Streamed batches lose on any working link: request-driven streams with `GrowthFactor` 2
+    overshoot the oracle by 26–30 symbols, a streamed one by rate × RTT; they break even near 2 KB
+    per round trip (about 20 KB/s at 100 ms). At 100 KB/s streaming adds 3.5 KB (N = 9) and 12.8 KB
+    (N = 17) per upload, 80–95% on top of all the metadata `GrowthFactor` 2 sends (4.4 and 13.4 KB),
+    to save 0.7–0.8 round trips per decoded stream. The wire (G2) has no stop message either.
+  - hint(R) with `GrowthFactor` 2 costs nothing at N = 9 (59.8 against 59.7%) and 3.6–5.9 points at
+    N = 17 (0.1 with 16 initiated slots, below), and saves 70% of the `More`s and 1.7 of 6.35 round
+    trips per session (0.22 s of mean convergence at N = 17).
+
+  **`BatchFactor` 1.6 → 2.0 (T2.6).** Harness, hint on, 6 seeds, share at Delay 50 / 100 / 200 ms:
+
+  | constants | N = 9 | N = 17 |
+  |---|---|---|
+  | `BatchFactor` 1.6, `GrowthFactor` 4 (now) | 77.5 / 76.4 / 72.3 | 61.7 / 61.6 / 65.6 |
+  | `BatchFactor` 2.0, `GrowthFactor` 4 | 70.9 / 72.2 / 70.5 | 62.0 / 62.2 / 64.5 |
+  | `BatchFactor` 1.6, `GrowthFactor` 2 | 59.8 / 60.6 / 59.9 | 48.3 / 49.1 / 52.1 |
+  | `BatchFactor` 2.0, `GrowthFactor` 2 | 62.2 / 64.7 / 64.4 | 52.3 / 53.1 / 56.4 |
+
+  Without the hint `BatchFactor` 2.0 equals 1.6 within the noise (81.0 against 80.5% at N = 9, 59.2
+  against 58.9% at N = 17). The model's grid with `GrowthFactor` 2 (10 seeds, 50 ms; `BatchFactor`
+  1.2 / 1.4 / 1.6 / 2.0): N = 9 61.2 / 60.6 / 59.4 / 60.8%, N = 17 46.0 / 47.7 / 49.1 / 53.5%, at
+  1.72 / 1.45 / 1.23 / 0.95 `More`s per upload. Recommendation: **keep `BatchFactor` 1.6** (this
+  revises T2.6's 2.0, now measured with `FirstBatch` reading the constant). 2.0 helps only with
+  `GrowthFactor` 4 at N = 9 (1.8–6.6 points) and not at N = 17; on top of `GrowthFactor` 2 it costs
+  2.4–4.5 points at N = 9 and 4.0–4.3 at N = 17: with a cheap miss, the larger first batch it spends
+  on every stream costs more than the misses it saves. The model's 1–3-point gain of 1.2–1.4 at N =
+  17 is within its 3-point resolution and costs 0.2–0.5 `More`s per upload; not recommended without
+  a harness build.
+
+  **Q9, `CatchUpMinDiff` = 256.** The reconciler compares it with one side's wants
+  (pairwise_diff_half: `session` for an initiator, `Wants` for a responder), not with n_Δ. Harness
+  (`TestG6Load`, Delay 50 ms, 4 seeds) and model (Poisson uploads, 4 seeds pooled):
+
+  | N | uploads/s | wants per side p50 / p99 / max, harness | sides ≥ 256, harness | wants max, model (share of sides ≥ 256) | pairwise_diff p99, both sides |
+  |---|---|---|---|---|---|
+  | 9 | 15.4 | 20 / 32 / 35 | 0 | 36 | 61 |
+  | 9 | 50 | 65 / 96 / 104 | 0 | 90 | 190 |
+  | 9 | 100 | 129 / 184 / 203 | 0 | 174 | 368 |
+  | 9 | 150 | – | – | 241 (0) | – |
+  | 9 | 200 | – | – | 328 (38%) | – |
+  | 17 | 15.4 | 11 / 38 / 82 | 0 | 64 | 98 |
+  | 17 | 50 | 37 / 84 / 169 | 0 | 221 | 306 |
+  | 17 | 100 | 76 / 170 / 400 | 7 in one run | 411 (0.56%) | 601 |
+  | 17 | 150 | – | – | 574 (2.1%) | – |
+  | 17 | 200 | – | – | 805 (3.5%) | – |
+
+  - What a steady-state side past 256 does: its fetches count towards `SyncRate`, and the chunks
+    they store keep the 10-minute window above 0 for 10–20 minutes, so the reserve worker cannot
+    lower the radius and `isFullySynced` is false (the node skips redistribution). T4.5 part 2c's
+    grace does not shield this: the grace bounds catch-up fetches that store nothing, and these
+    store chunks. A node runs ~12 × (N − 1) session sides a minute (~2000 per window at N = 17), so
+    the bound is the max, not the p99: the first sides cross 256 between 50 and 100 uploads per
+    second at N = 17 (max 169 at 50, 400 at 100) and near 180 per second at N = 9.
+  - At the reference load the p99 is 32–38 and the max 35–82: 256 holds with a 3–7× margin.
+  - The neighborhood's `pairwise_diff` aggregate (both sides, n_Δ) passes 256 at its p99 already at
+    ~40 uploads per second at N = 17 (306 at 50), while no side's wants do: Q9's check "the share in
+    `le="255"`" must read `pairwise_diff_half` (Follow-ups).
+  - Recommendation: **raise `CatchUpMinDiff` to 1024**, unless the expected neighborhood upload rate
+    stays well below 50 per second, where 256 holds. 1024 keeps the max below it up to ~200 uploads
+    per second at N = 17 (model max 805). Its cost: a catch-up of fewer than 1024 missing chunks no
+    longer holds `SyncRate`; measured, such a catch-up ends within ~1.1 s (Lag 1000: 1.08 s), long
+    before the reserve worker's 15-minute tick or the agent's once-per-phase sample, and bootstraps
+    and radius halves count through their stripes anyway. T6.3 confirms against testnet's real rate
+    (README: Q9 "confirmed in T6.3").
+
+  **`RoundInterval` bounds (adaptive 5–30 s).** Harness, Delay 50 ms, 3 seeds; steady: ~15 uploads
+  per second; sparse: 6 batches of 8 uploads 47 s apart, so that the interval grows back between
+  them, and a 10-minute quiet tail:
+
+  | N | load | min, max | convergence mean, longest | share % | symbols per difference | rounds per node-minute | idle B per node-minute |
+  |---|---|---|---|---|---|---|---|
+  | 9 | steady | 5 s, 30 s | 3.39 s, 5.90 s | 76.0 | 3.00 | 5.5 | – |
+  | 9 | steady | 7.5 s, 30 s | 4.54 s, 8.00 s | 82.8 | 3.37 | 4.6 | – |
+  | 9 | steady | 10 s, 30 s | 5.81 s, 10.70 s | 88.2 | 3.64 | 3.8 | – |
+  | 9 | steady | 5 s, 15 s / 60 s | 3.38–3.39 s, 5.90 s | 76.8 / 76.8 | – | 6.3 / 5.1 | – |
+  | 9 | steady | 2.5 s, 30 s | 1.96 s, 5.20 s | 85.6 | – | 8.2 | – |
+  | 9 | sparse | 5 s, 30 s | 6.14 s, 10.75 s | 112.5 | – | 3.2 | 355 |
+  | 9 | sparse | 5 s, 15 s / 60 s | 6.52 / 6.33 s, 10.85 / 10.75 s | 113.5 / 112.9 | – | 4.8 / 2.5 | 353 / 353 |
+  | 9 | sparse | 7.5 s / 10 s, 30 s | 7.31 / 5.95 s, 13.15 / 11.55 s | 113.3 / 112.3 | – | 3.1 / 2.9 | 352 |
+  | 17 | steady | 5 s, 30 s | 3.76 s, 6.55 s | 62.0 | 3.40 | 5.5 | – |
+  | 17 | steady | 7.5 s, 30 s | 4.91 s, 7.90 s | 65.0 | 3.69 | 4.6 | – |
+  | 17 | steady | 10 s, 30 s | 6.22 s, 10.70 s | 64.7 | 3.67 | 3.8 | – |
+  | 17 | steady | 5 s, 15 s / 60 s | 3.75 s, 6.55 / 6.30 s | 60.9 / 61.6 | – | 6.3 / 5.1 | – |
+  | 17 | steady | 2.5 s, 30 s | 2.27 s, 5.65 s | 70.4 | – | 8.2 | – |
+  | 17 | sparse | 5 s, 30 s | 7.24 s, 10.95 s | 85.4 | – | 3.4 | 712 |
+  | 17 | sparse | 5 s, 15 s / 60 s | 8.94 / 7.44 s, 10.95 / 10.75 s | 87.0 / 89.5 | – | 5.0 / 2.7 | 709 / 712 |
+  | 17 | sparse | 7.5 s / 10 s, 30 s | 10.76 / 8.82 s, 13.35 / 15.65 s | 88.4 / 87.9 | – | 3.1 / 2.9 | 704 / 705 |
+
+  With `GrowthFactor` 2 (steady, min 5 / 7.5 / 10 s): N = 9 59.1 / 62.5 / 62.4%, N = 17 48.6 / 50.6
+  / 47.9%, the same convergence. No Status or session went over a peer's rate in any run, 2.5 s
+  included (one session per peer per 2.5 s is exactly `PeerSessionInterval`, with no margin).
+  - Recommendation: **keep 5–30 s.** The 5 s minimum is the cheapest and the fastest the production
+    limits allow. Longer minimums slow convergence by 1.2–2.5 s on average (AC-V1's 2 × min becomes
+    15–20 s) and do not save bytes: the differences per session grow less than the sessions fall
+    (n_Δ p50 41 → 57 at N = 9 for twice the interval), and the symbols per difference rise (3.00 →
+    3.64). (The model, validated at 5 s only, predicts savings at 10–15 s; the harness does not show
+    them.) 2.5 s cuts the mean convergence by 1.4–1.5 s for 8–10 more points and runs at
+    `PeerSessionInterval` with no margin, while `sessionBackoffBase` stays 5 s.
+  - The maximum costs no bytes either way: rounds that find nothing send nothing, and the idle cost
+    is the Status heartbeat (352–355 B per node-minute at N = 9, 704–717 at N = 17, whatever the
+    maximum). Nor does it move convergence, since the triggers do not wait for the round timer (the
+    sparse longest 10.75–10.95 s at 15, 30 and 60 s). 60 s halves the idle rounds (one `LocalStatus`
+    each) but doubles a takeover's wait for an unresponsive initiator (2 × interval + jitter, up to
+    3 minutes); 15 s doubles the rounds for nothing. Keep 30 s.
+  - AC-V1 (2 × `RoundInterval` = 10 s at the minimum): the steady longest is 5.9–6.6 s at 50 ms, but
+    the sparse longest 10.75–10.95 s passes 10 s (part 1's 15 s derivation; T6.4 Follow-up), as does
+    the steady longest at Delay 200 ms and N = 17 (10.4 s now, 8.8 s with 16 initiated slots).
+
+  **AC-B1: share of pullsync per configuration.** Harness, 6 seeds; the range is over Delay 50, 100
+  and 200 ms (validated), with Delay 0 in brackets; pass means ≤ 50% at every validated Delay:
+
+  | constants | hint | N = 9 | N = 17 | verdict N = 9 | verdict N = 17 |
+  |---|---|---|---|---|---|
+  | now (`GrowthFactor` 4, `BatchFactor` 1.6, 8 slots) | on | 72.3–77.5 [77.8] | 61.6–65.6 [65.0] | fail | fail |
+  | now | off | 79.8–80.5 | 58.9–66.3 | fail | fail |
+  | `GrowthFactor` 3 | on | 67.1–69.9 [67.4] | 55.0–59.9 [57.9] | fail | fail |
+  | `GrowthFactor` 3 | off | 71.1–72.0 | 52.9–56.7 | fail | fail |
+  | `GrowthFactor` 2 | on | 59.8–60.6 [59.8] | 48.3–52.1 [49.0] | fail (+10) | fail at 200 ms (+2.1); passes at 50 and 100 ms (−1.7, −0.9; sd 0.7) |
+  | `GrowthFactor` 2 | off | 59.2–59.7 | 44.7–46.2 | fail | pass (−3.8 to −5.3) |
+  | `BatchFactor` 2.0 | on | 70.5–72.2 [68.0] | 62.0–64.5 [63.1] | fail | fail |
+  | `BatchFactor` 2.0 | off | 77.6–81.0 | 59.2–67.0 | fail | fail |
+  | both | on | 62.2–64.7 [62.1] | 52.3–56.4 [53.5] | fail | fail |
+  | both | off | 59.2–59.5 | 44.7–47.0 | fail | pass (−3.0 to −5.3) |
+  | 16 initiated slots | on | = now | 50.9–51.6 [62.3] | – | fail (+0.9 to +1.6) |
+  | 16 initiated slots | off | = now | 52.5–53.1 | – | fail |
+  | 16 initiated slots, `GrowthFactor` 2 | on | = `GrowthFactor` 2 | 39.5–40.3 [48.8] | fail | pass (−9.7 to −10.5) |
+  | 16 initiated slots, `GrowthFactor` 2 | off | = `GrowthFactor` 2 | 39.4 | fail | pass |
+
+  At N = 9 no node has more than 8 higher-overlay peers, so 16 slots change nothing there. Caveats:
+  - The base is AC-B1's modeled N(N − 1) × 102 B. Pullsync on the wire is 1.09× that at this load
+    (part 2), so against wire bytes every share is ~8% lower: `GrowthFactor` 2 then 54.9–55.6% at N
+    = 9 (still fails) and 44.3–47.9% at N = 17 (passes at every Delay). A measured
+    `bee_pullsync_chunks_offered` can only exceed N(N − 1) per upload, so these shares bound T6.1's
+    from above.
+  - 16 initiated slots are now validated in the harness, not only the model: at N = 17, 10–15 points
+    less at every validated Delay, no Busy or session-limit answer, mean convergence 0.3 s faster
+    (3.45 against 3.73 s at 50 ms), longest at 200 ms 8.8 against 10.4 s. But a constant 16 =
+    `MaxConcurrentSessions` fits only N ≤ 17 with no stripe or takeover holding slots (part 2 fix
+    round 1, Low 1): the production form is a per-node cap (the node's eligible higher-overlay
+    peers, bounded by the tokens its served sessions leave), a code change after G6 (Follow-ups).
+  - What would bring N = 9 to 50%: no constant. The best, `GrowthFactor` 2, is at 59–61% (55% on the
+    wire basis), and the floor with an oracle stream is 46% (part 2), so 50% leaves ~4 points for
+    the symbols' overshoot: ≤ ~1.7 symbols per difference, against 2.2 with `GrowthFactor` 2. A
+    protocol change would have to cut a fixed cost: the decoder's Items listing (~9 points at N = 9;
+    truncated IDs, which the frozen wire (G2) does not carry) or a closer first-batch estimate (none
+    tried here). Otherwise AC-B1 needs re-basing at N = 9 (T6.0's call; acceptance-criteria.md is
+    not edited here): a per-N threshold, for example ≤ 50% at N ≥ 17 and ≤ 65% at N = 9, which
+    `GrowthFactor` 2 meets with ~5 points; the wire basis alone is not enough (55%). Its prediction
+    ("28–35% at N = 9, 17–22% at N = 17") should be replaced by these measurements (part 2
+    Follow-up).
+  - Recommendation for AC-B1: `GrowthFactor` 2 with hint(R) and `BatchFactor` 1.6. N = 17 then sits
+    on the line at the modeled base and passes on the wire basis; with a per-node initiated-session
+    cap it passes with ~10 points. N = 9 passes only after re-basing.
 
 ## Follow-ups
 _(sessions append here)_
