@@ -67,8 +67,9 @@ const (
 	// is reassigned.
 	stripePeerBudget = 1 + maxStripeRestarts
 	// maxStripeRegistry bounds the ranges queued for or in a striped
-	// transfer; a range past it is dropped, and so are the parts of a
-	// trimmed range past it.
+	// transfer; a claim past it is dropped, and so are the parts of a
+	// trimmed claim past it. This node's own transfers (at most two) are
+	// registered on top of it.
 	maxStripeRegistry = 1024
 	// maxPeerStripes bounds the ranges registered on one peer's claim (a
 	// session's Striper, the rounds' session-root check) that are queued
@@ -1146,9 +1147,9 @@ func (r *Reconciler) peerStripesLocked(peer swarm.Address) int {
 //
 // What a range that is not registered misses shows up again in a later
 // round. Past maxStripeRegistry ranges, or a claim's peer's maxPeerStripes,
-// a range, or a trimmed part, is dropped (counted as
-// stripes_total{dropped}). It reports whether all of job's range was
-// registered.
+// a claim, or a trimmed part, is dropped (counted as
+// stripes_total{dropped}); an own job is not. It reports whether all of
+// job's range was registered.
 func (r *Reconciler) registerStripeLocked(job *stripeJob) bool {
 	job.rg = fingerprint.NewRange(job.rg.Prefix, job.rg.Bits)
 	rg := job.rg
@@ -1165,7 +1166,13 @@ func (r *Reconciler) registerStripeLocked(job *stripeJob) bool {
 		return false
 	}
 	room := maxStripeRegistry - len(ranges)
-	if !job.own && !job.peer.IsZero() {
+	switch {
+	case job.own:
+		// never dropped for the claims: the registry holds at most
+		// maxStripeRegistry claims and, on top, the own jobs (a bootstrap
+		// and a radius half at most)
+		room = 1
+	case !job.peer.IsZero():
 		room = min(room, maxPeerStripes-r.peerStripesLocked(job.peer))
 	}
 	if slices.ContainsFunc(ranges, rg.ContainsRange) {

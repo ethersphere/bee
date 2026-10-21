@@ -402,6 +402,31 @@ func TestOwnJobPreemptsClaims(t *testing.T) {
 			t.Fatal("the claim in flight goes on")
 		}
 	})
+	t.Run("full registry", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(selfRoot(1, 5))
+		for _, p := range []swarm.Address{higher, other} {
+			svc.remote[p.ByteString()] = selfRoot(0, 10)
+		}
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		// claims of no peer, in the old half, up to the bound
+		oldHalf := fingerprint.NewRange(self, 1)
+		claims := make([]fingerprint.Range, reconciler.MaxStripeRegistry)
+		for i := range claims {
+			claims[i] = oldHalf.Child(11, uint64(i))
+		}
+		if !r.EnqueueStripes(claims) || r.StripeRegistry() != reconciler.MaxStripeRegistry {
+			t.Fatalf("registry holds %d claims, want %d", r.StripeRegistry(), reconciler.MaxStripeRegistry)
+		}
+		svc.set(func() { svc.local = selfRoot(0, 5) }) // the radius decreased
+		r.Round()
+		if !r.RadiusStriping() || r.StripeRegistry() != reconciler.MaxStripeRegistry+1 {
+			t.Fatalf("new half not registered past the claims' bound (%d registered)", r.StripeRegistry())
+		}
+		if got := r.QueuedStripes(); !got[0].Equal(sibling(1)) {
+			t.Fatalf("queued first %s, want the new half", got[0])
+		}
+	})
 }
 
 // TestClaimKeepsRounds is the lying peer of the review (T4.7 part 1 fix
