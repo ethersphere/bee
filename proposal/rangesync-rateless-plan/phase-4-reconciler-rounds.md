@@ -3333,6 +3333,154 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     then Phase 6. P8: Phase 5 after Phase 6, before mainnet. P9: the earlier proposal committed as
     history on the docs branch.
 
+- **(T4.7 part 1) AC-B2: the lacking side declines (candidate A), as built.**
+  - The rule. `Decide` (session.go) tests the large difference second, after `DecisionEqual` and
+    before the count-0 branches, by direction: `DecisionStripe` when the range is splittable and
+    `cR − cL >` the threshold, in either role. The threshold is `LargeDiff`, or
+    `Config.LargeDiff` (tests), or 0 where `DecisionInput.Transferring` (below). The lacking side
+    offers the range to its `Striper`; taken over, the session emits nothing for it (a responder
+    whose every range is taken sends the empty Message, which ends the initiator's session with
+    the range unanswered, equal at its end: legal on the frozen wire); declined, or with no
+    `Striper`, the range is decided by the rest of the rule (`decideSmall`), the pre-T4.7 rule
+    without its stripe branch. The holder never stripes: its old initiator-only, direction-blind
+    branch is gone, so no peer registers a range it holds (constraint (a): its count-0
+    `DecisionSendItems` stays and serves the stripe sessions, which have no `Striper`).
+    `DecisionInput.Initiator` is no longer read by `Decide` (kept, documented).
+  - Responders get a `Striper`: `rangesync.Options.Striper` (served sessions; `ReconcileWith`
+    keeps its per-session one), wired in pkg/node by `rangesyncOptions` (node.go ~L1208,
+    `TestRangesyncOptions`). The reconciler implements it (`Reconciler.Stripe`): it takes every
+    offered range over and registers it in the same stripe registry as the initiator path
+    (`registerStripeLocked`: non-overlap, cap 1024, trimming), except while the bootstrap plan
+    holds it, that is while a bootstrap is queued or in flight (`bootstrapping`, and the registry
+    covers it anyway) and while `IsBootstrap` holds before the next round registers the root (a
+    registered range inside the root would keep `planCatchUp` from registering the bootstrap).
+  - Constraint (d): `LacksSessionRoot` (stripes.go, next to `IsBootstrap`) compares the two counts
+    of a peer's session root: this node's (its Status, or `RangeSummary` when the peer's root lies
+    inside its own) and the peer's (its Status, or its count spread evenly over its root when
+    this node's root lies inside the peer's: shifted right by the depth difference). A round that
+    finds this node more than the threshold behind registers the session root (a session job; one
+    already registered is not registered again) and opens no round session with that peer while
+    the check holds; a radius decrease's old-half opening skips the check. It covers the case A does not: a node that opens a round session at
+    a count far below the peer's gets the stripe session's answer, a listing.
+  - Decision (orchestrator point 4): **in a range a registered transfer covers, the threshold is
+    0.** `rangesync.TransferStriper` (a `Striper` with `Transferring(r)`) sets
+    `DecisionInput.Transferring`; the reconciler (registry containment) and the `StripeCollector`
+    of its round sessions implement it, and `lacksSessionRootLocked` uses 0 for a covered session
+    root. Measured (`TestG6BootstrapTail`, below): with `LargeDiff` alone the tail of a transfer
+    of the default fetch rate's duration, where node 0's difference is below `LargeDiff`, still
+    made each lower-overlay peer list what node 0 lacked every round (536–1703 wanted IDs, 86–116
+    in the largest session, 0.03–0.11× of the lacked IDs at ranks 1–4 of N = 5); at 2^22 that is
+    2.1–6.8 × `LargeDiff` IDs, ~10–31 MB at N = 5, and it grows with the rank (each lower-overlay
+    peer lists independently, the takeovers add), so at N = 17 it would pass AC-B2's ~46 MB
+    headroom on its own (an estimate). With the rule the tail lists nothing (0 wanted IDs at every
+    rank).
+  - Deviations. (1) `LargeDiff` test-settable lands here, not in part 2 (orchestrator decision 5):
+    `rangesync.Options.LargeDiff` and `reconciler.Options.LargeDiff` (both zero → 65536; the node
+    sets neither), `Config.LargeDiff`, `DecisionInput.LargeDiff`; part 2 only confirms it. (2)
+    The zero threshold inside a running transfer is beyond candidate A's text (point 4). (3) §6.3's
+    normative order changes (Follow-ups lists the text).
+  - Small differences wait (review note 5). While a node declines a range, the new uploads and
+    stale-stamp (§7.7) differences in it wait too: in a bootstrap for the whole transfer (~70
+    minutes at 2^22: A alone defers them while the node's difference passes `LargeDiff`, the zero
+    threshold over the tail as well), then for the verification round and the next rounds; the stripe sessions themselves reconcile their ranges (an upload that
+    lands before a stripe's session opens is transferred with it). A transfer that ends lifts the
+    rule. A peer claiming a far larger count can make a node decline (Follow-ups, the registry
+    pin).
+  - The stripe-registry `SyncRate` pin (part 3, after this part, user's order). Part 1 widens the
+    gap temporarily: a peer claiming a far larger count now also makes a responder register
+    (`Reconciler.Stripe`), and a peer's Status alone makes the rounds register its session root
+    (`LacksSessionRoot`); both register the same jobs as the initiator path, so part 3's fix (hold
+    for a stripe only while its job stores chunks, past a grace) covers them and closes the gap
+    before Phase 6 (Follow-ups).
+  - Scaled acceptance (review note 6). `LargeDiff` = Base/64 keeps 2^22's ratio (64) of the root
+    difference to `LargeDiff`: stripes of Base/4 IDs (16 × `LargeDiff`) past it, level-1 ranges
+    (4 ×) past it while node 0 lacks more than a quarter of its root. The bound is AC-B2 scaled,
+    1.15 × Lag × 70 B + 1 MB, as `TestG6BootstrapPeers` reads it; "÷" is node 0's
+    `bytes_metadata{dir="in"}` over Lag × 70 B, and the fixed per-session costs (Fingerprints of
+    the declined sessions, Status, verification) do not scale with Base, so they weigh far more
+    here than at 2^22 (~0.1–0.6 MB there).
+    - `TestG6BootstrapScaled` (`-tags=sim`; N = 5, node 0 empty, Delay 50 ms, seeds 1–4; "lifted":
+      the fetch limit lifted as in `TestG6BootstrapPeers`, "2 min": a node-wide fetch rate on the
+      clock of Base/120 per second): every run passes `check` (stripes done, none timed out; node
+      0 within the bound; no peer stripe session; no duplicate):
+
+      | Base (bound) | fetch | ranks | node 0 metadata in, MB | ÷ | peers' sessions with node 0 (takeovers) | wanted IDs | caught up s |
+      |---|---|---|---|---|---|---|---|
+      | 70000 (6.64 MB) | lifted | 3, 1, 1, 4 | 4.908–4.909 | 1.002 | 8–21 (0–3) | 2–6 | 15.8 |
+      | 70000 | 2 min | 3, 1, 1, 4 | 4.909–4.913 | 1.002–1.003 | 47–99 (0–23) | 0 | 120.7–122.0 |
+      | 100000 (9.05 MB) | lifted | 2, 2, 4, 1 | 7.011–7.012 | 1.002 | 9–24 (0–3) | 1–9 | 21.8–22.0 |
+      | 100000 | 2 min | 2, 2, 4, 1 | 7.012–7.015 | 1.002 | 48–100 (0–23) | 0 | 120.7–121.9 |
+
+      Against G6 (`TestG6BootstrapPeers`, unscaled): 1.43–3.78× at Base 70000, 3.32–3.34× at
+      100000. Takeovers fire at both Bases in both modes at every rank below 4 (rank 4 has no
+      higher-overlay peer): 1–3 with the fetch limit lifted (the transfer takes 15.8–22 s of the
+      clock), 8–23 with the 2-minute transfer. The wanted IDs of the lifted runs are the 4 uploads,
+      pushed after the transfer and listed by more than one peer. 1508 s for the 16 runs (72–80 s
+      at Base 70000, 104–113 s at 100000), peak RSS 746 MB.
+    - Default build, `neighborhood_bootstrap_test.go` (Base 8000, `LargeDiff` 125, the 2-minute
+      transfer; ~10–19 s each, run in parallel): `TestNeighborhoodBootstrapScaled` (rank 4:
+      1.01×, 100 peer sessions, 0 wanted); `TestNeighborhoodBootstrapResponderOnly` (node 0 at the
+      highest overlay, responder of every pair, lacks a level-1 range of 500 IDs, 4 × `LargeDiff`,
+      holding 15/16 of the reserve, so not bootstrapping: it declines, transfers the root striped
+      and converges; 67–73 KB against 1.04 MB, the stripes' Fingerprints weighing against 35 KB of
+      IDs); `TestNeighborhoodBootstrapEdgePeer` (constraint (c): an edge peer at radius 1 among the
+      peers of an empty node: its round sessions run, its uploads converge, it registers nothing;
+      1.02–1.23×, the spread from the plan's peer order, Follow-ups);
+      `TestNeighborhoodBootstrapForeignRoot` (constraint (d), node 0 at the lowest overlay so its
+      own rounds decide: its root contains the peers' at radius 1, 1.00×; its root inside theirs,
+      the estimate path, 1.00–1.08×).
+    - The tests catch the old behavior: without the responder `Striper` the responder-only node
+      read 4.03× and ran no stripe, and the Base 16000 bootstrap with a 2-minute transfer 53.55×
+      (rank 1, 45 takeovers); without the session-root check the foreign-root cases read
+      5.14–5.36×.
+    - `TestG6BootstrapTail` (`-tags=sim`; Base 16000, `LargeDiff` 250, a fetch rate on the clock of
+      3 per second, so the transfer takes ~89 minutes and its tail ~83 s, as 2^22's ~70 minutes and
+      ~65 s at 1000 per second; `StripeTimeout` lifted to 3 h, see the stripe-restart finding in
+      Follow-ups; seeds 1, 2 and node 0 at the highest overlay):
+
+      | rank | ÷ before the zero threshold (wanted IDs, largest) | ÷ with it (wanted) | peers' bytes with it |
+      |---|---|---|---|
+      | 1 | 1.16 (536, 86) | 1.10 (0) | 93 KB, 2120 declined sessions (1053 takeovers) |
+      | 2 | 1.26 (1703, 116) | 1.13 (0) | 125 KB, 2837 (703) |
+      | 4 | 1.27 (1345, 86) | 1.18 (0) | 188 KB, 4270 (0) |
+
+      What remains above 1.0 is the Fingerprint of each declined session (~44 B), 0.08–0.17× here
+      and ~0.6 MB at 2^22 with 16 initiators. 151–155 s per run.
+  - G6 re-runs (unchanged tests, production `LargeDiff` 65536; `-tags=sim`, 796 s, peak RSS 586
+    MB): `TestG6BootstrapPeers` (N = 5, node 0 empty, fetch limit lifted) reads 4.908–4.909 MB at
+    Base 70000, ranks 1, 1, 3, 4: 0.74 of the 6.64 MB bound, 1.002× of the lacked IDs (G6:
+    9.47–25.06 MB, 1.43–3.78× the bound); and 7.011–7.012 MB at Base 100000, ranks 1, 2, 2, 4: 0.77
+    of the 9.05 MB bound, 1.002× (G6: 30.05–30.22 MB, 3.32–3.34× the bound); the peers' sessions
+    bring 0–1 KB and 0–3 wanted IDs each. With the production threshold the root difference
+    passes `LargeDiff` only for the first 4,464 (Base 70000) or 34,464 (100000) chunks; the zero
+    threshold inside the bootstrap transfer declines the rest, so both Bases now read the stripes
+    alone. `TestG6Bootstrap` (N = 17, Base
+    20000, below `LargeDiff` throughout): 1.412 and 1.409 MB at ranks 4 and 14 (bound 2.61 MB;
+    1.009× and 1.006× of the lacked IDs; G6: 4.2–5.7 and 12.5–14.0 MB), all 16 stripes done, none
+    reassigned or timed out, no duplicate.
+  - Code: session.go (`Decide`, `decideSmall`, `TransferStriper`, `Config.LargeDiff`,
+    `DecisionInput.LargeDiff`/`Transferring`, the decide fallback), rangesync.go
+    (`Options.Striper`, `Options.LargeDiff`), reconcile.go (`sessionConfig`), constants.go
+    (comments), reconciler: stripes.go (`LacksSessionRoot`, `StripeCollector.Transferring`),
+    stripes_transfer.go (`Reconciler.Stripe`, `Transferring`), scheduler.go (the session-root check
+    in `scheduleLocked`, `lacksSessionRootLocked`), reconciler.go (`Options.LargeDiff`); pkg/node:
+    syncer.go (`rangesyncOptions`), node.go (one call). Harness (neighborhood_sim_test.go):
+    `LargeDiff`, `Radius`, `Overlay`, `ChunkRoot`, `LagRoot`, `FetchClockRate`, `simSpan.Stripe`,
+    per-root convergence, the responder `Striper`; the default runs draw the same random numbers.
+    No wire, proto, pkg/pullsync, pkg/puller, go.mod or `*_fuzz_test.go` change; no new parser of
+    peer input (one line in followup-fuzzing.md for the session target).
+  - Checks: `make build`, `go vet` (default and `-tags=sim`) on pkg/rangesync/... and pkg/node/...,
+    `GOTOOLCHAIN=go1.26.1 golangci-lint run ./pkg/rangesync/... ./pkg/node/...` and with
+    `--build-tags sim` are clean; gofumpt ran on the changed files only (gci finds nothing in
+    them; node.go's import order is untouched, as before). `go test ./pkg/rangesync/...` passes
+    (`pkg/rangesync` ~28 s, of it the five new harness runs ~15 s in parallel), `go test
+    ./pkg/node/...` (with `TestCombinedSyncerBothDrivers`) and `go test ./pkg/pullsync/...
+    ./pkg/puller/... ./pkg/storer/...` pass; with the defaults (`--rangesync-enable=false`) the
+    node builds no rangesync service, so `rangesyncOptions` is never called (`TestSyncWiring`).
+    No `-race` on this host: the new and changed tests ran with `-count=3 -cpu=1,2,4` (the
+    harness tests `-count=1 -cpu=1,2,4`); the CI list is in Follow-ups. The `-tags=sim` runs
+    above are one at a time.
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -4527,3 +4675,84 @@ _(sessions append here)_
   8. The GrowthFactor text list misses proposal L467 (§4.3.7, "More(R, up to 4 × b)").
   9. The decision sheet should state that GrowthFactor 2 and the per-node cap land before T6.1
      (EXECUTION.md §6, G6 row) — done in T4.7.
+- **(T4.7 part 1 → the proposal) The decision rule's text after candidate A.** The code now differs
+  from the proposal's normative text in these places (pullsync-rangesync-rateless-proposal.md; not
+  edited here):
+  - §6.3 L797–831: the flowchart (L807–822) tests `cR == 0` / `cL == 0` before `d̂ > LargeDiff`
+    and stripes "initiator side" only (L813–814). Now: after EQ comes the large-difference test by
+    direction, `cR − cL > LargeDiff` on the side that holds fewer, in either role (0 instead of
+    `LargeDiff` in a range the node's own striped transfer covers); that side hands R to its
+    Reconciler and emits nothing for R (a responder whose every range is taken answers the empty
+    Message, which ends the initiator's session with R unanswered, i.e. equal); the holder never
+    stripes, and its count-0 listing (`cR == 0` → Items) stays, which serves the stripe sessions.
+    A range the Reconciler declines is decided by the rest of the rule. L799 ("Both sides apply
+    the same rule") stays true; the "BIG" node's label and its position change, and the text needs
+    a sentence on the empty answer and on why the holder keeps listing.
+  - §6.3 L834 (constants): `LargeDiff = 65536` stays; add that tests scale it (not a wire value).
+  - §7.4 L931 ("own count << peers' Status counts: bootstrap mode"): add the per-peer session-root
+    check (a node more than `LargeDiff` behind a peer in their session root stripes that root
+    instead of opening a round session with it; the peer's count is spread over its root when the
+    node's root lies inside it) and the node's answers while bootstrapping (it declines, as
+    responder, every range it lacks inside its transfer).
+  - §8.2 L1226 ("Initiator"): the lower overlay initiates unless it is far behind the peer in their
+    session root (above); the higher overlay's takeover then meets a responder that declines.
+  - §10's metric table has no counter of declined ranges; nothing measures them on testnet except
+    `sessions_total{ok}` with zero wants (T6.0 may want one).
+- **(T4.7 part 1 → T6.1, AC-B2) PRE-T6.1 FINDING: a stripe that outlasts `StripeTimeout` lists
+  again what it had listed.** Measured in the scaled bootstrap at the default fetch rate's
+  duration (`TestG6BootstrapTail`, Base 16000, a fetch rate on the clock of 3 per second, the
+  transfer ~89 minutes, stripes of 4000 IDs at ~0.75 per second): with the default 15-minute
+  `StripeTimeout` node 0 read 9.34–9.45× the IDs it lacked (38–40 stripe sessions for 4 stripes,
+  caught up after ~129 minutes instead of ~89), against 1.10–1.18× with the timeout lifted to 3
+  h. Each timeout restarts the stripe with the same peer (`maxStripeRestarts`), and the restart's
+  session lists the stripe's missing IDs again,
+  including those the timed-out attempt had listed and not yet fetched. The harness overstates it
+  (a whole stripe fits in one Message there, so every restart relists the whole remainder); in
+  production the listing is paced by the stripe queue (`stripeQueue` 4 batches, one Message of
+  IDs each, ~14,900 IDs, plus the batch the session's goroutine holds and the one being fetched:
+  ~60–90k IDs listed ahead), so each restart relists ~4–6 MB. Estimated, not measured: at 2^22
+  with 5–16 peers the stripes take 17–35 minutes at 250 chunks per second each (1000 per second
+  over `MaxStripeSessions` 4), so 1–2 restarts per stripe, 16 in all, ~65–100 MB: past AC-B2's
+  ~46 MB of headroom (340 − 294 MB) on its own. Not part 1's leak (no peer lists anything the node
+  did not ask for), but an AC-B2 blocker for T6.1 all the same. Directions (none designed): a
+  timeout that runs only while the attempt stores nothing (as part 3 proposes for the registry
+  hold), or one scaled by the stripe's size at the node's fetch rate, or a restart that reopens
+  only past the last ID the attempt stored.
+- **(T4.7 part 1 → part 3) The registry `SyncRate` pin, widened.** Part 1 adds two ways to register
+  a range, both through `registerStripeLocked` like the initiator path: the sessions this node
+  serves (`Reconciler.Stripe`, when a peer's Fingerprint counts more than `LargeDiff` above this
+  node's) and the rounds' session-root check (when a peer's Status count is more than `LargeDiff`
+  above this node's count of their session root). Both are a peer's claim, so a peer claiming a
+  far larger count now also makes a responder register, and a peer's Status alone makes the
+  rounds register its session root again each time the transfer ends (each job ends quickly when
+  the peer delivers nothing, and the honest peers' stripe sessions find little to do). Part 3's
+  fix (hold `SyncRate` for a stripe only while its job stores chunks, past a grace) covers both,
+  since they register the same jobs. While a liar's range is registered, the node also declines
+  every lack inside it in its round sessions (`Transferring`), so its small differences there move
+  only through the stripe sessions until the job ends; part 4's fetch credit does not change that.
+- **(T4.7 part 1, low) The session-root check's estimate across nestings.** When this node's root
+  lies inside the peer's, `LacksSessionRoot` spreads the peer's count evenly over its root. At
+  2^22 the binomial spread of a half (σ ≈ 1000) is far below `LargeDiff`; at the scaled sizes of
+  the tests it is not (σ ≈ 45 against `LargeDiff` 125 at Base 8000), and a root whose halves are
+  filled unevenly (a peer that has just widened its radius) can trigger a striped transfer of the
+  session root where a session would do. A false trigger costs a stripe job (sessions opened with
+  the stripes instead of the root), not a deferral. Revisit with T6's radius-aware runs.
+- **(T4.7 part 1, low) `PlanStripes` follows the map order of the peers.** `peerStatuses` iterates
+  `r.peers`, so the stripe a peer gets, and whether an edge peer one bit deeper gets one at all
+  (an ineligible peer's turn passes on), changes from run to run; a peer may then serve two stripes
+  one after the other. `TestNeighborhoodBootstrapEdgePeer` read 1.02× or 1.23× of the lacked IDs
+  with one seed: in the second, node 0 already held a few uploads of the later stripe, so the
+  holder answered its opening (at count > 0) with a symbol stream instead of a listing, which the
+  scaled geometry allows (every range of at most `ScanLimit` IDs has an unlimited stream). Not a
+  correctness issue; sorting the peers would make plans reproducible.
+- **(T4.7 part 1) Tests to run with `-race` on CI.** They ran with `-count=3 -cpu=1,2,4` instead.
+  New: `TestDecideThreshold`, `TestSessionLackingSideDeclines`, `TestReconcileServedStriper`
+  (pkg/rangesync); `TestServedStripeRegisters`, `TestRoundLackingSessionRoot`, `TestTransferring`,
+  `TestLacksSessionRoot` (reconciler); `TestRangesyncOptions` (pkg/node); and the harness tests
+  `TestNeighborhoodBootstrapScaled`, `TestNeighborhoodBootstrapResponderOnly`,
+  `TestNeighborhoodBootstrapEdgePeer`, `TestNeighborhoodBootstrapForeignRoot` (served sessions now
+  call into the reconciler, `Reconciler.Stripe` and `Transferring` take its lock on the handlers'
+  goroutines). Changed: `TestDecide`, `TestDecideSymbols`, `TestSessionStriper`; through the
+  harness (the responder Striper, radii, roots, the clock fetch rate) every neighborhood test; and
+  re-run `TestRound*`, `TestRoundBootstrap*`, `TestStartupGuard*`, `TestSyncRate*`,
+  `TestTransferStripes*`, `TestStripe*`, `TestCombinedSyncerBothDrivers`.
