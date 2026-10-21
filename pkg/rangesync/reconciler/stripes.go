@@ -174,14 +174,24 @@ func Unassigned(stripes []Stripe) []Stripe {
 }
 
 // StripeCollector is a rangesync.Striper that takes over every range a
-// session offers (the d̂ > LargeDiff branch of §6.3) and keeps it for a
-// striped transfer. It is safe for concurrent use.
+// session offers (the large-difference branch of §6.3, on the side that
+// lacks) and keeps it for a striped transfer. It is safe for concurrent use.
+// The zero value transfers nothing; a round session's collector asks its
+// reconciler which ranges a transfer already covers (Transferring).
 type StripeCollector struct {
 	mu     sync.Mutex
 	ranges []fingerprint.Range
+	// transferring, if not nil, is Reconciler.Transferring.
+	transferring func(fingerprint.Range) bool
 }
 
-var _ rangesync.Striper = (*StripeCollector)(nil)
+var _ rangesync.TransferStriper = (*StripeCollector)(nil)
+
+// Transferring reports whether a striped transfer of the reconciler covers
+// r; false for the zero value.
+func (c *StripeCollector) Transferring(r fingerprint.Range) bool {
+	return c.transferring != nil && c.transferring(r)
+}
 
 // Stripe records r and takes it over.
 func (c *StripeCollector) Stripe(r fingerprint.Range, _, _ uint64) bool {

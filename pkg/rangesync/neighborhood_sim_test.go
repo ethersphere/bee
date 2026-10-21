@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/pb"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -42,7 +43,8 @@ import (
 )
 
 // The neighborhood simulation (proposal §13, T4.6): N nodes of one
-// neighborhood (storage radius 0), each a rangesync.Service over a mock
+// neighborhood (storage radius 0 unless simOptions.Radius sets one), each a
+// rangesync.Service over a mock
 // reserve with its reconciler.Reconciler, wired as pkg/node wires them and
 // connected in a full mesh over streamtest. Uploads are pushed to the reserves
 // of p random nodes (push replication), and rangesync spreads them to the
@@ -68,7 +70,8 @@ import (
 //     (DisablePeerRateLimits), and the harness checks the same rates on the
 //     fake clock (simResult.RateExceeded);
 //   - the fetch rate limits. They are kept; a fetch that waits on them is a
-//     call in flight, which holds the clock, so the wait takes no time on it;
+//     call in flight, which holds the clock, so the wait takes no time on it.
+//     simOptions.FetchClockRate adds a node-wide fetch rate on the clock;
 //   - the fetch timeout, the session and Status timeouts, and the want set's
 //     claim deadline and reject TTL. A read that waits for a stalled peer is
 //     parked, so the clock moves on while they count real time: a stall
@@ -154,10 +157,30 @@ type simOptions struct {
 	// reconciler.MinRoundInterval and MaxRoundInterval.
 	MinRoundInterval, MaxRoundInterval time.Duration
 	// Reconciler and Service, if set, adjust each node's options after the
-	// harness set its own (clock, jitter, bounds; leaf bits 8, scorer,
-	// wants, clock).
+	// harness set its own (clock, jitter, bounds, LargeDiff; leaf bits 8,
+	// scorer, wants, striper, clock, LargeDiff).
 	Reconciler func(*reconciler.Options)
 	Service    func(*rangesync.Options)
+	// LargeDiff scales the threshold of the sessions' large-difference
+	// branch and of the reconcilers' session-root check (Options.LargeDiff
+	// of both); zero keeps rangesync.LargeDiff (T4.7 part 1).
+	LargeDiff uint64
+	// Radius sets the storage radius of nodes by index (default 0): a
+	// node's root is the first Radius bits of its overlay, and a chunk
+	// converges once every node whose root contains it holds it. Overlay,
+	// if set, adjusts the random overlay of node i, for example to place
+	// nodes in one root.
+	Radius  map[int]uint8
+	Overlay func(i int, a swarm.Address) swarm.Address
+	// ChunkRoot, if set (Bits > 0), holds every generated chunk, base and
+	// uploads; LagRoot, if set, holds the lagging base chunks instead (for
+	// example one level-1 range: a deficit in a child).
+	ChunkRoot, LagRoot fingerprint.Range
+	// FetchClockRate, if set, is a node-wide fetch rate on the clock, in
+	// chunks per second: every Want's IDs (MaxWantIDs at most) take their
+	// share of it before they are requested, as the service's fetch limiter
+	// does on the real clock (simService.fetchOnClock).
+	FetchClockRate int
 }
 
 // steadyOptions returns the options of a steady-state run of nodes nodes
@@ -306,6 +329,9 @@ type simSpan struct {
 	Kind string // "reconcile", "fetch" or "status"
 	Node int
 	Peer swarm.Address
+	// Stripe marks a session of a striped transfer or of its verification:
+	// opened with ranges (Open) and without a Striper.
+	Stripe bool
 	// At is when the reconciler made the call, after the start of the run;
 	// Wait is how long a fetch waited for one of the peer's fetch slots
 	// (simNode.fetchSlot) before the service ran it, and Duration how long
@@ -332,6 +358,7 @@ type simCallKey struct{}
 type simCall struct {
 	mu      sync.Mutex
 	streams []*simPair
+	stripe  bool // a stripe session (simSpan.Stripe), set before the call
 }
 
 // simSample is one pairwise_diff sample: when and by which node it was
@@ -372,6 +399,7 @@ type simNeighborhood struct {
 	clock *simClock
 	rng   *rand.Rand // the harness goroutine's only
 	nodes []*simNode
+	roots []fingerprint.Range // of the nodes, by index
 	start time.Time
 
 	// inflight counts the calls of reconcilers into their services and the
@@ -409,10 +437,12 @@ type simNeighborhood struct {
 
 // simChunk is one upload.
 type simChunk struct {
-	batch     int
-	at        time.Time
-	holders   int // nodes holding it
-	converged time.Time
+	batch int
+	at    time.Time
+	// holders counts the nodes holding it whose root contains it, and want
+	// the nodes whose root contains it.
+	holders, want int
+	converged     time.Time
 }
 
 // simArrival keys the Statuses or sessions a node received from a peer.
@@ -450,8 +480,11 @@ type simNode struct {
 	routes map[string]p2p.ProtocolSpec
 	root   chan struct{} // the reconciler's root-change signal
 
+	rootRange fingerprint.Range // the first simOptions.Radius bits of addr
+
 	fetchMu    sync.Mutex
 	fetchSlots map[string]chan struct{} // by peer
+	fetchFree  time.Time                // simOptions.FetchClockRate: when its share is free
 
 	// guarded by nb.mu
 	held       map[string]time.Time // IDs stored, with the time
@@ -482,33 +515,47 @@ func newNeighborhood(tb testing.TB, o simOptions) *simNeighborhood {
 	nb.clock = &simClock{now: time.Unix(1_000_000, 0), touch: nb.touch}
 	base := make([]swarm.Chunk, o.Base)
 	for i := range base {
-		base[i] = swarm.NewChunk(nb.randAddr(), []byte{1}).WithStamp(nb.newStamp())
+		base[i] = swarm.NewChunk(inRange(nb.randAddr(), o.ChunkRoot), []byte{1}).WithStamp(nb.newStamp())
 	}
 	// the lagging node fetches the chunks it lacks, so they must pass the
 	// content check: valid content-addressed chunks (the other base chunks
 	// are never fetched, and runs without a lag keep their chunks)
+	lagRoot := o.LagRoot
+	if lagRoot.Bits == 0 {
+		lagRoot = o.ChunkRoot
+	}
 	for i := o.Base - o.Lag; i < o.Base; i++ {
-		ch, err := cac.New(nb.randBytes(8))
-		if err != nil {
-			tb.Fatal(err)
+		base[i] = nb.newCAC(8, lagRoot).WithStamp(nb.newStamp())
+	}
+	addrs := make([]swarm.Address, 0, o.Nodes)
+	for len(addrs) < o.Nodes {
+		a := nb.randAddr()
+		if o.Overlay != nil {
+			a = o.Overlay(len(addrs), a)
 		}
-		base[i] = ch.WithStamp(nb.newStamp())
+		if !slices.ContainsFunc(addrs, a.Equal) {
+			addrs = append(addrs, a)
+		}
+	}
+	for i, a := range addrs {
+		nb.roots = append(nb.roots, fingerprint.NewRange(a, o.Radius[i]))
 	}
 	for _, ch := range base[o.Base-o.Lag:] {
 		key, err := chunkKey(ch)
 		if err != nil {
 			tb.Fatal(err)
 		}
-		c := &simChunk{batch: -1, at: nb.clock.Now(), holders: o.Nodes - 1}
+		c := &simChunk{batch: -1, at: nb.clock.Now(), want: nb.want(ch.Address())}
+		c.holders = c.want
+		if nb.roots[o.LagNode].Contains(ch.Address()) {
+			c.holders--
+		}
+		if c.holders == c.want { // outside the lagging node's root
+			c.converged = c.at
+			nb.converged++
+		}
 		nb.chunks[key] = c
 		nb.lagging = append(nb.lagging, c)
-	}
-	addrs := make([]swarm.Address, 0, o.Nodes)
-	for len(addrs) < o.Nodes {
-		a := nb.randAddr()
-		if !slices.ContainsFunc(addrs, a.Equal) {
-			addrs = append(addrs, a)
-		}
 	}
 	tb.Cleanup(nb.close)
 	for i, a := range addrs {
@@ -578,7 +625,8 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 		fetchSlots: make(map[string]chan struct{}),
 		held:       make(map[string]time.Time),
 	}
-	n.store = mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(base...), mockstorer.WithPutHook(n.putHook))
+	n.rootRange = fingerprint.NewRange(a, o.Radius[i])
+	n.store = mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(base...), mockstorer.WithPutHook(n.putHook), mockstorer.WithRadius(o.Radius[i]))
 	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(streamtest.WithBaseAddr(a), streamtest.WithPeerProtocols(n.routes)))
 
 	var peers []swarm.Address
@@ -599,6 +647,7 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 		},
 		MinRoundInterval: o.MinRoundInterval,
 		MaxRoundInterval: o.MaxRoundInterval,
+		LargeDiff:        o.LargeDiff,
 	}
 	if o.Reconciler != nil {
 		o.Reconciler(&ro)
@@ -609,7 +658,8 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 		nb.setWants(n, peer, false, len(ids))
 		n.r.Wants(peer, ids)
 	}
-	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: wants, Now: nb.clock.Now}
+	// as pkg/node wires them (rangesyncOptions), the Striper included
+	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: wants, Striper: n.r, Now: nb.clock.Now, LargeDiff: o.LargeDiff}
 	if o.Service != nil {
 		o.Service(&so)
 	}
@@ -777,13 +827,13 @@ func (nb *simNeighborhood) progress() string {
 	defer nb.mu.Unlock()
 	missing := 0
 	for _, c := range nb.uploads {
-		if c.holders < len(nb.nodes) {
+		if c.holders < c.want {
 			missing++
 		}
 	}
 	lagging := 0
 	for _, c := range nb.lagging {
-		if c.holders < len(nb.nodes) {
+		if c.holders < c.want {
 			lagging++
 		}
 	}
@@ -814,10 +864,14 @@ func (nb *simNeighborhood) upload(b int) {
 		if err != nil {
 			nb.tb.Fatal(err)
 		}
-		c := &simChunk{batch: b, at: now}
+		c := &simChunk{batch: b, at: now, want: nb.want(ch.Address())}
 		nb.mu.Lock()
 		nb.chunks[key] = c
 		nb.uploads = append(nb.uploads, c)
+		if c.want == 0 { // in no node's root
+			c.converged = now
+			nb.converged++
+		}
 		nb.mu.Unlock()
 		for _, i := range nb.rng.Perm(len(nb.nodes))[:nb.o.Replication] {
 			n := nb.nodes[i]
@@ -1133,13 +1187,45 @@ func (nb *simNeighborhood) newStamp() *postage.Stamp {
 }
 
 // newChunk returns a valid content addressed chunk of ChunkSize random bytes
-// with a random stamp.
+// in ChunkRoot with a random stamp.
 func (nb *simNeighborhood) newChunk() swarm.Chunk {
-	ch, err := cac.New(nb.randBytes(nb.o.ChunkSize))
-	if err != nil {
-		nb.tb.Fatal(err)
+	return nb.newCAC(nb.o.ChunkSize, nb.o.ChunkRoot).WithStamp(nb.newStamp())
+}
+
+// newCAC returns a valid content addressed chunk of size random bytes whose
+// address lies in r, drawn until one does.
+func (nb *simNeighborhood) newCAC(size int, r fingerprint.Range) swarm.Chunk {
+	for {
+		ch, err := cac.New(nb.randBytes(size))
+		if err != nil {
+			nb.tb.Fatal(err)
+		}
+		if r.Contains(ch.Address()) {
+			return ch
+		}
 	}
-	return ch.WithStamp(nb.newStamp())
+}
+
+// inRange returns a with its first r.Bits bits set to r's prefix.
+func inRange(a swarm.Address, r fingerprint.Range) swarm.Address {
+	b, p := a.Bytes(), r.Prefix.Bytes()
+	for k := 0; k < int(r.Bits); k++ {
+		mask := byte(0x80) >> (k % 8)
+		b[k/8] = b[k/8]&^mask | p[k/8]&mask
+	}
+	return swarm.NewAddress(b)
+}
+
+// want returns the number of nodes whose root contains addr: the holders of
+// a converged chunk.
+func (nb *simNeighborhood) want(addr swarm.Address) int {
+	n := 0
+	for _, r := range nb.roots {
+		if r.Contains(addr) {
+			n++
+		}
+	}
+	return n
 }
 
 // chunkKey returns the element ID of ch (address and stamp hash) as a map
@@ -1166,8 +1252,8 @@ func (n *simNode) putHook(ch swarm.Chunk) error {
 	n.puts++
 	if _, ok := n.held[key]; !ok {
 		n.held[key] = now
-		if c := nb.chunks[key]; c != nil {
-			if c.holders++; c.holders == len(nb.nodes) {
+		if c := nb.chunks[key]; c != nil && n.rootRange.Contains(ch.Address()) {
+			if c.holders++; c.holders == c.want {
 				c.converged = now
 				nb.converged++
 			}
@@ -1247,6 +1333,7 @@ func (s *simService) call(ctx context.Context, kind string, peer swarm.Address, 
 		now := nb.clock.Now()
 		sp := simSpan{Kind: kind, Node: s.n.i, Peer: peer, At: entered.Sub(nb.start), Wait: started.Sub(entered), Duration: now.Sub(started), Stored: stored, Err: err}
 		c.mu.Lock()
+		sp.Stripe = c.stripe
 		sp.Streams = len(c.streams)
 		for _, p := range c.streams {
 			if first := p.toInitiator.firstArrival(); p.stream == rangesync.FetchStreamName && !first.IsZero() {
@@ -1277,6 +1364,9 @@ func (s *simService) ReconcileWith(ctx context.Context, peer swarm.Address, opts
 	nb.mu.Lock()
 	nb.sessions = append(nb.sessions, now)
 	nb.mu.Unlock()
+	if opts.Striper == nil && len(opts.Open) > 0 {
+		ctx.Value(simCallKey{}).(*simCall).stripe = true
+	}
 	wants, err = s.Service.ReconcileWith(ctx, peer, opts)
 	if err == nil {
 		nb.setWants(s.n, peer, true, len(wants))
@@ -1293,7 +1383,10 @@ func (s *simService) Fetch(ctx context.Context, peer swarm.Address, ids []storer
 	defer release()
 	ctx, done := s.call(ctx, "fetch", peer, entered)
 	defer func() { done(n, err) }()
-	return s.Service.Fetch(ctx, peer, ids)
+	res, err := s.fetchOnClock(ctx, ids, func(ids []storer.ChunkID) (rangesync.FetchResult, error) {
+		return s.Service.FetchWithResult(ctx, peer, ids)
+	})
+	return res.Stored, err
 }
 
 func (s *simService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (res rangesync.FetchResult, err error) {
@@ -1305,7 +1398,9 @@ func (s *simService) FetchWithResult(ctx context.Context, peer swarm.Address, id
 	defer release()
 	ctx, done := s.call(ctx, "fetch", peer, entered)
 	defer func() { done(res.Stored, err) }()
-	return s.Service.FetchWithResult(ctx, peer, ids)
+	return s.fetchOnClock(ctx, ids, func(ids []storer.ChunkID) (rangesync.FetchResult, error) {
+		return s.Service.FetchWithResult(ctx, peer, ids)
+	})
 }
 
 func (s *simService) FetchWithProgress(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, stored func()) (res rangesync.FetchResult, err error) {
@@ -1317,7 +1412,51 @@ func (s *simService) FetchWithProgress(ctx context.Context, peer swarm.Address, 
 	defer release()
 	ctx, done := s.call(ctx, "fetch", peer, entered)
 	defer func() { done(res.Stored, err) }()
-	return s.Service.FetchWithProgress(ctx, peer, ids, stored)
+	return s.fetchOnClock(ctx, ids, func(ids []storer.ChunkID) (rangesync.FetchResult, error) {
+		return s.Service.FetchWithProgress(ctx, peer, ids, stored)
+	})
+}
+
+// fetchOnClock runs fetch over ids. With simOptions.FetchClockRate it runs
+// it on one Want's worth of IDs at a time (MaxWantIDs), each after its share
+// of the node-wide rate on the clock, and merges the results; it stops at the
+// first error. The share is taken for every ID, also those the service then
+// does not request (held, in the reserve), so it is an upper bound of the
+// service's fetch limiter, which counts only the candidates of a Want.
+func (s *simService) fetchOnClock(ctx context.Context, ids []storer.ChunkID, fetch func([]storer.ChunkID) (rangesync.FetchResult, error)) (rangesync.FetchResult, error) {
+	rate := s.n.nb.o.FetchClockRate
+	if rate <= 0 {
+		return fetch(ids)
+	}
+	var res rangesync.FetchResult
+	for len(ids) > 0 {
+		batch := ids[:min(len(ids), rangesync.MaxWantIDs)]
+		ids = ids[len(batch):]
+		now := s.n.nb.clock.Now()
+		s.n.fetchMu.Lock()
+		start := s.n.fetchFree
+		if start.Before(now) {
+			start = now
+		}
+		s.n.fetchFree = start.Add(time.Duration(len(batch)) * time.Second / time.Duration(rate))
+		wait := s.n.fetchFree.Sub(now)
+		s.n.fetchMu.Unlock()
+		if err := s.n.nb.sleep(ctx, wait); err != nil {
+			return res, err
+		}
+		r, err := fetch(batch)
+		res.Stored += r.Stored
+		res.Undelivered = append(res.Undelivered, r.Undelivered...)
+		res.OutsideRoot += r.OutsideRoot
+		res.Held = append(res.Held, r.Held...)
+		res.Deferred = append(res.Deferred, r.Deferred...)
+		res.Unverified = append(res.Unverified, r.Unverified...)
+		res.Rejected += r.Rejected
+		if err != nil {
+			return res, err
+		}
+	}
+	return res, nil
 }
 
 // fetchSlot takes one of the node's fetch slots of peer, as many as the

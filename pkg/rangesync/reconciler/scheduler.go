@@ -488,9 +488,11 @@ func (r *Reconciler) compareDigests(local, remote rangesync.Status) (known, equa
 }
 
 // lacksSessionRootLocked is LacksSessionRoot for this node's Status local and
-// a peer's Status remote, with the Options.LargeDiff threshold and this
-// node's summary of the session root from a rangeSummarizer. It may be
-// called with r.mu held, as compareDigests.
+// a peer's Status remote, with this node's summary of the session root from
+// a rangeSummarizer, and the threshold Options.LargeDiff, or 0 while a
+// registered transfer covers the session root (transferringLocked): the
+// transfer lists what this node lacks there. r.mu must be held; RangeSummary
+// is called with it, as in compareDigests.
 func (r *Reconciler) lacksSessionRootLocked(local, remote rangesync.Status) (fingerprint.Range, bool) {
 	summary := func(rg fingerprint.Range) (uint64, bool) {
 		rs, ok := r.svc.(rangeSummarizer)
@@ -500,7 +502,11 @@ func (r *Reconciler) lacksSessionRootLocked(local, remote rangesync.Status) (fin
 		sum, err := rs.RangeSummary(rg)
 		return sum.Count, err == nil
 	}
-	return LacksSessionRoot(local, remote, summary, r.largeDiff)
+	threshold := r.largeDiff
+	if sr, ok := rangesync.SessionRoot(local.Root, remote.Root); ok && r.transferringLocked(sr) {
+		threshold = 0
+	}
+	return LacksSessionRoot(local, remote, summary, threshold)
 }
 
 // sameDigest reports whether the two statuses summarize the same elements
@@ -534,7 +540,7 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // so, or is answered Busy, found the initiator alive: it also waits for the
 // initiator again.
 func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open []fingerprint.Range, root fingerprint.Range, decided time.Time) {
-	striper := new(StripeCollector)
+	striper := &StripeCollector{transferring: r.Transferring}
 	release, err := r.acquireSlot(r.ctx)
 	var wants []storer.ChunkID
 	if err == nil {

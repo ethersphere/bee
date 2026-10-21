@@ -213,3 +213,36 @@ func TestRoundLackingSessionRoot(t *testing.T) {
 		})
 	}
 }
+
+// TestTransferring checks the reconciler as a rangesync.TransferStriper: a
+// registered range covers the ranges inside it, and while it is registered
+// a round opens no session with a peer that holds more in a covered session
+// root, however few more, while one outside it gets its session.
+func TestTransferring(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	var _ rangesync.TransferStriper = (*reconciler.Reconciler)(nil)
+	var _ rangesync.TransferStriper = (*reconciler.StripeCollector)(nil)
+
+	svc := newFakeService(status(1000))
+	svc.remote[higher.ByteString()] = status(1001)
+	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{higher}}, svc, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+	if r.Transferring(root) {
+		t.Fatal("transferring with an empty registry")
+	}
+	r.HoldStripe(root.Child(1, 1))
+	if !r.Transferring(root.Child(4, 9)) || r.Transferring(root.Child(4, 1)) || r.Transferring(root) {
+		t.Fatal("a registered half does not cover exactly its ranges")
+	}
+	r.HoldStripe(root)
+	r.Round()
+	settle()
+	if n := roundSessions(svc, higher); n != 0 {
+		t.Fatalf("%d round sessions with a peer one ID ahead in a transferred root", n)
+	}
+	r.ReleaseStripe(root)
+	r.Round()
+	waitFor(t, "round session", func() bool { return roundSessions(svc, higher) > 0 })
+}

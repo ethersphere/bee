@@ -74,6 +74,19 @@ type Striper interface {
 	Stripe(r fingerprint.Range, local, remote uint64) bool
 }
 
+// TransferStriper is a Striper that knows the ranges this node is already
+// transferring striped. In a range such a transfer covers, the session's
+// threshold of DecisionStripe is 0 (DecisionInput.Transferring): the lacking
+// side declines the range whatever it lacks, so that a peer lists nothing
+// the transfer lists, also in the transfer's tail, where the difference is
+// below LargeDiff (T4.7 part 1, AC-B2). The reconciler implements it.
+type TransferStriper interface {
+	Striper
+	// Transferring reports whether a striped transfer of this node covers
+	// r.
+	Transferring(r fingerprint.Range) bool
+}
+
 // Config configures a Session.
 type Config struct {
 	// Scope is the session scope, from NewScope.
@@ -140,9 +153,9 @@ const (
 	// DecisionStripe: the range is splittable (R.Bits +
 	// fingerprint.FanoutBits <= LeafDepth) and this node holds fewer
 	// elements than the peer by more than the threshold (cR − cL >
-	// DecisionInput.LargeDiff), in either role; the range is offered to the
-	// Striper, and decided by the rest of the rule if it is declined or
-	// there is none.
+	// DecisionInput.LargeDiff, or cR > cL where Transferring), in either
+	// role; the range is offered to the Striper, and decided by the rest of
+	// the rule if it is declined or there is none.
 	DecisionStripe
 	// DecisionSymbols: the first batch of FirstBatch(d̂) symbols, with d̂ =
 	// max(|cL − cR|, Hint, 1), fits in the range's capacity (Cap) and in
@@ -170,7 +183,8 @@ type DecisionInput struct {
 	Range fingerprint.Range
 	// Local is this node's summary of Range; Remote is the peer's.
 	Local, Remote fingerprint.Summary
-	// Initiator reports whether this node opened the session.
+	// Initiator reports whether this node opened the session. Decide does
+	// not read it: since T4.7 part 1 the rule is the same in both roles.
 	Initiator bool
 	// Cap is the range's capacity (Capacity), 0 when symbol streams are not
 	// used.
@@ -180,6 +194,9 @@ type DecisionInput struct {
 	Hint uint64
 	// LargeDiff is the threshold of DecisionStripe; zero means LargeDiff.
 	LargeDiff uint64
+	// Transferring reports that a striped transfer of this node covers the
+	// range (TransferStriper): the threshold of DecisionStripe is then 0.
+	Transferring bool
 }
 
 // Estimate returns d̂ = max(|cL − cR|, Hint, 1) of in (proposal §6.3).
@@ -214,7 +231,10 @@ func Decide(in DecisionInput) Decision {
 // elements than the peer by more than the threshold (DecisionStripe).
 func (in DecisionInput) lacks() bool {
 	threshold := in.LargeDiff
-	if threshold == 0 {
+	switch {
+	case in.Transferring:
+		threshold = 0
+	case threshold == 0:
 		threshold = LargeDiff
 	}
 	return in.splittable() && in.Remote.Count > in.Local.Count && in.Remote.Count-in.Local.Count > threshold
@@ -778,6 +798,9 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 		if s.cfg.Hints != nil {
 			in.Hint = s.cfg.Hints.Hint(r)
 		}
+	}
+	if ts, ok := s.cfg.Striper.(TransferStriper); ok && remote.Count > local.Count {
+		in.Transferring = ts.Transferring(r)
 	}
 	d := Decide(in)
 	if d == DecisionStripe {

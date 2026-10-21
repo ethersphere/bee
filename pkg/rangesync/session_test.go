@@ -80,6 +80,53 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+// TestDecideThreshold checks the threshold of DecisionStripe: LargeDiff, or
+// DecisionInput.LargeDiff that tests scale (zero is LargeDiff), or 0 in a
+// range this node's striped transfer covers (Transferring); only the count
+// difference of the lacking side reaches it, not the hint.
+func TestDecideThreshold(t *testing.T) {
+	t.Parallel()
+
+	scope := rangesync.Scope{Root: rangeOf("01"), LeafDepth: 14}
+	root, leaf := rangeOf("01"), rangeOf("01101100110011")
+	for _, tc := range []struct {
+		name          string
+		r             fingerprint.Range
+		largeDiff     uint64
+		transferring  bool
+		local, remote fingerprint.Summary
+		hint          uint64
+		initiator     bool
+		want          rangesync.Decision
+	}{
+		{"scaled, lacking", root, 100, false, sum(0, 0), sum(101, 2), 0, false, rangesync.DecisionStripe},
+		{"scaled, lacking by exactly the threshold", root, 100, false, sum(0, 0), sum(100, 2), 0, true, rangesync.DecisionRequestItems},
+		{"scaled, lacking with elements", root, 100, false, sum(5, 1), sum(106, 2), 0, true, rangesync.DecisionStripe},
+		{"scaled, holding", root, 100, false, sum(101, 1), sum(0, 0), 0, false, rangesync.DecisionSendItems},
+		{"scaled, holding with elements", root, 100, false, sum(106, 1), sum(5, 2), 0, true, rangesync.DecisionSplit},
+		{"zero is LargeDiff", root, 0, false, sum(1, 1), sum(rangesync.LargeDiff+1, 2), 0, true, rangesync.DecisionSplit},
+		{"zero is LargeDiff, past it", root, 0, false, sum(1, 1), sum(rangesync.LargeDiff+2, 2), 0, false, rangesync.DecisionStripe},
+		{"a hint past the threshold", root, 100, false, sum(5, 1), sum(7, 2), 1000, false, rangesync.DecisionSplit},
+		{"transferring, lacking one", root, 0, true, sum(5, 1), sum(6, 2), 0, false, rangesync.DecisionStripe},
+		{"transferring, empty", root, 0, true, sum(0, 0), sum(1, 2), 0, true, rangesync.DecisionStripe},
+		{"transferring, holding one more", root, 0, true, sum(6, 1), sum(5, 2), 0, false, rangesync.DecisionSplit},
+		{"transferring, equal counts", root, 0, true, sum(5, 1), sum(5, 2), 0, true, rangesync.DecisionSplit},
+		{"transferring, holding, peer empty", root, 0, true, sum(6, 1), sum(0, 0), 0, false, rangesync.DecisionSendItems},
+		{"transferring, not splittable", leaf, 0, true, sum(0, 0), sum(6, 2), 0, false, rangesync.DecisionRequestItems},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := rangesync.Decide(rangesync.DecisionInput{
+				Scope: scope, Range: tc.r, Local: tc.local, Remote: tc.remote, Initiator: tc.initiator, Hint: tc.hint,
+				LargeDiff: tc.largeDiff, Transferring: tc.transferring,
+			})
+			if got != tc.want {
+				t.Fatalf("got decision %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNewInitiatorOpen(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +420,15 @@ func (f striperFunc) Stripe(r fingerprint.Range, local, remote uint64) bool {
 	return f(r, local, remote)
 }
 
+// transferStriper is a rangesync.TransferStriper whose transfer covers the
+// ranges inside covered.
+type transferStriper struct {
+	striperFunc
+	covered fingerprint.Range
+}
+
+func (s transferStriper) Transferring(r fingerprint.Range) bool { return s.covered.ContainsRange(r) }
+
 // TestSessionStriper checks the large-difference branch on the side that
 // holds fewer (candidate A of AC-B2, T4.7 part 1): in either role the
 // lacking side offers its Striper the range, and emits nothing for it when
@@ -511,12 +567,14 @@ func TestSessionLackingSideDeclines(t *testing.T) {
 		name string
 		// lackerIDs is what the lacking node holds, of holderIDs
 		lackerIDs []fingerprint.ID
-		// lackerOpens: the lacking node initiates; striper: it has one
-		lackerOpens, striper bool
-		open                 []fingerprint.Range
+		// lackerOpens: the lacking node initiates; striper: it has one,
+		// and transferring: a transfer of the lacking node covers the root
+		lackerOpens, striper, transferring bool
+		open                               []fingerprint.Range
 		// offered is the number of ranges the lacking node's Striper takes;
-		// listed the IDs the holder sends; wants the IDs the lacking node
-		// wants (nil: none)
+		// listed the IDs the holder sends (-1: at least the wants, which
+		// leaf exchanges exceed); wants the IDs the lacking node wants (nil:
+		// none)
 		offered, listed int
 		wants           []fingerprint.ID
 	}{
@@ -526,19 +584,27 @@ func TestSessionLackingSideDeclines(t *testing.T) {
 		{name: "stripe session at count 0", lackerOpens: true, open: []fingerprint.Range{stripe}, listed: len(inStripe(holderIDs)), wants: inStripe(holderIDs)},
 		{name: "empty initiator without a striper", lackerOpens: true, listed: len(holderIDs), wants: holderIDs},
 		{name: "empty responder without a striper", lackerOpens: false, listed: len(holderIDs), wants: holderIDs},
+		// within LargeDiff, as in the tail of a transfer
+		{name: "responder lacking a few", lackerIDs: holderIDs[10:], lackerOpens: false, striper: true, listed: -1, wants: holderIDs[:10]},
+		{name: "transferring responder lacking a few", lackerIDs: holderIDs[10:], lackerOpens: false, striper: true, transferring: true, offered: 1},
+		{name: "transferring initiator lacking a few", lackerIDs: holderIDs[10:], lackerOpens: true, striper: true, transferring: true, offered: -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			offered := 0
 			lacker := rangesync.Config{Scope: scope, Local: newFakeLocal(tc.lackerIDs...), LargeDiff: largeDiff, Open: tc.open}
 			if tc.striper {
-				lacker.Striper = striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
-					if remote <= local+largeDiff {
+				take := striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+					if remote <= local || (!tc.transferring && remote <= local+largeDiff) {
 						t.Errorf("offered %s at %d, %d", r, local, remote)
 					}
 					offered++
 					return true
 				})
+				lacker.Striper = take
+				if tc.transferring {
+					lacker.Striper = transferStriper{striperFunc: take, covered: scope.Root}
+				}
 			}
 			holder := rangesync.Config{Scope: scope, Local: newFakeLocal(holderIDs...), LargeDiff: largeDiff, Striper: never}
 
@@ -564,10 +630,11 @@ func TestSessionLackingSideDeclines(t *testing.T) {
 			if tc.lackerOpens {
 				wants, other = wantsA, wantsB
 			}
-			if offered != tc.offered {
+			// -1: some, the children the lacking side lacks a few in
+			if (tc.offered < 0 && offered == 0) || (tc.offered >= 0 && offered != tc.offered) {
 				t.Fatalf("offered %d ranges, want %d", offered, tc.offered)
 			}
-			if listed != tc.listed {
+			if (tc.listed < 0 && listed < len(tc.wants)) || (tc.listed >= 0 && listed != tc.listed) {
 				t.Fatalf("the holder listed %d IDs, want %d", listed, tc.listed)
 			}
 			if len(other) != 0 {

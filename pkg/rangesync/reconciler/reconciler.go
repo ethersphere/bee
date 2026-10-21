@@ -263,9 +263,9 @@ type Reconciler struct {
 }
 
 var (
-	_ rangesync.PeerScorer = (*Reconciler)(nil)
-	_ rangesync.Striper    = (*Reconciler)(nil)
-	_ storer.Syncer        = (*Reconciler)(nil)
+	_ rangesync.PeerScorer      = (*Reconciler)(nil)
+	_ rangesync.TransferStriper = (*Reconciler)(nil)
+	_ storer.Syncer             = (*Reconciler)(nil)
 )
 
 // New returns a Reconciler for the node with the given overlay. It does no

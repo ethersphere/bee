@@ -832,8 +832,9 @@ func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range) bool {
 
 // Stripe is the rangesync.Striper of the sessions this node serves
 // (rangesync.Options.Striper): the peer's Fingerprint of rg counts remote
-// elements, more than LargeDiff above this node's local (candidate A of
-// AC-B2, T4.7 part 1). It takes rg over in every case, so that the session
+// elements, more than LargeDiff above this node's local, or more at all in a
+// range a transfer covers (Transferring) (candidate A of AC-B2, T4.7 part
+// 1). It takes rg over in every case, so that the session
 // answers nothing for rg and the peer lists none of its IDs to this node,
 // and registers rg for a striped transfer (registerStripeLocked) unless the
 // bootstrap plan holds it: while a bootstrap transfer is queued or in flight,
@@ -861,6 +862,25 @@ func (r *Reconciler) Stripe(rg fingerprint.Range, _, _ uint64) bool {
 		r.registerStripeLocked(stripeJob{rg: rg})
 	}
 	return true
+}
+
+// Transferring reports whether a range registered for a striped transfer
+// (queued or in flight) covers rg: the reconciler is a
+// rangesync.TransferStriper for the sessions this node serves, and the
+// StripeCollector of its round sessions asks it too. In such a range the
+// sessions decline whatever this node lacks, and a round opens no session
+// over a covered session root with a peer that holds more in it
+// (lacksSessionRootLocked), so that no peer lists what the transfer lists,
+// also in its tail, below LargeDiff (T4.7 part 1).
+func (r *Reconciler) Transferring(rg fingerprint.Range) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.transferringLocked(rg)
+}
+
+// transferringLocked is Transferring; r.mu must be held.
+func (r *Reconciler) transferringLocked(rg fingerprint.Range) bool {
+	return slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.ContainsRange(rg) })
 }
 
 // registerStripeLocked queues job for the stripe worker, so that no range is
