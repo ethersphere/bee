@@ -76,6 +76,16 @@ func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
 	r.stripeRegistry = append(r.stripeRegistry, &stripeJob{rg: rg, own: true})
 }
 
+// HoldClaims registers ranges as claims of no peer without queuing them for
+// the worker, as claims it has not reached yet.
+func (r *Reconciler) HoldClaims(ranges []fingerprint.Range) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, rg := range ranges {
+		r.stripeRegistry = append(r.stripeRegistry, &stripeJob{rg: rg})
+	}
+}
+
 // HoldPeerStripe registers rg as peer's claim in flight without queuing it
 // for the worker, and returns the context an own job's preemption cancels.
 func (r *Reconciler) HoldPeerStripe(rg fingerprint.Range, peer swarm.Address) context.Context {

@@ -36,8 +36,9 @@ type radiusState struct {
 
 const (
 	// radiusHold bounds how long a pending new half that is not registered
-	// for a transfer (no covering peer, overlap, full registry, a retry
-	// awaiting its round) keeps SyncRate above 0 (§8.4).
+	// for a transfer (no covering peer, overlap with another own transfer,
+	// a retry awaiting its round) keeps SyncRate above 0 (§8.4). Claims do
+	// not keep it from being registered (registerStripeLocked).
 	radiusHold = SyncRateWindow
 	// maxRadiusAttempts bounds the striped transfers of one new half.
 	maxRadiusAttempts = 3
@@ -112,7 +113,7 @@ func (r *Reconciler) enqueueRadiusHalf() {
 	}
 	ctx, cancel := context.WithCancel(r.ctx)
 	if !r.registerStripeLocked(&stripeJob{rg: s.newHalf, radius: true, ctx: ctx, own: true}) {
-		cancel() // overlaps a registered range: retried next round
+		cancel() // overlaps another own transfer: retried next round
 		return
 	}
 	r.radius.striping, r.radius.striped, r.radius.cancel = true, s.newHalf, cancel

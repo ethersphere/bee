@@ -266,26 +266,63 @@ func TestSyncRateRadiusHalfOverlap(t *testing.T) {
 		func(h *harness) { h.r.ReleaseStripe(half) })
 }
 
-// TestSyncRateRadiusHalfRegistryFull: a half dropped by a full registry
-// waits (SyncRate > 0) and is transferred once the registry has room.
+// TestSyncRateRadiusHalfRegistryFull (T4.7 part 1 fix round 2): a registry
+// full of claims does not hold the half back. The half is registered on top
+// of MaxStripeRegistry claims, and no claim is registered past the bound on
+// top of it; its transfer alone holds SyncRate above 0 while it runs; it
+// transfers the half, and past the window the rate reads 0. Before T4.7
+// part 1 fix round 1 a full registry dropped the half, which waited under
+// RadiusHold (T3.5 review) until the registry had room.
 func TestSyncRateRadiusHalfRegistryFull(t *testing.T) {
 	t.Parallel()
 
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	h := newRadiusFake(t, 2, 2, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+	open := gateFetch(t, h.svc)
+	// claims inside the old half, up to the bound
 	oldHalf := fingerprint.NewRange(self, 2)
-	var held []fingerprint.Range
-	radiusBlocked(t,
-		func(h *harness) {
-			for i := range reconciler.MaxStripeRegistry {
-				rg := oldHalf.Child(10, uint64(i))
-				held = append(held, rg)
-				h.r.HoldStripe(rg)
-			}
-		},
-		func(h *harness) {
-			for _, rg := range held {
-				h.r.ReleaseStripe(rg)
-			}
-		})
+	claims := make([]fingerprint.Range, reconciler.MaxStripeRegistry)
+	for i := range claims {
+		claims[i] = oldHalf.Child(11, uint64(i))
+	}
+	h.r.HoldClaims(claims)
+	done := h.r.StripesTotal("done")
+
+	h.svc.set(func() { h.svc.local = selfRoot(1, 5) })
+	waitFor(t, "half registered", h.r.RadiusStriping)
+	if got := h.r.StripeRegistry(); got != reconciler.MaxStripeRegistry+1 {
+		t.Fatalf("%d ranges registered, want the %d claims and the half", got, reconciler.MaxStripeRegistry)
+	}
+	if h.r.EnqueueStripes([]fingerprint.Range{oldHalf.Child(11, reconciler.MaxStripeRegistry)}) {
+		t.Fatal("claim registered past the bound")
+	}
+	if got := h.r.StripeRegistry(); got != reconciler.MaxStripeRegistry+1 {
+		t.Fatalf("%d ranges registered after a claim past the bound, want %d", got, reconciler.MaxStripeRegistry+1)
+	}
+	waitFor(t, "half in flight", func() bool { return countInside(h.svc, sibling(2), peers...) > 0 })
+
+	for _, rg := range claims {
+		h.r.ReleaseStripe(rg)
+	}
+	if got := h.r.StripeRegistry(); got != 1 || !h.r.RadiusStriping() {
+		t.Fatalf("%d ranges registered once the claims ended, want the half only", got)
+	}
+	pastWindow(h) // nothing stored, no claim: only the half's transfer holds the rate
+	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v during the half's transfer, want >= %v", got, reconciler.StartupGuardRate)
+	}
+
+	open()
+	waitFor(t, "half transferred", func() bool { return !h.r.RadiusPending() && h.r.StripeRegistry() == 0 })
+	if got := h.r.StripesTotal("done"); got <= done {
+		t.Fatal("no stripe of the half done")
+	}
+	settle()
+	pastWindow(h)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v after the half, want 0", got)
+	}
 }
 
 // TestSyncRateRadiusHalfRetried: a failed transfer of the new half is
