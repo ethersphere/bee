@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -50,9 +51,14 @@ type bootstrapFigures struct {
 	// reconcile streams it opened (its stripes, verifications and later
 	// sessions), on those its peers opened, and on the Status streams;
 	// wants and maxWants the IDs it wanted from its peers' sessions, in
-	// all and in the largest.
+	// all and in the largest (an ID that several sessions list counts in
+	// each).
 	own, peers, status int
 	wants, maxWants    int
+	// served is the number of distinct IDs the lacking node wanted from its
+	// peers' sessions, lagging those of them it lacked at the start (the
+	// rest are uploads), and uploads the uploads of the run.
+	served, lagging, uploads int
 }
 
 // runBootstrap runs o, a neighborhood with a lagging node, and reads off its
@@ -67,6 +73,9 @@ func runBootstrap(t *testing.T, o simOptions) bootstrapFigures {
 		bound:          1.15*float64(o.Lag)*bootstrapIDBytes + 1e6,
 		stripesDone:    res.Counters["stripes_total{result=done}"],
 		stripesTimeout: res.Counters["stripes_total{result=timeout}"],
+		served:         lag.ServedWants,
+		lagging:        lag.ServedLagging,
+		uploads:        o.Batches * o.BatchSize,
 	}
 	lower := make(map[int]bool)
 	for i, n := range res.Nodes {
@@ -129,10 +138,43 @@ func (f bootstrapFigures) check(t *testing.T) {
 	}
 }
 
+// checkDeclined checks the headline claim of a bootstrap the lacking node
+// detects itself (IsBootstrap: its own transfer of its root, at threshold
+// 0): its peers' sessions list it nothing it lacked at the start, only
+// uploads, at most each once as a distinct ID.
+func (f bootstrapFigures) checkDeclined(t *testing.T) {
+	t.Helper()
+	if f.lagging != 0 {
+		t.Errorf("peers' sessions listed %d IDs the lacking node lacked at the start", f.lagging)
+	}
+	if f.served > f.uploads {
+		t.Errorf("peers' sessions listed %d distinct IDs, more than the %d uploads", f.served, f.uploads)
+	}
+}
+
 func (f bootstrapFigures) String() string {
-	return fmt.Sprintf("rank %d, caught up %.2f s, metadata in %.0f KB of AC-B2's %.0f KB (%.2f × the lacked IDs; read: own sessions %.0f KB, peers' %.0f KB, Status %.0f KB), peers' sessions %d (takeovers %d; wants %d, max %d), stripe sessions %d (peers' %d), stripes done %.0f",
+	return fmt.Sprintf("rank %d, caught up %.2f s, metadata in %.0f KB of AC-B2's %.0f KB (%.2f × the lacked IDs; read: own sessions %.0f KB, peers' %.0f KB, Status %.0f KB), peers' sessions %d (takeovers %d; wants %d, max %d; distinct %d of %d uploads, lacked %d), stripe sessions %d (peers' %d), stripes done %.0f, timed out %.0f",
 		f.rank, f.res.CaughtUp.Seconds(), f.metaIn/1000, f.bound/1000, f.metaIn/((f.bound-1e6)/1.15), float64(f.own)/1000, float64(f.peers)/1000, float64(f.status)/1000,
-		f.peerSessions, f.takeovers, f.wants, f.maxWants, f.ownStripes, f.peerStripes, f.stripesDone)
+		f.peerSessions, f.takeovers, f.wants, f.maxWants, f.served, f.uploads, f.lagging, f.ownStripes, f.peerStripes, f.stripesDone, f.stripesTimeout)
+}
+
+// atRank returns a simOptions.Overlay that gives node 0 rank peers with a
+// lower overlay, the initiators of its pairs: node 0's first byte is 0x80,
+// peers 1 to rank have the top bit clear, and the others a first byte above
+// 0x80.
+func atRank(rank int) func(i int, a swarm.Address) swarm.Address {
+	return func(i int, a swarm.Address) swarm.Address {
+		b := a.Bytes()
+		switch {
+		case i == 0:
+			b[0] = 0x80
+		case i <= rank:
+			b[0] &= 0x7f
+		default:
+			b[0] |= 0x81
+		}
+		return swarm.NewAddress(b)
+	}
 }
 
 // scaledBootstrap returns the options of a scaled bootstrap: N = 5, node 0
@@ -148,17 +190,57 @@ func scaledBootstrap(base int, seed uint64) simOptions {
 }
 
 // TestNeighborhoodBootstrapScaled runs an empty node's bootstrap with the
-// scaled LargeDiff: its peers' round sessions with it list nothing (it
-// declines the root as their responder), and its stripes, each past
-// LargeDiff, are listed in full.
+// scaled LargeDiff, at rank 2 (two initiators, two peers that take over):
+// its peers' round sessions with it, takeovers included, list nothing it
+// lacked (it declines the root as their responder, at threshold 0 through
+// the transfer's tail), and its stripes, each past LargeDiff, are listed in
+// full.
 func TestNeighborhoodBootstrapScaled(t *testing.T) {
 	t.Parallel()
 
-	f := runBootstrap(t, scaledBootstrap(8000, 1))
+	o := scaledBootstrap(8000, 1)
+	o.Overlay = atRank(2)
+	f := runBootstrap(t, o)
 	t.Log(f)
+	if f.rank != 2 {
+		t.Fatalf("rank %d, want 2", f.rank)
+	}
 	f.check(t)
-	if f.peerSessions == 0 {
-		t.Error("no session of a peer with the bootstrapping node")
+	f.checkDeclined(t)
+	if f.peerSessions == 0 || f.takeovers == 0 {
+		t.Errorf("%d sessions of the peers with the bootstrapping node, %d takeovers; want both", f.peerSessions, f.takeovers)
+	}
+}
+
+// TestNeighborhoodBootstrapStripeTimeout: stripes that outlast StripeTimeout
+// (30 s here, the 2-minute transfer's stripes take ~2 minutes each) keep
+// storing, so they run on as one attempt each (StripeTimeout is an
+// inactivity timeout, T4.7 part 1 fix round 1): none times out or restarts,
+// and nothing is listed twice, so the lacking node stays within AC-B2.
+// Before, each restart listed the stripe's remainder again.
+func TestNeighborhoodBootstrapStripeTimeout(t *testing.T) {
+	t.Parallel()
+
+	o := scaledBootstrap(8000, 5)
+	o.Overlay = atRank(1)
+	o.Reconciler = func(ro *reconciler.Options) { ro.StripeTimeout = 30 * time.Second }
+	f := runBootstrap(t, o)
+	t.Log(f)
+	if f.res.CaughtUp < 3*30*time.Second {
+		t.Fatalf("caught up after %v: the stripes did not outlast the timeout", f.res.CaughtUp)
+	}
+	f.check(t)
+	f.checkDeclined(t)
+	// one completed session per stripe and one per verification (a Busy
+	// answer is retried in the same attempt): no restart
+	completed := 0
+	for _, sp := range f.res.Spans {
+		if sp.Kind == "reconcile" && sp.Stripe && sp.Node == o.LagNode && sp.Err == nil {
+			completed++
+		}
+	}
+	if completed > 2*int(f.stripesDone) {
+		t.Errorf("%d completed stripe sessions for %.0f stripes: restarted", completed, f.stripesDone)
 	}
 }
 
