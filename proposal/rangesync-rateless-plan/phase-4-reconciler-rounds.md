@@ -3713,6 +3713,13 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     (138 s each), `TestSyncRateBootstrap` included (60 runs); `go test ./pkg/rangesync/ -count=3
     -cpu=1,2,4` had no failure (270 s). No `-race` (no C compiler; Follow-ups). No pkg/pullsync,
     pkg/puller, go.mod, proto or `*_fuzz_test.go` change.
+- **(Orchestrator, T4.7 part 1 landing, 2026-10-21) Part 1 landed after two fix rounds.** Review
+  round 1: no High; Medium 1 (a lying peer's claim set the threshold to 0 over its range) and four
+  Lows, plus the StripeTimeout relisting (AC-B2), all fixed in fix round 1. Fix round 1's verifier
+  failed `TestSyncRateRadiusHalfRegistryFull` (the test's premise, not the code; fixed in fix round
+  2). The re-review of both fix rounds found no High or Medium; its Lows are in the Follow-ups
+  ("(T4.7 part 1 re-review; recorded by the orchestrator at landing)"), the first of them handed to
+  part 3. README is ticked only after part 4.
 
 ## Follow-ups
 _(sessions append here)_
@@ -5062,3 +5069,32 @@ _(sessions append here)_
   `TestSyncRateRadiusHalfRegistryFull`. It was rewritten: the stripe worker, the rounds and the
   test's own registry edits (`HoldClaims`, `EnqueueStripes`, `ReleaseStripe`) all reach the
   registry under `r.mu` while the half's transfer runs.
+- **(T4.7 part 1 re-review; recorded by the orchestrator at landing) Lows.**
+  1. **→ T4.7 part 3 (AC-B2 headroom).** An own job cancels a running claim of the same range, and
+     the IDs the claim listed are listed again. The session-root check (scheduler.go ~L427)
+     registers a root claim with no `IsBootstrap` guard, and `preemptLocked` (stripes_transfer.go
+     ~L1229–1236) cancels it in flight. Two triggers: a failed bootstrap while `IsBootstrap` still
+     holds (the next round's `planCatchUp` clears `bootstrapFailed` and returns false, the
+     session-root check registers the root as a claim and the worker starts it, and a round later
+     the own bootstrap preempts it); and start-up, when no peer is admitted yet, `peerStatuses` is
+     empty, `IsBootstrap` is false and a served session registers a root claim that the first
+     round's bootstrap cancels. At 2^22 that is up to ~4–6 MB per running stripe, at most 4
+     stripes, per cycle, against AC-B2's ~45 MB headroom. Fix direction: skip the session-root
+     registration while `IsBootstrap` holds (as `servedStriper.Stripe` does, stripes_transfer.go
+     ~L1056), and/or let the bootstrap take over a running claim of the same root instead of
+     canceling it; cover both triggers with a test past `LargeDiff`. `planCatchUp`'s doc ("one round
+     runs the per-peer sessions before the next try", ~L1289) is stale past `LargeDiff`, and
+     `TestRoundBootstrapFailedResumesSessions` covers only a difference of 5.
+  2. **Records.** The verification round's bound moved from one `StripeTimeout` (T3.3, phase-3
+     L136) to the inactivity timeout within 9 × `StripeTimeout` (stripes_verify.go ~L144); T3.3's
+     rule is superseded there too (not exploitable: one session is capped at 10 minutes and a 15 s
+     fetch timeout applies). The residual "a liar's claim holds the stripe worker for as long as its
+     own stripe lasts" omits the claim's verification phase and Sybil reassignment (up to 4 lying
+     peers in a row); part 3 should size it with both.
+  3. **Nit → part 3.** Once a peer is at its claim cap, `enqueueStripes` still tries every remaining
+     range; each bumps `stripes_total{dropped}` and logs, inflating the metric by hundreds per
+     session.
+  4. **Pre-existing, widened by part 1 → T6.3 / before mainnet.** A Sybil majority of the peers that
+     share the node's root can trigger `IsBootstrap` through the median. That was a real own job
+     before; since part 1 it also sets the served sessions' threshold to 0 over the root, so the
+     node declines every lack in the sessions it serves while that job runs.
