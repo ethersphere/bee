@@ -14,6 +14,7 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 	OutOfFunds                       prometheus.Counter
+	CoveringBalance                  prometheus.Gauge
 	CoveringBalanceCacheHit          prometheus.Counter
 	CoveringBalanceCacheMiss         prometheus.Counter
 	CoveringBalanceCacheInvalidation prometheus.Counter
@@ -28,6 +29,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "out_of_funds",
 			Help:      "Number of cheque issues rejected because the chequebook had insufficient covering balance",
+		}),
+		CoveringBalance: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "covering_balance",
+			Help:      "Chequebook balance plus total paid out, as last read from chain",
 		}),
 		CoveringBalanceCacheHit: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -45,7 +52,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "covering_balance_cache_invalidation",
-			Help:      "Number of covering balance cache invalidations (deposit / wait for deposit)",
+			Help:      "Number of covering balance cache invalidations (confirmed deposit, mined or cancelled withdrawal)",
 		}),
 	}
 }

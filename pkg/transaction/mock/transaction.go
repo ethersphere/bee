@@ -122,6 +122,12 @@ func WithWaitForReceiptFunc(f func(ctx context.Context, txHash common.Hash) (rec
 	})
 }
 
+func WithWatchSentTransactionFunc(f func(txHash common.Hash) (chan types.Receipt, chan error, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.watchSentTransaction = f
+	})
+}
+
 func WithCallFunc(f func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.call = f

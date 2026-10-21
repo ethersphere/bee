@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -83,6 +84,8 @@ type service struct {
 	totalIssuedReserved *big.Int
 	coveringBalance     *big.Int
 	coveringBalanceAt   time.Time
+	withdrawalsReserved *big.Int
+	pendingWithdrawals  map[common.Hash]*big.Int
 	metrics             metrics
 }
 
@@ -97,6 +100,8 @@ func New(transactionService transaction.Service, address, ownerAddress common.Ad
 		store:               store,
 		chequeSigner:        chequeSigner,
 		totalIssuedReserved: big.NewInt(0),
+		withdrawalsReserved: big.NewInt(0),
+		pendingWithdrawals:  make(map[common.Hash]*big.Int),
 		metrics:             newMetrics(),
 	}, nil
 }
@@ -118,13 +123,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	hash, err = s.erc20Service.Transfer(ctx, s.address, amount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	s.invalidateCoveringBalance()
-	return hash, nil
+	return s.erc20Service.Transfer(ctx, s.address, amount)
 }
 
 // Balance returns the token balance of the chequebook.
@@ -137,45 +136,82 @@ func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	return s.availableBalance(ctx)
+	available, _, err := s.availableBalance(ctx, false)
+	return available, err
 }
 
-func (s *service) availableBalance(ctx context.Context) (*big.Int, error) {
+func (s *service) availableBalance(ctx context.Context, refresh bool) (*big.Int, bool, error) {
 	totalIssued, err := s.totalIssued()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	coveringBalance, err := s.getOrLoadCoveringBalance(ctx)
+	covering, fromCache, err := s.getOrLoadCoveringBalance(ctx, refresh)
+	if err != nil {
+		return nil, false, err
+	}
+
+	available := new(big.Int).Sub(covering, totalIssued)
+	available.Sub(available, s.withdrawalsReserved)
+	for _, pending := range s.pendingWithdrawals {
+		available.Sub(available, pending)
+	}
+
+	return available, fromCache, nil
+}
+
+// availableBalanceFor returns the available balance.
+// When the cached figure cannot cover it, the balance is reloaded from
+// chain first, because a deposit or an external top-up might not be in the cache.
+func (s *service) availableBalanceFor(ctx context.Context, amount *big.Int) (*big.Int, error) {
+	available, fromCache, err := s.availableBalance(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-
-	return new(big.Int).Sub(coveringBalance, totalIssued), nil
+	if fromCache && !s.covers(available, amount) {
+		available, _, err = s.availableBalance(ctx, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return available, nil
 }
 
-func (s *service) getOrLoadCoveringBalance(ctx context.Context) (*big.Int, error) {
-	now := time.Now().UTC()
-	if s.coveringBalance != nil && now.Sub(s.coveringBalanceAt) < coveringBalanceCacheValidity {
-		s.metrics.CoveringBalanceCacheHit.Inc()
-		return new(big.Int).Set(s.coveringBalance), nil
-	}
+// covers reports whether amount still fits after cheques that are being issued.
+func (s *service) covers(available, amount *big.Int) bool {
+	return amount.Cmp(new(big.Int).Sub(available, s.totalIssuedReserved)) <= 0
+}
 
-	s.metrics.CoveringBalanceCacheMiss.Inc()
+func (s *service) coveringBalanceValid() bool {
+	return s.coveringBalance != nil && time.Since(s.coveringBalanceAt) < coveringBalanceCacheValidity
+}
+
+// loadCoveringBalance returns balance + totalPaidOut. With refresh it always
+// reads the chain. Otherwise it returns the cached value while that value is valid.
+func (s *service) getOrLoadCoveringBalance(ctx context.Context, forceRefresh bool) (*big.Int, bool, error) {
+	if !forceRefresh {
+		if s.coveringBalanceValid() {
+			s.metrics.CoveringBalanceCacheHit.Inc()
+			return new(big.Int).Set(s.coveringBalance), true, nil
+		}
+		s.metrics.CoveringBalanceCacheMiss.Inc()
+	}
 
 	totalPaidOut, err := s.contract.TotalPaidOut(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	balance, err := s.Balance(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	s.coveringBalance = new(big.Int).Add(balance, totalPaidOut)
-	s.coveringBalanceAt = now
-	return new(big.Int).Set(s.coveringBalance), nil
+	s.coveringBalanceAt = time.Now()
+	value, _ := new(big.Float).SetInt(s.coveringBalance).Float64()
+	s.metrics.CoveringBalance.Set(value)
+	return new(big.Int).Set(s.coveringBalance), false, nil
 }
 
 func (s *service) invalidateCoveringBalance() {
@@ -209,12 +245,12 @@ func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	availableBalance, err := s.availableBalance(ctx)
+	availableBalance, err := s.availableBalanceFor(ctx, amount)
 	if err != nil {
 		return nil, err
 	}
 
-	if amount.Cmp(big.NewInt(0).Sub(availableBalance, s.totalIssuedReserved)) > 0 {
+	if !s.covers(availableBalance, amount) {
 		s.metrics.OutOfFunds.Inc()
 		return nil, ErrOutOfFunds
 	}
@@ -366,14 +402,10 @@ func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
 }
 
 func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-	availableBalance, err := s.AvailableBalance(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
+	amount = new(big.Int).Set(amount)
 
-	// check we can afford this so we don't waste gas and don't risk bouncing cheques
-	if availableBalance.Cmp(amount) < 0 {
-		return common.Hash{}, ErrInsufficientFunds
+	if err := s.reserveWithdrawal(ctx, amount); err != nil {
+		return common.Hash{}, err
 	}
 
 	callData, err := chequebookABI.Pack("withdraw", amount)
@@ -392,15 +424,58 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 
 	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
+		s.lock.Lock()
+		s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)
+		s.lock.Unlock()
 		return common.Hash{}, err
 	}
 
 	s.lock.Lock()
+	s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)
+	s.pendingWithdrawals[txHash] = amount
+	s.lock.Unlock()
+
+	receiptC, errC, err := s.transactionService.WatchSentTransaction(txHash)
+	if err != nil {
+		return txHash, err
+	}
+
+	go s.waitForWithdrawal(txHash, receiptC, errC)
+	return txHash, nil
+}
+
+func (s *service) reserveWithdrawal(ctx context.Context, amount *big.Int) error {
+	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.coveringBalance != nil {
-		s.coveringBalance.Sub(s.coveringBalance, amount)
-		s.coveringBalanceAt = time.Now().UTC()
+	availableBalance, err := s.availableBalanceFor(ctx, amount)
+	if err != nil {
+		return err
 	}
-	return txHash, nil
+
+	// check we can afford this so we don't waste gas and don't risk bouncing cheques
+	if !s.covers(availableBalance, amount) {
+		return ErrInsufficientFunds
+	}
+
+	s.withdrawalsReserved.Add(s.withdrawalsReserved, amount)
+	return nil
+}
+
+// waitForWithdrawal stops deducting a pending withdrawal once it is mined or cancelled.
+// On monitor shutdown the withdrawal stays deducted for the rest of the process lifetime.
+func (s *service) waitForWithdrawal(txHash common.Hash, receiptC <-chan types.Receipt, errC <-chan error) {
+	select {
+	case <-receiptC:
+	case err := <-errC:
+		if errors.Is(err, transaction.ErrMonitorClosed) {
+			return
+		}
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	delete(s.pendingWithdrawals, txHash)
+	s.metrics.CoveringBalanceCacheInvalidation.Inc()
+	s.coveringBalance = nil
 }

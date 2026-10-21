@@ -15,4 +15,10 @@ var (
 		defer svc.lock.Unlock()
 		svc.coveringBalanceAt = at
 	}
+	PendingWithdrawals = func(s Service) int {
+		svc := s.(*service)
+		svc.lock.Lock()
+		defer svc.lock.Unlock()
+		return len(svc.pendingWithdrawals)
+	}
 )
