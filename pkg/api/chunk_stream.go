@@ -627,6 +627,8 @@ func (s *Service) handleBidirectionalStream(
 	// to the connection, so pings and pongs get the same deadline as responses:
 	// a client that pauses reading must not lose its stream to a keepalive.
 	conn.SetPingHandler(func(data string) error {
+		// A ping shows the client is there, as a pong or a request does.
+		_ = conn.SetReadDeadline(time.Now().Add(s.chunkStreamReadTimeout))
 		err := conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(s.chunkDeliveryWriteDeadline))
 		if err == nil || errors.Is(err, websocket.ErrCloseSent) {
 			return nil
@@ -760,6 +762,7 @@ func (s *Service) handleBidirectionalStream(
 			case <-ctx.Done():
 				return
 			default:
+				s.metrics.ChunkStreamDeliveryCount.WithLabelValues("busy").Inc()
 				_ = sendResponse(getResponse(body.Get.Address, pb.Status_STATUS_BUSY, nil, "request queue full"))
 			}
 		case *pb.Request_Put:
@@ -772,6 +775,7 @@ func (s *Service) handleBidirectionalStream(
 			case <-ctx.Done():
 				return
 			default:
+				s.metrics.ChunkStreamDeliveryCount.WithLabelValues("busy").Inc()
 				_ = sendResponse(putResponse(body.Put.Address, pb.Status_STATUS_BUSY, "request queue full"))
 			}
 		default:
@@ -882,6 +886,12 @@ func (s *Service) processStreamPutRequest(
 	batchCacheMu *sync.RWMutex,
 	sendResponse func(*pb.Response) error,
 ) {
+	// A request still queued when the stream ends is not validated: nobody is
+	// left to read the reply.
+	if streamCtx.Err() != nil {
+		return
+	}
+
 	reply := func(status pb.Status, errMsg string) {
 		if status == pb.Status_STATUS_OK {
 			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("upload_success").Inc()
@@ -914,8 +924,8 @@ func (s *Service) processStreamPutRequest(
 		return
 	}
 
-	// A request still queued when the stream ends must not take a slot in the
-	// batch for a chunk that will never be pushed.
+	// The stream can also end while the chunk is validated, and a chunk that
+	// will never be pushed must not take a slot in the batch.
 	if streamCtx.Err() != nil {
 		return
 	}

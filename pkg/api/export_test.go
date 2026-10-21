@@ -7,6 +7,7 @@ package api
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	dto "github.com/prometheus/client_model/go"
 )
 
 type (
@@ -164,3 +165,13 @@ const (
 	DefaultStreamSubWorkers = defaultStreamSubWorkers
 	MaxStreamFrameSize      = maxStreamFrameSize
 )
+
+// ChunkStreamDeliveryCount returns the chunk stream delivery counter for one
+// outcome.
+func (s *Service) ChunkStreamDeliveryCount(status string) float64 {
+	m := &dto.Metric{}
+	if err := s.metrics.ChunkStreamDeliveryCount.WithLabelValues(status).Write(m); err != nil {
+		return -1
+	}
+	return m.GetCounter().GetValue()
+}

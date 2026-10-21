@@ -780,7 +780,7 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 		blockCh: blockCh,
 	}
 
-	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, svc := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -807,6 +807,9 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 	}
 	if busyResp.Error != "request queue full" {
 		t.Fatalf("expected error 'request queue full', got %q", busyResp.Error)
+	}
+	if got := svc.ChunkStreamDeliveryCount("busy"); got != 1 {
+		t.Fatalf("expected 1 busy delivery counted, got %v", got)
 	}
 
 	// Unblock workers and drain remaining responses
@@ -1816,5 +1819,37 @@ func TestChunkBidirectionalStream_KeepaliveWhileClientPausesReading(t *testing.T
 				}
 			}
 		})
+	}
+}
+
+// A client that keeps the connection alive with its own pings, rather than
+// by answering the node's, must not be dropped by the read timeout.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_ClientPingsKeepStreamOpen(t *testing.T) {
+	cs := inmemchunkstore.New()
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:                 mockstorer.NewWithChunkStore(cs),
+		Post:                   mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:                 "/chunks/stream",
+		WsHeaders:              streamHeaders(false),
+		ChunkStreamReadTimeout: 500 * time.Millisecond,
+	})
+
+	// Ping for several read timeouts without sending a request. The node's
+	// own pings are a minute apart, so only these keep the stream open.
+	for range 20 {
+		if err := wsConn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	ch := testingc.GenerateTestRandomChunk()
+	if err := cs.Put(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
+	if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
 	}
 }
