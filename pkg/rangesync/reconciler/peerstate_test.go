@@ -883,8 +883,8 @@ func TestPeerStateResetIgnoresStaleRuns(t *testing.T) {
 	t.Run("stale session waiting for its slot", func(t *testing.T) {
 		t.Parallel()
 		svc := newFakeService(status(10))
-		blockers := make([]swarm.Address, 0, reconciler.MaxInitiatedSessions+1) // and higher, later
-		gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
+		blockers := make([]swarm.Address, 0, reconciler.MinInitiatedSessions+1) // and higher, later
+		gates := make([]chan struct{}, reconciler.MinInitiatedSessions)
 		for i := range gates {
 			p := addr(0xf1, byte(i))
 			blockers = append(blockers, p)
@@ -898,7 +898,8 @@ func TestPeerStateResetIgnoresStaleRuns(t *testing.T) {
 			}
 		})
 		svc.remote[higher.ByteString()] = status(11)
-		h := newGossipHarness(t, svc, blockers...)
+		// a constant cap that the blockers' sessions take
+		h := newGossipHarnessOptions(t, svc, reconciler.Options{InitiatedSessions: len(gates)}, blockers...)
 		h.r.Round()
 		waitFor(t, "slots taken", func() bool { return svc.running() == len(blockers) })
 		h.topo.setPeers(append(blockers, higher)...)

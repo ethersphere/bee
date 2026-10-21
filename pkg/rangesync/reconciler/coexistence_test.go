@@ -153,7 +153,7 @@ func TestRangesyncOnlyGoroutines(t *testing.T) {
 	t.Parallel()
 
 	const longLived = 3 // the round loop, the Status gossip loop, the stripe worker
-	for _, neighbors := range []int{4, reconciler.MaxInitiatedSessions} {
+	for _, neighbors := range []int{4, reconciler.MinInitiatedSessions} {
 		t.Run(fmt.Sprintf("%d neighbors", neighbors), func(t *testing.T) {
 			t.Parallel()
 

@@ -61,11 +61,15 @@ import (
 //     no round; its first session waits for the round. A round that is due
 //     runs before the next trigger is handled.
 //   - Cap. The sessions this node opens, round sessions, takeovers, stripe
-//     transfers and verifications alike, take one of MaxInitiatedSessions
-//     slots first and wait for one, first come, first served. Stripe
-//     transfers and verifications first take one of MaxStripeSessions
-//     stripe slots, so that round sessions always have the other slots, and
-//     free both while they wait to retry a Busy answer.
+//     transfers and verifications alike, take one of the per-node cap's
+//     slots first and wait for one, first come, first served. Each round
+//     sets the cap from its eligible peers (InitiatedSessionCap): while they
+//     fit the node's session tokens, room for every higher-overlay peer's
+//     session and the stripe sessions within the tokens the lower-overlay
+//     peers' sessions leave, else MinInitiatedSessions. Stripe transfers
+//     and verifications first take one of MaxStripeSessions stripe slots,
+//     so that round sessions always have the other slots, and free both
+//     while they wait to retry a Busy answer.
 const (
 	// MinRoundInterval is the shortest round interval, used while rounds
 	// keep finding differences.
@@ -74,18 +78,19 @@ const (
 	// digest matches.
 	MaxRoundInterval = rangesync.MaxRoundInterval
 
-	// MaxInitiatedSessions bounds the sessions this node opens at once:
-	// round sessions, takeovers, stripe transfers and verifications
-	// together. It is half of rangesync.MaxConcurrentSessions, whose tokens
-	// the sessions peers open with this node share, so that the other half
-	// stays for those.
-	MaxInitiatedSessions = rangesync.MaxConcurrentSessions / 2
+	// MinInitiatedSessions is the least the per-node cap on the sessions
+	// this node opens at once allows (InitiatedSessionCap), and the cap
+	// until the first round has counted the peers: half of
+	// rangesync.MaxConcurrentSessions (the constant cap before G6), twice
+	// MaxStripeSessions.
+	MinInitiatedSessions = rangesync.MaxConcurrentSessions / 2
 	// MaxStripeSessions bounds the stripe transfers and verifications that
 	// run at once. They hold their slot for a whole stripe session, which
 	// the fetch queue backpressures (up to rangesync's session timeout), so
-	// they take at most half of MaxInitiatedSessions and round sessions keep
-	// the rest.
-	MaxStripeSessions = MaxInitiatedSessions / 2
+	// they take at most half of MinInitiatedSessions and round sessions keep
+	// the rest. It is a constant of its own: it does not grow with the
+	// per-node cap.
+	MaxStripeSessions = 4
 
 	// takeoverRounds is the number of round intervals, plus a jitter of up
 	// to one, that the peer with the higher overlay waits for the initiator
@@ -150,15 +155,49 @@ func (r *Reconciler) takeoverDueLocked(st *peerState, now time.Time, sameRoot bo
 	return !now.Before(st.takeoverSince.Add(wait))
 }
 
-// acquireSlot takes one of the MaxInitiatedSessions slots for a session
-// this node opens, waiting for one until ctx ends. release frees it.
-func (r *Reconciler) acquireSlot(ctx context.Context) (release func(), err error) {
-	select {
-	case r.slots <- struct{}{}:
-		return func() { <-r.slots }, nil
-	case <-ctx.Done():
-		return nil, context.Cause(ctx)
+// InitiatedSessionCap returns the per-node cap on the sessions a node opens
+// at once (round sessions, takeovers, stripe transfers and verifications
+// together), from its eligible peers at a round: higher with a higher
+// overlay, which it initiates with, and lower with a lower overlay, which
+// initiate with it (§8.2). The node's rangesync.MaxConcurrentSessions tokens
+// are shared by the sessions it opens and those it serves, and a peer runs
+// one session with it at a time, either way.
+//
+// While its sessions fit its tokens (higher + lower ≤ MaxConcurrentSessions,
+// a neighborhood of up to 17 nodes), the cap has room for a session with
+// every higher-overlay peer and for MaxStripeSessions stripe sessions, within
+// the tokens the lower-overlay peers' sessions leave, and at least
+// MinInitiatedSessions: a round reaches every higher-overlay peer in one
+// wave, and no session finds the node's tokens taken. With more peers the
+// neighborhood's sessions do not fit the tokens of its higher-overlay nodes,
+// which answer the excess Busy, and more sessions at once from the lower
+// overlays only raise those answers (measured at N = 25 and 33, T4.7 part 2):
+// the cap is MinInitiatedSessions, which leaves the other half of the tokens
+// to the sessions it serves.
+//
+//	cap = max(MinInitiatedSessions, min(higher + MaxStripeSessions, MaxConcurrentSessions − lower))  if higher + lower ≤ MaxConcurrentSessions
+//	cap = MinInitiatedSessions                                                                      otherwise
+func InitiatedSessionCap(higher, lower int) int {
+	if higher+lower > rangesync.MaxConcurrentSessions {
+		return MinInitiatedSessions
 	}
+	return max(MinInitiatedSessions, min(higher+MaxStripeSessions, rangesync.MaxConcurrentSessions-lower))
+}
+
+// acquireSlot takes one of the slots of the per-node cap for a session this
+// node opens, waiting for one until ctx ends. release frees it.
+func (r *Reconciler) acquireSlot(ctx context.Context) (release func(), err error) {
+	return r.slots.acquire(ctx)
+}
+
+// resizeSlotsLocked sets the per-node cap from the round's eligible peers
+// with a higher overlay (higher) and a lower one (lower), unless
+// Options.InitiatedSessions fixed it. r.mu must be held.
+func (r *Reconciler) resizeSlotsLocked(higher, lower int) {
+	if r.fixedSlots > 0 {
+		return
+	}
+	r.slots.resize(InitiatedSessionCap(higher, lower))
 }
 
 // acquireStripeSlot takes one of the MaxStripeSessions stripe slots,
@@ -343,6 +382,7 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 	// lacks this node's current root, keeps its difference unresolved, and
 	// so does the guard.
 	exchanged, eligible, unresolved, differs := true, 0, false, false
+	higher, lower := 0, 0 // the eligible peers by overlay (InitiatedSessionCap)
 	clear(r.awaiting)
 	var candidates []swarm.Address
 	opens := make(map[string][]fingerprint.Range)
@@ -370,6 +410,11 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 			continue
 		}
 		eligible++
+		if r.initiates(p) {
+			higher++
+		} else {
+			lower++
+		}
 		known, equal := r.compareDigests(local, remote)
 		if known && equal {
 			st.takeoverSince = time.Time{}
@@ -432,6 +477,7 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 		candidates = append(candidates, p)
 		opens[p.ByteString()] = open
 	}
+	r.resizeSlotsLocked(higher, lower)
 	for _, p := range r.orderCandidatesLocked(candidates) {
 		st := r.peers[p.ByteString()]
 		r.fireLocked(st, eventReconcile)
@@ -529,7 +575,7 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // session handed to its Striper (ranges this node lacks by more than
 // LargeDiff, or at all inside this node's own running transfer) as stripes,
 // at most maxSessionStripes of them, as the peer's claims. It waits for a
-// session slot first (MaxInitiatedSessions), then rechecks the round's
+// session slot first (InitiatedSessionCap), then rechecks the round's
 // decision, made at decided with this node's root root (recheckSession).
 // Once the peer has another entry or machine (currentLocked) neither the
 // session nor its fetch moves the peer's machine. open, if not empty,

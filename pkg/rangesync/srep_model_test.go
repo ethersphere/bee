@@ -53,9 +53,10 @@ import (
 //     the last round, and on the adaptive timer, MinRoundInterval to
 //     MaxRoundInterval), the Statuses a round sends before its sessions, the
 //     initiator rule and the takeover (2 round intervals plus a jitter of up
-//     to one without a session of the initiator), MaxInitiatedSessions slots
-//     with the recheck of a waiting session (stale when the digests now
-//     match), one session at a time per pair, the session's legs with a
+//     to one without a session of the initiator), the per-node cap's slots
+//     (srepParams.initiatedSessions) with the recheck of a waiting session
+//     (stale when the digests now match), one session at a time per pair,
+//     the session's legs with a
 //     one-way Delay as the harness has them (the open's round trip, the
 //     Fingerprint, the Symbols, a round trip per More, the Items, the empty
 //     answer and the FullClose's round trip), the hint recorded by both
@@ -117,8 +118,10 @@ type srepParams struct {
 	// The gossip and round intervals (defaults: the compiled constants).
 	StatusMinInterval, StatusMaxInterval time.Duration
 	MinRoundInterval, MaxRoundInterval   time.Duration
-	// InitiatedSessions is the number of sessions a node opens at once
-	// (default reconciler.MaxInitiatedSessions).
+	// InitiatedSessions, if set, is the number of sessions every node
+	// opens at once; zero gives each node the per-node cap of its rank
+	// (reconciler.InitiatedSessionCap of its higher- and lower-overlay
+	// peers), as simOptions.InitiatedSessions.
 	InitiatedSessions int
 	// Root is the session root (default the harness's, radius 0), and
 	// LeafBits the leaf bits of the Statuses (default the harness's, 8).
@@ -134,6 +137,7 @@ func srepParamsOf(o simOptions) srepParams {
 		Batches: o.Batches, BatchSize: o.BatchSize, BatchInterval: o.BatchInterval, Warmup: o.Warmup,
 		Tail: o.Tail, Limit: o.Limit, Delay: o.Delay, NoHints: o.NoHints,
 		MinRoundInterval: o.MinRoundInterval, MaxRoundInterval: o.MaxRoundInterval,
+		InitiatedSessions: o.InitiatedSessions,
 	}.withDefaults()
 }
 
@@ -158,7 +162,6 @@ func (p srepParams) withDefaults() srepParams {
 		p.BatchFactor = srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen}
 	}
 	def(&p.GrowthFactor, rangesync.GrowthFactor)
-	def(&p.InitiatedSessions, reconciler.MaxInitiatedSessions)
 	defDur(&p.BatchInterval, 17*time.Second)
 	defDur(&p.Warmup, 61*time.Second)
 	defDur(&p.Duration, 120*time.Second)
@@ -809,11 +812,21 @@ func newSREPSim(tb testing.TB, p srepParams, table *srepDecodeTable) *srepSim {
 		n := &srepNode{
 			i: i, held: make([]uint64, words), count: p.Base, peers: make([]srepPeer, p.Nodes),
 			interval: p.MinRoundInterval, timerAt: srepNever, deferredAt: srepNever,
-			slots: p.InitiatedSessions, claims: make(map[int]bool),
+			slots: p.initiatedSessions(i), claims: make(map[int]bool),
 		}
 		s.nodes = append(s.nodes, n)
 	}
 	return s
+}
+
+// initiatedSessions returns the cap on the sessions node i (the rank of its
+// overlay) opens at once: InitiatedSessions, or the per-node cap of its N − 1
+// − i higher- and i lower-overlay peers.
+func (p srepParams) initiatedSessions(i int) int {
+	if p.InitiatedSessions > 0 {
+		return p.InitiatedSessions
+	}
+	return reconciler.InitiatedSessionCap(p.Nodes-1-i, i)
 }
 
 // at schedules fn at t.

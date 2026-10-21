@@ -52,8 +52,18 @@ type g6Figures struct {
 	RoundTrips float64
 	// Sessions counts the completed sessions, Refused those answered Busy or
 	// over a session limit, and Stale those a recheck ended before they
-	// opened (reconciler sessions_total), per upload.
-	Sessions, Refused, Stale float64
+	// opened (reconciler sessions_total), per upload; Refused is Busy (the
+	// peer's Busy) plus SessionLimit (over a session limit on this node),
+	// and ServedBusy counts the Busy answers the nodes gave
+	// (session_busy_total), per upload.
+	Sessions, Refused, Stale       float64
+	Busy, SessionLimit, ServedBusy float64
+	// ServedMin is, of the nodes with lower-overlay peers, the fewest
+	// completed sessions per lower-overlay peer that a node served (those
+	// peers opened, stripes not counted): 0 when a node's served sessions
+	// starved. Unpaired counts the pairs of nodes with no completed session,
+	// either side opening; such a pair converges through the others.
+	ServedMin, Unpaired float64
 	// ZeroShare is the share of completed sessions with no difference.
 	ZeroShare float64
 	// BatchConv and MaxConv are the mean and the longest convergence of a
@@ -144,13 +154,16 @@ func g6FiguresOf(o simOptions, res *simResult) g6Figures {
 		Share: metaIn / uploads / srepPullsyncACB1(o.Nodes), Metadata: metaIn / uploads,
 		Status: status / uploads, Reconcile: reconcile / uploads, Want: (metaIn - status - reconcile) / uploads,
 		SymbolsPerDiff: spd, MoresPerUpload: mores / uploads,
-		RoundTrips:  trips / float64(max(sessions, 1)),
-		Sessions:    res.Sessions["ok"] / uploads,
-		Refused:     (res.Sessions["busy"] + res.Sessions["session_limit"]) / uploads,
-		Stale:       res.Sessions["stale"] / uploads,
-		FetchErrors: float64(fetchErrors) / uploads,
-		ZeroShare:   float64(zero) / float64(max(len(exact), 1)),
-		BatchConv:   conv / float64(len(res.Batches)), MaxConv: maxConv,
+		RoundTrips:   trips / float64(max(sessions, 1)),
+		Sessions:     res.Sessions["ok"] / uploads,
+		Refused:      (res.Sessions["busy"] + res.Sessions["session_limit"]) / uploads,
+		Busy:         res.Sessions["busy"] / uploads,
+		SessionLimit: res.Sessions["session_limit"] / uploads,
+		ServedBusy:   res.Counters["session_busy_total{}"] / uploads,
+		Stale:        res.Sessions["stale"] / uploads,
+		FetchErrors:  float64(fetchErrors) / uploads,
+		ZeroShare:    float64(zero) / float64(max(len(exact), 1)),
+		BatchConv:    conv / float64(len(res.Batches)), MaxConv: maxConv,
 		Diff: g6QuantilesOf(exact), DiffBoth: g6QuantilesOf(res.diffsFrom(from)),
 		Wants: g6QuantilesOf(wants), CatchUp: catchUp,
 		Exhausted:  make(map[string]float64),
@@ -170,11 +183,56 @@ func g6FiguresOf(o simOptions, res *simResult) g6Figures {
 	if d := res.End - o.Warmup - res.Converged; d > 0 {
 		f.Idle = float64(tail) / float64(o.Nodes) / d.Minutes()
 	}
+	f.ServedMin, f.Unpaired = servedFrom(res, from)
 	// every completed session opens with one Fingerprint (a Message with a
 	// part per opened range: one, the root, in a round); the rest are the
 	// children of split ranges
 	f.Splits = max(0, res.Counters["parts_sent{type=fingerprint}"]-res.Sessions["ok"])
 	return f
+}
+
+// servedFrom returns g6Figures.ServedMin and Unpaired of res from from on.
+func servedFrom(res *simResult, from time.Duration) (servedMin, unpaired float64) {
+	index := make(map[string]int, len(res.Nodes))
+	for i, n := range res.Nodes {
+		index[n.Addr.ByteString()] = i
+	}
+	n := len(res.Nodes)
+	pairs := make([][]int, n) // pairs[opener][peer]
+	for i := range pairs {
+		pairs[i] = make([]int, n)
+	}
+	for _, sp := range res.Spans {
+		if sp.Kind != "reconcile" || sp.Stripe || sp.Err != nil || sp.At < from {
+			continue
+		}
+		if j, ok := index[sp.Peer.ByteString()]; ok {
+			pairs[sp.Node][j]++
+		}
+	}
+	servedMin = math.Inf(1)
+	for j := range n {
+		served, lower := 0, 0
+		for i := range n {
+			if i == j {
+				continue
+			}
+			if res.Nodes[i].Addr.Compare(res.Nodes[j].Addr) < 0 { // i initiates with j
+				served += pairs[i][j]
+				lower++
+			}
+			if i < j && pairs[i][j]+pairs[j][i] == 0 {
+				unpaired++
+			}
+		}
+		if lower > 0 {
+			servedMin = min(servedMin, float64(served)/float64(lower))
+		}
+	}
+	if math.IsInf(servedMin, 1) {
+		servedMin = 0
+	}
+	return servedMin, unpaired
 }
 
 // exhausted returns the streams that exhausted their cache, all levels.
@@ -186,10 +244,13 @@ func (f g6Figures) exhausted() float64 {
 	return total
 }
 
-// g6Label names the session constants the harness runs with.
+// g6Label names the session constants the harness runs with; the initiated
+// sessions are capped per node (reconciler.InitiatedSessionCap) unless a
+// run fixes the cap (simOptions.InitiatedSessions).
 func g6Label() string {
-	return fmt.Sprintf("GrowthFactor %d, BatchFactor %d/%d, MinBatch %d, MaxInitiatedSessions %d",
-		rangesync.GrowthFactor, rangesync.BatchFactorNum, rangesync.BatchFactorDen, rangesync.MinBatch, reconciler.MaxInitiatedSessions)
+	return fmt.Sprintf("GrowthFactor %d, BatchFactor %d/%d, MinBatch %d, initiated sessions per node (InitiatedSessionCap, %d to %d), MaxStripeSessions %d",
+		rangesync.GrowthFactor, rangesync.BatchFactorNum, rangesync.BatchFactorDen, rangesync.MinBatch,
+		reconciler.MinInitiatedSessions, rangesync.MaxConcurrentSessions, reconciler.MaxStripeSessions)
 }
 
 // TestNeighborhoodG6Figures runs a short instance of each kind of G6 run and

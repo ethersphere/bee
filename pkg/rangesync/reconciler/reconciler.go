@@ -120,6 +120,11 @@ type Options struct {
 	// rangesync.Options.LargeDiff. It is for tests that scale a bootstrap:
 	// the node leaves it zero.
 	LargeDiff uint64
+	// InitiatedSessions, if set, fixes the cap on the sessions this node
+	// opens at once, instead of the per-node cap that each round sets
+	// (InitiatedSessionCap). It is for simulations that compare a constant
+	// cap: the node leaves it zero.
+	InitiatedSessions int
 }
 
 // peerState is what the reconciler keeps for a connected peer.
@@ -202,16 +207,18 @@ type Reconciler struct {
 
 	// minInterval and maxInterval bound the adaptive round interval, whose
 	// current value (nanoseconds) is interval; roundAfter runs the round
-	// timer and jitter draws takeover jitters. slots holds a token per
-	// running session this node opened (MaxInitiatedSessions), stripeSlots
-	// one per stripe session (MaxStripeSessions). roundWake triggers a round
-	// (wakeRound). foundDiff records that a session found differences since
-	// the last round adapted the interval.
+	// timer and jitter draws takeover jitters. slots holds a slot per
+	// running session this node opened (the per-node cap, sized by each
+	// round unless fixedSlots, Options.InitiatedSessions, fixes it),
+	// stripeSlots one per stripe session (MaxStripeSessions). roundWake
+	// triggers a round (wakeRound). foundDiff records that a session found
+	// differences since the last round adapted the interval.
 	minInterval, maxInterval time.Duration
 	interval                 atomic.Int64
 	roundAfter               func(time.Duration) <-chan time.Time
 	jitter                   func() float64
-	slots                    chan struct{}
+	slots                    *slotPool
+	fixedSlots               int
 	stripeSlots              chan struct{}
 	roundWake                chan struct{}
 	foundDiff                bool
@@ -301,6 +308,10 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.LargeDiff == 0 {
 		o.LargeDiff = rangesync.LargeDiff
 	}
+	slots := MinInitiatedSessions // until the first round counts the peers
+	if o.InitiatedSessions > 0 {
+		slots = o.InitiatedSessions
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Reconciler{
 		overlay:       overlay,
@@ -320,7 +331,8 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		maxInterval:   maxInterval,
 		roundAfter:    roundAfter,
 		jitter:        o.Jitter,
-		slots:         make(chan struct{}, MaxInitiatedSessions),
+		slots:         newSlotPool(slots),
+		fixedSlots:    o.InitiatedSessions,
 		stripeSlots:   make(chan struct{}, MaxStripeSessions),
 		roundWake:     make(chan struct{}, 1),
 		peers:         make(map[string]*peerState),

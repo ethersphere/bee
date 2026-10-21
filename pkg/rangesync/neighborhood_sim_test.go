@@ -157,14 +157,20 @@ type simOptions struct {
 	// reconciler.MinRoundInterval and MaxRoundInterval.
 	MinRoundInterval, MaxRoundInterval time.Duration
 	// Reconciler and Service, if set, adjust each node's options after the
-	// harness set its own (clock, jitter, bounds, LargeDiff; leaf bits 8,
-	// scorer, wants, striper, clock, LargeDiff).
+	// harness set its own (clock, jitter, bounds, LargeDiff,
+	// InitiatedSessions; leaf bits 8, scorer, wants, striper, clock,
+	// LargeDiff).
 	Reconciler func(*reconciler.Options)
 	Service    func(*rangesync.Options)
 	// LargeDiff scales the threshold of the sessions' large-difference
 	// branch and of the reconcilers' session-root check (Options.LargeDiff
 	// of both); zero keeps rangesync.LargeDiff (T4.7 part 1).
 	LargeDiff uint64
+	// InitiatedSessions, if set, fixes every reconciler's cap on the
+	// sessions it opens at once (reconciler.Options.InitiatedSessions);
+	// zero keeps the per-node cap (reconciler.InitiatedSessionCap, T4.7
+	// part 2), for example 8 to compare with the constant cap before G6.
+	InitiatedSessions int
 	// Radius sets the storage radius of nodes by index (default 0): a
 	// node's root is the first Radius bits of its overlay, and a chunk
 	// converges once every node whose root contains it holds it. Overlay,
@@ -655,9 +661,10 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 			defer jitterMu.Unlock()
 			return jitter.Float64()
 		},
-		MinRoundInterval: o.MinRoundInterval,
-		MaxRoundInterval: o.MaxRoundInterval,
-		LargeDiff:        o.LargeDiff,
+		MinRoundInterval:  o.MinRoundInterval,
+		MaxRoundInterval:  o.MaxRoundInterval,
+		LargeDiff:         o.LargeDiff,
+		InitiatedSessions: o.InitiatedSessions,
 	}
 	if o.Reconciler != nil {
 		o.Reconciler(&ro)

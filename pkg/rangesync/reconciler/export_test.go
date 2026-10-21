@@ -366,6 +366,28 @@ func (r *Reconciler) VerifierFor(res StripeResult) (swarm.Address, bool) {
 // (MaxStripeSessions).
 func (r *Reconciler) StripeSlotsTaken() int { return len(r.stripeSlots) }
 
+// SessionSlots returns the per-node cap on the sessions this node opens at
+// once (InitiatedSessionCap, set by the last round) and the slots taken.
+func (r *Reconciler) SessionSlots() (size, used int) { return r.slots.state() }
+
+// SlotPool is the semaphore of the per-node cap, for its tests.
+type SlotPool struct{ p *slotPool }
+
+func NewSlotPool(size int) SlotPool { return SlotPool{p: newSlotPool(size)} }
+
+func (s SlotPool) Acquire(ctx context.Context) (release func(), err error) {
+	return s.p.acquire(ctx)
+}
+func (s SlotPool) Resize(size int)         { s.p.resize(size) }
+func (s SlotPool) State() (size, used int) { return s.p.state() }
+
+// Waiting returns the number of callers waiting for a slot.
+func (s SlotPool) Waiting() int {
+	s.p.mu.Lock()
+	defer s.p.mu.Unlock()
+	return s.p.waiters.Len()
+}
+
 // MaxStripeBusyRetries is maxStripeBusyRetries.
 const MaxStripeBusyRetries = maxStripeBusyRetries
 

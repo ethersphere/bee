@@ -467,8 +467,8 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // holds it, and the peer in Striped (acquireStripe), until it ends, except
 // while it waits to ask again for IDs the want set held (resolvePending):
 // then it frees the Striped state, and the lock unless locks.keep.
-// It holds a stripe slot (MaxStripeSessions) and a session slot
-// (MaxInitiatedSessions) while its session runs, and frees both while it
+// It holds a stripe slot (MaxStripeSessions) and a session slot (the
+// per-node cap) while its session runs, and frees both while it
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
 // peer's Busy, and without a count for a cause on this node (localBusy). A
 // peer whose fetch stream opens back off (opensBackOff) is not asked for a

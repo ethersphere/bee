@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -229,27 +230,32 @@ func TestRoundIntervalBounds(t *testing.T) {
 	assertSessions(t, svc2, higher, 1)
 }
 
-// TestRoundSessionCap: a round with more differing peers than
-// MaxInitiatedSessions runs at most that many sessions at once; the others
-// wait for a slot and run once one frees.
+// TestRoundSessionCap: a round with more differing peers than the per-node
+// cap (InitiatedSessionCap: 19 peers, more than the node's session tokens,
+// so the cap is MinInitiatedSessions) runs at most that many sessions at
+// once; the others wait for a slot and run once one frees.
 func TestRoundSessionCap(t *testing.T) {
 	t.Parallel()
 
 	svc := newFakeService(status(1))
 	svc.reconcileGate = make(chan struct{})
-	peers := make([]swarm.Address, 2*reconciler.MaxInitiatedSessions+3)
+	peers := make([]swarm.Address, 2*reconciler.MinInitiatedSessions+3)
 	for i := range peers {
 		peers[i] = addr(0xf0, byte(i))
 		svc.remote[peers[i].ByteString()] = status(2)
 	}
+	limit := reconciler.InitiatedSessionCap(len(peers), 0)
+	if limit != reconciler.MinInitiatedSessions {
+		t.Fatalf("cap %d, want %d", limit, reconciler.MinInitiatedSessions)
+	}
 	h := newGossipHarness(t, svc, peers...)
 	h.r.Round()
-	waitFor(t, "sessions", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+	waitFor(t, "sessions", func() bool { return svc.running() == limit })
 	h.r.Round() // the waiting peers are Reconciling: no second session with them
 	settle()
 	svc.set(func() {
-		if svc.inAll != reconciler.MaxInitiatedSessions {
-			t.Errorf("%d sessions at once, want %d", svc.inAll, reconciler.MaxInitiatedSessions)
+		if svc.inAll != limit {
+			t.Errorf("%d sessions at once, want %d", svc.inAll, limit)
 		}
 	})
 	if h.r.GuardReleased() {
@@ -266,27 +272,31 @@ func TestRoundSessionCap(t *testing.T) {
 		}
 	}
 	svc.set(func() {
-		if svc.maxInAll != reconciler.MaxInitiatedSessions {
-			t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, reconciler.MaxInitiatedSessions)
+		if svc.maxInAll != limit {
+			t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, limit)
 		}
 	})
 }
 
 // TestRoundSessionCapSharedWithStripes: stripe sessions take their slots
-// from the same MaxInitiatedSessions as round sessions.
+// from the same per-node cap as round sessions. The round sessions of 16
+// higher-overlay peers take all of the cap's MaxConcurrentSessions slots.
 func TestRoundSessionCapSharedWithStripes(t *testing.T) {
 	t.Parallel()
 
 	svc := newFakeService(status(1))
 	svc.reconcileGate = make(chan struct{})
-	peers := make([]swarm.Address, reconciler.MaxInitiatedSessions)
+	peers := make([]swarm.Address, rangesync.MaxConcurrentSessions)
 	for i := range peers {
 		peers[i] = addr(0xf0, byte(i))
 		svc.remote[peers[i].ByteString()] = status(2)
 	}
 	h := newGossipHarness(t, svc, peers...)
 	h.r.Round()
-	waitFor(t, "sessions", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+	waitFor(t, "sessions", func() bool { return svc.running() == len(peers) })
+	if size, used := h.r.SessionSlots(); size != len(peers) || used != len(peers) {
+		t.Fatalf("cap %d, %d slots taken; want %d of %d", size, used, len(peers), len(peers))
+	}
 
 	striper := addr(0xf1, 0) // not followed by the reconciler
 	done := make(chan []reconciler.StripeResult, 1)
@@ -302,9 +312,290 @@ func TestRoundSessionCapSharedWithStripes(t *testing.T) {
 		t.Fatal(res[0].Err)
 	}
 	svc.set(func() {
-		if svc.maxInAll > reconciler.MaxInitiatedSessions {
-			t.Errorf("%d sessions at once, want at most %d", svc.maxInAll, reconciler.MaxInitiatedSessions)
+		if svc.maxInAll > len(peers) {
+			t.Errorf("%d sessions at once, want at most %d", svc.maxInAll, len(peers))
 		}
+	})
+}
+
+// TestInitiatedSessionCap checks the per-node cap (InitiatedSessionCap) at
+// every rank of neighborhoods of N = 9, 17, 25 and 33 nodes, where the node
+// of rank k (by overlay) has k lower-overlay and N − 1 − k higher-overlay
+// eligible peers, and its invariants over a grid of peer counts: it lies in
+// [MinInitiatedSessions, MaxConcurrentSessions]; it leaves a token for the
+// session of each lower-overlay peer, for up to MaxConcurrentSessions −
+// MinInitiatedSessions of them; with up to MaxConcurrentSessions peers (N ≤
+// 17) it covers every higher-overlay peer (a round's sessions in one wave)
+// and, where the tokens allow, MaxStripeSessions stripe sessions besides;
+// with more it is MinInitiatedSessions.
+func TestInitiatedSessionCap(t *testing.T) {
+	t.Parallel()
+
+	const tokens = rangesync.MaxConcurrentSessions
+	floor := func(n int) []int { return slices.Repeat([]int{reconciler.MinInitiatedSessions}, n) }
+	for _, tc := range []struct {
+		n    int
+		want []int // by rank
+	}{
+		{n: 9, want: []int{12, 11, 10, 9, 8, 8, 8, 8, 8}},
+		{n: 17, want: slices.Concat([]int{16, 15, 14, 13, 12, 11, 10, 9}, floor(9))},
+		{n: 18, want: floor(18)},
+		{n: 25, want: floor(25)},
+		{n: 33, want: floor(33)},
+	} {
+		for k, want := range tc.want {
+			higher, lower := tc.n-1-k, k
+			got := reconciler.InitiatedSessionCap(higher, lower)
+			if got != want {
+				t.Errorf("N = %d, rank %d: cap %d, want %d", tc.n, k, got, want)
+			}
+			if tc.n-1 <= tokens && got < higher {
+				t.Errorf("N = %d, rank %d: cap %d below the %d higher-overlay peers: a second wave", tc.n, k, got, higher)
+			}
+		}
+	}
+	for higher := range 41 {
+		for lower := range 41 {
+			got := reconciler.InitiatedSessionCap(higher, lower)
+			reserve := min(lower, tokens-reconciler.MinInitiatedSessions)
+			switch {
+			case got < reconciler.MinInitiatedSessions || got > tokens:
+				t.Errorf("higher %d, lower %d: cap %d outside [%d, %d]", higher, lower, got, reconciler.MinInitiatedSessions, tokens)
+			case got+reserve > tokens:
+				t.Errorf("higher %d, lower %d: cap %d leaves %d tokens for the lower-overlay peers' sessions, want %d", higher, lower, got, tokens-got, reserve)
+			case higher+lower <= tokens && got < higher:
+				t.Errorf("higher %d, lower %d: cap %d below the higher-overlay peers", higher, lower, got)
+			case higher+lower <= tokens && got < min(higher+reconciler.MaxStripeSessions, tokens-lower):
+				t.Errorf("higher %d, lower %d: cap %d, below the room for the higher-overlay peers and the stripes", higher, lower, got)
+			case higher+lower > tokens && got != reconciler.MinInitiatedSessions:
+				t.Errorf("higher %d, lower %d: cap %d past the tokens, want %d", higher, lower, got, reconciler.MinInitiatedSessions)
+			}
+		}
+	}
+}
+
+// TestRoundSessionCapPerNode: a round sizes the cap from its eligible peers
+// (InitiatedSessionCap) before it starts its sessions, and runs that many at
+// once: at the ranks of N = 9 and 17 a session with every differing
+// higher-overlay peer in one wave, past N = 17 MinInitiatedSessions, so that
+// half of the tokens stay free for the lower-overlay peers' sessions. The
+// lower-overlay peers here have equal digests: eligible, but no session.
+func TestRoundSessionCapPerNode(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		lower, higher int
+		want          int // sessions at once
+	}{
+		{name: "N=9 rank 0", higher: 8, want: 8},
+		{name: "N=9 rank 4", lower: 4, higher: 4, want: 4},
+		{name: "N=17 rank 0", higher: 16, want: 16},
+		{name: "N=17 rank 4", lower: 4, higher: 12, want: 12},
+		{name: "N=17 rank 12", lower: 12, higher: 4, want: 4},
+		{name: "N=18 rank 0", higher: 17, want: 8},
+		{name: "N=25 rank 4", lower: 4, higher: 20, want: 8},
+		{name: "N=25 rank 12", lower: 12, higher: 12, want: 8},
+		{name: "N=33 rank 0", higher: 32, want: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := newFakeService(status(1))
+			svc.reconcileGate = make(chan struct{})
+			var peers, higher []swarm.Address
+			for i := range tc.lower {
+				p := addr(0x10, byte(i))
+				svc.remote[p.ByteString()] = status(1)
+				peers = append(peers, p)
+			}
+			for i := range tc.higher {
+				p := addr(0xf0, byte(i))
+				svc.remote[p.ByteString()] = status(2)
+				peers = append(peers, p)
+				higher = append(higher, p)
+			}
+			h := newGossipHarness(t, svc, peers...)
+			h.r.Round()
+			waitFor(t, "sessions", func() bool { return svc.running() == tc.want })
+			settle()
+			if size, used := h.r.SessionSlots(); size != reconciler.InitiatedSessionCap(tc.higher, tc.lower) || used != tc.want {
+				t.Fatalf("cap %d, %d slots taken; want %d, %d", size, used, reconciler.InitiatedSessionCap(tc.higher, tc.lower), tc.want)
+			}
+			if n := svc.running(); n != tc.want {
+				t.Fatalf("%d sessions at once, want %d", n, tc.want)
+			}
+			close(svc.reconcileGate)
+			for _, p := range higher {
+				waitFor(t, "session", func() bool { return svc.count(svc.reconciled, p) > 0 })
+			}
+			for _, p := range peers[:tc.lower] {
+				if n := len(svc.sessionOpens(p)); n != 0 {
+					t.Fatalf("%d sessions with a lower-overlay peer of an equal digest", n)
+				}
+			}
+			svc.set(func() {
+				if svc.maxInAll != tc.want {
+					t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, tc.want)
+				}
+			})
+		})
+	}
+}
+
+// TestRoundSessionCapFollowsPeers: the cap follows the eligible peers from
+// round to round. A smaller cap takes no slot from a running session: the
+// next session starts only once the sessions are below it.
+func TestRoundSessionCapFollowsPeers(t *testing.T) {
+	t.Parallel()
+
+	svc := newFakeService(status(1))
+	higher := make([]swarm.Address, rangesync.MaxConcurrentSessions)
+	gates := make([]chan struct{}, len(higher))
+	for i := range higher {
+		higher[i] = addr(0xf0, byte(i))
+		gates[i] = make(chan struct{})
+		svc.peerGate[higher[i].ByteString()] = gates[i]
+		svc.remote[higher[i].ByteString()] = status(2)
+	}
+	t.Cleanup(func() {
+		for _, g := range gates {
+			select {
+			case <-g:
+			default:
+				close(g)
+			}
+		}
+	})
+	h := newGossipHarness(t, svc, higher...)
+	h.r.Round()
+	waitFor(t, "sessions", func() bool { return svc.running() == len(higher) })
+
+	// 8 lower-overlay peers with equal digests and one more higher-overlay
+	// peer join: past the node's tokens, the cap drops to
+	// MinInitiatedSessions
+	lowerPeers := make([]swarm.Address, reconciler.MinInitiatedSessions)
+	for i := range lowerPeers {
+		lowerPeers[i] = addr(0x10, byte(i))
+		svc.set(func() { svc.remote[lowerPeers[i].ByteString()] = status(1) })
+	}
+	extra := addr(0xf1, 0)
+	svc.set(func() { svc.remote[extra.ByteString()] = status(2) })
+	h.topo.setPeers(slices.Concat(lowerPeers, higher, []swarm.Address{extra})...)
+	h.r.Round()
+	waitState(t, h.r, extra, reconciler.StateReconciling) // waiting for a slot
+	want := reconciler.InitiatedSessionCap(len(higher)+1, len(lowerPeers))
+	if size, used := h.r.SessionSlots(); size != want || used != len(higher) {
+		t.Fatalf("cap %d, %d slots taken; want %d, %d", size, used, want, len(higher))
+	}
+	for i := range len(higher) - want {
+		close(gates[i])
+	}
+	waitFor(t, "sessions at the cap", func() bool { return svc.running() == want })
+	settle()
+	if n := len(svc.sessionOpens(extra)); n != 0 {
+		t.Fatalf("session started with %d slots taken of a cap of %d", want, want)
+	}
+	close(gates[len(higher)-want])
+	waitFor(t, "session", func() bool { return len(svc.sessionOpens(extra)) == 1 })
+}
+
+// TestRoundSessionCapStripesTakeovers: stripe sessions and takeovers take
+// their slots from the per-node cap with the round sessions, so that
+// together they never take the tokens the cap leaves for the lower-overlay
+// peers' sessions.
+func TestRoundSessionCapStripesTakeovers(t *testing.T) {
+	t.Parallel()
+
+	// N = 17, rank 0: the stripe sessions hold MaxStripeSessions of the
+	// cap's 16 slots, the round sessions run in the rest and the others wait
+	// for the stripes to end
+	t.Run("stripes", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(1))
+		stripeGate, roundGate := make(chan struct{}), make(chan struct{})
+		stripePeers := make([]swarm.Address, reconciler.MaxStripeSessions)
+		for i := range stripePeers {
+			stripePeers[i] = addr(0xf1, byte(i)) // not followed by the reconciler
+			svc.peerGate[stripePeers[i].ByteString()] = stripeGate
+		}
+		higher := make([]swarm.Address, rangesync.MaxConcurrentSessions)
+		for i := range higher {
+			higher[i] = addr(0xf0, byte(i))
+			svc.peerGate[higher[i].ByteString()] = roundGate
+			svc.remote[higher[i].ByteString()] = status(2)
+		}
+		h := newGossipHarness(t, svc, higher...)
+		done := make(chan []reconciler.StripeResult, 1)
+		go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(stripePeers...)) }()
+		waitFor(t, "stripe sessions", func() bool { return svc.running() == len(stripePeers) })
+		h.r.Round()
+		limit := reconciler.InitiatedSessionCap(len(higher), 0)
+		waitFor(t, "round sessions", func() bool { return svc.running() == limit })
+		settle()
+		if size, used := h.r.SessionSlots(); size != limit || used != limit {
+			t.Fatalf("cap %d, %d slots taken; want %d of %d", size, used, limit, limit)
+		}
+		close(stripeGate)
+		for _, res := range <-done {
+			if res.Err != nil {
+				t.Fatal(res.Err)
+			}
+		}
+		close(roundGate)
+		for _, p := range higher {
+			waitFor(t, "session", func() bool { return svc.count(svc.reconciled, p) > 0 })
+		}
+		svc.set(func() {
+			if svc.maxInAll != limit {
+				t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, limit)
+			}
+		})
+	})
+
+	// N = 25, rank 12: the takeovers of 12 silent lower-overlay peers and
+	// the round sessions with 12 higher-overlay peers share a cap of 8, and
+	// the other 8 tokens stay for the lower-overlay peers' sessions
+	t.Run("takeovers", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(status(1))
+		svc.reconcileGate = make(chan struct{})
+		const lowerN, higherN = 12, 12
+		peers := make([]swarm.Address, 0, lowerN+higherN)
+		for i := range lowerN {
+			p := addr(0x10, byte(i))
+			svc.remote[p.ByteString()] = status(2)
+			peers = append(peers, p)
+		}
+		for i := range higherN {
+			p := addr(0xf0, byte(i))
+			svc.remote[p.ByteString()] = status(2)
+			peers = append(peers, p)
+		}
+		h := newGossipHarnessOptions(t, svc, reconciler.Options{Jitter: func() float64 { return 0 }}, peers...)
+		h.r.Round() // sessions with the higher-overlay peers; the lower-overlay ones' wait starts
+		limit := reconciler.InitiatedSessionCap(higherN, lowerN)
+		waitFor(t, "round sessions", func() bool { return svc.running() == limit })
+		h.clock.Add(3 * h.r.CurrentRoundInterval())
+		h.r.Round() // the takeovers are due
+		for _, p := range peers[:lowerN] {
+			waitState(t, h.r, p, reconciler.StateReconciling) // waiting for a slot
+		}
+		settle()
+		if size, used := h.r.SessionSlots(); size != limit || used != limit {
+			t.Fatalf("cap %d, %d slots taken; want %d of %d", size, used, limit, limit)
+		}
+		if free, want := rangesync.MaxConcurrentSessions-limit, min(lowerN, rangesync.MaxConcurrentSessions-reconciler.MinInitiatedSessions); free < want {
+			t.Fatalf("%d tokens left for the lower-overlay peers' sessions, want %d", free, want)
+		}
+		close(svc.reconcileGate)
+		for _, p := range peers {
+			waitFor(t, "session", func() bool { return svc.count(svc.reconciled, p) > 0 })
+		}
+		svc.set(func() {
+			if svc.maxInAll != limit {
+				t.Errorf("at most %d sessions at once, want %d", svc.maxInAll, limit)
+			}
+		})
 	})
 }
 
@@ -582,13 +873,14 @@ func TestStripeSessionCap(t *testing.T) {
 
 // TestStripeTimeoutAfterSlot: the stripe timeout starts once a stripe has
 // its slots, so a stripe that waited longer than its timeout for one (here
-// round sessions hold every session slot) still has its whole timeout.
+// the round sessions of 16 higher-overlay peers hold every slot of the
+// per-node cap) still has its whole timeout.
 func TestStripeTimeoutAfterSlot(t *testing.T) {
 	t.Parallel()
 
 	const timeout = time.Hour // only the fake clock gets there
 	svc := newFakeService(status(1))
-	gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
+	gates := make([]chan struct{}, rangesync.MaxConcurrentSessions)
 	peers := make([]swarm.Address, len(gates))
 	for i := range gates {
 		peers[i] = addr(0xf0, byte(i+1))
@@ -603,7 +895,7 @@ func TestStripeTimeoutAfterSlot(t *testing.T) {
 	})
 	h := newGossipHarnessOptions(t, svc, reconciler.Options{StripeTimeout: timeout}, peers...)
 	h.r.Round()
-	waitFor(t, "slots taken", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+	waitFor(t, "slots taken", func() bool { return svc.running() == len(gates) })
 
 	done := make(chan []reconciler.StripeResult, 1)
 	go func() { done <- h.r.TransferStripes(context.Background(), stripesTo(addr(0xf1, 0))) }()
@@ -862,7 +1154,7 @@ func TestSessionRecheckAfterSlot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := newFakeService(status(1))
-			gates := make([]chan struct{}, reconciler.MaxInitiatedSessions)
+			gates := make([]chan struct{}, reconciler.MinInitiatedSessions)
 			others := make([]swarm.Address, len(gates), len(gates)+1)
 			for i := range gates {
 				others[i] = addr(0xf0, byte(i+1))
@@ -880,9 +1172,10 @@ func TestSessionRecheckAfterSlot(t *testing.T) {
 				}
 			})
 			svc.remote[tc.peer.ByteString()] = status(2)
-			h := newGossipHarnessOptions(t, svc, reconciler.Options{Jitter: func() float64 { return 0 }}, others...)
+			// a constant cap that the other peers' sessions take
+			h := newGossipHarnessOptions(t, svc, reconciler.Options{Jitter: func() float64 { return 0 }, InitiatedSessions: len(gates)}, others...)
 			h.r.Round()
-			waitFor(t, "slots taken", func() bool { return svc.running() == reconciler.MaxInitiatedSessions })
+			waitFor(t, "slots taken", func() bool { return svc.running() == len(gates) })
 			h.topo.setPeers(append(others, tc.peer)...)
 			h.r.Round()
 			if tc.peer.Equal(lower) { // the takeover is due
@@ -1109,7 +1402,9 @@ func TestStripeBusyDoesNotStall(t *testing.T) {
 		svc.busyN[busy[i].ByteString()] = 1 << 30
 	}
 	honest := addr(0xf2, 0)
-	rounds := make([]swarm.Address, reconciler.MaxInitiatedSessions-reconciler.MaxStripeSessions)
+	// the round sessions and the stripe sessions fill the per-node cap
+	// (InitiatedSessionCap of 4 higher-overlay peers: MinInitiatedSessions)
+	rounds := make([]swarm.Address, reconciler.MinInitiatedSessions-reconciler.MaxStripeSessions)
 	gate := make(chan struct{})
 	for i := range rounds {
 		rounds[i] = addr(0xf0, byte(i+1))

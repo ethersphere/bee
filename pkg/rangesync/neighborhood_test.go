@@ -220,6 +220,39 @@ func TestNeighborhoodSteady(t *testing.T) {
 	}
 }
 
+// TestNeighborhoodPastTokens runs the simulation at N = 25 (T4.7 part 2), past
+// the 17 nodes up to which a node's sessions, one per peer, fit its
+// rangesync.MaxConcurrentSessions tokens, at the steady load with a 50 ms
+// latency: the per-node initiated-session cap (reconciler.InitiatedSessionCap)
+// is then MinInitiatedSessions on every node, and the higher overlays answer
+// Busy to the sessions their tokens do not fit. The uploads still converge
+// within TestNeighborhoodSteady's bound, every node serves the sessions of
+// its lower-overlay peers (at least one per peer: none starves), and the Busy
+// and session-limit answers stay a small part of the sessions (at most a
+// tenth; ~5% measured, against ~10% when the lowest overlays opened up to 16
+// sessions at once).
+func TestNeighborhoodPastTokens(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("a neighborhood of 25 nodes")
+	}
+
+	const delay = 50 * time.Millisecond
+	o := steadyOptions(25, 2)
+	o.Delay = delay
+	res := runNeighborhood(t, o)
+	logNeighborhood(t, o, res)
+	assertNeighborhoodWithin(t, o, res, convergenceBound+(3+(8+2*3)+4)*delay)
+	f := g6FiguresOf(o, res)
+	t.Logf("sessions %v; Busy given %v; served min %.1f, %v pairs without a session", res.Sessions, res.Counters["session_busy_total{}"], f.ServedMin, f.Unpaired)
+	if f.ServedMin < 1 {
+		t.Errorf("a node served %.2f sessions per lower-overlay peer, want at least 1", f.ServedMin)
+	}
+	if refused := res.Sessions["busy"] + res.Sessions["session_limit"]; refused > res.Sessions["ok"]/10 {
+		t.Errorf("%v sessions answered Busy or over a session limit, %v completed: more than a tenth", refused, res.Sessions["ok"])
+	}
+}
+
 // TestNeighborhoodTeardown checks that a run that ends while a Status send
 // waits in its FullClose for the handler's close still tears down. That close
 // is a leg on the clock, which no longer moves once the run ended, so the
