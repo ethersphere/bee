@@ -2699,6 +2699,123 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   - Recommendation for AC-B1: `GrowthFactor` 2 with hint(R) and `BatchFactor` 1.6. N = 17 then sits
     on the line at the modeled base and passes on the wire basis; with a per-node initiated-session
     cap it passes with ~10 points. N = 9 passes only after re-basing.
+- **(T4.6 part 3) The follow-ups addressed to T4.6: measured, or moved with a reason.** Harness runs
+  at the steady load and Delay 50 ms unless named; the scenarios are the next entry's.
+  - Initiated-session share 8 of 16 (T4.3; part 2 fix round 1, Medium 2): measured with a scratch
+    build of `MaxInitiatedSessions` 16 (G6 summary, AC-B1). With 8 the N = 17 batches still converge
+    within the bound (mean 3.73 s, longest 6.45 s; 10.4 s at 200 ms), but the second wave exposes
+    differences again: n_Δ p99 62 against 39 with 16, and 10–15 points of AC-B1. Neither setting
+    drew a Busy or session-limit answer.
+  - Stripe/round split (T4.3 fix): measured in an N = 17 bootstrap (`TestG6Bootstrap`, node 0 empty,
+    20000 chunks, 2 seeds): all 16 stripes done in 2.55–3.15 s of message legs, none reassigned or
+    timed out, so the waves of `MaxStripeSessions` = 4 do not dominate. The transfer time against
+    the fetch limiter cannot be timed here (the limiter runs on the real clock and was lifted): at
+    the default 1000 chunks per second the transfer alone takes 20 s for these 20000 chunks and 70
+    minutes for 2^22, far past any wave effect. Moved to T6.1 (Bootstrap).
+  - Busy-heavy stripes (T4.3 fix round 2, T4.5 part 2a fix round 1): not observed in the same
+    bootstrap: 2 and 6 sessions answered Busy, 0 and 1 over the peer's session limit, no stripe
+    reassigned. Found instead: every lower-overlay peer's round session with the empty node lists
+    all its IDs to it. Node 0 received 4.2–5.7 MB (rank 4: 4 lower peers) and 12.5–14.0 MB (rank 14)
+    of metadata in two runs, against AC-B2's 2.6 MB (1.15 × 20000 × 70 B + 1 MB), and denied 9,495
+    and 51,255 claims in the first, the IDs its stripes already held (Follow-ups).
+  - Deferred stripes under a busy want set (T4.4 fix round 1): not reached. The bootstrap's stripes
+    (1250 IDs each) drew no `want_claims{peer_full}` or `{full}`: the harness's fetches end within
+    one instant, so claims never pile up towards `MaxClaims` or `MaxClaimsPerPeer`. Moved to T6.1
+    (Bootstrap, with the real fetch limiter).
+  - A peer that fails every fetch open keeps its sessions (T4.5 part 2c): measured
+    (`TestG6FetchOpenFails`, N = 9, node 0 refuses every fetch stream, 3 seeds): convergence 3.41 s
+    against 3.39 s (longest 5.90 s both), share 75.6 against 76.4%, 0.10 failed fetch calls per
+    upload, no duplicate. Its IDs come from the other holders at no visible cost, so no backoff of
+    its sessions is needed.
+  - Zero-difference sessions (part 1 → part 3): at the reference load 3.0–3.1% of the sessions at 50
+    ms, 0–1% at 100–200 ms (4–5% at Delay 0), ~45 B each: under 0.3% of the bytes. No change to the
+    root-change trigger.
+  - Metadata per upload broken down (part 1 → part 3): part 2's records stand (model and harness
+    equal at 50 ms): Status 46 and 175 B, Want 421 and 985 B per upload at N = 9 and 17; the rest is
+    the reconcile streams, mostly symbols, which the G6 summary's constants move.
+  - Busy, collisions and stale sessions at N = 17 (part 1 → part 3): no session refused (Busy or
+    session limit) in any steady run of part 3; stale sessions 0–0.085 per upload, the most at 200
+    ms without the hint.
+  - First-chunk latency of catch-up fetches (T4.5 part 2c fix round 2 and its review Low 1): the
+    harness gives 4 × Delay by construction (the open, the Want and one Delivery leg; no bandwidth,
+    and the fetch and delivery limiters on the real clock): 200 ms at 50 ms one way, a tenth of
+    `catchUpGrace`. The real latency, with a loaded limiter and bandwidth, needs testnet: moved to
+    T6.3.
+  - Q7 under expired-batch skew (T4.4) and unknown-batch junk (T4.5 part 2b and fix round 1): the
+    harness has no batch store, its stamp check accepts everything and the mock reserve's
+    `EvictBatch` is a no-op, so neither skewed expiry nor the rejections it causes exist in it.
+    Moved to T6.3 (around real batch expiries), or to a harness extension with a per-node expiry in
+    the stamp check and eviction in the mock reserve.
+  - Retry granularity (T4.4): the retries that wait for a long fetch (up to ~65 s) wait on the fetch
+    limiter and timeout, both on the real clock here. Moved to T6.
+  - Re-ask waits and the stripe lock (T4.5 part 2a, narrowed to radius halves and sessions' large
+    ranges) and trimmed stripe parts (T4.5 part 2c): both need radius changes and registered deep
+    ranges; every harness node stays at radius 0. Moved to T6.1 (Radius decrease, Bootstrap).
+  - A failed verification leaves the deliverer unjudged (T4.5 part 2c): an adversarial gap, not a
+    measurement; it stays open for hardening.
+  - The model's n_Δ gaps at N = 17 (part 2 fix round 1): not traced. Part 3's calls rest on the
+    harness; the model only filled grids it was validated on (Delay ≥ 50 ms, `MinRoundInterval` 5
+    s). Its round-interval trend at 10–15 s contradicts the harness (G6 summary) and is not used.
+- **(T4.6 part 3) What the harness gained (test-only, `neighborhood_sim_test.go`).**
+  - `simSample.Wants`: the wants each session side handed its reconciler (pairwise_diff_half's
+    value, what `CatchUpMinDiff` is compared with): an initiator's from `ReconcileWith`'s return, a
+    responder's from the `Options.Wants` it passed (0 when it passed none), matched to the side's
+    sample by node and peer (one session per peer and side at a time).
+  - `simOptions.Lag` and `LagNode`: the node lacks the last Lag base chunks, which are valid
+    content-addressed chunks then (only with a lag, so the other runs keep their chunks and seeds).
+    The counters are taken from the start, `simResult.CaughtUp` is when it held them all, and
+    `CatchUpCounters` the counters before the first upload. `Lag = Base` is a bootstrap.
+  - `simOptions.FetchOpenFails`: nodes to which every fetch stream open fails (`errSimOpenRefused`).
+  - `simResult.Counters` (labeled counters: `streams_exhausted_total{level}`, `parts_sent{type}`,
+    `fetch_skipped_total{reason}`, `session_busy_total`, `stripes_total{result}`) and `TailBytes`
+    (the streams opened after the last convergence).
+  - Fix: the `Limit` check fired after the convergence when the `Tail` reached past it (a sparse run
+    with a 10-minute tail failed "not converged" with every upload held). It now checks only an
+    unconverged run.
+  - `neighborhood_g6_test.go` (default build): `g6FiguresOf`, what G6 reads off a run, and
+    `TestNeighborhoodG6Figures` (a short steady run and a short catch-up, with the invariants: a
+    side never wants more than its difference, the wants cover the chunks stored, the catch-up's
+    counters lie within the run's). `neighborhood_g6_sim_test.go` and `srep_model_g6_sim_test.go`
+    (`-tags=sim`): the sweeps. `srep_model_test.go`: the model records the wants of both sides and
+    each stream's decoder threshold.
+- **(T4.6 part 3) The part-1 round-3 review's Lows (items 1–3).** Item 1: `simNeighborhood.close`
+  takes an atomic `closing` flag first, so a second call returns at once, also while the first still
+  waits; the cleanup after `TestNeighborhoodTeardown`'s watchdog no longer hangs behind it. Item 2:
+  `TestNeighborhoodTeardown` tries the earliest three Status sends after the convergence in turn
+  and, if none lands in its `FullClose`, says that the harness is near-deterministic (each run's
+  timeline may differ from the first's) or the protocol moved the sends. Item 3: `TestSimClose`
+  covers the close on its own: a parked read returns `io.EOF`, a parked `FullClose` returns nil (as
+  on the remote's close), a stream opened after it gets `errSimClosed`, and a second close returns
+  while the first is blocked. Reverting the flag fails its "second close" check (it waits for the
+  first). Items 4 (`-race` timing) and 5 (the 102 B nit, answered in part 2 fix round 1, Low 4)
+  needed no change.
+- **(T4.6 part 3) Scope, tests and wall times.**
+  - Test-only, in `pkg/rangesync`: `neighborhood_sim_test.go` (the harness additions, the `Limit`
+    fix, the close flag), `neighborhood_test.go` (`TestNeighborhoodTeardown`, `TestSimClose`),
+    `neighborhood_g6_test.go` (new), `neighborhood_g6_sim_test.go` and `srep_model_g6_sim_test.go`
+    (new, `-tags=sim`) and `srep_model_test.go` (wants and thresholds). No production change: no
+    measurement needed a metric (the wants come from the harness's wrappers, the counters from the
+    existing metrics), and the candidates ran in scratch copies of the worktree with one constant
+    edited, never committed. There is no `pkg/node`, `pkg/p2p`, `pkg/pullsync`, `pkg/puller`,
+    `pkg/pushsync`, `pkg/postage`, `go.mod` or proto change, no new parser of peer input and no
+    `*_fuzz_test.go`.
+  - Default build, single runs: `TestNeighborhoodG6Figures` 2.2 s (two parallel subtests),
+    `TestSimClose` < 0.01 s, `TestNeighborhoodTeardown` 4.4 s. `go test ./pkg/rangesync/...` passes
+    (`pkg/rangesync` 11 s); the neighborhood tests, `TestSim*`, `TestSREPModel` and `TestSREPIdeal`
+    at `-count=3 -cpu=1,2,4` pass in 70 s; `TestCombinedSyncerBothDrivers` passes at `-count=3`.
+    Reverting the close flag fails `TestSimClose` ("a second close waits for the first").
+  - `-tags=sim`, one run each on the committed code, one after another (wall, 79 minutes in all):
+    `TestG6Constants` 304 s (72 harness runs), `TestG6Load` 266 s, `TestG6RoundInterval` 504 s,
+    `TestG6Catchup` 378 s, `TestG6Bootstrap` 45 s, `TestG6FetchOpenFails` 22 s,
+    `TestSREPModelG6Part3` 992 s (its rate sweep 609 s and round-interval sweep 329 s: decoder
+    tables for differences of several hundred), `TestSREPModelVsHarness` 250 s (its record check
+    passes, so the harness changes leave the runs without a lag unchanged) and `TestSREPModelG6` 121
+    s. Each candidate build ran `TestG6Constants` in 250–310 s (N = 17 rows only: 160–165 s). The
+    tables above come from the first runs; the second matched them within the seed spreads, the
+    largest moves being the wants max at 50 uploads per second at N = 17 (169, then 199) and the
+    bootstrap's metadata (above).
+  - `make build`, `GOTOOLCHAIN=go1.26.1 make lint`, `golangci-lint run --build-tags sim` and `go
+    vet` (default and `-tags=sim`) are clean; gofumpt and gci ran on the changed files only.
 
 ## Follow-ups
 _(sessions append here)_
@@ -3685,3 +3802,61 @@ _(sessions append here)_
     and the neighborhood tests.
   - `TestSREPModelVsHarness` (`-tags=sim`) runs 48 harness runs one after another, about 3 minutes
     on this host. Under `-race`, expect 10× that.
+- **(T4.6 part 3 → G6, T4.x) hint(R) records catch-up differences.** A catch-up that decodes at the
+  root records hint(R) = the catch-up's size on both sides, and the pair's next session, with a
+  difference of 1–4, starts with `FirstBatch` of it: after Lag 300, 1000 and 2500, the next sessions
+  took 1988, 6450 and 16052 symbols, as many as the catch-ups (`TestG6Catchup`). Past ~2500 the root
+  splits and records no root hint, so only level-1 hints go stale. This extends "(T4.6 part 1 fix
+  round 2) The hint LRU: stale entries and a cheaper flush". A fix, a code change after G6: record
+  no hint for a difference of `CatchUpMinDiff` or more (steady-state sessions stay far below it), or
+  clamp the hint against the count estimate.
+- **(T4.6 part 3 → T4.x, T6.0 AC-B2) The round sessions of a bootstrapping node's peers list every
+  ID.** In an N = 17 bootstrap of 20000 chunks (`TestG6Bootstrap`) the stripes moved the reserve
+  once, but every peer with a lower overlay also ran its round session with the empty node, which
+  resolves by listing all its IDs. Node 0 received 4.2–5.7 MB of metadata with 4 lower peers and
+  12.5–14.0 MB with 14 (two runs), against AC-B2's 2.6 MB, and denied 9,495 and 51,255 claims of IDs
+  its stripes held (first run). AC-B2 fails by a factor that grows with the node's rank. A fix: a
+  peer defers its sessions with a peer whose Status count is below `BootstrapRatio` of its own (that
+  peer stripes), or the bootstrapping node answers sessions Busy until its bootstrap transfer ends.
+  Needed before T6.1's Bootstrap case can pass AC-B2.
+- **(T4.6 part 3 → G6, T4.x) A per-node initiated-session cap.** If G6 takes the 16-slot gain at N =
+  17 (10–15 points of AC-B1, faster convergence, no Busy), the cap must not be the constant 16 (part
+  2 fix round 1, Low 1): for example the node's eligible higher-overlay peers, bounded by the tokens
+  its served sessions leave, with `MaxStripeSessions` kept apart.
+- **(T4.6 part 3 → T6, a radius-aware harness) Nested session roots use the bucket cache (by
+  inspection).** A session with a peer one bit deeper runs on the peer's root, one bit below this
+  node's. `cacheCapacity` gives this node's stream there `BucketSymbols` (32) once it holds more
+  than `ScanLimit` in it, so a difference past ~20 exhausts and splits. Every harness node is at
+  radius 0, so it was not measured. If mixed radii are common in a neighborhood, the root's half
+  ranges may need a cache of their own (2 × 4096 symbols, ~0.7 MB).
+- **(T4.6 part 3 → T6.0) Q9's check reads `pairwise_diff_half`.** This supersedes, in "(T4.6 part 1)
+  Proposal §10 and T6.0 wording", "For Q9, the check is the share of samples in `le="255"`" of
+  `pairwise_diff`. `CatchUpMinDiff` is compared with one side's wants, `pairwise_diff_half`'s value;
+  `pairwise_diff`'s neighborhood aggregate (n_Δ, both sides) passes 255 at its p99 from ~40 uploads
+  per second at N = 17 while no side's wants do. And the bound is the max per window, not the p99
+  (G6 summary, Q9).
+- **(T4.6 part 3 → T6.4) AC-V1 at a quiet network.** This extends "(T4.6 part 1 fix round 1 → T6.4)
+  AC-V1 against the 15 s bound": the sparse runs' longest convergence is 10.75–10.95 s, past 2 ×
+  `MinRoundInterval`, and so is the steady longest at Delay 200 ms and N = 17 (10.4 s).
+- **(T4.6 part 3 → T6) Measurements the harness cannot make.** Q7 under expired-batch skew and the
+  unknown-batch junk it lets through (no batch store, a no-op `EvictBatch`), retry granularity and
+  the bootstrap time against the fetch limiter (real clock), deferred stripes near `MaxClaims`
+  (fetches end within an instant), re-ask waits and trimmed stripe parts (radius changes), and the
+  first-chunk latency of catch-ups (no bandwidth or limiter on the clock). See the Decisions log
+  entry "(T4.6 part 3) The follow-ups addressed to T4.6".
+- **(T4.6 part 3) `SessionSymbolBudget` bounds a catch-up session.** A session of a 6000-chunk
+  catch-up stops at 16384 symbols and resolves its last ranges by item lists (68 exhausted streams
+  per run), and a 12000-chunk one takes three sessions per peer (6.9 s). Informational: the budget
+  bounds a session's decoder memory (T4.3), and bootstraps past `LargeDiff` stripe instead.
+- **(T4.6 part 3) Resolved.** "(T4.3) Initiated-session share (T4.6)", "(T4.3 fix) T4.6: check the
+  stripe/round split", "(T4.3 fix round 2) T4.6: Busy-heavy stripes" with its part 2a extension,
+  "(T4.5 part 2c → T4.6) A peer that fails every fetch open keeps its sessions", "(T4.6 part 1 →
+  part 3) Zero-difference sessions", "Metadata per upload is well above §7.8" and "Busy, collisions
+  and stale sessions at N = 17", "(T4.6 part 2 fix round 1 → part 3, G6; Medium 2) The 16-slot gain
+  is unvalidated", "(T4.6 part 1 fix round 3 → part 3, G6) Report spreads, not single runs", "(T4.6
+  part 2 → G6) What can bring AC-B1 within reach", and items 1–3 of "(T4.6 part 1 round-3 review,
+  Lows ...) For T4.6 part 3". The moved ones are in the entry above; "(T4.5 part 2c → T4.6) A failed
+  verification leaves the deliverer unjudged" stays open.
+- **(T4.6 part 3) Tests to run with `-race` on CI.** They ran with `-count=3 -cpu=1,2,4` instead.
+  New: `TestSimClose`, `TestNeighborhoodG6Figures`. Changed: `TestNeighborhoodTeardown`, and through
+  the harness (wants, lag, counters, the `Limit` check) every neighborhood test.
