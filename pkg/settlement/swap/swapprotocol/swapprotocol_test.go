@@ -57,13 +57,11 @@ func TestEmitCheques(t *testing.T) {
 
 	issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 		cheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary: commonAddr,
-				// CumulativePayout only contains value of last cheque
-				CumulativePayout: amount,
-				Chequebook:       common.Address{},
-			},
-			Signature: []byte{},
+			Beneficiary: commonAddr,
+			// CumulativePayout only contains value of last cheque
+			CumulativePayout: amount,
+			Chequebook:       common.Address{},
+			Signature:        []byte{},
 		}
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
@@ -174,12 +172,10 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 
 	issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 		cheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      commonAddr,
-				CumulativePayout: amount,
-				Chequebook:       common.Address{},
-			},
-			Signature: []byte{},
+			Beneficiary:      commonAddr,
+			CumulativePayout: amount,
+			Chequebook:       common.Address{},
+			Signature:        []byte{},
 		}
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
@@ -239,12 +235,10 @@ func TestCantEmitChequeDeductionMismatch(t *testing.T) {
 
 	issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 		cheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      commonAddr,
-				CumulativePayout: amount,
-				Chequebook:       common.Address{},
-			},
-			Signature: []byte{},
+			Beneficiary:      commonAddr,
+			CumulativePayout: amount,
+			Chequebook:       common.Address{},
+			Signature:        []byte{},
 		}
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
@@ -304,12 +298,10 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
 
 	issueFunc := func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error) {
 		cheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      commonAddr,
-				CumulativePayout: amount,
-				Chequebook:       common.Address{},
-			},
-			Signature: []byte{},
+			Beneficiary:      commonAddr,
+			CumulativePayout: amount,
+			Chequebook:       common.Address{},
+			Signature:        []byte{},
 		}
 		_ = sendChequeFunc(cheque)
 		return big.NewInt(13750), nil
