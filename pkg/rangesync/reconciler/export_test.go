@@ -5,6 +5,7 @@
 package reconciler
 
 import (
+	"context"
 	"slices"
 	"time"
 
@@ -47,24 +48,81 @@ const (
 	MaxStripeRegistry = maxStripeRegistry
 )
 
-// EnqueueStripes registers ranges for the stripe worker.
+// EnqueueStripes registers ranges for the stripe worker, as claims of no
+// peer: neither maxSessionStripes nor maxPeerStripes bounds them.
 func (r *Reconciler) EnqueueStripes(ranges []fingerprint.Range) bool {
-	return r.enqueueStripes(ranges)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	all := true
+	for _, rg := range ranges {
+		if !r.registerStripeLocked(&stripeJob{rg: rg}) {
+			all = false
+		}
+	}
+	return all
 }
 
-// HoldStripe registers rg as in flight without queuing it for the worker.
+// EnqueuePeerStripes registers the ranges one session with peer took over
+// (enqueueStripes).
+func (r *Reconciler) EnqueuePeerStripes(peer swarm.Address, ranges []fingerprint.Range) bool {
+	return r.enqueueStripes(peer, ranges)
+}
+
+// HoldStripe registers rg as an own job (a bootstrap or radius half) in
+// flight without queuing it for the worker.
 func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.stripeRegistry = append(r.stripeRegistry, rg)
+	r.stripeRegistry = append(r.stripeRegistry, &stripeJob{rg: rg, own: true})
+}
+
+// HoldPeerStripe registers rg as peer's claim in flight without queuing it
+// for the worker, and returns the context an own job's preemption cancels.
+func (r *Reconciler) HoldPeerStripe(rg fingerprint.Range, peer swarm.Address) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &stripeJob{rg: rg, peer: peer, cancel: cancel}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stripeRegistry = append(r.stripeRegistry, job)
+	r.stripeRunning = job
+	return ctx
 }
 
 // ReleaseStripe removes rg from the registry (a HoldStripe ended).
 func (r *Reconciler) ReleaseStripe(rg fingerprint.Range) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(rg) })
+	r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o *stripeJob) bool { return o.rg.Equal(rg) })
+	if r.stripeRunning != nil && r.stripeRunning.rg.Equal(rg) {
+		r.stripeRunning = nil
+	}
 }
+
+// PeerStripes returns the number of peer's claims in the registry.
+func (r *Reconciler) PeerStripes(peer swarm.Address) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.peerStripesLocked(peer)
+}
+
+// QueuedStripes returns the ranges queued for the stripe worker, in order.
+func (r *Reconciler) QueuedStripes() []fingerprint.Range {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]fingerprint.Range, len(r.stripeQueue))
+	for i, j := range r.stripeQueue {
+		out[i] = j.rg
+	}
+	return out
+}
+
+// MaxPeerStripes is maxPeerStripes; MaxSessionStripes is maxSessionStripes;
+// StripePeerBudget is stripePeerBudget.
+const (
+	MaxPeerStripes    = maxPeerStripes
+	MaxSessionStripes = maxSessionStripes
+	StripePeerBudget  = stripePeerBudget
+)
 
 // VerifyMinDiff is verifyMinDiff.
 const VerifyMinDiff = verifyMinDiff
@@ -96,7 +154,7 @@ const (
 func (r *Reconciler) StripeRanges() []fingerprint.Range {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return slices.Clone(r.stripeRegistry)
+	return r.stripeRangesLocked()
 }
 
 // StripeRegistry returns the number of registered stripe ranges.

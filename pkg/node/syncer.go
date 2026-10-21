@@ -93,13 +93,13 @@ func syncWiring(mode syncMode) (addrIndex, registerRangesync, buildPuller bool) 
 // rangesyncOptions returns the rangesync.Options of the node's service,
 // wired to its reconciler r: r scores the peers (Scorer), fetches the wants
 // of the sessions the node serves (Wants) and takes over the ranges those
-// sessions find the node far behind in (Striper, T4.7 part 1). The other
-// options keep their defaults.
+// sessions find the node far behind in (Striper, one per session, T4.7
+// part 1). The other options keep their defaults.
 func rangesyncOptions(r *reconciler.Reconciler) rangesync.Options {
 	return rangesync.Options{
 		Scorer:  r,
 		Wants:   r.Wants,
-		Striper: r,
+		Striper: r.ServedStriper,
 	}
 }
 

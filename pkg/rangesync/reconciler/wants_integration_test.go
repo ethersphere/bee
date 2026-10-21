@@ -56,6 +56,11 @@ type roundNodeOptions struct {
 	// streamer, if not nil, wraps the recorder the service opens streams
 	// with.
 	streamer func(p2p.StreamerDisconnecter) p2p.StreamerDisconnecter
+	// striper wires the reconciler's Striper of the sessions the service
+	// serves (rangesync.Options.Striper), as pkg/node does; largeDiff is
+	// the LargeDiff of both (zero: rangesync.LargeDiff).
+	striper   bool
+	largeDiff uint64
 }
 
 func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...swarm.Address) *roundNode {
@@ -75,14 +80,19 @@ func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...sw
 	if o.streamer != nil {
 		streamer = o.streamer(n.rec)
 	}
-	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval, Now: o.now})
-	n.svc = rangesync.New(streamer, n.store, a, nil, nil, o.validStamp, log.Noop, rangesync.Options{
+	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval, Now: o.now, LargeDiff: o.largeDiff})
+	so := rangesync.Options{
 		LeafBits:     8,
 		Scorer:       n.r,
 		Wants:        n.r.Wants,
 		FetchTimeout: o.fetchTimeout,
 		Now:          o.svcNow,
-	})
+		LargeDiff:    o.largeDiff,
+	}
+	if o.striper {
+		so.Striper = n.r.ServedStriper
+	}
+	n.svc = rangesync.New(streamer, n.store, a, nil, nil, o.validStamp, log.Noop, so)
 	n.r.SetService(n.svc)
 	t.Cleanup(func() {
 		if err := n.r.Close(); err != nil {

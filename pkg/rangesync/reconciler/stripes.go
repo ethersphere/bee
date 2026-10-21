@@ -177,7 +177,8 @@ func Unassigned(stripes []Stripe) []Stripe {
 // session offers (the large-difference branch of §6.3, on the side that
 // lacks) and keeps it for a striped transfer. It is safe for concurrent use.
 // The zero value transfers nothing; a round session's collector asks its
-// reconciler which ranges a transfer already covers (Transferring).
+// reconciler which ranges this node's own transfers already cover
+// (Transferring).
 type StripeCollector struct {
 	mu     sync.Mutex
 	ranges []fingerprint.Range
@@ -187,8 +188,8 @@ type StripeCollector struct {
 
 var _ rangesync.TransferStriper = (*StripeCollector)(nil)
 
-// Transferring reports whether a striped transfer of the reconciler covers
-// r; false for the zero value.
+// Transferring reports whether the reconciler's own striped transfers
+// cover r (Reconciler.Transferring); false for the zero value.
 func (c *StripeCollector) Transferring(r fingerprint.Range) bool {
 	return c.transferring != nil && c.transferring(r)
 }

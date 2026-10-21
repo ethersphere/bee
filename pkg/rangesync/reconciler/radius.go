@@ -111,7 +111,7 @@ func (r *Reconciler) enqueueRadiusHalf() {
 		return
 	}
 	ctx, cancel := context.WithCancel(r.ctx)
-	if !r.registerStripeLocked(stripeJob{rg: s.newHalf, radius: true, ctx: ctx}) {
+	if !r.registerStripeLocked(&stripeJob{rg: s.newHalf, radius: true, ctx: ctx, own: true}) {
 		cancel() // overlaps a registered range: retried next round
 		return
 	}

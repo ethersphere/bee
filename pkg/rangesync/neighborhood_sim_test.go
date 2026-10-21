@@ -322,6 +322,11 @@ type simNodeResult struct {
 	// PairwiseDiff is the sample count of the pairwise_diff histogram that
 	// the node exposes (Service.Metrics).
 	PairwiseDiff uint64
+	// ServedWants counts the distinct IDs the node wanted from the sessions
+	// it served, in the whole run, and ServedLagging those of them that are
+	// lagging base chunks (simOptions.Lag): what its peers listed to it of
+	// what it lacked at the start.
+	ServedWants, ServedLagging int
 }
 
 // simSpan is one call of a reconciler into its service, on the clock.
@@ -492,6 +497,9 @@ type simNode struct {
 	uploads    int
 	rounds     []time.Time
 	debouncing bool
+	// servedWants holds the distinct IDs the node wanted from the sessions
+	// it served (Options.Wants), keyed as chunkKey.
+	servedWants map[string]bool
 }
 
 func newNeighborhood(tb testing.TB, o simOptions) *simNeighborhood {
@@ -624,6 +632,8 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 		root:       make(chan struct{}, 1),
 		fetchSlots: make(map[string]chan struct{}),
 		held:       make(map[string]time.Time),
+
+		servedWants: make(map[string]bool),
 	}
 	n.rootRange = fingerprint.NewRange(a, o.Radius[i])
 	n.store = mockstorer.NewReserve(mockstorer.WithAddrIndex(), mockstorer.WithChunks(base...), mockstorer.WithPutHook(n.putHook), mockstorer.WithRadius(o.Radius[i]))
@@ -656,10 +666,15 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 
 	wants := func(peer swarm.Address, ids []storer.ChunkID) {
 		nb.setWants(n, peer, false, len(ids))
+		nb.mu.Lock()
+		for _, id := range ids {
+			n.servedWants[id.Address.ByteString()+string(id.StampHash)] = true
+		}
+		nb.mu.Unlock()
 		n.r.Wants(peer, ids)
 	}
 	// as pkg/node wires them (rangesyncOptions), the Striper included
-	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: wants, Striper: n.r, Now: nb.clock.Now, LargeDiff: o.LargeDiff}
+	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: wants, Striper: n.r.ServedStriper, Now: nb.clock.Now, LargeDiff: o.LargeDiff}
 	if o.Service != nil {
 		o.Service(&so)
 	}
@@ -1111,6 +1126,12 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 			MoreRequests: c.mores - base.mores,
 			WantClaims:   make(map[string]float64),
 			PairwiseDiff: c.diffs - base.diffs,
+			ServedWants:  len(n.servedWants),
+		}
+		for k := range n.servedWants {
+			if ch := nb.chunks[k]; ch != nil && ch.batch < 0 {
+				nr.ServedLagging++
+			}
 		}
 		for r, v := range c.claims {
 			nr.WantClaims[r] = v - base.claims[r]

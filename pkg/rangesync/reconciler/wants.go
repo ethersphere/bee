@@ -78,14 +78,23 @@ type fetchOutcome struct {
 // registered as running while it lasts, so that the sources recorded while
 // it holds its claims are kept until its result arrives (wantSources). The
 // chunks a catch-up fetch stores count towards SyncRate (countCatchUp), as
-// they are stored with a progressFetcher.
-func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, catchUp bool) (fetchOutcome, error) {
-	rf, ok := r.svc.(resultFetcher)
-	if !ok {
-		n, err := r.svc.Fetch(ctx, peer, ids)
+// they are stored with a progressFetcher. progress, if not nil, is called
+// when the fetch stores chunks: for each chunk with a progressFetcher, else
+// once when the fetch returns with chunks stored (a stripe's inactivity
+// timeout, stripeClock).
+func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, catchUp bool, progress func()) (fetchOutcome, error) {
+	stored := func(n int) {
 		if catchUp {
 			r.countCatchUp(n)
 		}
+		if n > 0 && progress != nil {
+			progress()
+		}
+	}
+	rf, ok := r.svc.(resultFetcher)
+	if !ok {
+		n, err := r.svc.Fetch(ctx, peer, ids)
+		stored(n)
 		return fetchOutcome{stored: n, undelivered: len(ids) - n}, err
 	}
 	end := r.sources.begin(r.now())
@@ -95,12 +104,10 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 		err error
 	)
 	if pf, ok := r.svc.(progressFetcher); ok && catchUp {
-		res, err = pf.FetchWithProgress(ctx, peer, ids, func() { r.countCatchUp(1) })
+		res, err = pf.FetchWithProgress(ctx, peer, ids, func() { stored(1) })
 	} else {
 		res, err = rf.FetchWithResult(ctx, peer, ids)
-		if catchUp {
-			r.countCatchUp(res.Stored)
-		}
+		stored(res.Stored)
 	}
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, res.Undelivered, catchUp)

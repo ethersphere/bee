@@ -7,11 +7,13 @@ package reconciler_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -72,9 +74,10 @@ func roundSessions(svc *fakeService, peer swarm.Address) int {
 	return n
 }
 
-// TestServedStripeRegisters checks the reconciler as the Striper of the
-// sessions it serves: it takes every offered range over and registers it for
-// a striped transfer once, but not while the bootstrap plan holds it.
+// TestServedStripeRegisters checks the reconciler's Striper of the sessions
+// it serves (ServedStriper): it takes every offered range over and
+// registers it for a striped transfer once, as the peer's claim, but not
+// while the bootstrap plan holds it.
 func TestServedStripeRegisters(t *testing.T) {
 	t.Parallel()
 
@@ -86,14 +89,17 @@ func TestServedStripeRegisters(t *testing.T) {
 	r := admitted(t, svc, reconciler.Options{}, higher, other)
 
 	rg := root.Child(4, 3)
-	if !r.Stripe(rg, 0, rangesync.LargeDiff+1) {
+	if !r.ServedStriper(higher).Stripe(rg, 0, rangesync.LargeDiff+1) {
 		t.Fatal("offered range declined")
 	}
 	if got := r.StripeRanges(); !slices.EqualFunc(got, []fingerprint.Range{rg}, fingerprint.Range.Equal) {
 		t.Fatalf("registered %v, want %s", got, rg)
 	}
+	if n := r.PeerStripes(higher); n != 1 {
+		t.Fatalf("%d claims of the peer, want 1", n)
+	}
 	// a range inside a registered one is taken over, not registered again
-	if !r.Stripe(rg.Child(4, 1), 0, rangesync.LargeDiff+1) || r.StripeRegistry() != 1 {
+	if !r.ServedStriper(other).Stripe(rg.Child(4, 1), 0, rangesync.LargeDiff+1) || r.StripeRegistry() != 1 {
 		t.Fatalf("registry holds %d ranges after a covered offer, want 1", r.StripeRegistry())
 	}
 
@@ -101,7 +107,7 @@ func TestServedStripeRegisters(t *testing.T) {
 	// bootstrap plan holds the root, nothing is registered
 	r.ReleaseStripe(rg)
 	svc.set(func() { svc.local = status(0) })
-	if !r.Stripe(root, 0, 1000) {
+	if !r.ServedStriper(higher).Stripe(root, 0, 1000) {
 		t.Fatal("offered root declined while bootstrapping")
 	}
 	if n := r.StripeRegistry(); n != 0 {
@@ -112,14 +118,14 @@ func TestServedStripeRegisters(t *testing.T) {
 	if got := r.StripeRanges(); !slices.EqualFunc(got, []fingerprint.Range{root}, fingerprint.Range.Equal) {
 		t.Fatalf("registered %v after the round, want the bootstrap of %s", got, root)
 	}
-	if !r.Stripe(root.Child(1, 1), 0, 1000) || r.StripeRegistry() != 1 {
+	if !r.ServedStriper(higher).Stripe(root.Child(1, 1), 0, 1000) || r.StripeRegistry() != 1 {
 		t.Fatalf("registry holds %v during the bootstrap, want the root only", r.StripeRanges())
 	}
 
 	// closed: taken over, nothing registered
 	closed := admitted(t, newFakeService(status(1000)), reconciler.Options{})
 	_ = closed.Close()
-	if !closed.Stripe(rg, 0, rangesync.LargeDiff+1) || closed.StripeRegistry() != 0 {
+	if !closed.ServedStriper(higher).Stripe(rg, 0, rangesync.LargeDiff+1) || closed.StripeRegistry() != 0 {
 		t.Fatalf("registered %v after Close", closed.StripeRanges())
 	}
 }
@@ -214,21 +220,24 @@ func TestRoundLackingSessionRoot(t *testing.T) {
 	}
 }
 
-// TestTransferring checks the reconciler as a rangesync.TransferStriper: a
-// registered range covers the ranges inside it, and while it is registered
-// a round opens no session with a peer that holds more in a covered session
-// root, however few more, while one outside it gets its session.
+// TestTransferring checks the threshold-0 rule (Transferring): this node's
+// own transfers (its bootstrap, a radius half) cover the ranges inside them,
+// together too, and while one covers a session root a round opens no
+// session with a peer that holds more there, however few more; a peer's
+// claim covers nothing, and the rounds go on (T4.7 part 1 fix round 1).
 func TestTransferring(t *testing.T) {
 	t.Parallel()
 
 	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
-	var _ rangesync.TransferStriper = (*reconciler.Reconciler)(nil)
 	var _ rangesync.TransferStriper = (*reconciler.StripeCollector)(nil)
 
 	svc := newFakeService(status(1000))
 	svc.remote[higher.ByteString()] = status(1001)
 	r := reconciler.New(self, &fakeTopology{peers: []swarm.Address{higher}}, svc, log.Noop, reconciler.Options{})
 	t.Cleanup(func() { _ = r.Close() })
+	if _, ok := r.ServedStriper(higher).(rangesync.TransferStriper); !ok {
+		t.Fatal("the served sessions' Striper is not a TransferStriper")
+	}
 	if r.Transferring(root) {
 		t.Fatal("transferring with an empty registry")
 	}
@@ -236,6 +245,27 @@ func TestTransferring(t *testing.T) {
 	if !r.Transferring(root.Child(4, 9)) || r.Transferring(root.Child(4, 1)) || r.Transferring(root) {
 		t.Fatal("a registered half does not cover exactly its ranges")
 	}
+	// the union: the other half's quarters complete the root
+	r.HoldStripe(root.Child(2, 0))
+	r.HoldStripe(root.Child(2, 1))
+	if !r.Transferring(root) || !r.Transferring(root.Child(1, 0)) {
+		t.Fatal("own transfers that cover a range together do not cover it")
+	}
+	r.ReleaseStripe(root.Child(2, 1))
+	if r.Transferring(root) || r.Transferring(root.Child(1, 0)) || !r.Transferring(root.Child(3, 1)) {
+		t.Fatal("own transfers with a gap cover the range across it")
+	}
+	// a peer's claim, also in the gap, covers nothing
+	r.HoldPeerStripe(root.Child(2, 1), lower)
+	if r.Transferring(root) || r.Transferring(root.Child(3, 2)) {
+		t.Fatal("a peer's claim lowers the threshold")
+	}
+	for _, rg := range []fingerprint.Range{root.Child(1, 1), root.Child(2, 0), root.Child(2, 1)} {
+		r.ReleaseStripe(rg)
+	}
+
+	// an own transfer of the session root: no session with a peer one ID
+	// ahead
 	r.HoldStripe(root)
 	r.Round()
 	settle()
@@ -243,6 +273,182 @@ func TestTransferring(t *testing.T) {
 		t.Fatalf("%d round sessions with a peer one ID ahead in a transferred root", n)
 	}
 	r.ReleaseStripe(root)
+	// a peer's claim of the root: the session runs
+	r.HoldPeerStripe(root, lower)
 	r.Round()
 	waitFor(t, "round session", func() bool { return roundSessions(svc, higher) > 0 })
+}
+
+// TestClaimCaps checks the bounds on a peer's claims (T4.7 part 1 fix round
+// 1): a session, served or opened, registers at most MaxSessionStripes of
+// the ranges it takes over, and a peer has at most MaxPeerStripes claims
+// registered, trimmed parts counted one by one; the ranges past them are
+// taken over all the same. Another peer's claims have their own bound, and
+// a claim that ended makes room again.
+func TestClaimCaps(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(1000))
+	svc.remote[higher.ByteString()] = status(1000)
+	svc.remote[other.ByteString()] = status(1000)
+	r := admitted(t, svc, reconciler.Options{}, higher, other)
+
+	// served sessions of one peer, each offering the 16 children of the
+	// root (one opening of 16 ranges)
+	serve := func(peer swarm.Address) {
+		t.Helper()
+		s := r.ServedStriper(peer)
+		for i := range uint64(16) {
+			if !s.Stripe(root.Child(4, i), 0, rangesync.LargeDiff+1) {
+				t.Fatalf("range %d declined", i)
+			}
+		}
+	}
+	serve(higher)
+	if got := r.StripeRanges(); !slices.EqualFunc(got, []fingerprint.Range{root.Child(4, 0)}, fingerprint.Range.Equal) {
+		t.Fatalf("one session registered %v, want %d range", got, reconciler.MaxSessionStripes)
+	}
+	for range 3 {
+		serve(higher)
+	}
+	if n := r.PeerStripes(higher); n != reconciler.MaxPeerStripes {
+		t.Fatalf("the peer holds %d claims, want %d", n, reconciler.MaxPeerStripes)
+	}
+	// the sessions this node opens register the peer's claims too
+	if r.EnqueuePeerStripes(higher, []fingerprint.Range{root.Child(4, 15)}) || r.PeerStripes(higher) != reconciler.MaxPeerStripes {
+		t.Fatalf("a session past the peer's bound registered: %v", r.StripeRanges())
+	}
+
+	// another peer: one of two ranges of a session, then a trimmed root
+	// that leaves the peer room for one part only
+	if r.EnqueuePeerStripes(other, []fingerprint.Range{root.Child(4, 14), root.Child(4, 13)}) || r.PeerStripes(other) != 1 {
+		t.Fatalf("a session registered %v, want %d range", r.StripeRanges(), reconciler.MaxSessionStripes)
+	}
+	dropped := r.StripesTotal("dropped")
+	if r.ServedStriper(other).Stripe(root, 0, 1000); r.PeerStripes(other) != reconciler.MaxPeerStripes {
+		t.Fatalf("the other peer holds %d claims after a trimmed root, want %d", r.PeerStripes(other), reconciler.MaxPeerStripes)
+	}
+	if r.StripesTotal("dropped") == dropped {
+		t.Fatal("trimmed parts past the peer's bound not counted as dropped")
+	}
+
+	// a claim that ended makes room
+	r.ReleaseStripe(root.Child(4, 0))
+	if !r.ServedStriper(higher).Stripe(root.Child(4, 12), 0, rangesync.LargeDiff+1) || r.PeerStripes(higher) != reconciler.MaxPeerStripes {
+		t.Fatalf("no claim registered after one ended: %v", r.StripeRanges())
+	}
+	if !slices.ContainsFunc(r.StripeRanges(), root.Child(4, 12).Equal) {
+		t.Fatalf("registered %v, want %s among them", r.StripeRanges(), root.Child(4, 12))
+	}
+}
+
+// TestOwnJobPreemptsClaims: this node's own transfer is registered over a
+// peer's claims and runs first (T4.7 part 1 fix round 1). The bootstrap of
+// the root drops the claims inside it and ends the claim in flight; a radius
+// decrease's new half drops the claims that overlap it and ends the claim in
+// flight, and the other claims stay queued behind it.
+func TestOwnJobPreemptsClaims(t *testing.T) {
+	t.Parallel()
+
+	liar, other := addr(0xf0, 0), addr(0xf1, 0)
+	t.Run("bootstrap", func(t *testing.T) {
+		t.Parallel()
+		root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+		svc := newFakeService(status(1000))
+		svc.remote[higher.ByteString()] = status(1000)
+		svc.remote[other.ByteString()] = status(1000)
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		inFlight := r.HoldPeerStripe(root.Child(2, 0), liar)
+		if !r.EnqueuePeerStripes(liar, []fingerprint.Range{root.Child(2, 1)}) || !r.EnqueuePeerStripes(other, []fingerprint.Range{root.Child(2, 2)}) {
+			t.Fatal("claims not registered")
+		}
+		svc.set(func() { svc.local = status(0) }) // bootstrapping
+		r.Round()
+		assertStripeRanges(t, r, root)
+		if got := r.QueuedStripes(); !slices.EqualFunc(got, []fingerprint.Range{root}, fingerprint.Range.Equal) {
+			t.Fatalf("queued %v, want the bootstrap only", got)
+		}
+		if inFlight.Err() == nil {
+			t.Fatal("the claim in flight goes on")
+		}
+		if !r.Transferring(root.Child(3, 5)) {
+			t.Fatal("the bootstrap does not lower the threshold")
+		}
+	})
+	t.Run("radius", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(selfRoot(1, 5))
+		for _, p := range []swarm.Address{higher, other} {
+			svc.remote[p.ByteString()] = selfRoot(0, 10)
+		}
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		oldHalf, newHalf := fingerprint.NewRange(self, 1), sibling(1)
+		inFlight := r.HoldPeerStripe(oldHalf.Child(1, 0), liar)
+		if !r.EnqueuePeerStripes(liar, []fingerprint.Range{newHalf.Child(1, 1)}) || !r.EnqueuePeerStripes(other, []fingerprint.Range{oldHalf.Child(1, 1)}) {
+			t.Fatal("claims not registered")
+		}
+		svc.set(func() { svc.local = selfRoot(0, 5) }) // the radius decreased
+		r.Round()
+		if !r.RadiusStriping() {
+			t.Fatal("new half not registered over the claims")
+		}
+		assertStripeRanges(t, r, oldHalf.Child(1, 1), newHalf)
+		if got := r.QueuedStripes(); !slices.EqualFunc(got, []fingerprint.Range{newHalf, oldHalf.Child(1, 1)}, fingerprint.Range.Equal) {
+			t.Fatalf("queued %v, want the new half first", got)
+		}
+		if inFlight.Err() == nil {
+			t.Fatal("the claim in flight goes on")
+		}
+	})
+}
+
+// TestClaimKeepsRounds is the lying peer of the review (T4.7 part 1 fix
+// round 1, Medium 1), over real services: a peer's claim of this node's
+// whole root, registered and in flight for as long as the test runs (a liar
+// whose stripe stalls), stops neither this node's round sessions with an
+// honest peer, in either role, nor the reconciling of their small
+// difference (a few chunks this node lacks, as pushsync misses leave). Only
+// this node's own transfers lower the threshold to 0.
+func TestClaimKeepsRounds(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 100
+	for _, tc := range []struct {
+		name string
+		a, b swarm.Address // a lacks, b holds the chunks
+	}{
+		{"this node initiates", addr(0x10, 0), addr(0xa0, 0)},
+		{"the peer initiates", addr(0xa0, 0), addr(0x10, 0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			base := baseChunks()
+			missed := chunktesting.GenerateTestRandomChunks(3)
+			o := roundNodeOptions{roundInterval: 20 * time.Millisecond, striper: true, largeDiff: largeDiff}
+			o.chunks = base
+			a := newRoundNode(t, tc.a, o, tc.b)
+			o.chunks = append(base[:len(base):len(base)], missed...)
+			b := newRoundNode(t, tc.b, o, tc.a)
+			st, err := a.svc.LocalStatus()
+			if err != nil {
+				t.Fatal(err)
+			}
+			stalled := a.r.HoldPeerStripe(st.Root, addr(0xf0, 0))
+			b.start(t, []*stripeNode{&a.stripeNode}, nil)
+			a.start(t, []*stripeNode{&b.stripeNode}, nil)
+			waitFor(t, "the small difference synced", func() bool {
+				for _, ch := range missed {
+					if !a.has(t, ch) {
+						return false
+					}
+				}
+				return true
+			})
+			if stalled.Err() != nil || a.r.StripeRegistry() == 0 {
+				t.Fatal("the claim ended")
+			}
+		})
+	}
 }

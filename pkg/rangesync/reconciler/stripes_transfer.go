@@ -20,9 +20,16 @@ import (
 )
 
 const (
-	// StripeTimeout bounds one attempt of the transfer of a stripe: its
-	// session and the fetch of the IDs the session listed. See runStripe
-	// for the bound on a whole stripe.
+	// StripeTimeout is the inactivity timeout of one attempt of the
+	// transfer of a stripe, on the stripe clock (stripeClock): the attempt,
+	// its session and the fetch of the IDs the session listed, ends once
+	// its fetches stored no chunk for StripeTimeout. An attempt that keeps
+	// storing runs on, up to what is left of its peer's budget of
+	// stripePeerBudget StripeTimeouts on the clock, so that a slow transfer
+	// is not restarted (a restart lists again what the attempt had listed
+	// and not yet fetched) and a peer that delivers a chunk now and then
+	// holds a stripe no longer than before (T4.7 part 1 fix round 1). See
+	// runStripe for the bound on a whole stripe.
 	StripeTimeout = 15 * time.Minute
 
 	// stripeQueue is the number of want batches of a stripe queued for
@@ -52,10 +59,27 @@ const (
 	// (localBusy) over the whole stripe: reassigning does not reset that
 	// budget.
 	maxStripeRestarts = 8
+	// stripePeerBudget is the budget, in StripeTimeouts on the stripe
+	// clock, of the attempts of one stripe with one peer, all together:
+	// what 1 + maxStripeRestarts attempts of at most StripeTimeout each
+	// took before StripeTimeout became an inactivity timeout. An attempt
+	// that runs out of it is not restarted with the same peer: the stripe
+	// is reassigned.
+	stripePeerBudget = 1 + maxStripeRestarts
 	// maxStripeRegistry bounds the ranges queued for or in a striped
 	// transfer; a range past it is dropped, and so are the parts of a
 	// trimmed range past it.
 	maxStripeRegistry = 1024
+	// maxPeerStripes bounds the ranges registered on one peer's claim (a
+	// session's Striper, the rounds' session-root check) that are queued
+	// or in flight at once, trimmed parts counted one by one; a range or
+	// part past it is dropped. maxSessionStripes bounds the ranges one
+	// session registers; the session takes the others over and drops them,
+	// and a later session offers them again. A peer that claims far larger
+	// counts than it holds thus gets at most maxPeerStripes transfers
+	// queued, not one per range of its openings (T4.7 part 1 fix round 1).
+	maxPeerStripes    = 2
+	maxSessionStripes = 1
 )
 
 // Stripe transfer results, the values of the stripes_total result label.
@@ -131,6 +155,11 @@ type StripeResult struct {
 	// Undelivered were not requested because they lie outside Peer's root.
 	ran         bool
 	outsideRoot int
+	// clock is how long the attempt's stripe clock ran, and capped
+	// reports that it timed out at its cap, the rest of its peer's budget
+	// (stripePeerBudget), not for inactivity.
+	clock  time.Duration
+	capped bool
 }
 
 // TransferStripes transfers stripes (§7.4): for each, it opens a session
@@ -286,10 +315,21 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 // waits for the backoff as for a Busy answer (transferStripe), and is
 // reassigned once those waits run out.
 //
+// The attempts with one peer share one budget on the stripe clock,
+// stripePeerBudget × StripeTimeout: each attempt's clock is capped at what
+// is left of it (transferStripe), and an attempt that runs out of it is
+// reassigned whatever it stored. An attempt ends earlier when its fetches
+// store nothing for StripeTimeout (the inactivity timeout), so an honest
+// slow transfer runs as one attempt, while a peer that delivers a chunk now
+// and then is reassigned after the budget, as when 1 + maxStripeRestarts
+// attempts of StripeTimeout each bounded it (T4.7 part 1 fix round 1).
+//
 // Bound: a stripe makes at most (1 + maxStripeReassign) × (1 +
-// maxStripeRestarts) = 36 attempts, each of at most StripeTimeout on its
-// stripe clock (9 h at the defaults), of which at most 1 + maxStripeRestarts
-// + maxStripeReassign = 12 (3 h) when only this node holds them up. Not on
+// maxStripeRestarts) = 36 attempts, and its attempts with one peer run at
+// most stripePeerBudget × StripeTimeout on the stripe clock together, so at
+// most (1 + maxStripeReassign) × stripePeerBudget × StripeTimeout in all (9
+// h at the defaults); at most 1 + maxStripeRestarts + maxStripeReassign = 12
+// attempts (3 h of inactivity) when only this node holds them up. Not on
 // the stripe clock, per attempt: the wait for the peer's stripe lock and for
 // the slots before the clock starts, and the waits to retry the peer's Busy,
 // at most maxStripeBusyRetries of stripeRetryInterval plus the wait for the
@@ -298,13 +338,16 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 	total := StripeResult{Range: st.Range}
 	tried := make(map[string]bool)
 	next := st.Peers
+	budget := stripePeerBudget * r.stripeTimeout
+	var used time.Duration // of budget, by the attempts with peer
 	peer, ok := r.nextStripePeer(st.Range, &next, tried)
 	for reassigns, restarts, localRestarts := 0, 0, 0; ok; {
 		if !tried[peer.ByteString()] {
 			tried[peer.ByteString()] = true
-			total.PeerStored = 0
+			total.PeerStored, used = 0, 0
 		}
-		res := r.transferStripe(ctx, st.Range, peer, locks, started)
+		res := r.transferStripe(ctx, st.Range, peer, locks, started, budget-used)
+		used += res.clock
 		if res.ran && !slices.ContainsFunc(total.Tried, peer.Equal) {
 			total.Tried = append(total.Tried, peer)
 		}
@@ -324,13 +367,15 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		// as for a Busy answer, ask the same peer again (the next attempt
 		// waits for the backoff as for a Busy answer)
 		backoff := !progress && res.ran && errors.Is(res.Err, rangesync.ErrOpenBackoff)
+		// the peer's budget on the stripe clock is spent: reassign
+		spent := res.capped || used >= budget
 		switch {
 		case total.Err == nil:
 			r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
 			return total
 		case ctx.Err() != nil:
 			return total
-		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && restarts < maxStripeRestarts &&
+		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && restarts < maxStripeRestarts && !spent &&
 			(progress || backoff || local && localRestarts < maxStripeRestarts):
 			restarts++
 			if local {
@@ -426,16 +471,19 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
 // peer's Busy, and without a count for a cause on this node (localBusy). A
 // peer whose fetch stream opens back off (opensBackOff) is not asked for a
-// session: that counts as the peer's Busy (stripeBusy). The
-// stripe timeout (stripeClock) starts once it holds them and then runs until
-// it ends, the fetch after the session included, except while it waits to
-// retry the peer's Busy with no fetch of the attempt running; the waits for
-// a cause on this node count, so they end at the timeout, and runStripe
-// restarts such an attempt with the same peer (maxStripeRestarts) instead of
-// reassigning it. The wait for the peer's round session to end
-// (acquireStripe) counts towards the stripe timeout.
-func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, locks *peerLocks, started func()) StripeResult {
-	res := StripeResult{Range: sr, Peer: peer}
+// session: that counts as the peer's Busy (stripeBusy). The stripe clock
+// (stripeClock) starts once it holds them and then runs until it ends, the
+// fetch after the session included, except while it waits to retry the
+// peer's Busy with no fetch of the attempt running. The attempt times out
+// (ErrStripeTimeout) once the clock ran StripeTimeout since the attempt's
+// fetches last stored a chunk (or since it started), or once it ran
+// capacity in all (res.capped; runStripe passes what is left of the peer's
+// budget). The waits for a cause on this node count, so they end at the
+// timeout, and runStripe restarts such an attempt with the same peer
+// (maxStripeRestarts) instead of reassigning it. The wait for the peer's
+// round session to end (acquireStripe) counts towards the stripe timeout.
+func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, locks *peerLocks, started func(), capacity time.Duration) (res StripeResult) {
+	res = StripeResult{Range: sr, Peer: peer}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	unlock, err := locks.acquire(ctx, peer)
@@ -445,8 +493,11 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	}
 	hold := &peerHold{unlock: unlock}
 	defer hold.release()
-	clock := &stripeClock{now: r.now, after: r.after, left: r.stripeTimeout, expire: func() { cancel(ErrStripeTimeout) }}
-	defer clock.pause()
+	clock := newStripeClock(r.now, r.after, r.stripeTimeout, capacity, func() { cancel(ErrStripeTimeout) })
+	defer func() {
+		clock.pause()
+		res.clock, res.capped = clock.ran(), clock.isCapped()
+	}()
 	releaseSlots, err := r.acquireStripeSlots(ctx)
 	if err != nil {
 		res.Err = err
@@ -483,11 +534,12 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 	go func() {
 		defer close(fetched)
 		for ids := range queue {
-			if fetchErr != nil {
+			clock.expireIfDue() // the last fetch may have outlasted the timeout
+			if fetchErr != nil || ctx.Err() != nil {
 				queued.Add(-1)
 				continue // drain
 			}
-			out, err := r.fetchFrom(ctx, peer, ids, true)
+			out, err := r.fetchFrom(ctx, peer, ids, true, clock.progress)
 			queued.Add(-1)
 			res.Stored += out.stored
 			res.Undelivered += out.undelivered
@@ -607,7 +659,8 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 // hold, and the peer's lock in locks unless locks.keep, so that round
 // sessions and other stripes' sessions with the peer run meanwhile, and
 // takes them again for the next pass. It holds no slot. The stripe clock
-// runs throughout, so the timeout bounds the waits and the passes alike.
+// runs throughout, so the timeout bounds the waits and the passes alike; a
+// pass that stores chunks restarts its inactivity timeout.
 func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, peer swarm.Address, locks *peerLocks, hold *peerHold, pending []storer.ChunkID, unverified int, res *StripeResult) ([]storer.ChunkID, int, error) {
 	for pass := 0; len(pending) > 0 && pass < maxPendingPasses; pass++ {
 		hold.releaseStripe()
@@ -633,7 +686,7 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pee
 			return pending, unverified, nil
 		default:
 		}
-		out, err := r.fetchFrom(ctx, peer, pending, true)
+		out, err := r.fetchFrom(ctx, peer, pending, true, clock.progress)
 		res.Stored += out.stored
 		res.Undelivered += out.undelivered
 		res.outsideRoot += out.outsideRoot
@@ -745,66 +798,166 @@ func (r *Reconciler) acquireStripeSlots(ctx context.Context) (release func(), er
 }
 
 // stripeClock is the stripe timeout of one attempt, on the reconciler's
-// clock (Options.Now and Options.After): it runs while resumed, and expire is
-// called once left has run out. While it runs, a goroutine waits for the
-// expiry; pause ends it, and the attempt pauses the clock when it ends. It is
-// not safe for concurrent use: the attempt's goroutine drives it.
+// clock (Options.Now and Options.After). It runs while resumed, and expire is
+// called once, when the clock has run idle since the attempt last made
+// progress (a chunk its fetches stored: progress) or since it started, or
+// when it has run capacity in all, whichever comes first; capped then
+// reports the latter. While it runs, a goroutine waits for the expiry, and,
+// when a progress moved it, for the new expiry; pause ends it, and the
+// attempt pauses the clock when it ends. The attempt's goroutine drives
+// resume and pause; expireIfDue and progress are also called on the
+// goroutines of its fetches.
+//
+// The inactivity timeout supersedes the attempt timeout of T4.3 (an attempt
+// ended StripeTimeout after its clock started, however much it stored),
+// which restarted every stripe that outlasted it and so listed again what
+// the attempt had listed and not yet fetched (T4.7 part 1 fix round 1).
 type stripeClock struct {
-	now    func() time.Time
-	after  func(time.Duration) <-chan time.Time
-	expire func()
-	left   time.Duration
-	since  time.Time
-	stop   chan struct{} // closed by pause; nil while paused
+	now      func() time.Time
+	after    func(time.Duration) <-chan time.Time
+	expire   func()
+	idle     time.Duration // the inactivity timeout
+	capacity time.Duration // the most the clock runs
+
+	mu sync.Mutex
+	// idleLeft and capLeft are what is left of idle and capacity at since
+	// while the clock runs, and now while it is paused.
+	idleLeft, capLeft time.Duration
+	since             time.Time
+	stop              chan struct{} // closed by pause; nil while paused
+	expired, capped   bool
+}
+
+// newStripeClock returns a paused stripeClock.
+func newStripeClock(now func() time.Time, after func(time.Duration) <-chan time.Time, idle, capacity time.Duration, expire func()) *stripeClock {
+	return &stripeClock{now: now, after: after, expire: expire, idle: idle, capacity: capacity, idleLeft: idle, capLeft: capacity}
 }
 
 // resume starts the clock; it is a no-op when the clock is running.
 func (c *stripeClock) resume() {
+	c.mu.Lock()
 	if c.stop != nil {
+		c.mu.Unlock()
 		return
 	}
 	c.since = c.now()
 	stop := make(chan struct{})
 	c.stop = stop
-	expired := c.after(max(c.left, 0))
-	go func() {
+	left := c.leftLocked()
+	c.mu.Unlock()
+	go c.wait(stop, c.after(max(left, 0)))
+}
+
+// wait is the goroutine of a resumed stretch of the clock: it expires the
+// clock at timer, or waits again when a progress moved the expiry, until
+// stop is closed.
+func (c *stripeClock) wait(stop chan struct{}, timer <-chan time.Time) {
+	for {
 		select {
-		case <-expired:
-			select {
-			case <-stop: // paused before this goroutine saw the expiry
-			default:
+		case <-timer:
+		case <-stop:
+			return
+		}
+		c.mu.Lock()
+		if c.stop != stop { // paused before this goroutine saw the expiry
+			c.mu.Unlock()
+			return
+		}
+		left := c.leftLocked()
+		first := left <= 0 && c.expireLocked()
+		c.mu.Unlock()
+		if left <= 0 {
+			if first {
 				c.expire()
 			}
-		case <-stop:
+			return
 		}
-	}()
+		timer = c.after(left)
+	}
+}
+
+// leftLocked returns the time left until the running clock expires. c.mu
+// must be held.
+func (c *stripeClock) leftLocked() time.Duration {
+	return min(c.idleLeft, c.capLeft) - c.now().Sub(c.since)
+}
+
+// expireLocked records the expiry of the running clock, and whether it ran
+// out of capacity, and reports whether it had not expired before. c.mu must
+// be held.
+func (c *stripeClock) expireLocked() bool {
+	if c.expired {
+		return false
+	}
+	c.expired = true
+	c.capped = c.capLeft-c.now().Sub(c.since) <= 0
+	return true
 }
 
 // pause stops the clock; it is a no-op when the clock is not running.
 func (c *stripeClock) pause() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.stop == nil {
 		return
 	}
 	close(c.stop)
 	c.stop = nil
-	c.left -= c.now().Sub(c.since)
+	ran := c.now().Sub(c.since)
+	c.idleLeft -= ran
+	c.capLeft -= ran
+}
+
+// progress restarts the inactivity timeout: a fetch of the attempt stored a
+// chunk. The capacity keeps running.
+func (c *stripeClock) progress() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stop != nil {
+		now := c.now()
+		c.capLeft -= now.Sub(c.since)
+		c.since = now
+	}
+	c.idleLeft = c.idle
 }
 
 // expireIfDue calls expire when the running clock has run out, whether or
 // not its goroutine has seen the expiry yet. The attempt checks it after each
-// session answer and after each wait the clock runs through (for its peer,
-// for its slots, to retry, to take its peer back for an ask), so that it
-// starts no session and no ask past its timeout. A fetch already running
-// ends once the clock's goroutine cancels it.
+// session answer, after each wait the clock runs through (for its peer, for
+// its slots, to retry, to take its peer back for an ask) and before each
+// fetch of a listed batch, so that it starts no session, no ask and no fetch
+// past its timeout. A fetch already running ends once the clock's goroutine
+// cancels it.
 func (c *stripeClock) expireIfDue() {
-	if c.stop != nil && c.now().Sub(c.since) >= c.left {
+	c.mu.Lock()
+	first := c.stop != nil && c.leftLocked() <= 0 && c.expireLocked()
+	c.mu.Unlock()
+	if first {
 		c.expire()
 	}
 }
 
-// stripeJob is a range queued for a striped transfer; started, if not nil,
-// is called once when its transfer has its first wants or ends; bootstrap
-// marks the bootstrap transfer of the root.
+// ran returns how long the clock has run.
+func (c *stripeClock) ran() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	d := c.capacity - c.capLeft
+	if c.stop != nil {
+		d += c.now().Sub(c.since)
+	}
+	return d
+}
+
+// isCapped reports whether the clock expired at its capacity.
+func (c *stripeClock) isCapped() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.capped
+}
+
+// stripeJob is a range queued for or in a striped transfer (a registry
+// entry); started, if not nil, is called once when its transfer has its
+// first wants or ends; bootstrap marks the bootstrap transfer of the root.
 type stripeJob struct {
 	rg        fingerprint.Range
 	started   func()
@@ -813,42 +966,89 @@ type stripeJob struct {
 	// ctx, if not nil, bounds the job (canceled on a radius increase).
 	radius bool
 	ctx    context.Context
+	// own marks a job this node decided on from its own state: the
+	// bootstrap of its root (IsBootstrap, against the median of its peers'
+	// counts) and a radius decrease's new half. Every other job is a
+	// peer's claim: a range a session's Striper took over because the
+	// peer's Fingerprint counted far more than this node holds, or a
+	// session root the rounds' check found far behind the peer's Status
+	// (LacksSessionRoot); peer is that peer (zero only in tests). Only own
+	// jobs lower the sessions' threshold to 0 (Transferring); an own job
+	// is queued before the claims and makes way for itself by dropping
+	// them (preemptLocked); the claims are capped per peer
+	// (maxPeerStripes). So a peer that claims a far larger count than it
+	// holds neither stops this node's round sessions nor keeps its own
+	// transfers from running (T4.7 part 1 fix round 1).
+	own  bool
+	peer swarm.Address
+	// cancel ends the transfer of a claim in flight; the stripe worker
+	// sets it.
+	cancel context.CancelFunc
 }
 
-// enqueueStripes registers ranges for a striped transfer by the stripe
-// worker (registerStripeLocked) and reports whether every range was
-// registered.
-func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range) bool {
+// enqueueStripes registers the ranges the Striper of a session this node
+// opened with peer took over, as peer's claims (registerStripeLocked), at
+// most maxSessionStripes of them, and reports whether every range was
+// registered. The others are dropped: a later session offers them again.
+func (r *Reconciler) enqueueStripes(peer swarm.Address, ranges []fingerprint.Range) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	all := true
+	all, n := true, 0
 	for _, rg := range ranges {
-		if !r.registerStripeLocked(stripeJob{rg: rg}) {
+		if n == maxSessionStripes {
 			all = false
+			break
+		}
+		before := len(r.stripeRegistry)
+		if !r.registerStripeLocked(&stripeJob{rg: rg, peer: peer}) {
+			all = false
+		}
+		if len(r.stripeRegistry) > before {
+			n++
 		}
 	}
 	return all
 }
 
-// Stripe is the rangesync.Striper of the sessions this node serves
-// (rangesync.Options.Striper): the peer's Fingerprint of rg counts remote
-// elements, more than LargeDiff above this node's local, or more at all in a
-// range a transfer covers (Transferring) (candidate A of AC-B2, T4.7 part
-// 1). It takes rg over in every case, so that the session
-// answers nothing for rg and the peer lists none of its IDs to this node,
-// and registers rg for a striped transfer (registerStripeLocked) unless the
-// bootstrap plan holds it: while a bootstrap transfer is queued or in flight,
-// and while this node is bootstrapping (IsBootstrap), since the next round
-// registers the bootstrap of its root and a registered range inside the root
-// would keep it from doing so. A range that is not registered (covered by a
-// registered one, past the registry bound, after Close) is offered again by
-// a later session. It is called on the goroutine of the served session.
+// servedStriper is the rangesync.TransferStriper of one session this node
+// serves with peer (Reconciler.ServedStriper). It is used on the session's
+// goroutine only.
+type servedStriper struct {
+	r    *Reconciler
+	peer swarm.Address
+	// registered counts the ranges the session registered
+	// (maxSessionStripes).
+	registered int
+}
+
+var _ rangesync.TransferStriper = (*servedStriper)(nil)
+
+// ServedStriper returns the Striper of a session this node serves with peer
+// (rangesync.Options.Striper). It takes over every range the session offers:
+// the peer's Fingerprint of the range counts more than LargeDiff above this
+// node's, or more at all inside this node's own transfer (Transferring)
+// (candidate A of AC-B2, T4.7 part 1), so that the session answers nothing
+// for the range and the peer lists none of its IDs to this node. It
+// registers the range for a striped transfer as the peer's claim
+// (registerStripeLocked; at most maxSessionStripes per session and
+// maxPeerStripes per peer), unless the bootstrap plan holds it: while a
+// bootstrap transfer is queued or in flight, and while this node is
+// bootstrapping (IsBootstrap), since the next round registers the bootstrap
+// of its root, which would drop the claim. A range that is not registered
+// (covered by a registered one, past a bound, after Close) is offered again
+// by a later session.
 //
-// The registry holds SyncRate for as long as rg is registered, whatever the
-// transfer stores: the stripe-registry SyncRate pin (T4.7 part 3), which a
-// peer claiming a far larger count now reaches through the sessions this
-// node serves too.
-func (r *Reconciler) Stripe(rg fingerprint.Range, _, _ uint64) bool {
+// The registry holds SyncRate for as long as a claim is registered, whatever
+// its transfer stores: the stripe-registry SyncRate pin (T4.7 part 3), which
+// a peer claiming a far larger count reaches through the sessions this node
+// serves too, at most maxPeerStripes ranges at a time.
+func (r *Reconciler) ServedStriper(peer swarm.Address) rangesync.Striper {
+	return &servedStriper{r: r, peer: peer}
+}
+
+// Stripe takes rg over and registers it (ServedStriper).
+func (s *servedStriper) Stripe(rg fingerprint.Range, _, _ uint64) bool {
+	r := s.r
 	if r.ctx.Err() != nil {
 		return true
 	}
@@ -858,20 +1058,35 @@ func (r *Reconciler) Stripe(rg fingerprint.Range, _, _ uint64) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.foundDiff = true
-	if !r.bootstrapping {
-		r.registerStripeLocked(stripeJob{rg: rg})
+	if r.bootstrapping || s.registered == maxSessionStripes {
+		return true
+	}
+	before := len(r.stripeRegistry)
+	r.registerStripeLocked(&stripeJob{rg: rg, peer: s.peer})
+	if len(r.stripeRegistry) > before {
+		s.registered++
 	}
 	return true
 }
 
-// Transferring reports whether a range registered for a striped transfer
-// (queued or in flight) covers rg: the reconciler is a
-// rangesync.TransferStriper for the sessions this node serves, and the
-// StripeCollector of its round sessions asks it too. In such a range the
-// sessions decline whatever this node lacks, and a round opens no session
-// over a covered session root with a peer that holds more in it
-// (lacksSessionRootLocked), so that no peer lists what the transfer lists,
-// also in its tail, below LargeDiff (T4.7 part 1).
+// Transferring is Reconciler.Transferring.
+func (s *servedStriper) Transferring(rg fingerprint.Range) bool {
+	return s.r.Transferring(rg)
+}
+
+// Transferring reports whether this node's own striped transfers (queued
+// or in flight, stripeJob.own: its bootstrap and a radius decrease's new
+// half) cover rg, together: the Striper of the sessions this node serves
+// and the StripeCollector of its round sessions ask it. In such a range the
+// sessions decline whatever this node lacks, so that no peer lists what the
+// transfer lists, also in its tail, below LargeDiff (T4.7 part 1). A peer's
+// claim does not count (T4.7 part 1 fix round 1): a peer whose Fingerprint
+// or Status claims a far larger count would otherwise stop this node's
+// round sessions, and its reconciling of small differences, over the
+// claimed range with every peer. A range that only partly lies in the own
+// transfers is decided with the session's threshold: the side that splits
+// it must send all its children (the frozen wire), and the holder decides
+// on them, so declining the part would decline the rest too.
 func (r *Reconciler) Transferring(rg fingerprint.Range) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -880,60 +1095,146 @@ func (r *Reconciler) Transferring(rg fingerprint.Range) bool {
 
 // transferringLocked is Transferring; r.mu must be held.
 func (r *Reconciler) transferringLocked(rg fingerprint.Range) bool {
-	return slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.ContainsRange(rg) })
+	var own []fingerprint.Range
+	for _, j := range r.stripeRegistry {
+		if j.own {
+			own = append(own, j.rg)
+		}
+	}
+	switch {
+	case slices.ContainsFunc(own, func(o fingerprint.Range) bool { return o.ContainsRange(rg) }):
+		return true
+	case !slices.ContainsFunc(own, rg.ContainsRange):
+		return false
+	}
+	_, whole := trimStripe(rg, own, 0) // no part left uncovered
+	return whole
+}
+
+// stripeRangesLocked returns the ranges of the registry. r.mu must be held.
+func (r *Reconciler) stripeRangesLocked() []fingerprint.Range {
+	ranges := make([]fingerprint.Range, len(r.stripeRegistry))
+	for i, j := range r.stripeRegistry {
+		ranges[i] = j.rg
+	}
+	return ranges
+}
+
+// peerStripesLocked returns the number of peer's claims in the registry.
+// r.mu must be held.
+func (r *Reconciler) peerStripesLocked(peer swarm.Address) int {
+	n := 0
+	for _, j := range r.stripeRegistry {
+		if !j.own && j.peer.Equal(peer) {
+			n++
+		}
+	}
+	return n
 }
 
 // registerStripeLocked queues job for the stripe worker, so that no range is
 // transferred twice. Prefix ranges overlap only by containment:
 //   - a range inside a registered (queued or in-flight) range is not
 //     registered: the registered one covers it;
-//   - a session's range (a job with no bookkeeping of its own) that contains
-//     registered ranges is trimmed to the parts they leave uncovered
-//     (trimStripe), each queued as a job of its own;
-//   - a bootstrap or radius job that contains registered ranges is not
-//     registered: its bookkeeping (started, the radius half and its cancel)
-//     is that of one job, and its round tries again.
+//   - a session's range (a claim, with no bookkeeping of its own) that
+//     contains registered ranges is trimmed to the parts they leave
+//     uncovered (trimStripe), each queued as a job of its own;
+//   - an own job (bootstrap or radius) is not registered while it overlaps
+//     another own job: its bookkeeping (started, the radius half and its
+//     cancel) is that of one job, and its round tries again. Otherwise the
+//     claims make way for it (preemptLocked), and it is queued before them.
 //
 // What a range that is not registered misses shows up again in a later
-// round. Past maxStripeRegistry ranges a range, or a trimmed part, is
-// dropped (counted as stripes_total{dropped}). It reports whether all of
-// job's range was registered.
-func (r *Reconciler) registerStripeLocked(job stripeJob) bool {
-	rg := fingerprint.NewRange(job.rg.Prefix, job.rg.Bits)
-	if slices.ContainsFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.ContainsRange(rg) }) {
-		return false
-	}
-	if slices.ContainsFunc(r.stripeRegistry, rg.ContainsRange) {
-		if job.started != nil || job.bootstrap || job.radius || job.ctx != nil {
+// round. Past maxStripeRegistry ranges, or a claim's peer's maxPeerStripes,
+// a range, or a trimmed part, is dropped (counted as
+// stripes_total{dropped}). It reports whether all of job's range was
+// registered.
+func (r *Reconciler) registerStripeLocked(job *stripeJob) bool {
+	job.rg = fingerprint.NewRange(job.rg.Prefix, job.rg.Bits)
+	rg := job.rg
+	if job.own {
+		if slices.ContainsFunc(r.stripeRegistry, func(o *stripeJob) bool {
+			return o.own && (o.rg.ContainsRange(rg) || rg.ContainsRange(o.rg))
+		}) {
 			return false
 		}
-		parts, whole := trimStripe(rg, r.stripeRegistry, maxStripeRegistry-len(r.stripeRegistry))
+		r.preemptLocked(rg)
+	}
+	ranges := r.stripeRangesLocked()
+	if slices.ContainsFunc(ranges, func(o fingerprint.Range) bool { return o.ContainsRange(rg) }) {
+		return false
+	}
+	room := maxStripeRegistry - len(ranges)
+	if !job.own && !job.peer.IsZero() {
+		room = min(room, maxPeerStripes-r.peerStripesLocked(job.peer))
+	}
+	if slices.ContainsFunc(ranges, rg.ContainsRange) {
+		if job.own || job.started != nil || job.ctx != nil {
+			return false
+		}
+		parts, whole := trimStripe(rg, ranges, max(room, 0))
 		if !whole {
 			r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
-			r.logger.Debug("stripe range trimmed past the registry bound", "range", rg, "parts", len(parts))
+			r.logger.Debug("stripe range trimmed past a registry bound", "range", rg, "parts", len(parts), "peer_address", job.peer)
 		}
 		if len(parts) == 0 {
 			return false
 		}
 		defer r.wakeStripes()
 		for _, p := range parts {
-			j := job
+			j := *job
 			j.rg = p
-			r.stripeRegistry = append(r.stripeRegistry, p)
-			r.stripeQueue = append(r.stripeQueue, j)
+			r.addStripeLocked(&j)
 		}
 		return whole
 	}
-	if len(r.stripeRegistry) >= maxStripeRegistry {
+	if room <= 0 {
 		r.metrics.Stripes.WithLabelValues(stripeDropped).Inc()
-		r.logger.Debug("stripe range dropped", "range", rg)
+		r.logger.Debug("stripe range dropped", "range", rg, "peer_address", job.peer)
 		return false
 	}
-	job.rg = rg
-	r.stripeRegistry = append(r.stripeRegistry, rg)
-	r.stripeQueue = append(r.stripeQueue, job)
+	r.addStripeLocked(job)
 	r.wakeStripes()
 	return true
+}
+
+// addStripeLocked adds job to the registry and the queue: an own job after
+// the own jobs queued before it, ahead of the claims, and a claim last.
+// r.mu must be held.
+func (r *Reconciler) addStripeLocked(job *stripeJob) {
+	r.stripeRegistry = append(r.stripeRegistry, job)
+	i := len(r.stripeQueue)
+	if job.own {
+		i = 0
+		for i < len(r.stripeQueue) && r.stripeQueue[i].own {
+			i++
+		}
+	}
+	r.stripeQueue = slices.Insert(r.stripeQueue, i, job)
+}
+
+// preemptLocked makes way for an own job of rg: it drops from the registry
+// and the queue the claims that overlap rg (contain it or lie inside it),
+// and ends the claim in flight, whatever its range, since the one stripe
+// worker would run it first for as long as its peers keep it going. A
+// dropped claim's peers offer what it did not transfer again in later
+// sessions. r.mu must be held.
+func (r *Reconciler) preemptLocked(rg fingerprint.Range) {
+	running := r.stripeRunning
+	if running != nil && (running.own || running.cancel == nil) {
+		running = nil
+	}
+	if running != nil {
+		running.cancel()
+	}
+	drop := func(j *stripeJob) bool {
+		return !j.own && (j == running || j.rg.ContainsRange(rg) || rg.ContainsRange(j.rg))
+	}
+	if n := len(r.stripeRegistry); slices.ContainsFunc(r.stripeRegistry, drop) {
+		r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, drop)
+		r.stripeQueue = slices.DeleteFunc(r.stripeQueue, drop)
+		r.logger.Debug("stripe claims dropped for an own transfer", "range", rg, "dropped", n-len(r.stripeRegistry))
+	}
 }
 
 // wakeStripes wakes the stripe worker.
@@ -1007,7 +1308,7 @@ func (r *Reconciler) planCatchUp(local rangesync.Status, radiusPending bool) (bo
 		r.checkGuardLocked()
 		r.mu.Unlock()
 	}
-	if !r.registerStripeLocked(stripeJob{rg: local.Root, started: started, bootstrap: true}) {
+	if !r.registerStripeLocked(&stripeJob{rg: local.Root, started: started, bootstrap: true, own: true}) {
 		return false
 	}
 	r.bootstrapping = true
@@ -1016,14 +1317,17 @@ func (r *Reconciler) planCatchUp(local rangesync.Status, radiusPending bool) (bo
 }
 
 // stripeWorker plans and transfers the queued ranges, one at a time, across
-// the peers with a Status, until Close. On Close it calls started of the
-// jobs still queued, so that no pending reconcile is left counted.
+// the peers with a Status, until Close. A claim runs under a context of its
+// own (stripeJob.cancel), which an own job that preempts it ends. On Close it
+// calls started of the jobs still queued, so that no pending reconcile is
+// left counted.
 func (r *Reconciler) stripeWorker() {
 	defer func() {
 		r.mu.Lock()
 		queued := r.stripeQueue
 		r.stripeQueue = nil
 		r.stripeRegistry = nil // nothing is transferred after Close
+		r.stripeRunning = nil
 		r.mu.Unlock()
 		for _, job := range queued {
 			if job.started != nil {
@@ -1045,12 +1349,17 @@ func (r *Reconciler) stripeWorker() {
 			}
 			job := r.stripeQueue[0]
 			r.stripeQueue = r.stripeQueue[1:]
-			r.mu.Unlock()
-
-			ctx := r.ctx
+			ctx, cancel := r.ctx, context.CancelFunc(func() {})
 			if job.ctx != nil {
 				ctx = job.ctx
 			}
+			if !job.own {
+				ctx, cancel = context.WithCancel(ctx)
+				job.cancel = cancel
+			}
+			r.stripeRunning = job
+			r.mu.Unlock()
+
 			results := r.transferStripes(ctx, r.planStripes(job.rg), job.started, job.bootstrap)
 			// the verification round, before leaving bootstrap (§7.4)
 			r.VerifyStripes(ctx, results)
@@ -1063,7 +1372,10 @@ func (r *Reconciler) stripeWorker() {
 			}
 
 			r.mu.Lock()
-			r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o fingerprint.Range) bool { return o.Equal(job.rg) })
+			cancel()
+			r.stripeRunning = nil
+			// a no-op for a claim an own job dropped (preemptLocked)
+			r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, func(o *stripeJob) bool { return o == job })
 			if job.bootstrap {
 				r.bootstrapping, r.bootstrapFailed = false, failed
 			}

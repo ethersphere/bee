@@ -149,8 +149,8 @@ func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts Re
 }
 
 // sessionConfig returns the Config of a session with peer in scope, where
-// local is this node's Status and remote the peer's. Its Striper is that of
-// the sessions this node serves (Options.Striper); ReconcileWith replaces it.
+// local is this node's Status and remote the peer's. It has no Striper: a
+// served session's is Options.Striper's, ReconcileWith's is the caller's.
 func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote Status) Config {
 	cfg := Config{
 		Scope:      scope,
@@ -158,7 +158,6 @@ func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote S
 		PeerCount:  remote.Summary.Count,
 		Status:     local,
 		PeerStatus: remote,
-		Striper:    s.striper,
 		LargeDiff:  s.largeDiff,
 	}
 	if s.hints != nil { // nil only in simulations that run without hints
@@ -343,7 +342,11 @@ func (s *Service) handleReconcile(ctx context.Context, p p2p.Peer, stream p2p.St
 		return busy("peer session rate")
 	}
 
-	sess := NewResponder(s.sessionConfig(peer, scope, st, remote))
+	cfg := s.sessionConfig(peer, scope, st, remote)
+	if s.striper != nil {
+		cfg.Striper = s.striper(peer)
+	}
+	sess := NewResponder(cfg)
 	wants, handled, err := s.converse(ctx, sess, open, r, w, nil)
 	s.metrics.sessionStats(sess.Stats())
 	switch {

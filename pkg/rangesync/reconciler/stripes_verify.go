@@ -140,7 +140,8 @@ func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (s
 // verifyStripe verifies res with verifier and scores the deliverer.
 func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks) VerifyResult {
 	v := VerifyResult{Range: res.Range, Deliverer: res.Peer, Verifier: verifier}
-	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {})
+	// one attempt, with a peer's whole budget on the stripe clock
+	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {}, stripePeerBudget*r.stripeTimeout)
 	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered-t.outsideRoot, t.Err
 	if v.Err != nil {
 		// an incomplete verification says nothing about the deliverer

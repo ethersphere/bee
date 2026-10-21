@@ -418,13 +418,13 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 		}
 		// Far behind the peer in the session root, this node would open
 		// at a count far below the peer's, and the peer would list to it
-		// what it holds: the session root is striped instead (constraint
-		// (d) of AC-B2), and the sessions with the peer wait while it is
-		// registered. The opening of a radius decrease is the old half,
-		// which this node holds.
+		// what it holds: the session root is striped instead, as the
+		// peer's claim (constraint (d) of AC-B2), and the sessions with
+		// this peer wait while the check holds. The opening of a radius
+		// decrease is the old half, which this node holds.
 		if len(open) == 0 {
 			if sr, lacks := r.lacksSessionRootLocked(local, remote); lacks {
-				r.registerStripeLocked(stripeJob{rg: sr})
+				r.registerStripeLocked(&stripeJob{rg: sr, peer: p})
 				differs, unresolved = true, true
 				continue
 			}
@@ -489,10 +489,11 @@ func (r *Reconciler) compareDigests(local, remote rangesync.Status) (known, equa
 
 // lacksSessionRootLocked is LacksSessionRoot for this node's Status local and
 // a peer's Status remote, with this node's summary of the session root from
-// a rangeSummarizer, and the threshold Options.LargeDiff, or 0 while a
-// registered transfer covers the session root (transferringLocked): the
-// transfer lists what this node lacks there. r.mu must be held; RangeSummary
-// is called with it, as in compareDigests.
+// a rangeSummarizer, and the threshold Options.LargeDiff, or 0 while this
+// node's own transfers cover the session root (transferringLocked): the
+// transfer lists what this node lacks there. A claim registered on a peer's
+// count does not lower it (T4.7 part 1 fix round 1). r.mu must be held;
+// RangeSummary is called with it, as in compareDigests.
 func (r *Reconciler) lacksSessionRootLocked(local, remote rangesync.Status) (fingerprint.Range, bool) {
 	summary := func(rg fingerprint.Range) (uint64, bool) {
 		rs, ok := r.svc.(rangeSummarizer)
@@ -526,7 +527,8 @@ func (r *Reconciler) initiates(peer swarm.Address) bool {
 // session runs Reconcile then Fetch with peer, whose entry st is in
 // Reconciling with machine generation gen, then transfers the ranges the
 // session handed to its Striper (ranges this node lacks by more than
-// LargeDiff, or at all inside a running transfer) as stripes. It waits for a
+// LargeDiff, or at all inside this node's own running transfer) as stripes,
+// at most maxSessionStripes of them, as the peer's claims. It waits for a
 // session slot first (MaxInitiatedSessions), then rechecks the round's
 // decision, made at decided with this node's root root (recheckSession).
 // Once the peer has another entry or machine (currentLocked) neither the
@@ -545,7 +547,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open
 	release, err := r.acquireSlot(r.ctx)
 	var wants []storer.ChunkID
 	if err == nil {
-		if err = r.recheckSession(peer, st, gen, root, decided); err == nil {
+		if err = r.recheckSession(peer, st, gen, open, root, decided); err == nil {
 			wants, err = r.svc.ReconcileWith(r.ctx, peer, rangesync.ReconcileOptions{Open: open, Striper: striper})
 		}
 		release()
@@ -609,7 +611,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open
 	}
 	r.mu.Unlock()
 	if ranges := striper.Ranges(); len(ranges) > 0 {
-		r.enqueueStripes(ranges)
+		r.enqueueStripes(peer, ranges)
 	}
 }
 
@@ -622,10 +624,13 @@ var errStaleSession = errors.New("reconciler: session decision stale")
 // still holds once the session has its slot: st is the peer's current entry,
 // with the machine of generation gen, in Reconciling, this node's root is
 // still root and reached the peer,
-// the peer's Status is known and its digest still differs, and, for a
-// takeover, the initiator ran no session with this node since. The session
-// may have waited minutes for its slot.
-func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, gen uint64, root fingerprint.Range, decided time.Time) error {
+// the peer's Status is known and its digest still differs, for a session
+// over the session root (open empty) this node is not far behind the peer
+// there (lacksSessionRootLocked, with the transfers registered since), and,
+// for a takeover, the initiator ran no session with this node since. The
+// session may have waited minutes for its slot. A session the session-root
+// check makes stale leaves the registering to the next round.
+func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, gen uint64, open []fingerprint.Range, root fingerprint.Range, decided time.Time) error {
 	local, err := r.svc.LocalStatus()
 	if err != nil {
 		return err
@@ -637,9 +642,17 @@ func (r *Reconciler) recheckSession(peer swarm.Address, st *peerState, gen uint6
 	case !r.currentLocked(peer, st, gen), st.fsm.state != stateReconciling:
 	case !have, !local.Root.Equal(root), !st.reached.Equal(local.Root):
 	case r.sameDigest(local, remote):
+	case len(open) == 0 && r.lacksLocked(local, remote):
 	case !r.initiates(peer) && st.takeoverSince.After(decided):
 	default:
 		return nil
 	}
 	return errStaleSession
+}
+
+// lacksLocked reports whether lacksSessionRootLocked holds. r.mu must be
+// held.
+func (r *Reconciler) lacksLocked(local, remote rangesync.Status) bool {
+	_, lacks := r.lacksSessionRootLocked(local, remote)
+	return lacks
 }

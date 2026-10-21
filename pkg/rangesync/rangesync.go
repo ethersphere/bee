@@ -121,13 +121,16 @@ type Options struct {
 	// node served listed and this node does not hold, once the session
 	// completed. The batch IDs are not known and are nil.
 	Wants func(peer swarm.Address, wants []storer.ChunkID)
-	// Striper, if not nil, is the Striper of the sessions this node serves
-	// (Config.Striper): it is offered the ranges in which this node holds
-	// fewer elements than the peer by more than LargeDiff, as the session
-	// finds them, and a range it takes over gets no answer (T4.7 part 1,
-	// AC-B2). The reconciler implements it. Sessions this node opens use
+	// Striper, if not nil, returns the Striper of a session this node
+	// serves with peer (Config.Striper), once per session: it is offered
+	// the ranges in which this node holds fewer elements than the peer by
+	// more than the threshold (DecisionStripe), as the session finds them,
+	// and a range it takes over gets no answer (T4.7 part 1, AC-B2). One
+	// Striper per session lets it bound what one session, and one peer,
+	// registers (T4.7 part 1 fix round 1). The reconciler implements it
+	// (Reconciler.ServedStriper). Sessions this node opens use
 	// ReconcileOptions.Striper instead.
-	Striper Striper
+	Striper func(peer swarm.Address) Striper
 	// LargeDiff is the threshold of DecisionStripe in every session (zero
 	// means LargeDiff); other values are for tests that scale a bootstrap.
 	LargeDiff uint64
@@ -165,7 +168,7 @@ type Service struct {
 	metrics  metrics
 	scorer   PeerScorer
 	wants    func(peer swarm.Address, wants []storer.ChunkID)
-	striper  Striper // of the sessions this node serves
+	striper  func(peer swarm.Address) Striper // of the sessions this node serves
 	// largeDiff is Options.LargeDiff, 0 for LargeDiff.
 	largeDiff uint64
 

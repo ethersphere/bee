@@ -167,16 +167,19 @@ func TestRangesyncCloserOrder(t *testing.T) {
 
 // TestRangesyncOptions: the node's rangesync service reports its sessions'
 // outcomes and the wants of the sessions it serves to the reconciler, which
-// is also the Striper of those sessions (T4.7 part 1); the rest keeps its
-// defaults.
+// also gives each of those sessions its Striper (T4.7 part 1); the rest
+// keeps its defaults.
 func TestRangesyncOptions(t *testing.T) {
 	t.Parallel()
 
 	r := reconciler.New(swarm.RandAddress(t), nil, nil, log.Noop, reconciler.Options{})
 	t.Cleanup(func() { _ = r.Close() })
 	o := node.RangesyncOptions(r)
-	if o.Scorer != r || o.Striper != r || o.Wants == nil {
+	if o.Scorer != r || o.Striper == nil || o.Wants == nil {
 		t.Fatalf("options %+v, want the reconciler as scorer, striper and wants", o)
+	}
+	if _, ok := o.Striper(swarm.RandAddress(t)).(rangesync.TransferStriper); !ok {
+		t.Fatal("the served sessions' Striper is not a TransferStriper")
 	}
 	o.Scorer, o.Striper, o.Wants = nil, nil, nil
 	if !reflect.DeepEqual(o, rangesync.Options{}) {

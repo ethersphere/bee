@@ -112,7 +112,7 @@ type nodeOpts struct {
 	// addr is the node's overlay; random if zero.
 	addr swarm.Address
 	// striper and largeDiff are Options.Striper and Options.LargeDiff.
-	striper   rangesync.Striper
+	striper   func(peer swarm.Address) rangesync.Striper
 	largeDiff uint64
 }
 
@@ -1432,8 +1432,18 @@ func TestReconcileServedStriper(t *testing.T) {
 		t.Errorf("the holder offered %s (%d, %d)", r, local, remote)
 		return false
 	})
-	a := newTestNodeOpts(t, nodeOpts{striper: holding, largeDiff: largeDiff}, chs...)
-	b := newTestNodeOpts(t, nodeOpts{striper: lacking, largeDiff: largeDiff})
+	// one Striper per served session, for its peer
+	var servedPeers []swarm.Address
+	served := func(s rangesync.Striper) func(swarm.Address) rangesync.Striper {
+		return func(peer swarm.Address) rangesync.Striper {
+			mu.Lock()
+			defer mu.Unlock()
+			servedPeers = append(servedPeers, peer)
+			return s
+		}
+	}
+	a := newTestNodeOpts(t, nodeOpts{striper: served(holding), largeDiff: largeDiff}, chs...)
+	b := newTestNodeOpts(t, nodeOpts{striper: served(lacking), largeDiff: largeDiff})
 	a.start(t)
 	b.start(t)
 	connect(t, a, b)
@@ -1453,6 +1463,9 @@ func TestReconcileServedStriper(t *testing.T) {
 	mu.Lock()
 	if len(offered) != 1 || !offered[0].Equal(st.Root) {
 		t.Fatalf("offered %v, want the root %s", offered, st.Root)
+	}
+	if len(servedPeers) != 1 || !servedPeers[0].Equal(a.addr) {
+		t.Fatalf("served Stripers for %v, want one for %s", servedPeers, a.addr)
 	}
 	mu.Unlock()
 	sent, received := reconcileMessages(t, a, b.addr)

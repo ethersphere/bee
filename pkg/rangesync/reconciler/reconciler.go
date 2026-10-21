@@ -239,11 +239,12 @@ type Reconciler struct {
 	// (fetchServed), the wants queued for it.
 	servedFetches map[string]*servedQueue
 	startedAt     time.Time
-	// stripeRegistry holds the ranges queued for or in a striped transfer;
+	// stripeRegistry holds the jobs queued for or in a striped transfer;
 	// stripeQueue the queued ones, in order, for the stripe worker that
-	// stripeWake wakes.
-	stripeRegistry []fingerprint.Range
-	stripeQueue    []stripeJob
+	// stripeWake wakes, and stripeRunning the one in flight.
+	stripeRegistry []*stripeJob
+	stripeQueue    []*stripeJob
+	stripeRunning  *stripeJob
 	stripeWake     chan struct{}
 	// gossipWake makes the gossip loop recompute when the next Status is
 	// due.
@@ -263,9 +264,8 @@ type Reconciler struct {
 }
 
 var (
-	_ rangesync.PeerScorer      = (*Reconciler)(nil)
-	_ rangesync.TransferStriper = (*Reconciler)(nil)
-	_ storer.Syncer             = (*Reconciler)(nil)
+	_ rangesync.PeerScorer = (*Reconciler)(nil)
+	_ storer.Syncer        = (*Reconciler)(nil)
 )
 
 // New returns a Reconciler for the node with the given overlay. It does no
@@ -429,7 +429,7 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 	if len(ids) == 0 {
 		return
 	}
-	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp)
+	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp, nil)
 	if err != nil {
 		r.logger.Debug("fetch", "peer_address", peer, "error", err)
 	}
@@ -528,7 +528,7 @@ func idSet(lists ...[]storer.ChunkID) map[fingerprint.ID]struct{} {
 func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	k := peer.ByteString()
 	for {
-		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp); err != nil {
+		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp, nil); err != nil {
 			r.logger.Debug("fetch", "peer_address", peer, "error", err)
 		}
 		r.mu.Lock()

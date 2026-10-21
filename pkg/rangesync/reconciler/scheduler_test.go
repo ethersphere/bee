@@ -821,8 +821,12 @@ func TestSessionCollision(t *testing.T) {
 // TestSessionRecheckAfterSlot: a session that waited for a slot does not
 // run when the round's decision no longer holds: the digests became equal,
 // this node's root moved, the peer left and came back (only the new entry's
-// session runs), or the initiator ran a session with this node since the
-// takeover was decided. It ends without a backoff.
+// session runs), the initiator ran a session with this node since the
+// takeover was decided, or this node is now far behind the peer in their
+// session root (the peer's Status counts more than LargeDiff more, or this
+// node's own transfer of the root was registered meanwhile and the peer
+// holds more: lacksSessionRootLocked, T4.7 part 1 fix round 1 Low 3). It
+// ends without a backoff.
 func TestSessionRecheckAfterSlot(t *testing.T) {
 	t.Parallel()
 
@@ -847,6 +851,12 @@ func TestSessionRecheckAfterSlot(t *testing.T) {
 		{"initiator served", lower, func(h *harness, p swarm.Address, _ []swarm.Address) {
 			h.clock.Add(time.Second)
 			h.r.Succeed(p)
+		}, 0},
+		{"far behind the peer", higher, func(h *harness, p swarm.Address, _ []swarm.Address) {
+			h.svc.set(func() { h.svc.remote[p.ByteString()] = status(2 + rangesync.LargeDiff) })
+		}, 0},
+		{"own transfer registered", higher, func(h *harness, _ swarm.Address, _ []swarm.Address) {
+			h.r.HoldStripe(fingerprint.NewRange(swarm.ZeroAddress, 0))
 		}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1212,6 +1222,118 @@ func TestStripeFetchBoundedByTimeout(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the fetch after the session outlived the stripe timeout")
+	}
+}
+
+// dripService is a fakeService whose Fetch calls from peer drip wait for the
+// test: each sends a channel on calls and waits until the test closes it (or
+// the fetch's context ends), then stores its IDs.
+type dripService struct {
+	*fakeService
+	drip  swarm.Address
+	calls chan chan struct{}
+}
+
+func (s *dripService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (int, error) {
+	if peer.Equal(s.drip) {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		release := make(chan struct{})
+		select {
+		case s.calls <- release:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
+	return s.fakeService.Fetch(ctx, peer, ids)
+}
+
+// TestStripeInactivityTimeout: StripeTimeout is an inactivity timeout (T4.7
+// part 1 fix round 1). A peer that keeps delivering, one chunk per fetch
+// just within the timeout, runs its stripe as one attempt past the timeout
+// (no restart, so nothing is listed twice); one that keeps delivering
+// without end is reassigned once it spent its budget of StripePeerBudget
+// timeouts (as many as its restarts gave it before), not restarted; one
+// that stalls is reassigned after one timeout.
+func TestStripeInactivityTimeout(t *testing.T) {
+	t.Parallel()
+
+	const (
+		timeout = time.Hour // only the fake clock gets there
+		step    = timeout - timeout/10
+	)
+	a, b := addr(0xf1, 0), addr(0xf1, 1)
+	for _, tc := range []struct {
+		name string
+		// fetches is the number of a's fetches the test releases, each step
+		// after the last, then the rest stall; wants is the IDs a lists,
+		// one per fetch
+		fetches, wants int
+		// peer delivered the stripe after clock time in [min, max)
+		peer     swarm.Address
+		min, max time.Duration
+	}{
+		{"slow", 6, 6, a, 6 * step, 6*step + 1},
+		{"drip", 1000, 1000, b, reconciler.StripePeerBudget * timeout, reconciler.StripePeerBudget*timeout + 2*step},
+		{"stall", 0, 6, b, timeout, timeout + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeService(status(1))
+			fake.wants[a.ByteString()] = tc.wants
+			fake.wants[b.ByteString()] = 3
+			fake.wantBatches = tc.wants
+			svc := &dripService{fakeService: fake, drip: a, calls: make(chan chan struct{})}
+			clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+			r := reconciler.New(self, &fakeTopology{}, svc, log.Noop, reconciler.Options{
+				Now:           clock.Now,
+				After:         advancingAfter(clock, time.Second),
+				StripeTimeout: timeout,
+			})
+			r.SetStripeRetryInterval(time.Second)
+			t.Cleanup(func() { _ = r.Close() })
+
+			stripe := []reconciler.Stripe{{Range: fingerprint.NewRange(swarm.ZeroAddress, 0), Peers: []swarm.Address{a, b}}}
+			start := clock.Now()
+			done := make(chan reconciler.StripeResult, 1)
+			go func() { done <- r.TransferStripes(context.Background(), stripe)[0] }()
+			for released := 0; ; {
+				select {
+				case release := <-svc.calls:
+					if released == tc.fetches { // stall
+						clock.Add(timeout)
+						continue
+					}
+					clock.Add(step)
+					close(release)
+					released++
+					continue
+				case res := <-done:
+					took := clock.Now().Sub(start)
+					if res.Err != nil || !res.Peer.Equal(tc.peer) {
+						t.Fatalf("stripe from %s: %v; want done by %s", res.Peer, res.Err, tc.peer)
+					}
+					if took < tc.min || took >= tc.max {
+						t.Fatalf("done after %v of clock, want [%v, %v)", took, tc.min, tc.max)
+					}
+					if n := len(fake.sessionOpens(a)); n != 1 {
+						t.Fatalf("%d sessions with %s, want 1: restarted", n, a)
+					}
+					if tc.peer.Equal(a) && res.Listed != tc.wants {
+						t.Fatalf("listed %d, want %d", res.Listed, tc.wants)
+					}
+				case <-time.After(10 * time.Second):
+					t.Fatal("stripe not done")
+				}
+				break
+			}
+		})
 	}
 }
 

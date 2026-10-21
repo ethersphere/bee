@@ -67,10 +67,12 @@ type Local interface {
 // (proposal §6.3, §7.4). The reconciler implements it.
 type Striper interface {
 	// Stripe offers range r, in which this node holds local elements and the
-	// peer remote, more than the session's LargeDiff above local. It returns
-	// true if it takes r over: the session then emits nothing more for r. It
-	// returns false to let the session decide on r as if the difference
-	// were small: a listing at count 0, a split, or an item exchange.
+	// peer remote, more than the session's threshold above local: its
+	// LargeDiff, or 0 where a TransferStriper reports r Transferring. It
+	// returns true if it takes r over: the session then emits nothing more
+	// for r. It returns false to let the session decide on r as if the
+	// difference were small: a listing at count 0, a split, or an item
+	// exchange.
 	Stripe(r fingerprint.Range, local, remote uint64) bool
 }
 
@@ -79,7 +81,9 @@ type Striper interface {
 // threshold of DecisionStripe is 0 (DecisionInput.Transferring): the lacking
 // side declines the range whatever it lacks, so that a peer lists nothing
 // the transfer lists, also in the transfer's tail, where the difference is
-// below LargeDiff (T4.7 part 1, AC-B2). The reconciler implements it.
+// below LargeDiff (T4.7 part 1, AC-B2). The reconciler implements it, for the
+// transfers this node decided on itself, not those a peer's claimed count
+// registered (T4.7 part 1 fix round 1).
 type TransferStriper interface {
 	Striper
 	// Transferring reports whether a striped transfer of this node covers
@@ -94,9 +98,11 @@ type Config struct {
 	// Local reads the node's elements.
 	Local Local
 	// Striper, if not nil, is offered the ranges in which this node holds
-	// fewer elements than the peer by more than LargeDiff (DecisionStripe),
-	// on either side of the session: the lacking side takes them out of the
-	// session, and the holder never lists them to it (T4.7 part 1, AC-B2).
+	// fewer elements than the peer by more than the threshold
+	// (DecisionStripe: LargeDiff, or 0 where a TransferStriper reports the
+	// range Transferring), on either side of the session: the lacking side
+	// takes them out of the session, and the holder never lists them to it
+	// (T4.7 part 1, AC-B2).
 	Striper Striper
 	// LargeDiff is the threshold of DecisionStripe; zero means LargeDiff.
 	// Other values are for tests that scale the geometry of a bootstrap.
