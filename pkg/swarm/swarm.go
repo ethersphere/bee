@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -356,21 +357,21 @@ func (n Neighborhood) Clone() Neighborhood {
 }
 
 func bitStr(src []byte, bits uint8) string {
-	ret := ""
+	var ret strings.Builder
 
 	for _, b := range src {
 		for i := 7; i >= 0; i-- {
 			if b&(1<<i) > 0 {
-				ret += "1"
+				ret.WriteString("1")
 			} else {
-				ret += "0"
+				ret.WriteString("0")
 			}
 			bits--
 			if bits == 0 {
-				return ret
+				return ret.String()
 			}
 		}
 	}
 
-	return ret
+	return ret.String()
 }

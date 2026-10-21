@@ -104,7 +104,7 @@ func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64, toEncr
 			_ = cp.CloseRead()
 		}
 		select {
-		case <-errC:
+		case <-errC: //nolint:errcheck // the original err is returned
 			return swarm.ZeroAddress, err
 		case <-ctx.Done():
 			return swarm.ZeroAddress, ctx.Err()
