@@ -2816,6 +2816,255 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     bootstrap's metadata (above).
   - `make build`, `GOTOOLCHAIN=go1.26.1 make lint`, `golangci-lint run --build-tags sim` and `go
     vet` (default and `-tags=sim`) are clean; gofumpt and gci ran on the changed files only.
+- **(T4.6 part 3 fix round 1) G6 summary (revised after review).** This supersedes, in "(T4.6 part
+  3) G6 summary: the measured inputs and a recommendation per question": the Q9 recommendation
+  ("raise `CatchUpMinDiff` to 1024") with the model's 150 and 200 uploads per second rows as its
+  evidence; the cost figures of `GrowthFactor` 2 ("+0.1–0.2 s of the longest") and the implication
+  that it is a change of the constant alone; the Q2 evidence "no stream exhausted a cache in any of
+  the ~460 steady-state runs" and the unqualified "keep"; and the `BatchFactor` sentence "not
+  recommended without a harness build" (built now). It extends the summary's AC-B1 caveats. In
+  "(T4.6 part 3) The follow-ups addressed to T4.6" it supersedes the bootstrap bullet as a measure
+  of AC-B2: its Base 20000 is below `LargeDiff` (AC-B2 below). The rest of the summary stands. No
+  production code or constant changed; the candidates ran in scratch builds with only the named
+  constants changed, as before. The decision sheet at the end collects the recommendations.
+
+  **Q9, `CatchUpMinDiff`: keep 256.**
+  - The quantity stands: one side's wants (`session` in scheduler.go, `len(wants) >=
+    CatchUpMinDiff`, and `Wants` in reconciler.go), `pairwise_diff_half`'s value.
+  - The crossings at N = 17 come from the 8 initiated slots, not from the load alone. The review ran
+    `TestG6Load` in the 16-slot build (N = 17, Delay 50 ms, 4 seeds); against the committed code:
+
+    | N = 17 | uploads/s | wants p99, max | sides ≥ 256 | n_Δ max (exact side) | share % |
+    |---|---|---|---|---|---|
+    | 8 slots (now) | 50 | 84, 169 (199 in a second run) | 0 | 259 | 56.4 |
+    | 8 slots (now) | 100 | 170, 400 | 7 in one run | 484 | 53.0 |
+    | 16 slots | 50 | 79, 98 | 0 | 142 | 44.8 |
+    | 16 slots | 100 | 155, 185 | 0 | 267 | 40.1 |
+
+    With 8 slots a node's 16 initiated pairs run in two waves; the second wave's pairs wait for a
+    slot and meet larger differences, so the max doubles. At N = 9 no node initiates more than 8
+    pairs: the max is 104 at 50 uploads per second and 203 at 100 (the review's re-run: 103, 203).
+  - The loads are not mainnet rates. 15.4 per second is AC-B1's reference regime (median n_Δ ≥ 20),
+    not a measured rate. At a stable radius a neighborhood's reserve is full (2^22 chunks) and
+    admits as many chunks as leave it, so its upload rate is at most 2^22 / the mean chunk lifetime:
+    48.5 per second if every batch lived one day, 6.9 at a week, 1.6 at 30 days; ≲ 1–3 per second at
+    realistic lifetimes. 50–100 per second happens only as a burst into a reserve that is not full,
+    while the radius is not stable either. The model's 150 and 200 per second rows lie outside its
+    validated range (part 2 validated it at the steady ~15 per second only; at 50 and 100 per second
+    its N = 17 max, 221 and 411, already differs from the harness's 169–199 and 400) and carry no
+    weight.
+  - Recommendation: **keep 256**, confirmed in T6.3 against testnet's `pairwise_diff_half`, read as
+    the max per 10-minute window (Follow-ups, "(T4.6 part 3 → T6.0) Q9's check reads
+    `pairwise_diff_half`"). Up to the one-day bound (≤ 48 uploads per second) the max is 104 at
+    N = 9 and 169–199 at N = 17 with 8 slots, 1.3–2.5× below 256; at the reference load it is
+    35–82, 3–7× below. If steady-state sides cross 256 on testnet, do not raise it to a fixed 1024:
+    a fixed threshold only moves the crossing with the load, and catch-ups of 256–1023 missing
+    chunks would stop holding `SyncRate`. Make the rule load-relative instead, for example: a side
+    is a catch-up when its wants exceed max(256, a multiple of the wants the node's recent inflow
+    predicts for the time since the pair's last session). A design for T4.x or T6, not measured
+    here.
+  - The per-node initiated-session cap (Follow-ups, "(T4.6 part 3 → G6, T4.x) A per-node
+    initiated-session cap") decides the margin: with a cap of 16 the N = 17 max at 100 uploads per
+    second is 185, below 256 with no change to `CatchUpMinDiff`; without a cap, N ≥ 17 crosses near
+    100 per second, a burst rate only. Either way 256 holds at stable-radius rates.
+
+  **AC-B2: a bootstrapping node's peers list their reserves to it.** A T6.1 entry blocker and
+  pre-testnet blocker (Follow-ups); no G6 constant changes it.
+  - Cause, by the code. `Decide` (session.go ~L184–196) returns `DecisionSendItems` when the peer's
+    count in a range is 0 and `DecisionRequestItems` when this node's is 0, before the stripe
+    branch. The stripe branch (d̂ > `LargeDiff`) is the initiator's only, so it is taken on a child
+    range (the responder decides the root), and it is direction-blind: `StripeCollector` takes any
+    range, and the reconciler transfers it as its own catch-up whichever side lacks (and the
+    registered range holds its `SyncRate`: the blocker "stripe registry SyncRate pin"). Only the
+    bootstrapping node knows that it bootstraps (`planCatchUp`, `IsBootstrap`). It opens no round
+    session meanwhile (`scheduleLocked`), but every peer with a lower overlay keeps initiating with
+    it each round, since their digests differ until the transfer ends, and a peer with a higher
+    overlay takes over once the node ran no session with it for `takeoverRounds` intervals. Such a
+    session lists what the node lacks: at count 0 the node's answer to the root is
+    `DecisionRequestItems`, a listing of the peer's whole reserve; past that, the descent lists or
+    decodes the rest. (With a root difference past 16 × `LargeDiff`, ~1.05M, the peer instead
+    stripes its own root from its peers, and the stripes it assigns to the node list to it.)
+  - Measured: `TestG6BootstrapPeers` (new, `-tags=sim`): N = 5, node 0 empty, Base 70000 and 100000
+    (above `LargeDiff`, as the review asked), Delay 50 ms, the fetch limit lifted as in
+    `TestG6Bootstrap`; the harness's new `Flows` give the bytes per peer and direction. One run per
+    seed; rank is node 0's lower-overlay peers:
+
+    | Base (AC-B2 bound) | seed | rank | node 0 metadata in, MB | its stripes, MB | each lower-overlay peer: MB (sessions; wants in all, the largest session's) | each higher-overlay peer: MB (sessions) |
+    |---|---|---|---|---|---|---|
+    | 70000 (6.6 MB) | 2 | 1 | 9.47 (1.43×) | 4.91 | 4.56 (5; 63,731, 45,500) | 0 (1) |
+    | 70000 | 3 | 1 | 9.47 (1.43×) | 4.91 | 4.56 (4; 63,761, 45,500) | 0 (1) |
+    | 70000 | 1 | 3 | 18.94 (2.85×) | 4.91 | 4.68 (4–5; ~65,300, 48,500) | 0 (1) |
+    | 70000 | 4 | 4 | 25.06 (3.78×) | 4.91 | 5.04 (4–5; ~70,550, 50,250) | – |
+    | 100000 (9.05 MB) | 1 | 2 | 30.22 (3.34×) | 7.01 | 10.25 (5–6; ~140,500, 76,500) | 1.36 (1; 18,160 and 17,928) |
+    | 100000 | 2 | 2 | 30.05 (3.32×) | 7.01 | 10.17–10.21 (5; ~141,200, 76,750) | 1.31–1.35 (1; 18,195) |
+
+    The stripes moved each ID once (70.1 B per ID). On top, each lower-overlay peer listed 0.93–1.03
+    reserves at Base 70000 (caught up in 14.8–15.3 s of the clock) and 1.45–1.46 at Base 100000
+    (19.6–20.1 s): its sessions repeat every round and each lists what node 0 still lacks (the wants
+    sum to 1.35–1.84× the largest session's). At Base 100000 the transfer outlasted the takeover
+    wait, and each higher-overlay peer's takeover listed another 0.19 reserves. At Base 70000 the
+    higher-overlay peers' one session came after the transfer (under 1 KB). AC-B2 fails at every
+    rank measured (1–4), by 1.4–3.8×. Part 3's Base 20000 figures (N = 17: 4.2–5.7 and 12.5–14.0 MB
+    against 2.6 MB) are the same effect.
+  - In production, by the same path (not measured): a session that meets the node at count 0 lists
+    the peer's whole reserve, 2^22 × 70 B ≈ 294 MB, against AC-B2's ~340 MB for the whole bootstrap,
+    of which the stripes take ~294 MB; one such session fails AC-B2. And the measured (1 + rank)
+    reserves are a lower bound: the cost grows with the transfer's duration (above), and a 2^22
+    transfer takes ~70 minutes at the default `FetchRate` (1000 chunks per second), against the
+    harness's 15–20 s of clock. Each lower-overlay peer's sessions then run back to back, each
+    listing what the node still lacks, and the higher-overlay peers take over between the node's
+    stripe sessions with them: the node's inbound bandwidth bounds the metadata, not the reserve.
+  - Not tunable: recorded with the root cause and the fix directions as a T6.1 entry blocker and
+    pre-testnet blocker (Follow-ups), next to the stripe-registry SyncRate pin and the per-peer
+    fetch credit.
+
+  **`GrowthFactor` 2: the recommendation stands; it is not a change of the constant alone.**
+  - Four tests in `pkg/rangesync` assume `GrowthFactor` 4 and must change with it (the review's GF2
+    build, `go test ./pkg/rangesync/...`; the other packages pass): `TestProtocolConverges/4k` (40
+    Messages against a bound of 29: integration_test.go ~L235–240 adds 2 × (5 + 4) Messages, the
+    Mores from `MinBatch` to `RootSymbols` and to `Level1Symbols` at ×4; at ×2 they are 10 and 7);
+    `TestWorkedExamples` (example 3: 9–11 Messages against the proposal's 7; §7.2: 5 Messages of
+    813 B, a More to 8 instead of 16, not a listed outcome; example 2: 5 Messages of 11.3 KB and 7
+    of 22.3 KB, not listed); `TestSREPSessionCost` (its "now" case reads the compiled constant: 1.89
+    symbols per difference at d = 45, outside its [2, 2.8]); `TestSREPIdeal` (it asserts
+    `GrowthFactor` 2 below the compiled constant; equal in a GF2 build).
+  - The wire is compatible: `handleMore` checks only sent < UpTo ≤ cap (session_symbols.go
+    ~L285–289), and the side that serves a stream follows the peer's Mores whatever their step, so
+    GF2 and GF4 peers interoperate, each requester growing by its own constant. A rolling upgrade
+    needs no version.
+  - An unhinted two-sided difference with equal counts takes about twice the Mores.
+    `TestG6EqualCounts` (new, `-tags=sim`): one session, A and B share ScanLimit + 1000 IDs (a
+    cached root) and hold k IDs each that the other lacks, so d̂ = 1; 5 seeds, means; GF4 / GF2:
+
+    | n_Δ (k per side) | Mores | Messages with parts | KB | root stream exhausted |
+    |---|---|---|---|---|
+    | 26 (13) | 2.0 / 3.8 | 7.0 / 10.6 | 6.2 / 5.7 | 0 / 0 of 5 |
+    | 100 (50) | 3.0 / 6.0 | 9.0 / 15.0 | 24.4 / 24.5 | 0 / 0 |
+    | 400 (200) | 4.0 / 8.0 | 11.0 / 19.0 | 97.1 / 97.2 | 0 / 0 |
+    | 1000 (500) | 5.0 / 9.0 | 13.0 / 21.0 | 367 / 201 | 0 / 0 |
+    | 2000 (1000) | 5.0 / 10.0 | 13.0 / 23.0 | 402 / 402 | 0 / 0 |
+    | 3000 (1500) | 21.4 / 39.8 | 17.0 / 29.4 | 750 / 648 | 2 / 2 |
+
+    Each More is a round trip: at n_Δ 2000 GF2 takes 5 more, 0.5 s at 50 ms one way and 2.0 s at
+    200 ms, and never more bytes. (At 3000 the root exhausts in 2 of 5 sessions, and the level-1
+    streams' Mores add in.) `TestG6Catchup` is one-sided (the counts differ by Lag, so d̂ is exact)
+    and could not show this. Equal counts over a large difference without a hint take a restart (the
+    hint LRU is empty) or a partition whose churn balanced the counts: rare, and latency only.
+  - The Delay cost, corrected (`TestG6Constants`, hint on, 6 seeds, GF4 → GF2): at 200 ms +0.22 and
+    +0.16 round trips per session (4.43 → 4.65 at N = 9, 4.47 → 4.63 at N = 17), +0.08 and +0.22 s
+    of mean convergence, and +0.8 s of the longest (8.2 → 9.0 s and 10.4 → 11.2 s; the review's
+    re-run of GF2 matched, 9.0 and 11.2 s); at 100 ms +0.21 and +0.18 round trips, the longest +0.4
+    and +0.2 s; at 50 ms +0.28 and +0.20, the longest +0.2 and +0.1 s. The summary's "+0.1–0.2 s of
+    the longest" held at 50 ms only.
+  - Sparse load, closest to mainnet's rate (`TestG6RoundInterval`'s 6 batches of 8 uploads 47 s
+    apart, 5–30 s, Delay 50 ms, 3 seeds; the review's GF2 build against two runs of now): N = 9
+    112.5–113.9% → 93.3%, N = 17 85.4–86.7% → 77.2%; symbols per difference 3.79 → 2.78 and 3.80 →
+    3.11, for +0.21 and +0.50 Mores per upload; the same convergence (longest 10.75 and 10.95 s).
+    The gain holds where mainnet's load is: −19 to −21 points at N = 9 (−18 steady), −8 to −10 at
+    N = 17 (−13 steady). Both stay above 50%, AC-B1b's informational regime.
+  - Recommendation unchanged: **`GrowthFactor` 2**, landing together with the four tests, and
+    accepting about twice the Mores for an unhinted large difference (latency, never bytes).
+
+  **`BatchFactor` 1.2 and 1.4 with `GrowthFactor` 2 (built now).** Scratch builds with both
+  constants changed, `TestG6Constants`, hint on, 6 seeds; share at Delay 50 / 100 / 200 ms, the rest
+  at 50 ms unless named; 1.2's N = 17 rows at 50 and 200 ms ran twice (the second run in brackets):
+
+  | `BatchFactor` (GF 2) | N = 9 | N = 17 | N = 17 at 200 ms: sd, range | Mores per upload, N = 9 / 17 | round trips per session, N = 9 / 17 | longest at 200 ms, N = 9 / 17 |
+  |---|---|---|---|---|---|---|
+  | 1.2 | 60.0 / 59.7 / 59.5 | 45.2 [45.9] / 46.4 / 48.8 [49.1] | 1.4 [0.9], 47.2–50.8 [47.3–50.0] | 0.53 / 1.70 | 5.11 / 4.96 | 9.0 / 11.6 [11.2] s |
+  | 1.4 | 59.6 / 59.5 / 59.0 | 46.9 / 47.4 / 50.3 | 1.2, 47.9–51.3 | 0.44 / 1.42 | 4.91 / 4.80 | 9.0 / 11.6 s |
+  | 1.6 (now) | 59.8 / 60.6 / 59.9 | 48.3 / 49.1 / 52.1 | 1.4, 51.0–54.1 | 0.36 / 1.22 | 4.79 / 4.68 | 9.0 / 11.2 s |
+  | 2.0 (summary) | 62.2 / 64.7 / 64.4 | 52.3 / 53.1 / 56.4 | – | – | – | – |
+
+  - At N = 17 a lower `BatchFactor` gains 2.7–3.3 points (1.2) and 1.4–1.8 (1.4) at every Delay, and
+    the spreads separate (1.2: 4–7 standard errors of the difference at 50 and 200 ms; 1.4: 2.4–4).
+    The model predicted 1–3 points (46.0 / 47.7 / 49.1% at 50 ms); the harness confirms it. At N = 9
+    there is no gain (59.0–60.0% against 59.8–60.6%), as the model had it.
+  - Does it bring N = 17 under 50% without the per-node cap? 1.2 does on the mean at every Delay,
+    but at 200 ms by 0.9–1.2 points with an sd of 0.9–1.4 (its worst seeds at 50.0% and 50.8%); 1.4
+    does not (50.3% at 200 ms). On the wire basis all three pass (1.2: 44.8–45.1%, 1.4: 46.2%, 1.6:
+    47.9%).
+  - The cost of 1.2: +0.32 and +0.28 round trips per session (N = 9 and 17), +0.17 and +0.48 Mores
+    per upload, +0.0–0.4 s of the longest convergence at 200 ms at N = 17 and +0.2–0.3 s of its mean
+    (6.39 → 6.56–6.69 s).
+  - Recommendation: **keep 1.6** (the summary's "keep" vs 2.0 stands: same sign in all 6 cells). 1.2
+    buys ~3 points at N = 17, none at N = 9, for ~0.3 round trips per session, and its N = 17 pass
+    at 200 ms is within one sd of the line; the per-node initiated-session cap gives ~10 points
+    (39.5–40.3%) with faster convergence. Only if G6 wants AC-B1 at N = 17 on the modeled base
+    without that cap is 1.2 the constant to take, with its round trips.
+
+  **AC-B1 caveats (extends the summary's).**
+  - The 16-slot build also doubled `MaxStripeSessions` (scheduler.go ~L88: `MaxInitiatedSessions /
+    2`, 4 → 8). The steady runs start no stripe, so it did not act there; a production cap must keep
+    `MaxStripeSessions` apart (Follow-ups, the per-node cap).
+  - The harness's uploads arrive in synchronized batches (20 at once every 1.3 s), and its nodes
+    start together, so their rounds share one 5 s grid with no phase offset (the harness's only
+    jitter is the takeover wait's, as in production). Real rounds and uploads are spread; whether
+    that lowers or raises the share is not known. T6.1 and T6.3 measure the real one.
+
+  **Q2, caches: keep for equal radii (revises the evidence).**
+  - "No stream exhausted a cache in any of the ~460 steady-state runs" says nothing about the
+    caches: at Base 256 every node holds fewer than `ScanLimit` (4096) IDs, so every root stream ran
+    on the scan path, unlimited. Only the 4 Base-5000 runs (`TestG6Load`, 2 seeds at N = 9 and 17,
+    50 uploads per second) served the root from `RootSymbols`, as did `TestG6Catchup`'s (Base
+    70000), whose catch-ups ran past it.
+  - The recommendation rests on the bound, not on that count: the largest first batch at 100 uploads
+    per second is 777 symbols (19% of `RootSymbols`), and the root splits only past d̂ = 2558,
+    whatever the reserve.
+  - That holds for equal radii only. A session with a peer one bit deeper runs on the peer's root,
+    one bit below this node's, which `cacheCapacity` (session_symbols.go ~L44–57) serves from
+    `BucketSymbols` (32: depth 1 ≤ `LeafBits`) once this node holds more than `ScanLimit` there, so
+    such a session exhausts past n_Δ ≈ 18 and splits. "Keep 4096 / 512 / 32" is for equal radii;
+    mixed radii stay with the Follow-up "(T4.6 part 3 → T6, a radius-aware harness) Nested session
+    roots use the bucket cache".
+
+  **`RoundInterval` bounds and hint(R) (records).**
+  - The review re-ran `TestG6RoundInterval` on the committed code: every row within its seed spread
+    (for example the sparse 5–30 s rows at 113.9% and 86.7% against 112.5% and 85.4%, the steady
+    ones at 78.0% and 60.9% against 76.0% and 62.0%; the same convergence). "Keep 5–30 s" stands.
+  - The stale catch-up hint is bounded: a root hint is a difference that decoded at the root, and a
+    first batch above `RootSymbols` splits instead, so the next session's first batch is at most
+    `FirstBatch(2558)` = 4095 symbols (~336 KB at 82 B each), once per pair (Follow-ups).
+
+  **G6 decision sheet.** For the user at G6; confidence is in the measurement, T6.3 is what testnet
+  must confirm.
+
+  | decision | recommended | key number | confidence | T6.3 (or T6.x) confirms |
+  |---|---|---|---|---|
+  | Q2 caches (`RootSymbols`, `Level1Symbols`, `BucketSymbols`) | keep 4096 / 512 / 32 | steady first batch ≤ 777 symbols (19% of the root) at 100 uploads/s; a catch-up splits the root past ~2500 missing, the level-1 ranges past ~5000 | high for equal radii; mixed radii unmeasured (a nested session root gets 32 symbols) | catch-up sizes and frequency; `streams_exhausted_total{level}` where radii differ (radius-aware harness or testnet) |
+  | `GrowthFactor` | **2** (from 4), landing with its 4 tests | −12 to −18 points of share at the steady load, −8 to −21 at the sparse one, never more bytes; costs +0.16–0.28 round trips per session, +0.8 s of the longest at 200 ms, ~2× the Mores (+5 round trips) on an unhinted equal-count difference of 1000–2000 | high: the spreads separate at every Delay, both N; wire-compatible with GF4 peers | share and convergence at real latency; mixed GF2/GF4 peers during the upgrade |
+  | request-driven `More`; hint(R) | keep both | streaming loses on any link above ~20 KB/s at 100 ms (+3.5 and +12.8 KB per upload at 100 KB/s); the hint saves 70% of the Mores for 0–6 points | high | Mores per upload; the stale catch-up hint (≤ 4095 symbols per pair, once) |
+  | `BatchFactor` | keep 1.6 | 2.0 costs 2.4–4.5 points with GF2; 1.2 gains 2.7–3.3 at N = 17 only, for +0.3 round trips per session | high against 2.0 (same sign in 6 cells); 1.2's gain is real but marginal, worth it only without the per-node cap | nothing specific |
+  | `CatchUpMinDiff` | keep 256 | wants max 35–82 at the reference load, 104 (N = 9) and 169–199 (N = 17, 8 slots) at 50 uploads/s; stable-radius rate ≤ 48/s (1-day lifetimes), ≲ 1–3/s realistic; crossings only at 100/s, N = 17, 8 slots (185 with 16) | medium: the rate bound is an argument, not a measurement | `pairwise_diff_half` max per 10-minute window; on crossings a load-relative rule, not a fixed 1024 |
+  | `RoundInterval` bounds | keep 5–30 s | longer minimums: +1.2–2.5 s of mean convergence and no bytes saved; the maximum costs only heartbeats (352–355 B per node-minute at N = 9, 704–717 at 17) | high (re-run by the review) | T6.4: AC-V1's 2 × 5 s is passed at the sparse load (10.75–10.95 s); the bound needs 15 s |
+  | initiated-session cap | per node: the eligible higher-overlay peers, within the tokens served sessions leave, `MaxStripeSessions` kept apart (not a constant 16); a code change after G6 | N = 17: −10 to −15 points of share, the wants max halved at 100/s (400 → 185), 0.3 s faster mean convergence, no Busy | medium: harness at N ≤ 17; the 16-slot build also doubled `MaxStripeSessions` | Busy and session-limit answers and the share at N ≥ 17 |
+  | AC-B1 per N | N = 17: GF2 passes at 50 and 100 ms and misses by 2.1 points at 200 ms on the modeled base (passes on the wire basis, by ~10 with the per-node cap, narrowly with `BatchFactor` 1.2); N = 9 fails with every constant (best 59.0–60.6%, 54–56% on the wire) | re-base at N = 9 (T6.0's call), for example ≤ 65% at N = 9 and ≤ 50% at N ≥ 17 | medium: synchronized harness load, no round phases | T6.1 baseline against `rangesync` only; T6.3 |
+
+  Pre-testnet blockers, all before any testnet cohort enables `rangesync` (Follow-ups): the stripe
+  registry SyncRate pin; the per-peer fetch credit; and the bootstrapping node's peers listing their
+  reserves to it (AC-B2), also a T6.1 entry blocker. Code changes after G6 that are not blockers:
+  `GrowthFactor` 2 with its tests, the per-node initiated-session cap, the stale catch-up hint, and
+  caches for mixed radii (T6).
+- **(T4.6 part 3 fix round 1) Scope, tests and wall times.**
+  - Test-only, in `pkg/rangesync`: `neighborhood_sim_test.go` (`simResult.Flows`, the stream bytes
+    by writer, reader and opener; `simPair.to`, the handler's node), `neighborhood_g6_test.go`
+    (`TestNeighborhoodG6Figures` checks that the flows split `StreamBytes` exactly, between two
+    nodes) and `neighborhood_g6_sim_test.go` (`TestG6BootstrapPeers` and `TestG6EqualCounts`,
+    `-tags=sim`). No production change and no constant committed: the candidates (`GrowthFactor` 2;
+    `GrowthFactor` 2 with `BatchFactorNum` 12 and 14) ran in scratch copies of the worktree. There
+    is no `pkg/node`, `pkg/p2p`, `pkg/pullsync`, `pkg/puller`, `go.mod` or proto change, no new
+    parser of peer input and no `*_fuzz_test.go`.
+  - `-tags=sim`, one run at a time: `TestG6BootstrapPeers` 405 s at Base 70000 (4 runs of 95–108 s:
+    the transfer waits on the holders' delivery limiter, on the real clock) and 302 s at Base
+    100000, seeds 1 and 2 (144–157 s each; the test process peaked near 0.7 GB); `TestG6EqualCounts`
+    0.9 s (1.1 s in the GF2 build); `TestG6Constants`' hint-on rows at 50, 100 and 200 ms 258 s in
+    the GF2 + `BatchFactor` 1.2 build (its N = 17 rows at 50 and 200 ms once more, 95 s) and 152 s
+    in the 1.4 build. The review's own logs supplied the 16-slot `TestG6Load`, the GF2 sparse and
+    constants runs, the GF2 unit failures and the `TestG6RoundInterval` re-run.
+  - Default build: `go test ./pkg/rangesync/...` passes (`pkg/rangesync` 11 s); the neighborhood and
+    `TestSim*` tests pass at `-count=3 -cpu=1,2,4` (42 s). `make build`, `GOTOOLCHAIN=go1.26.1 make
+    lint`, `golangci-lint run --build-tags sim ./pkg/rangesync/...` and `go vet` (default and
+    `-tags=sim`) are clean; gofumpt and gci ran on the changed files only.
 
 ## Follow-ups
 _(sessions append here)_
@@ -3860,3 +4109,57 @@ _(sessions append here)_
 - **(T4.6 part 3) Tests to run with `-race` on CI.** They ran with `-count=3 -cpu=1,2,4` instead.
   New: `TestSimClose`, `TestNeighborhoodG6Figures`. Changed: `TestNeighborhoodTeardown`, and through
   the harness (wants, lag, counters, the `Limit` check) every neighborhood test.
+- **(T4.6 part 3 fix round 1 → T4.x, T6.1) PRE-TESTNET BLOCKER and T6.1 entry blocker: a
+  bootstrapping node's peers list their reserves to it (AC-B2).** This supersedes the fix list and
+  the last sentence ("Needed before T6.1's Bootstrap case can pass AC-B2") of "(T4.6 part 3 → T4.x,
+  T6.0 AC-B2) The round sessions of a bootstrapping node's peers list every ID". Measured
+  (Decisions, "(T4.6 part 3 fix round 1) G6 summary (revised after review)", AC-B2): at N = 5 and
+  Base 70000–100000 the empty node reads (1 + rank) reserves of IDs or more, 1.4–3.8× AC-B2's bound,
+  and the higher-overlay peers' takeovers add once the transfer outlasts their wait. At 2^22 one
+  session that meets the node at count 0 costs ~294 MB against the bound's ~340 MB, and the sessions
+  repeat for the ~70-minute transfer. Root cause: (1) `Decide` returns the count-0 item decisions
+  before the stripe branch (session.go ~L187–192); (2) the stripe branch is the initiator's only and
+  direction-blind (`StripeCollector`); (3) only the bootstrapping node knows (`planCatchUp`), while
+  its lower-overlay peers keep initiating every round and the higher-overlay ones take over. Fix
+  directions, to choose in T4.x:
+  1. The bootstrapping node answers Busy to the sessions it does not open while its bootstrap
+     transfer runs (the handler has the Busy answer; the reconciler's state would reach it through
+     an option). It covers initiators and takeovers alike; Busy is not scored, and the peer backs
+     off. The verification round after the transfer covers what changed meanwhile.
+  2. A peer defers its sessions with a peer whose Status count is below `BootstrapRatio` of its own
+     (that peer stripes). No wire change; it relies on a fresh Status.
+  3. `Decide` checks the large-difference branch before the count-0 item decisions, on both sides,
+     so that no session lists more than `LargeDiff` IDs of a range. Only together with a
+     direction-aware stripe branch (stripe a range only where this side holds fewer): otherwise the
+     holder stripes its own root and its registry holds its `SyncRate` (the stripe-registry
+     blocker). And a responder past `LargeDiff` can answer only with the session-level Busy on the
+     frozen wire (G2).
+  4. The responder treats a peer at count 0 as bootstrapping and lists no more than `LargeDiff` IDs
+     to it: the same wire limit as 3.
+  1 or 2 closes the bootstrap case; 3 also bounds a large catch-up that is not a bootstrap.
+  Acceptance: `TestG6BootstrapPeers` and `TestG6Bootstrap` within AC-B2's bound at every rank, then
+  T6.1's Bootstrap case.
+- **(T4.6 part 3 fix round 1) Pre-testnet blockers.** Three, all to be fixed before any testnet
+  cohort enables `rangesync`: "(T4.5 part 2c round-2 review; recorded by the orchestrator at
+  landing) PRE-TESTNET BLOCKER: stripe registry SyncRate pin", "(T4.5 part 2b fix round 3;
+  orchestrator request) Per-peer fetch credit (before testnet)", and the AC-B2 entry above (also a
+  T6.1 entry blocker). The first and the third meet in the stripe branch, which `Decide` takes on
+  |cL − cR| alone: fix direction 3 above must make it direction-aware, which also removes from the
+  first the case of a peer that claims a far smaller count.
+- **(T4.6 part 3 fix round 1 → G6 change) `GrowthFactor` 2 lands with four tests.** If G6 takes
+  it: `TestProtocolConverges` (derive the bound's Mores from `GrowthFactor`: 2 × (10 + 7) Messages
+  at ×2), `TestWorkedExamples` (examples 2 and 3 and §7.2 take GF2's outcomes, with the reason in
+  the case list), `TestSREPSessionCost` (the "now" band at d = 45, ~1.9 symbols per difference) and
+  `TestSREPIdeal` (compare against `GrowthFactor` 4 explicitly, not the compiled constant). The wire
+  needs nothing: GF2 and GF4 peers interoperate.
+- **(T4.6 part 3 fix round 1 → T6.3, Q9) `CatchUpMinDiff` crossings.** This extends "(T4.6 part 3 →
+  T6.0) Q9's check reads `pairwise_diff_half`": if steady-state sides reach 256 on testnet, the
+  remedy is a load-relative rule, not a fixed 1024 (Decisions, Q9); a per-node initiated-session
+  cap, if it lands first, halves the N = 17 maxima.
+- **(T4.6 part 3 fix round 1) The stale catch-up hint is bounded.** This extends "(T4.6 part 3 → G6,
+  T4.x) hint(R) records catch-up differences": its cost is at most `FirstBatch(2558)` = 4095 symbols
+  (~336 KB) per pair, once; a larger root hint makes the first batch exceed `RootSymbols`, and the
+  root splits instead. The fix stays as written, at low priority.
+- **(T4.6 part 3 fix round 1) Tests to run with `-race` on CI.** They ran with `-count=3 -cpu=1,2,4`
+  instead. Changed: `TestNeighborhoodG6Figures` (the flows check), and through `simResult.Flows`
+  every neighborhood test. New, `-tags=sim` only: `TestG6BootstrapPeers`, `TestG6EqualCounts`.
