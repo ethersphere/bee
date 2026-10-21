@@ -42,14 +42,20 @@ const (
 	// chunkUploadRequestTimeout bounds a single chunk upload/push.
 	chunkUploadRequestTimeout = 30 * time.Second
 
-	// chunkStreamCloseDeadline bounds a close frame write.
-	chunkStreamCloseDeadline = 250 * time.Millisecond
+	// chunkStreamControlDeadline bounds a close or ping frame write. It is kept
+	// short because gorilla queues a control frame behind an in-progress write,
+	// and the goroutine sending it also watches for node shutdown.
+	chunkStreamControlDeadline = 250 * time.Millisecond
 
 	chunkStreamSubprotocol = "swarm-chunk-stream"
 
 	defaultStreamSubWorkers = 8
 	maxStreamQueueSize      = 1024
-	maxStreamFrameSize      = 64 * 1024
+
+	// maxStreamFrameSize bounds a client message, and with it the memory a full
+	// request queue can hold. The largest valid request, a SOC put with a stamp
+	// and a batch id, is under 4.5 KiB.
+	maxStreamFrameSize = 8 * 1024
 )
 
 var successWsMsg = []byte{}
@@ -591,7 +597,7 @@ func (s *Service) handleBidirectionalStream(
 		_ = conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(code, errmsg),
-			time.Now().Add(chunkStreamCloseDeadline),
+			time.Now().Add(chunkStreamControlDeadline),
 		)
 	}
 
@@ -602,13 +608,35 @@ func (s *Service) handleBidirectionalStream(
 		return nil
 	})
 
+	// A client waiting for replies may send nothing for longer than the read
+	// timeout, so its pongs extend the read deadline as well as its requests.
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(s.chunkStreamReadTimeout))
+	})
+
 	go func() {
-		select {
-		case <-s.quit:
-			cancel()
-			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
-			_ = conn.Close()
-		case <-ctx.Done():
+		ticker := time.NewTicker(s.WsPingPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.quit:
+				cancel()
+				sendErrorClose(websocket.CloseGoingAway, "node shutting down")
+				_ = conn.Close()
+				return
+			case <-ctx.Done():
+				// The stream also ends when a response write fails, while the
+				// read loop may still be blocked reading. Closing the socket
+				// releases it.
+				_ = conn.Close()
+				return
+			case <-ticker.C:
+				// A failed ping is not fatal: it can time out behind a slow
+				// response write to a client that is still there.
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(chunkStreamControlDeadline)); err != nil {
+					logger.Debug("chunk bidirectional stream: ping failed", "error", err)
+				}
+			}
 		}
 	}()
 
@@ -662,7 +690,7 @@ func (s *Service) handleBidirectionalStream(
 		default:
 		}
 
-		err := conn.SetReadDeadline(time.Now().Add(streamReadTimeout))
+		err := conn.SetReadDeadline(time.Now().Add(s.chunkStreamReadTimeout))
 		if err != nil {
 			logger.Debug("chunk bidirectional stream: set read deadline failed", "error", err)
 			return
@@ -792,12 +820,10 @@ func chunkForAddress(address, data []byte) (swarm.Chunk, bool) {
 	if ch, err := cac.NewWithDataSpan(data); err == nil && ch.Address().Equal(want) {
 		return ch, true
 	}
-	sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
-	if err != nil {
-		return nil, false
-	}
-	ch, err := sch.Chunk()
-	if err != nil || !soc.Valid(ch) || !ch.Address().Equal(want) {
+	// FromChunkValidate recovers the owner once and checks the SOC address
+	// against the requested one.
+	ch := swarm.NewChunk(want, data)
+	if _, err := soc.FromChunkValidate(ch); err != nil {
 		return nil, false
 	}
 	return ch, true
@@ -842,6 +868,12 @@ func (s *Service) processStreamPutRequest(
 	idAddr, err := storage.IdentityAddress(chunk)
 	if err != nil {
 		reply(pb.Status_STATUS_BAD_REQUEST, "cannot compute identity address")
+		return
+	}
+
+	// A request still queued when the stream ends must not take a slot in the
+	// batch for a chunk that will never be pushed.
+	if streamCtx.Err() != nil {
 		return
 	}
 

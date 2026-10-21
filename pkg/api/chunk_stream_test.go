@@ -1371,3 +1371,187 @@ func TestChunkBidirectionalStream_ProtocolViolationClientStoppedReading(t *testi
 		t.Fatal("svc.Close() hung: workers stuck in WriteMessage were not unblocked by socket closure")
 	}
 }
+
+// A response write that times out ends the stream while the read loop may still
+// be blocked reading. The stream must close its socket then, or node shutdown
+// finds it still open.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_ShutdownAfterWriteTimeout(t *testing.T) {
+	var svc *api.Service
+	cs := inmemchunkstore.New()
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:                     mockstorer.NewWithChunkStore(cs),
+		Post:                       mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:                     "/chunks/stream",
+		WsHeaders:                  streamHeaders(false),
+		Service:                    &svc,
+		ChunkDeliveryWriteDeadline: 200 * time.Millisecond,
+	})
+
+	// Flood download requests without ever reading from wsConn, so that a
+	// response write times out.
+	for range 1000 {
+		ch := testingc.GenerateTestRandomChunk()
+		if err := cs.Put(context.Background(), ch); err != nil {
+			t.Fatal(err)
+		}
+		_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
+		data, err := getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT).Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wsConn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+			break // socket write buffer filled, enough is queued
+		}
+	}
+
+	// Wait for a response write to time out and end the stream.
+	time.Sleep(time.Second)
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("Close after a response write timed out: %v", err)
+	}
+}
+
+// The largest valid request fits within the frame size limit, and a larger
+// message closes the stream.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_FrameSizeLimit(t *testing.T) {
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacChunk, err := cac.New(bytes.Repeat([]byte{1}, swarm.ChunkSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	socChunk, err := soc.New(make([]byte, swarm.HashSize), cacChunk).Sign(crypto.NewDefaultSigner(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	largest := putRequest(socChunk.Address().Bytes(), socChunk.Data(), make([]byte, postage.StampSize), batchOk)
+	if size := largest.Size(); size > api.MaxStreamFrameSize {
+		t.Fatalf("largest valid request is %d bytes, over the %d byte limit", size, api.MaxStreamFrameSize)
+	}
+	// The limit bounds what a full request queue holds, so it must stay close to
+	// the largest valid request.
+	if size := largest.Size(); api.MaxStreamFrameSize > 2*size {
+		t.Fatalf("frame size limit %d is more than twice the largest valid request (%d bytes)", api.MaxStreamFrameSize, size)
+	}
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:       mockstorer.New(),
+		Post:         mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:       "/chunks/stream",
+		WsHeaders:    streamHeaders(true),
+		DirectUpload: true,
+	})
+
+	// The full-size SOC goes through, stamped by the node from the batch id.
+	sendPBRequest(t, wsConn, putRequest(socChunk.Address().Bytes(), socChunk.Data(), nil, batchOk))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+	}
+
+	if err := wsConn.WriteMessage(websocket.BinaryMessage, make([]byte, api.MaxStreamFrameSize+1)); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsConn.SetReadDeadline(time.Now().Add(streamTestTimeout))
+	_, _, err = wsConn.ReadMessage()
+	var cerr *websocket.CloseError
+	if !errors.As(err, &cerr) {
+		t.Fatalf("expected a close error, got %v", err)
+	}
+	if cerr.Code != websocket.CloseMessageTooBig {
+		t.Fatalf("expected close code %d, got %d", websocket.CloseMessageTooBig, cerr.Code)
+	}
+}
+
+// A client that sends nothing while it waits for a reply must not be dropped
+// by the read timeout as long as it answers pings.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_PongsKeepStreamOpen(t *testing.T) {
+	blockCh := make(chan struct{})
+	storerMock := &blockingDirectUploadStorer{
+		Storer:  mockstorer.NewWithChunkStore(inmemchunkstore.New()),
+		blockCh: blockCh,
+	}
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:                 storerMock,
+		Post:                   mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:                 "/chunks/stream",
+		WsHeaders:              streamHeaders(true),
+		DirectUpload:           true,
+		WsPingPeriod:           100 * time.Millisecond,
+		ChunkStreamReadTimeout: 500 * time.Millisecond,
+	})
+
+	ch := testingc.GenerateTestRandomChunk()
+	sendPBRequest(t, wsConn, chunkPut(ch))
+
+	// Let the upload outlast the read timeout several times over.
+	time.AfterFunc(2*time.Second, func() { close(blockCh) })
+
+	// readPut answers the node's pings while it waits.
+	resp := readPut(t, wsConn)
+	if resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+	}
+	if !bytes.Equal(resp.Address, ch.Address().Bytes()) {
+		t.Fatalf("expected a reply for %s, got %x", ch.Address(), resp.Address)
+	}
+}
+
+// Requests still queued when the stream ends must not be stamped: their chunks
+// will never be pushed.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_NoStampAfterStreamEnds(t *testing.T) {
+	blockCh := make(chan struct{})
+	defer close(blockCh)
+	storerMock := &blockingDirectUploadStorer{
+		Storer:  mockstorer.NewWithChunkStore(inmemchunkstore.New()),
+		blockCh: blockCh,
+	}
+	issuer := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 20, 16, 1000, true)
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:       storerMock,
+		Post:         mockpost.New(mockpost.WithIssuer(issuer)),
+		WsPath:       "/chunks/stream",
+		WsHeaders:    streamHeaders(true),
+		DirectUpload: true,
+	})
+
+	stamped := func() int {
+		n := 0
+		for _, b := range issuer.Buckets() {
+			n += int(b)
+		}
+		return n
+	}
+
+	// Every upload worker stamps a chunk and blocks pushing it; the rest queue.
+	for range api.DefaultStreamSubWorkers + 100 {
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
+	}
+	if err := spinlock.Wait(streamTestTimeout, func() bool { return stamped() == api.DefaultStreamSubWorkers }); err != nil {
+		t.Fatalf("expected %d stamped chunks, got %d", api.DefaultStreamSubWorkers, stamped())
+	}
+
+	// End the stream with a protocol violation.
+	if err := wsConn.WriteMessage(websocket.TextMessage, []byte("not a request")); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsConn.SetReadDeadline(time.Now().Add(streamTestTimeout))
+	if _, _, err := wsConn.ReadMessage(); err == nil {
+		t.Fatal("expected the stream to close")
+	}
+
+	// Give the released workers time to drain the queue.
+	time.Sleep(500 * time.Millisecond)
+	if got := stamped(); got != api.DefaultStreamSubWorkers {
+		t.Fatalf("expected no stamps after the stream ended, got %d more", got-api.DefaultStreamSubWorkers)
+	}
+}

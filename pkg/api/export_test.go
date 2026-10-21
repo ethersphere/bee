@@ -161,4 +161,5 @@ const (
 	ChunkStreamSubprotocol  = chunkStreamSubprotocol
 	MaxStreamQueueSize      = maxStreamQueueSize
 	DefaultStreamSubWorkers = defaultStreamSubWorkers
+	MaxStreamFrameSize      = maxStreamFrameSize
 )

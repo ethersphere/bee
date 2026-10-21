@@ -100,6 +100,7 @@ type testServerOptions struct {
 	WsPingPeriod                time.Duration
 	ChunkDeliveryWriteDeadline  time.Duration
 	ChunkDownloadRequestTimeout time.Duration
+	ChunkStreamReadTimeout      time.Duration
 	// Service, when set, receives the api.Service and makes the caller
 	// responsible for closing it, so a test can assert on Close directly.
 	Service            **api.Service
@@ -265,6 +266,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		WsPingPeriod:                o.WsPingPeriod,
 		ChunkDeliveryWriteDeadline:  o.ChunkDeliveryWriteDeadline,
 		ChunkDownloadRequestTimeout: o.ChunkDownloadRequestTimeout,
+		ChunkStreamReadTimeout:      o.ChunkStreamReadTimeout,
 	}, extraOpts, 1, erc20APIService)
 
 	s.Mount()

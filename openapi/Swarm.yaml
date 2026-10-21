@@ -386,12 +386,13 @@ paths:
         - `PutRequest`: uploads a chunk given its `Address` and `Data`. The `Address` must match the address the node computes from `Data`, otherwise the upload is rejected with `STATUS_BAD_REQUEST`; it also settles whether the data is a CAC or a SOC, so no chunk type is sent. Stamping, in order of precedence: a pre-signed `Stamp` on the request, the request's `BatchId`, then the connection's `Swarm-Postage-Batch-Id`. Answered by a `PutResponse`.
         - Uploads are always direct: `STATUS_OK` confirms that the chunk was pushed to network peers. Unlike HTTP uploads, which default to deferred, there is no deferred mode on the stream, so `Swarm-Tag` / `swarm-tag` is rejected with `400` at the handshake.
         - `Status`: `STATUS_UNSPECIFIED = 0` (never sent), `STATUS_OK = 1`, `STATUS_NOT_FOUND = 2`, `STATUS_ERROR = 3`, `STATUS_BAD_REQUEST = 4`, `STATUS_BUSY = 5` (queue full — retry with backoff). Failed replies carry a sanitized `Error` message.
-        - Frame size limit: 64 KiB maximum per WebSocket message.
+        - Frame size limit: 8 KiB maximum per WebSocket message.
+        - Keepalive: the node pings the client periodically. A connection is closed after 15 minutes without a request or a pong, so a client that is only waiting for replies stays connected as long as it answers pings (browsers do this automatically).
         - WebSocket Close Codes:
           - `1000` (Normal Closure): Client-initiated clean disconnect.
           - `1001` (Going Away): Node is shutting down.
           - `1003` (Unsupported Data): Non-binary frame, invalid protobuf payload, or a request with no body (which carries no address to reply with).
-          - `1009` (Message Too Big): Message exceeds the 64 KiB size limit.
+          - `1009` (Message Too Big): Message exceeds the 8 KiB size limit.
         - Fault Tolerance & Recovery: individual chunk errors (e.g. not found, bad request, queue full) are answered with a reply for that address and do not close the stream. `STATUS_BUSY` indicates worker queue saturation; clients should retry with exponential backoff. If the connection drops or is closed, clients should reconnect and re-send every request that received no reply.
 
         **Upload Mode** (legacy default, or requested via query param `mode=upload`):
