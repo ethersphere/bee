@@ -3065,6 +3065,227 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     `TestSim*` tests pass at `-count=3 -cpu=1,2,4` (42 s). `make build`, `GOTOOLCHAIN=go1.26.1 make
     lint`, `golangci-lint run --build-tags sim ./pkg/rangesync/...` and `go vet` (default and
     `-tags=sim`) are clean; gofumpt and gci ran on the changed files only.
+- **(T4.6 part 3 fix round 2) G6 summary (revised, round 2).** This supersedes, in "(T4.6 part 3 fix
+  round 1) G6 summary (revised after review)": in its Q9 part, the rate bound of the bullet "The
+  loads are not mainnet rates" (from "At a stable radius" to "while the radius is not stable
+  either"; its sentences on the 15.4 per second regime and on the model's 150 and 200 per second
+  rows stand), "Up to the one-day bound (≤ 48 uploads per second)", "a burst rate only" and "Either
+  way 256 holds at stable-radius rates"; in its AC-B2 part, the bullets "In production, by the same
+  path (not measured)" and "Not tunable: recorded with the root cause and the fix directions"; in
+  its `GrowthFactor` part, "rare, and latency only"; in its `BatchFactor` part, "a lower
+  `BatchFactor` gains 2.7–3.3 points (1.2)"; the label "its stripes, MB" of its AC-B2 table
+  (Records, below); and its "G6 decision sheet" with the blocker paragraph after it, which the "G6
+  decision sheet (final)" below replaces. In the Follow-ups, the corrected AC-B2 entry supersedes
+  the round-1 fix directions. The measurements stand; nothing was re-measured. No production code or
+  constant changed; `TestG6BootstrapPeers` changed its comment and one table label only.
+
+  **AC-B2: the fix directions are withdrawn; a fix must meet four constraints.**
+  - Stripe sessions are count-0 listings past `LargeDiff`. Node 0 opens FP(sr, 0)
+    (stripes_transfer.go ~L505, `Open: sr` at its count 0), and the holder, as responder, lists all
+    of sr (`Decide`: `Remote.Count == 0` gives `DecisionSendItems`, session.go ~L187). At 2^22 with
+    5–32 peers `PlanStripes` cuts 8–32 stripes of 2^17–2^19 IDs, 2–8 × `LargeDiff` (2^20–2^21 with
+    2–4 peers). Round 1's direction 3 ("no session lists more than `LargeDiff` IDs of a range") and
+    direction 4 (a responder-side cap) refuse exactly these sessions, and the bootstrap stalls.
+  - Direction 4 acts on the wrong side. In a round session node 0 is the responder: at count 0 it
+    answers the root with an empty `Items{Reply}` (`DecisionRequestItems`, session.go ~L746), and
+    the initiator does the listing in its answer; in the descent the initiator lists each child at
+    node 0's count 0 (`DecisionSendItems`). A responder-side cap misses the measured leak and hits
+    the stripes.
+  - Direction 2 compares counts across roots, which `IsBootstrap` deliberately avoids (stripes.go
+    ~L48–55, equal roots only): an edge peer 1–2 bits deeper (§7.6) holds ½–¼ the count, falls below
+    `BootstrapRatio` (0.5) and would be deferred indefinitely, syncing only through takeovers.
+    Direction 1 rests on `IsBootstrap`, which misses a bootstrapping node whose root differs from
+    every neighbor's (its doc says so). "1 or 2 closes the bootstrap case" overclaimed.
+  - The harness did not run the production path; round 1's "by the same path" was wrong. Its stripes
+    are 17,500–25,000 IDs (Base 70000–100000 over 4 peers) and its level-1 ranges at most ~6,300,
+    all below `LargeDiff`. At 2^22 the stripes exceed it, and while node 0's root difference exceeds
+    16 × `LargeDiff` (~1.05M, the first ~75% of a 2^22 transfer) the level-1 ranges do too: once
+    node 0 holds anything it splits the root (as responder it cannot stripe), and the peer, as
+    initiator, hands each child past `LargeDiff` to its `StripeCollector`, direction-blind. The peer
+    then registers a range it already holds (its own `SyncRate` held: the stripe-registry blocker),
+    and the stripes it plans on node 0 list to node 0 again (node 0 answers each at count 0 with
+    `Items{Reply}`). What stands: a session that meets node 0 at count 0 lists the peer's reserve,
+    2^22 × 70 B ≈ 294 MB against AC-B2's ~340 MB, and the cost grows with the transfer's duration
+    (~70 minutes at 2^22 and the default `FetchRate`). How the child-range path adds up at 2^22 is
+    not measured.
+  - Constraints any fix must meet:
+    - (a) stripe sessions keep working: a count-0 listing past `LargeDiff` that the bootstrapping
+      node requests (it opens the session at count 0) is served in full;
+    - (b) a round session does not make a non-bootstrapping peer list its whole reserve, or most of
+      it, to a count-0 or near-empty peer: the measured leak, which the *initiator* lists (its
+      answer to `Items{Reply}`, and `DecisionSendItems` on the children);
+    - (c) edge peers and nested roots (§7.6) and stale-stamp divergence (§7.7) are neither deferred
+      nor starved;
+    - (d) detection does not rest on the equal-root `IsBootstrap` alone: a bootstrapping node whose
+      root differs from every neighbor's is covered too.
+  - Candidate approaches (T4.x chooses; none measured), with the side each acts on:
+    - A. *The lacking side declines* (acts on the side with the smaller count, in either role; in
+      the leak, node 0 as responder). `Decide` takes the large-difference test before the count-0
+      branches, by direction: the side that holds fewer by more than the threshold neither asks for
+      items nor splits; as initiator it stripes (as now), as responder it hands the range to its own
+      transfer and answers nothing for it (the empty answer `DecisionEqual` gives; the peer's
+      session then ends, which the frozen wire allows). The holder's count-0 `DecisionSendItems`
+      stays, so (a) holds. It meets (b) at the root and in the descent, (d) (it compares two counts
+      of one range of one session root) and (c) (same-range counts; §7.7 differences are far below
+      the threshold). Only the lacking side changes, so it protects a new node against old peers
+      during a rolling upgrade. Trade-offs: responders get a Striper (initiators only today,
+      session.go ~L82–84), so it must land with the stripe-registry fix (a peer claiming a far
+      larger count would make responders register too) and must not register what the bootstrap plan
+      already holds; it does not stop the holder's listing in a round session that the lacking node
+      opens itself at count 0 (the same answer a stripe session gets), so an undetected
+      bootstrapping node (d) must not open round sessions far below the peer's count in the session
+      root (a session-root check next to `IsBootstrap`); and below the threshold the descent still
+      lists what node 0 lacks, up to `LargeDiff` × 70 B ≈ 4.6 MB per session through the transfer's
+      tail (~65 s of fetches at the default `FetchRate`), which over a few lower-overlay peers and
+      rounds can pass AC-B2's ~45 MB headroom (340 − 294 MB): the threshold for a node with a
+      transfer running may need to sit below `LargeDiff` (an estimate, not measured).
+    - B. *The initiator takes the large-difference test first, by direction* (acts on the initiator:
+      the peer in a round session, or a higher-overlay peer's takeover). On a child Fingerprint the
+      initiator's `Decide` tests the large difference before the count-0 branches: where it holds
+      more by more than `LargeDiff` it neither lists nor stripes (it leaves the range to the lacking
+      side); where it holds fewer it stripes, as now. It removes the child-range path and the
+      holder's own registration (the stripe-registry case of a peer claiming a smaller count).
+      Trade-offs: it does not reach the root's count-0 answer, which runs no `Decide` on the
+      initiator (`handleItems` answers the `Items{Reply}`), so it needs C or A for the root; it
+      changes the peer, so old peers keep listing during a rolling upgrade; and the lacking side
+      must then take the range itself (its stripes, or A).
+    - C. *The initiator's listing is capped and becomes a stripe hand-over* (acts on the initiator,
+      with a hand-over on the responder). Past `LargeDiff` of difference the initiator answers an
+      `Items{Reply}` with at most a cap of IDs and ends its answer early, which the frozen wire
+      allows (the responder checks only that the answer does not end before its own last Reply page,
+      session.go ~L813, and a count-0 Reply is one empty page); the responder, whose listing came
+      out far shorter than the counts' gap, hands the range to its Striper. The stripe sessions are
+      untouched, since there the holder answers a Fingerprint as responder (a). Trade-offs: a cap's
+      worth of IDs per session until the hand-over (per round when the responder does not hand over:
+      a drip rather than a stall, so (c) holds); the responder-Striper and registry dependencies of
+      A; and the peer changes, so old peers keep listing.
+    - D. *The bootstrapping node answers Busy* (round 1's direction 1; acts on node 0 as responder).
+      It is legal on the frozen wire (Busy as the responder's first Message), covers lower-overlay
+      initiators and takeovers alike, and Busy is not scored. Trade-offs: keyed on the reconciler's
+      bootstrap state it fails (d); keyed instead on the opening Fingerprint's count against its own
+      in the session root it meets (d), but it refuses whole sessions, the small differences of new
+      uploads and of §7.7 included, for the transfer's duration (~70 minutes at 2^22), leaving them
+      to the verification round; and the peer's Busy backoff must not delay its sessions past that.
+    - E. *An explicit bootstrap signal in `Status` or the Fingerprint* (acts on both sides). The
+      cleanest detection, but the wire is frozen (G2): it needs a field G2 forbids or a new protocol
+      version, so it is out of scope unless G2 is reopened. Round 1's direction 2 (defer by Status
+      count) is its implicit form, and it fails (c) across roots and (d) within equal roots.
+  - Acceptance needs a scaled case, since the harness's geometry cannot show the production path: a
+    test-settable `LargeDiff` (a const today, constants.go ~L35; an `Options` field or an
+    `export_test.go` hook) near Base/64, which keeps 2^22's ratio of the root difference to
+    `LargeDiff` (about 1,100 at Base 70000: stripes past it, and the child-range path for the first
+    ~75% of the transfer; a scaled `LargeDiff` also stripes catch-ups that would decode at 2^22's
+    scale, so the test reads the bootstrap only); or a harness Base past 4 × `LargeDiff` for stripes
+    past it (≥ ~262,000 at N = 5) and past 16 × `LargeDiff` (~1.05M) for the child-range path,
+    beyond this host's memory (Base 100000 peaked near 0.7 GB). It must check (a) that the stripes
+    complete, (b) node 0's metadata within AC-B2 scaled to Base at ranks 1–4 with takeovers firing,
+    and (c) and (d) with a peer one bit deeper and a bootstrapping node whose root no peer shares
+    (the radius-aware harness of T6, or a session-level test). Then `TestG6BootstrapPeers`,
+    `TestG6Bootstrap` and T6.1's Bootstrap case.
+  - The scope is unchanged: a T6.1 entry blocker and pre-testnet blocker (Follow-ups, the corrected
+    entry).
+
+  **Q9, `CatchUpMinDiff`: keep 256, at medium to low confidence.**
+  - Round 1's rate bound misapplied Little's law twice. (i) The inflow is the reserve over the mean
+    residence, and the residence is not the batch's TTL: uploads arrive throughout a batch's life,
+    so a chunk stays for the batch's remaining life, about half of it on average with uniform
+    uploads. At a one-day TTL the bound is ~97 per second (~14 at a week, ~3 at 30 days), and ~97 is
+    where N = 17 with 8 slots already crosses 256 (7 sides at 100 per second). (ii) Overwrites add
+    IDs without growing the reserve. On a stamp-index collision with a newer timestamp the reserve
+    replaces the older chunk (pkg/storer/internal/reserve/reserve.go ~L189–195, and `removeChunk`
+    for another address), and the newcomer is a new ID. Postage charges per slot and time, not per
+    write, so a mutable batch's owner can rewrite its slots at any rate for the cost of the uploads:
+    a sustained rate is bounded by no TTL, and "only as a burst" is false.
+  - The crossing load is about 50–100 IDs per second per neighborhood at N = 17 with 8 slots (wants
+    max 169–199 at 50, 400 at 100). It is lower at N > 17, where a node's initiated pairs run in
+    more waves (untested), and higher with the per-node initiated-session cap (16 slots: 185 at 100
+    per second).
+  - A crossing pins `SyncRate`. A side at 256 or more is a catch-up (scheduler.go ~L521) and its
+    fetches count towards `SyncRate`; a sustained stream past the crossing load keeps it above 0,
+    which stops the reserve worker's radius decrease (pkg/storer/reserve.go ~L176) and the storage
+    incentives' `isFullySynced` (pkg/node/node.go ~L1378) on the neighborhood's nodes while it
+    lasts. `pkg/puller` adds only historical intervals to its rate (puller.go ~L392–397), so live
+    load never pins it: here rangesync would do worse. The pin lifts within the rate window once the
+    stream stops. T6.3's ordinary testnet load is far below the crossing and won't show it.
+  - Recommendation: **keep 256**, at medium to low confidence. It holds at the loads measured and at
+    the fresh-upload rates of realistic lifetimes, but not against a sustained overwrite stream, and
+    a fixed raise (1024) only moves the crossing. Follow-ups: a load-relative or overwrite-aware
+    catch-up rule before mainnet (T4.x or T6), and a T6.3 item that drives a sustained overwrite
+    stream on purpose. Not a pre-testnet blocker (the final sheet's blocker list says why).
+
+  **`GrowthFactor` 2: the recommendation stands, with three additions.**
+  - The proposal's text changes with the constant (pullsync-rangesync-rateless-proposal.md): §6.3's
+    normative "`More{R, UpTo: min(4 × received, cap(R))}`" (L824) and "growth factor 4" (L830), and
+    the worked examples: §7.2's "`More(root, UpTo: 4 × 7 = 28)`" (L894), example 2's "one More(root,
+    UpTo 272)" (L1175, 68 × 4) and example 3's "More(root, UpTo 16)" and "More(root, UpTo 64)"
+    (L1191, L1194; GF2 grows 4 → 8 → 16 → 32 → 64). No other code depends on 4: the constant's one
+    use is the requester's `upTo` (session_symbols.go ~L403), and session.go ~L568 names it in a
+    comment.
+  - An unmeasured CPU cost: on the scan path (no cache, `cacheCapacity` 0) each More reruns
+    `Local.Symbols(r, 0, end)` from symbol 0 (`symStream.window`, session_symbols.go ~L125), reading
+    the range's elements again. GF2 about doubles a stream's Mores, so it about doubles an honest
+    scan stream's reads (at most `MaxScansPerMessage`, 64, scan batches per Message). Recorded; not
+    a reason to keep 4.
+  - Unhinted sessions are rare only for honest causes (round 1: a restart, a balanced partition). A
+    peer can flush the shared hint LRU (Follow-ups, "(T4.6 part 1 fix round 1 → TF/hardening) One
+    peer can flush the hint LRU" and "(T4.6 part 1 fix round 2) The hint LRU: stale entries and a
+    cheaper flush"), after which the pairs' sessions run unhinted and each large equal-count
+    difference takes about twice GF4's Mores: latency, never bytes, until that follow-up lands.
+
+  **Records.**
+  - `BatchFactor` 1.2's gain at N = 17 is 2.4–3.3 points (its second run at 50 ms: 45.9 against
+    48.3), not 2.7–3.3.
+  - The per-node initiated-session cap gives −9 to −12 points with GF2 (16 slots and GF2:
+    39.5–40.3%, against GF2's 48.3–52.1%), not the sheet's −10 to −15.
+  - The AC-B2 table's "its stripes, MB" is the bytes node 0 read on every reconcile stream it
+    opened: its stripes, its verification and its post-bootstrap sessions. `TestG6BootstrapPeers`
+    now labels it "node 0's sessions (stripes and later)". Its comment said takeovers do not fire;
+    they did at Base 100000 (the higher-overlay peers' 1.31–1.36 MB), and the comment now says so.
+
+  **G6 decision sheet (final).** This supersedes the "G6 decision sheet" of "(T4.6 part 3 fix round
+  1) G6 summary (revised after review)" and, where they differ, the per-question recommendations of
+  "(T4.6 part 3) G6 summary: the measured inputs and a recommendation per question". For the user at
+  G6; confidence is in the measurement, and the last column is what testnet must confirm.
+
+  | decision | value | key number | confidence | T6.3 (or T6.x) confirms |
+  |---|---|---|---|---|
+  | Q2 caches (`RootSymbols`, `Level1Symbols`, `BucketSymbols`) | keep 4096 / 512 / 32 | steady first batch ≤ 777 symbols (19% of the root) at 100 uploads/s; a catch-up splits the root past ~2500 missing | high for equal radii; mixed radii unmeasured (a nested session root gets 32 symbols) | `streams_exhausted_total{level}` where radii differ; catch-up sizes |
+  | `GrowthFactor` | **2** (from 4), with its 4 tests and the proposal's text (L824, L830, L894, L1175, L1191–1194) | −12 to −18 points of share at the steady load, −8 to −21 at the sparse; +0.16–0.28 round trips per session, +0.8 s of the longest at 200 ms; ~2× the Mores on an unhinted equal-count difference (+5 round trips at n_Δ 1000–2000), more often while a peer can flush the hint LRU; ~2× an honest scan stream's reads (unmeasured) | high; wire-compatible with GF4 peers | share and convergence at real latency; mixed GF2/GF4 peers; scan CPU |
+  | request-driven `More`; hint(R) | keep both | streaming loses on any link above ~20 KB/s at 100 ms; the hint saves 70% of the Mores | high | Mores per upload; the stale catch-up hint (≤ 4095 symbols per pair, once) |
+  | `BatchFactor` | keep 1.6 | 2.0 costs 2.4–4.5 points with GF2; 1.2 gains 2.4–3.3 at N = 17 only, for +0.3 round trips per session | high against 2.0; 1.2's gain is real but marginal, worth it only without the per-node cap | nothing specific |
+  | `CatchUpMinDiff` | keep 256 | wants max 35–82 at the reference load, 104 (N = 9) and 169–199 (N = 17, 8 slots) at 50/s; crossing at ~50–100 IDs/s per neighborhood (N = 17, 8 slots), lower at N > 17 (untested), higher with the per-node cap (185 at 100/s); fresh uploads ≤ ~97/s at one-day TTLs, overwrites bounded by no TTL | medium to low: loads measured, rates argued; a sustained overwrite stream pins `SyncRate` | `pairwise_diff_half` max per 10-minute window; a deliberate sustained overwrite stream (Follow-ups) |
+  | `LargeDiff` | keep 65536; make it test-settable | at 2^22 with 5–32 peers, stripes of 2^17–2^19 IDs (2–8×); the child-range stripe path past 16× (~1.05M, the first ~75% of a 2^22 bootstrap); the AC-B2 fix interacts with it (below it the descent lists up to ~4.6 MB per session) | medium: not exercised at scale (harness stripes 17,500–25,000 IDs) | the scaled test first; T6.1's Bootstrap case (AC-B2), stripe sizes and counts |
+  | `RoundInterval` bounds | keep 5–30 s | longer minimums: +1.2–2.5 s of mean convergence and no bytes saved; the maximum costs only heartbeats (352–355 B per node-minute at N = 9, 704–717 at 17) | high (re-run by the review) | T6.4: the sparse load's longest convergence (10.75–10.95 s) exceeds AC-V1's 2 × 5 s; the bound needs 15 s |
+  | initiated-session cap | per node: the eligible higher-overlay peers, within the tokens served sessions leave, `MaxStripeSessions` kept apart (not a constant 16); a code change after G6 | N = 17 with GF2: −9 to −12 points of share; wants max at 100/s 400 → 185; mean convergence 0.3 s faster; no Busy | medium: harness at N ≤ 17; the 16-slot build also doubled `MaxStripeSessions` | Busy and session-limit answers; the share at N ≥ 17 |
+  | AC-B1 per N | re-base at N = 9 (T6.0's call), for example ≤ 65% at N = 9 and ≤ 50% at N ≥ 17 | N = 17: GF2 passes at 50 and 100 ms and misses by 2.1 points at 200 ms on the modeled base (passes on the wire basis, by ~10 with the per-node cap, narrowly with `BatchFactor` 1.2); N = 9 fails with every constant (best 59.0–60.6%, 54–56% on the wire) | medium: synchronized harness load, no round phases | T6.1 baseline against `rangesync` only; T6.3 |
+
+  Pre-testnet blockers, all before any testnet cohort enables `rangesync` (Follow-ups, "(T4.6 part 3
+  fix round 2) Pre-testnet blockers (final)"):
+  1. The bootstrapping node's peers list their reserves to it (AC-B2), also a T6.1 entry blocker: a
+     fix that meets constraints (a)–(d) above, accepted by the scaled test.
+  2. The stripe-registry `SyncRate` pin; before or with the AC-B2 fix if that fix gives responders a
+     Striper (A, C).
+  3. The per-peer fetch credit, with a credit that survives a peer's reconnects (the initial credit
+     of a new or reconnected peer is the item to settle first).
+
+  Not a blocker: the sustained-overwrite `SyncRate` pin. Unlike the stripe-registry pin, which one
+  claimed count buys, it needs a sustained upload stream of ~50–100 IDs per second aimed at one
+  neighborhood; it stores nothing wrong and lifts within the rate window once the stream stops; and
+  testnet cohorts will not produce it by accident. It is a T6.3 item (Follow-ups, "(T4.6 part 3 fix
+  round 2 → T6.3) A sustained overwrite stream"), and the catch-up rule's fix lands before mainnet
+  enablement. Code changes after G6 that are not blockers: `GrowthFactor` 2 with its tests and the
+  proposal's text, the per-node initiated-session cap, the stale catch-up hint, a test-settable
+  `LargeDiff` (with the AC-B2 fix), and caches for mixed radii (T6).
+- **(T4.6 part 3 fix round 2) Scope, tests and wall times.**
+  - Documentation: the entry above and the Follow-ups below. The only code change is the comment,
+    one table label and the log line of `TestG6BootstrapPeers` in `neighborhood_g6_sim_test.go`
+    (`-tags=sim`). No production change, no constant, no new measurement; no `pkg/node`, `pkg/p2p`,
+    `go.mod`, proto or `*_fuzz_test.go` change.
+  - `make build`, `GOTOOLCHAIN=go1.26.1 make lint`, `golangci-lint run --build-tags sim
+    ./pkg/rangesync/...` and `go vet` (default and `-tags=sim`) are clean; `go test
+    ./pkg/rangesync/...` passes (`pkg/rangesync` 10 s); with `-tags=sim`,
+    `TestNeighborhoodG6Figures` and `TestG6EqualCounts` pass (3 s). gofumpt ran on the changed test
+    file only. No test's behavior changed, so nothing is new for `-race`.
 
 ## Follow-ups
 _(sessions append here)_
@@ -4163,3 +4384,72 @@ _(sessions append here)_
 - **(T4.6 part 3 fix round 1) Tests to run with `-race` on CI.** They ran with `-count=3 -cpu=1,2,4`
   instead. Changed: `TestNeighborhoodG6Figures` (the flows check), and through `simResult.Flows`
   every neighborhood test. New, `-tags=sim` only: `TestG6BootstrapPeers`, `TestG6EqualCounts`.
+- **(T4.6 part 3 fix round 2 → T4.x, T6.1) PRE-TESTNET BLOCKER and T6.1 entry blocker: a
+  bootstrapping node's peers list their reserves to it (AC-B2), corrected.** This supersedes, in
+  "(T4.6 part 3 fix round 1 → T4.x, T6.1) PRE-TESTNET BLOCKER and T6.1 entry blocker: a
+  bootstrapping node's peers list their reserves to it (AC-B2)", the fix directions 1–4, the
+  sentence "1 or 2 closes the bootstrap case; 3 also bounds a large catch-up that is not a
+  bootstrap" and its acceptance; and, in "(T4.6 part 3 fix round 1) Pre-testnet blockers", in its
+  last sentence, "fix direction 3 above must make it direction-aware" (the meeting point stands: a
+  direction-aware stripe branch, candidate B, also removes from the registry pin the case of a peer
+  that claims a far smaller count). Its measurement and root cause stand, with (2) made precise
+  (Decisions, "(T4.6 part 3 fix round 2) G6 summary (revised, round 2)", AC-B2): in a round session
+  the peer is the initiator and does the listing (its answer to node 0's count-0 `Items{Reply}`,
+  session.go ~L746, and `DecisionSendItems` on the children at node 0's count 0), and while node 0's
+  root difference exceeds 16 × `LargeDiff` the peer stripes level-1 ranges it already holds. The
+  directions are withdrawn: 3 and 4 refuse the stripe sessions (count-0 listings of 2^17–2^19 IDs at
+  2^22) and 4 caps the wrong side; 2 defers edge peers across roots; 1 depends on the equal-root
+  `IsBootstrap`.
+  - Constraints: (a) stripe sessions, the count-0 listings past `LargeDiff` that the bootstrapping
+    node requests, still work; (b) a round session does not make a non-bootstrapping peer list its
+    whole reserve to a count-0 or near-empty peer (the initiator's listing); (c) edge peers and
+    nested roots (§7.6) and stale-stamp divergence (§7.7) are neither deferred nor starved; (d)
+    detection does not rest on the equal-root `IsBootstrap` alone.
+  - Candidates, with their trade-offs in the Decisions entry: A, the lacking side declines (node 0,
+    in either role; the only one that protects a new node against old peers); B, the initiator takes
+    the large-difference test first, by direction (the peer; it does not reach the root's count-0
+    answer); C, the initiator caps its listing and the responder takes the rest as a stripe
+    hand-over (both sides); D, the bootstrapping node answers Busy (node 0 as responder; (d) only if
+    keyed on the session root's counts, and it refuses small differences meanwhile); E, an explicit
+    bootstrap signal (the wire is frozen, G2). A and C give responders a Striper and must land with
+    the stripe-registry fix; with A, the threshold for a node with a transfer running may need to
+    sit below `LargeDiff` (the tail's descent lists up to ~4.6 MB per session).
+  - Acceptance: a scaled case first, which runs stripes past `LargeDiff` and the child-range stripe
+    path: a test-settable `LargeDiff` (near Base/64) or a harness Base past ~1.05M. It checks (a)
+    that the stripes complete, (b) node 0's metadata within AC-B2 scaled to Base at ranks 1–4 with
+    takeovers firing, and (c) and (d) with a peer one bit deeper and a bootstrapping node whose root
+    no peer shares. Then `TestG6BootstrapPeers`, `TestG6Bootstrap` and T6.1's Bootstrap case.
+- **(T4.6 part 3 fix round 2) Pre-testnet blockers (final).** This supersedes "(T4.6 part 3 fix
+  round 1) Pre-testnet blockers". Three, all before any testnet cohort enables `rangesync`: (1) the
+  AC-B2 entry above (also a T6.1 entry blocker); (2) "(T4.5 part 2c round-2 review; recorded by the
+  orchestrator at landing) PRE-TESTNET BLOCKER: stripe registry SyncRate pin", before or with (1) if
+  (1) gives responders a Striper; (3) "(T4.5 part 2b fix round 3; orchestrator request) Per-peer
+  fetch credit (before testnet)", with a credit that survives a peer's reconnects. The
+  sustained-overwrite `SyncRate` pin is not a pre-testnet blocker: it is a T6.3 item and a fix
+  before mainnet (the two entries below; the reasons are in the Decisions entry's final sheet).
+- **(T4.6 part 3 fix round 2 → T4.x or T6, before mainnet) The catch-up rule under sustained load.**
+  This extends "(T4.6 part 3 fix round 1 → T6.3, Q9) `CatchUpMinDiff` crossings", whose trigger ("if
+  steady-state sides reach 256 on testnet") testnet's ordinary load will not meet. Fresh uploads at
+  a stable radius are bounded by ~2 × the reserve over the batch TTL (~97 per second at one-day
+  TTLs), overwrites by no TTL (the reserve replaces the older chunk on a stamp-index collision, and
+  postage charges per slot and time). Past ~50–100 IDs per second per neighborhood (N = 17, 8 slots;
+  lower at N > 17, untested) steady-state sides cross 256, count as catch-ups and keep `SyncRate`
+  above 0: no radius decrease and no `isFullySynced`, so no redistribution for the neighborhood
+  while it lasts (`pkg/puller` counts only historical intervals, so live load does not pin it). A
+  fix: a load-relative rule (a side is a catch-up when its wants exceed max(256, a multiple of what
+  the node's recent inflow predicts for the time since the pair's last session)), or an
+  overwrite-aware one (the inflow counts reserve replacements). Not designed or measured here.
+- **(T4.6 part 3 fix round 2 → T6.3) A sustained overwrite stream.** A T6.3 item: one mutable batch
+  rewrites its slots into one neighborhood at stepped rates (for example 10, 25, 50, 100 and 200 IDs
+  per second, each held for more than one 10-minute window), with the cohort's N and the per-node
+  cap as landed. Read `pairwise_diff_half`'s max per window, `sync_rate`, the reserve worker's
+  radius and the storage incentives' sync check. It gives the crossing load on real rounds and
+  decides how urgent the entry above is; T6.3's ordinary load does not reach it.
+- **(T4.6 part 3 fix round 2 → G6 change) `GrowthFactor` 2: the proposal's text and the scan cost.**
+  This extends "(T4.6 part 3 fix round 1 → G6 change) `GrowthFactor` 2 lands with four tests". With
+  the constant, update pullsync-rangesync-rateless-proposal.md: L824 ("4 × received"), L830 ("growth
+  factor 4"), L894 ("4 × 7 = 28"), L1175 ("UpTo 272") and L1191–1194 (example 3's "UpTo 16" and
+  "UpTo 64", and its Message count, as `TestWorkedExamples` takes GF2's outcomes). No other code
+  depends on 4 (its one use is session_symbols.go ~L403). Recorded, not measured: each More on the
+  scan path reruns `Local.Symbols(r, 0, end)` (session_symbols.go ~L125), so GF2 about doubles an
+  honest scan stream's reads.

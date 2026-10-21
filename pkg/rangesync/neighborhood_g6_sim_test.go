@@ -372,17 +372,21 @@ func TestG6Bootstrap(t *testing.T) {
 
 // TestG6BootstrapPeers measures, per peer, the metadata an empty node
 // receives in a bootstrap past LargeDiff (the T4.6 part 3 review, AC-B2):
-// node 0 of N = 5 starts without any of the Base base chunks (70000, so its
-// root difference is past LargeDiff = 65536, as TestG6Catchup's reserve), and
-// stripes its root while its peers' rounds run sessions with it. The fetch
-// limit is lifted as in TestG6Bootstrap; Delay 50 ms; seeds 1–4, for node 0's
-// rank (its peers with a lower overlay, which initiate their pairs with it).
-// Per peer: the bytes node 0 read on the reconcile streams it opened (its
-// stripes) and on those the peer opened (rounds; takeovers, which wait for
-// the clock, do not fire here), with the IDs node 0 wanted from the latter.
+// node 0 of N = 5 starts without any of the Base base chunks (70000 and
+// 100000, so its root difference is past LargeDiff = 65536, as TestG6Catchup's
+// reserve), and stripes its root while its peers' rounds run sessions with it.
+// The fetch limit is lifted as in TestG6Bootstrap; Delay 50 ms; seeds 1–4, for
+// node 0's rank (its peers with a lower overlay, which initiate their pairs
+// with it). Per peer: the bytes node 0 read on the reconcile streams it opened
+// (its stripes, and also its verification and post-bootstrap sessions) and on
+// those the peer opened (rounds, and the takeovers of the higher-overlay
+// peers, which fire once the transfer outlasts their wait: at Base 100000,
+// not at 70000), with the IDs node 0 wanted from the latter. The stripes are
+// below LargeDiff here (17500–25000 IDs), so this does not exercise the
+// production geometry of stripes past it (T4.6 part 3 fix round 2, AC-B2).
 func TestG6BootstrapPeers(t *testing.T) {
 	const seeds = 4
-	tbl := &g6Table{header: []string{"Base", "seed", "rank", "caught up s", "node 0 metadata in KB (AC-B2 bound)", "of it: stripes, peers' sessions, Status KB", "peers' sessions: KB, sessions, wants (lower-overlay peers first)", "stripes done", "duplicates", "wall"}}
+	tbl := &g6Table{header: []string{"Base", "seed", "rank", "caught up s", "node 0 metadata in KB (AC-B2 bound)", "of it: node 0's sessions (stripes and later), peers' sessions, Status KB", "peers' sessions: KB, sessions, wants (lower-overlay peers first)", "stripes done", "duplicates", "wall"}}
 	for _, base := range []int{70000, 100000} {
 		for seed := range uint64(seeds) {
 			o := simOptions{
@@ -443,7 +447,7 @@ func TestG6BootstrapPeers(t *testing.T) {
 			})
 		}
 	}
-	t.Logf("%s; N = 5, node 0 empty, Delay 50 ms; counted from the start; bytes node 0 read on the reconcile streams (stripes: those it opened; peers' sessions: those the peer opened) and the Status streams:%s", g6Label(), tbl)
+	t.Logf("%s; N = 5, node 0 empty, Delay 50 ms; counted from the start; bytes node 0 read on the reconcile streams (node 0's sessions: those it opened, its stripes with its verification and post-bootstrap sessions; peers' sessions: those the peer opened) and the Status streams:%s", g6Label(), tbl)
 }
 
 // TestG6EqualCounts measures one session over a two-sided difference with
