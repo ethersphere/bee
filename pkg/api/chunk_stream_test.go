@@ -1306,3 +1306,68 @@ func TestChunkBidirectionalStream_ShutdownClientStoppedReading(t *testing.T) {
 		t.Fatal("svc.Close() hung: workers stuck in WriteMessage were not unblocked by socket closure")
 	}
 }
+
+// A stream that ends on its own, here on a protocol violation, while its
+// workers are blocked writing to a client that has stopped reading must still
+// release them. The shutdown watcher is gone by then, so only closing the socket
+// before waiting on the workers lets the handler return.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_ProtocolViolationClientStoppedReading(t *testing.T) {
+	var svc *api.Service
+	cs := inmemchunkstore.New()
+	storerMock := mockstorer.NewWithChunkStore(cs)
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:    storerMock,
+		Post:      mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:    "/chunks/stream",
+		WsHeaders: streamHeaders(false),
+		Service:   &svc,
+	})
+
+	const flood = 1000
+	chunks := make([]swarm.Chunk, flood)
+	for i := range flood {
+		chunks[i] = testingc.GenerateTestRandomChunk()
+		if err := cs.Put(context.Background(), chunks[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flood download requests without ever reading from wsConn
+	for i := range flood {
+		_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
+		data, err := getRequest(chunks[i].Address().Bytes(), pb.CacheOption_CACHE_DEFAULT).Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wsConn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+			break // socket write buffer filled, enough is queued
+		}
+	}
+
+	// Wait for workers to fill the OS socket buffer and block on WriteMessage
+	time.Sleep(300 * time.Millisecond)
+
+	// A text frame is a protocol violation that makes the server end the stream.
+	_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
+	if err := wsConn.WriteMessage(websocket.TextMessage, []byte("not a request")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	closedCh := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		closedCh <- svc.Close()
+	}()
+
+	select {
+	case err := <-closedCh:
+		if err != nil {
+			t.Fatalf("Close after %v: %v", time.Since(start), err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("svc.Close() hung: workers stuck in WriteMessage were not unblocked by socket closure")
+	}
+}
