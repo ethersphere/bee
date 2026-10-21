@@ -3720,6 +3720,149 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   2). The re-review of both fix rounds found no High or Medium; its Lows are in the Follow-ups
   ("(T4.7 part 1 re-review; recorded by the orchestrator at landing)"), the first of them handed to
   part 3. README is ticked only after part 4.
+- **(T4.7 part 2) G6 constants, as built.** Commits 7a059f96 (`GrowthFactor` 2), 1f907eeb (the
+  per-node initiated-session cap), 9884fdf7 (AC-B1 re-measured: the sim-tagged harness and the
+  model's records) and the decisions-and-follow-ups commit.
+  - `GrowthFactor` 4 → 2 (constants.go). Its one use is the decoding side's `More`
+    (session_symbols.go ~L403), so GF2 and GF4 peers interoperate: no wire or proto change. The
+    four tests that encoded 4: `TestProtocolConverges` derives its bound's Mores from
+    `GrowthFactor` (`mores`: 10 to `RootSymbols` and 7 to `Level1Symbols`, 2 × 17 Messages; the 4k
+    case takes 40 of its 45); `TestWorkedExamples` takes GF2's outcomes for examples 2, 3 and §7.2,
+    with the reason in its case list (example 2: 3 Messages and 68 symbols for 6 of 10 draws, 5
+    and 136 for 3, 7 and 272 for 1; example 3: 11 Messages and 64 symbols for 4 of 5, 9 and 32 for
+    1; §7.2: 3 and 4 for 7 of 10, 5 and 8 for 3); `TestSREPSessionCost`'s "now" band at d = 45 is
+    [1.6, 2.2] symbols per difference (1.89 measured), and GF4 keeps a row of its own ([2, 2.8]);
+    `TestSREPIdeal` compares the constants with GF4 explicitly (2.15 against 3.11 symbols per
+    difference at N = 9, 2.29 against 3.45 at N = 17). With GF4 compiled the updated tests fail
+    (checked before the constant changed). The proposal's text is a Follow-up.
+  - **The per-node initiated-session cap, the rule** (scheduler.go, `InitiatedSessionCap`). Each
+    round counts its eligible peers (exchanged Statuses, `isEligible`, whatever their digest or
+    backoff) by overlay, `higher` (this node initiates) and `lower` (they initiate), and sets the
+    cap before it starts its sessions:
+
+        cap = max(MinInitiatedSessions, min(higher + MaxStripeSessions, MaxConcurrentSessions − lower))   if higher + lower ≤ MaxConcurrentSessions
+        cap = MinInitiatedSessions                                                                     otherwise
+
+    `MinInitiatedSessions` = 8 (`MaxConcurrentSessions` / 2, the constant before G6) is the floor
+    and the cap until the first round; `MaxStripeSessions` = 4 is now a constant of its own (not
+    derived from the cap). Round sessions, takeovers, stripe transfers and verifications all take
+    a slot of it, stripes a stripe slot first, as before. Why each part:
+    - Up to N = 17 a node's sessions, one per peer and shared by served and initiated sessions,
+      fit its 16 tokens, so no session is refused for them whatever the cap; the cap covers every
+      higher-overlay peer (one wave: N = 17 rank k gets 16 − k, every rank of N = 9 at least its 8 −
+      k) and, where the tokens left by the lower-overlay peers allow, 4 stripe sessions besides. A
+      stripe or a takeover holding a slot can push one round session to a second wave at the
+      ranks whose cap is exactly their higher-overlay peers (N = 17, ranks 0–8); it never takes a
+      lower-overlay peer's token (one session per peer).
+    - Past N = 17 the cap is the floor, which leaves half of the tokens to the sessions the node
+      serves (inbound sessions from lower-overlay peers keep room). Measured first instead (the
+      decision sheet's wording taken literally): the room above with the reserve capped at 8,
+      `max(8, min(higher + 4, 16 − min(lower, 8)))`, which gives the low ranks up to 16 slots past
+      N = 17 too. It turned into the Busy storm L4679–4687 warned of (`TestG6InitiatedCap`,
+      steady load, 50 ms, 3 seeds, against the constant 8 in the same run): N = 25 Busy 0.363
+      against 0.190 per upload, convergence mean 5.54 against 4.17 s, longest 10.95 against 9.05
+      s, 10 pairs without a session against 1, share 41.7 against 42.7%; N = 33 Busy 0.690
+      against 0.518 and session-limit 0.047 against 0.015 per upload, convergence 5.13 against
+      4.24 s, share 38.2 against 36.4%. The higher overlays are token-bound there (a rank above
+      16 has more lower-overlay peers than tokens) and more sessions at once from the lowest
+      overlays only add Busy answers. So past the tokens the cap stays at the floor: the
+      behavior before G6, measured bounded (below).
+    - Deviation: a step at N = 17/18, not a slope; N = 18–24 runs the pre-G6 cap (not measured
+      separately, Follow-ups).
+  - **The mechanism.** `slotPool` (slots.go): a FIFO semaphore whose size `resize` changes; a
+    smaller size takes no slot from a holder and lets no waiter in until the slots in use are below
+    it; a waiter whose context ends takes none. It replaces the `slots` channel; `acquireSlot`,
+    `acquireStripeSlots` and their callers are unchanged. `MaxInitiatedSessions` is gone.
+    `reconciler.Options.InitiatedSessions` (and `simOptions.InitiatedSessions`, the model's
+    `srepParams.InitiatedSessions`) fixes a constant cap for simulations and slot-waiting tests;
+    the node leaves it zero. The model (srep_model_test.go) gives each node the cap of its rank.
+  - **`LargeDiff` settable (scope item 3): confirmed, no new work.** Part 1 made it settable
+    (`reconciler.Options.LargeDiff`, `rangesync.Options.LargeDiff` → `Config.LargeDiff` /
+    `DecisionInput.LargeDiff`); the harness sets both from `simOptions.LargeDiff`
+    (neighborhood_sim_test.go ~L665 and ~L683), which `TestG6BootstrapScaled`,
+    `TestNeighborhoodBootstrapScaled` and the other scaled bootstrap tests use.
+  - Unchanged: caches 4096/512/32, `BatchFactor` 1.6, `CatchUpMinDiff` 256, `RoundInterval` 5–30 s,
+    request-driven `More`, hint(R); `MaxConcurrentSessions` 16, so `NodeDecoderMemory` too.
+- **(T4.7 part 2) AC-B1 re-measured with the landed constants.** `TestG6Constants` (`-tags=sim`,
+  steady load, 6 seeds, the same modeled base N(N − 1) × 102 B as L2693–2738; "8" is the control,
+  the landed build with a constant cap of 8, i.e. G6's `GrowthFactor` 2 row; at N = 9 the two caps
+  run the same sessions, since no node there has more than 8 higher-overlay peers and the cap is
+  at least 8). Range over Delay 50, 100 and 200 ms, Delay 0 in brackets; pass means ≤ 50% at every
+  validated Delay:
+
+  | constants | hint | N = 9 | N = 17 | verdict N = 9 | verdict N = 17 |
+  |---|---|---|---|---|---|
+  | landed (`GrowthFactor` 2, per-node cap, `BatchFactor` 1.6) | on | 59.7–60.5 [59.8] | 39.5–40.3 [47.3] | fail (+9.7 to +10.5) | pass (−9.7 to −10.5) |
+  | landed | off | 59.3–59.7 | 39.2–39.5 | fail | pass (−10.5 to −10.8) |
+  | control: `GrowthFactor` 2, cap 8 | on | = landed | 48.6–51.7 [50.0] | – | fail at 200 ms (+1.7) |
+  | control | off | = landed | 44.3–46.5 | – | pass |
+
+  - Against G6 (L2693–2738): the control reproduces G6's `GrowthFactor` 2 rows (48.3–52.1 [49.0],
+    off 44.7–46.2), and the landed rows its scratch "16 initiated slots, `GrowthFactor` 2" rows
+    (39.5–40.3 [48.8], off 39.4): the per-node cap gives what the 16-slot build gave, with
+    `MaxStripeSessions` back at 4. The expectation held: N = 9 fails in every configuration, N =
+    17 passes with GF2 only with the cap.
+  - Wire basis (÷ 1.09, part 2): N = 9 54.4–55.5% (still fails), N = 17 36.0–37.0%.
+  - Convergence, landed, hint on (mean; longest) at 50 / 100 / 200 ms: N = 9 3.43 / 4.00 / 5.28 s
+    (6.10 / 7.00 / 9.00); N = 17 3.47 / 4.16 / 5.60 s (6.05 / 7.50 / 10.00), against 3.76 / 4.59
+    / 6.55 s (6.55 / 8.30 / 11.20) with cap 8. Hint off, 50 / 200 ms: N = 9 3.68 / 6.20 s (6.10 /
+    9.00), N = 17 3.69 / 6.34 s (6.25 / 10.00). AC-V1 (10 s): the N = 17 longest at 200 ms is now
+    10.00 s, at the bound (11.2 s with cap 8).
+  - Busy and session-limit answers: none at N = 9 or 17, either cap (opening side and serving
+    side); stale rechecks ≤ 0.002 per upload at a Delay (0.058 at Delay 0, N = 17).
+  - What the cap removes at N = 17 (50 / 100 / 200 ms, hint on): the second wave's differences,
+    n_Δ p99 39–42 against 59–71 and wants max 37–40 against 80–97; symbols per difference
+    2.32–2.37 against 2.53–2.58; Mores 1.19–1.28 per upload, round trips 4.70–4.73 per session.
+  - Verdict: N = 17 passes AC-B1 with ~10 points to spare at every validated Delay, hint on or
+    off; N = 9 fails by ~10 points (55% on the wire), as G6 expected: re-basing at N = 9 is T6.0's
+    call (L2732–2735 unchanged).
+- **(T4.7 part 2) Past N = 17: bounded Busy, no starved node.** `TestG6InitiatedCap` (`-tags=sim`,
+  steady load, Delay 50 ms, 3 seeds; per upload; "served min" the fewest completed sessions per
+  lower-overlay peer that a node served, the smallest of the seeds; "unpaired" the pairs with no
+  completed session, the most, which converge through the others):
+
+  | N | cap | share % | convergence mean, longest s | sessions | Busy, session limit, Busy given | served min, unpaired |
+  |---|---|---|---|---|---|---|
+  | 17 | landed | 39.3 | 3.51, 6.25 | 1.74 | 0, 0, 0 | 6.0, 0 |
+  | 17 | 8 | 48.4 | 3.78, 6.65 | 1.73 | 0, 0, 0 | 6.0, 0 |
+  | 25 | landed | 42.6 | 4.01, 9.25 | 3.60 | 0.174, 0.003, 0.174 | 4.2, 1 |
+  | 25 | 8 | 42.9 | 4.25, 10.55 | 3.63 | 0.176, 0.003, 0.176 | 4.1, 3 |
+  | 33 | landed | 36.9 | 4.27, 8.55 | 6.29 | 0.517, 0.006, 0.517 | 3.6, 2 |
+  | 33 | 8 | 36.5 | 4.48, 9.50 | 6.30 | 0.528, 0.040, 0.528 | 3.8, 3 |
+
+  Past 17 the landed cap is the constant 8 (the rows differ by the seeds' noise): ~5% (N = 25) and
+  ~8% (N = 33) of the sessions answered Busy, all by a node's session tokens or a simultaneous
+  open, each followed by the T4.2 backoff, and every node serves ≥ 3.6 sessions per lower-overlay
+  peer. The default build has `TestNeighborhoodPastTokens` (N = 25, one seed): converges within
+  `TestNeighborhoodSteady`'s bound, served min ≥ 1, Busy and session-limit answers ≤ a tenth of
+  the completed sessions (80 of 1740 measured).
+- **(T4.7 part 2) The model and its harness records.** The model now runs the per-node cap of
+  each rank by default; its configurations carry their cap (`srepConfig.slots`, records
+  `srepRef.slots`): G6's records are the constant 8 (`slots` 8, unchanged), the compiled
+  constants' new records the per-node cap (`slots` 0, `TestSREPModelVsHarness`). At N = 17 and a
+  Delay the model matches the harness with the cap (share 39.6 against 39.3% at 50 ms, 39.2
+  against 39.9% at 200 ms). Decision: at Delay 0 the compiled constants' share and records are
+  logged, not checked. With up to 16 sessions of one instant the harness's Delay-0 runs are
+  not repeatable (N = 17, the same 6 seeds: 47.3 ± 3.6% in `TestG6Constants`, then 52.8 ± 2.9%
+  and 48.8 ± 3.2% in two `TestSREPModelVsHarness` runs, n_Δ 18–27% above the model's, whose share
+  is 38%); Delay 0 was already outside the validated domain (T4.6 part 2 fix round 1) and backs no
+  verdict. At a Delay the live harness matches the new records within 0.3 points.
+- **(T4.7 part 2) Scope, tests and wall times.**
+  - Code: pkg/rangesync/constants.go (`GrowthFactor`), pkg/rangesync/reconciler (scheduler.go,
+    reconciler.go, the new slots.go, a comment in stripes_transfer.go) and tests. No pkg/node,
+    pkg/pullsync, pkg/puller, go.mod, proto or `*_fuzz_test.go` change; README not ticked.
+  - `make build`, `go vet` (pkg/rangesync default and `-tags=sim`, and pkg/node),
+    `GOTOOLCHAIN=go1.26.1 golangci-lint run ./pkg/rangesync/...` with and without `--build-tags
+    sim` and `GOTOOLCHAIN=go1.26.1 make lint` are clean; `go test ./pkg/rangesync/...` passes
+    (`pkg/rangesync` 30 s, reconciler 5 s). gofumpt and gci ran on the changed files only (gci
+    flags coexistence_test.go's import order, as at HEAD: left alone).
+  - `-tags=sim`, one at a time (4 cores, nothing else running): `TestG6Constants` 403 s (108
+    harness runs), `TestG6InitiatedCap` 124 s (twice, one per rule), `TestSREPModelVsHarness` 460 s
+    then 183 s (passes), N = 25 runs ~640 MB RSS (sampled).
+  - No `-race` here: the new and changed tests ran with `-count=20 -cpu=1,2,4`, the slot pool's
+    with `-count=50`, the whole reconciler package with `-count=3 -cpu=1,2,4`, the harness and
+    session tests (`TestNeighborhood*` of the default build, `TestProtocolConverges`,
+    `TestWorkedExamples`, `TestSREP*`) with `-count=2 -cpu=1,2,4`; the CI list is in Follow-ups.
 
 ## Follow-ups
 _(sessions append here)_
@@ -5098,3 +5241,60 @@ _(sessions append here)_
      share the node's root can trigger `IsBootstrap` through the median. That was a real own job
      before; since part 1 it also sets the served sessions' threshold to 0 over the root, so the
      node declines every lack in the sessions it serves while that job runs.
+- **(T4.7 part 2 → the proposal) `GrowthFactor` 2: the text to update.** pkg/rangesync's
+  `GrowthFactor` is 2 since T4.7 part 2; the proposal still has 4 in seven places (not edited here).
+  The line numbers are pullsync-rangesync-rateless-proposal.md's on rangesync/phase-4; each new text
+  is what `TestWorkedExamples` now takes (worked_examples_test.go, its case list):
+  - L467 (§4.3.7, the decoding flowchart): `REQ["More(R, up to 4 × b)"]` → `REQ["More(R, up to
+    2 × b)"]`.
+  - L824 (§6.3, the `Symbols{R, …}` row): "emit `More{R, UpTo: min(4 × received, cap(R))}`" →
+    "emit `More{R, UpTo: min(2 × received, cap(R))}`" (the code also caps it at the session's
+    remaining `SessionSymbolBudget`, T2.5).
+  - L830 (§6.3, Constants): "batch factor 1.6, growth factor 4" → "batch factor 1.6, growth factor
+    2".
+  - L894 (§7.2): "A sends `More(root, UpTo: 4 × 7 = 28)`" → "A sends `More(root, UpTo: 2 × 7 =
+    14)`".
+  - L1175 (§7.10, example 2's note): "If 68 symbols were not enough, one More(root, UpTo 272) adds
+    a round trip." → "If 68 symbols were not enough, one More(root, UpTo 136) adds a round trip
+    (a second, UpTo 272, for a few draws)." (measured: 6 of 10 draws decode at 68, 3 at 136, 1 at
+    272).
+  - L1191–1195 (§7.10, example 3's sequence): the two More/Symbols round trips become four:
+    `More(root, UpTo 8)`, `Symbols(root, 4…8)`, `More(root, UpTo 16)`, `Symbols(root, 8…16)`,
+    `More(root, UpTo 32)`, `Symbols(root, 16…32)`, `More(root, UpTo 64)`, `Symbols(root, 32…64)`
+    (the peel lines between them as now); L1199's note: "2 extra round trips" → "4 extra round
+    trips" (11 Messages with parts, the same 64 × 82 B + 12 IDs; 9 Messages and 32 symbols when 32
+    decode the 25 differences: 1 of 5 draws). The "about 2 KB of it overshoot" stays (64 symbols
+    against ~40).
+- **(T4.7 part 2 → the proposal) The per-node initiated-session cap in §8.2.** §8.2 (L1224–1231)
+  has no rule for how many sessions a node opens at once; add after "Rounds": "**Cap.** A node
+  opens at most a per-node number of sessions at once (round sessions, takeovers, stripe transfers
+  and verifications together; at most 4 of them stripe sessions). With H eligible peers of a
+  higher overlay and L of a lower one: while H + L ≤ 16 (`MaxConcurrentSessions`, the session
+  tokens it shares with the sessions it serves; neighborhoods of up to 17 nodes) it is `max(8,
+  min(H + 4, 16 − L))`, so that a round reaches every higher-overlay peer in one wave; past that it
+  is 8, which leaves half of the tokens to the sessions it serves." (reconciler.InitiatedSessionCap,
+  T4.7 part 2 Decisions.)
+- **(T4.7 part 2 → T6.3) The per-node cap on testnet.** The rule steps at 17 nodes: up to 16
+  eligible peers a node's cap covers every higher-overlay peer (up to 16 slots), from 17 it is 8
+  (the pre-G6 constant). Measured at N = 9, 17, 25 and 33 (harness); N = 18–24 runs the pre-G6
+  cap and was not measured on its own, and a slope between the two (fewer slots per peer past the
+  tokens) was not tried. T6.3 should read, per neighborhood size, `sessions_total{busy}`,
+  `sessions_total{session_limit}` and `session_busy_total` against the completed sessions (~5% at
+  N = 25, ~8% at N = 33 in the harness), and AC-B1 at N ≥ 17. There is no gauge of the cap; a
+  node's cap follows from its eligible peers by `InitiatedSessionCap` (add one, e.g.
+  `initiated_session_cap`, if T6.0 wants it on the dashboard).
+- **(T4.7 part 2 → T6.0, AC-B1) Re-measured with the landed constants.** N = 17 passes with ~10
+  points at every validated Delay (39.2–40.3%), N = 9 fails by ~10 (59.3–60.5%, 54–56% on the
+  wire): the re-basing at N = 9 stays T6.0's call (Decisions, "(T4.7 part 2) AC-B1 re-measured").
+  AC-B1's prediction ("28–35% at N = 9, 17–22% at N = 17") should be replaced by these figures.
+- **(T4.7 part 2) Tests to run with `-race` on CI.** No C compiler here: they ran with
+  `-count=20 -cpu=1,2,4` (the slot pool's `-count=50`, the whole reconciler package `-count=3`,
+  the harness tests `-count=2`). New:
+  `TestSlotPool`, `TestSlotPoolCancelRace`, `TestInitiatedSessionCap`, `TestRoundSessionCapPerNode`,
+  `TestRoundSessionCapFollowsPeers`, `TestRoundSessionCapStripesTakeovers` (reconciler);
+  `TestNeighborhoodPastTokens` (rangesync). Changed: `TestRoundSessionCap`,
+  `TestRoundSessionCapSharedWithStripes`, `TestStripeTimeoutAfterSlot`,
+  `TestSessionRecheckAfterSlot`, `TestStripeBusyDoesNotStall`, `TestPeerStateResetIgnoresStaleRuns`,
+  `TestRangesyncOnlyGoroutines` (reconciler); `TestProtocolConverges`, `TestWorkedExamples`
+  (rangesync). Every session the reconciler opens now takes its slot from the new semaphore, so
+  re-run the whole reconciler package and the neighborhood tests (`TestNeighborhood*`).
