@@ -50,8 +50,9 @@ type Stripe struct {
 // peers whose root equals its own. Peers with other roots are not compared,
 // as their counts cover other ranges. With no such peer, or a zero median,
 // it returns false. A bootstrapping node whose root differs from every
-// neighbor's root is therefore not detected here; it relies on the session's
-// d̂ > LargeDiff branch (rangesync.Striper) alone.
+// neighbor's root is therefore not detected here; LacksSessionRoot covers it
+// per peer, and the sessions' large-difference branch (rangesync.Striper)
+// per range.
 func IsBootstrap(own rangesync.Status, peers []PeerStatus) bool {
 	var counts []uint64
 	for _, p := range peers {
@@ -65,6 +66,44 @@ func IsBootstrap(own rangesync.Status, peers []PeerStatus) bool {
 	slices.Sort(counts)
 	median := counts[len(counts)/2]
 	return median > 0 && float64(own.Summary.Count) < BootstrapRatio*float64(median)
+}
+
+// LacksSessionRoot is the session-root check of the rounds, next to
+// IsBootstrap (T4.7 part 1, constraint (d) of AC-B2). It reports whether
+// this node, with status own, holds fewer elements than a peer with status
+// peer in their session root (rangesync.SessionRoot) by more than threshold,
+// and returns the session root. A session this node opened there would open
+// at a count far below the peer's, which the peer answers as it answers a
+// stripe session: at count 0 it lists all it holds (DecisionSendItems), so
+// the caller stripes the session root instead. It compares two counts of
+// one range, so an edge peer (§7.6) is compared over the session root only,
+// not by the counts of different roots. This node's count is own's when the
+// session root is its root, and otherwise (the peer's root lies inside
+// this node's) the one summary returns; the peer's is its Status count when
+// the session root is its root, and otherwise (this node's root lies inside
+// the peer's) its count spread evenly over its root: shifted right by the
+// bits the session root lies below the peer's root, an estimate that
+// assumes uniformly spread addresses. It reports false for disjoint roots,
+// and when summary cannot summarize the range (it returns false).
+func LacksSessionRoot(own, peer rangesync.Status, summary func(fingerprint.Range) (uint64, bool), threshold uint64) (root fingerprint.Range, lacks bool) {
+	root, ok := rangesync.SessionRoot(own.Root, peer.Root)
+	if !ok {
+		return root, false
+	}
+	local, remote := own.Summary.Count, peer.Summary.Count
+	if !root.Equal(own.Root) {
+		if local, ok = summary(root); !ok {
+			return root, false
+		}
+	}
+	if below := int(root.Bits) - int(peer.Root.Bits); below > 0 {
+		if below >= 64 {
+			remote = 0
+		} else {
+			remote >>= below
+		}
+	}
+	return root, remote > local && remote-local > threshold
 }
 
 // PlanStripes splits r into 2^s prefix-aligned stripes and assigns them to

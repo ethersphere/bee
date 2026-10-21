@@ -35,7 +35,10 @@ var (
 	ErrNoSyncProtocol = errNoSyncProtocol
 )
 
-var SyncWiring = syncWiring
+var (
+	SyncWiring       = syncWiring
+	RangesyncOptions = rangesyncOptions
+)
 
 func NewRangesyncCloser(reconciler, service io.Closer) io.Closer {
 	return rangesyncCloser{reconciler: reconciler, service: service}

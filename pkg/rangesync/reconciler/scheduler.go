@@ -416,6 +416,19 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 		if skip {
 			continue
 		}
+		// Far behind the peer in the session root, this node would open
+		// at a count far below the peer's, and the peer would list to it
+		// what it holds: the session root is striped instead (constraint
+		// (d) of AC-B2), and the sessions with the peer wait while it is
+		// registered. The opening of a radius decrease is the old half,
+		// which this node holds.
+		if len(open) == 0 {
+			if sr, lacks := r.lacksSessionRootLocked(local, remote); lacks {
+				r.registerStripeLocked(stripeJob{rg: sr})
+				differs, unresolved = true, true
+				continue
+			}
+		}
 		candidates = append(candidates, p)
 		opens[p.ByteString()] = open
 	}
@@ -472,6 +485,22 @@ func (r *Reconciler) compareDigests(local, remote rangesync.Status) (known, equa
 		return false, false
 	}
 	return true, sum == remote.Summary
+}
+
+// lacksSessionRootLocked is LacksSessionRoot for this node's Status local and
+// a peer's Status remote, with the Options.LargeDiff threshold and this
+// node's summary of the session root from a rangeSummarizer. It may be
+// called with r.mu held, as compareDigests.
+func (r *Reconciler) lacksSessionRootLocked(local, remote rangesync.Status) (fingerprint.Range, bool) {
+	summary := func(rg fingerprint.Range) (uint64, bool) {
+		rs, ok := r.svc.(rangeSummarizer)
+		if !ok {
+			return 0, false
+		}
+		sum, err := rs.RangeSummary(rg)
+		return sum.Count, err == nil
+	}
+	return LacksSessionRoot(local, remote, summary, r.largeDiff)
 }
 
 // sameDigest reports whether the two statuses summarize the same elements

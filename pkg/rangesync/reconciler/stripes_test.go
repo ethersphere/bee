@@ -212,6 +212,53 @@ func TestIsBootstrap(t *testing.T) {
 	}
 }
 
+// TestLacksSessionRoot checks the session-root check (T4.7 part 1,
+// constraint (d)): the counts of one session root are compared, this node's
+// from its summary when the peer's root lies inside its own, the peer's
+// spread over its root when this node's root lies inside the peer's.
+func TestLacksSessionRoot(t *testing.T) {
+	t.Parallel()
+
+	const threshold = 100
+	wide, root, deep := stripeRange(0x40, 1), stripeRange(0x40, 2), stripeRange(0x40, 3)
+	far := fingerprint.NewRange(swarm.NewAddress([]byte{0x40}), 71)
+	st := func(r fingerprint.Range, c uint64) rangesync.Status {
+		return rangesync.Status{Root: r, Summary: fingerprint.Summary{Count: c}}
+	}
+	summary := func(counts map[string]uint64) func(fingerprint.Range) (uint64, bool) {
+		return func(r fingerprint.Range) (uint64, bool) {
+			c, ok := counts[r.String()]
+			return c, ok
+		}
+	}
+	none := summary(nil)
+	for _, tc := range []struct {
+		name      string
+		own, peer rangesync.Status
+		summary   func(fingerprint.Range) (uint64, bool)
+		root      fingerprint.Range
+		lacks     bool
+	}{
+		{"same root, far behind", st(root, 1000), st(root, 1101), none, root, true},
+		{"same root, behind by the threshold", st(root, 1000), st(root, 1100), none, root, false},
+		{"same root, empty", st(root, 0), st(root, 101), none, root, true},
+		{"same root, ahead", st(root, 1101), st(root, 0), none, root, false},
+		{"peer one bit deeper, synced", st(root, 2000), st(deep, 1000), summary(map[string]uint64{deep.String(): 1000}), deep, false},
+		{"peer one bit deeper, this node empty there", st(root, 2000), st(deep, 1000), summary(map[string]uint64{deep.String(): 0}), deep, true},
+		{"peer one bit deeper, no summary", st(root, 0), st(deep, 1000), none, deep, false},
+		{"this node one bit deeper, synced", st(root, 1000), st(wide, 2000), none, root, false},
+		{"this node one bit deeper, empty", st(root, 0), st(wide, 2000), none, root, true},
+		{"this node one bit deeper, the estimate within the threshold", st(root, 0), st(wide, 200), none, root, false},
+		{"this node 70 bits deeper", st(far, 0), st(wide, 1<<63), none, far, false},
+		{"disjoint", st(root, 0), st(stripeRange(0x80, 2), 1000), none, fingerprint.Range{}, false},
+	} {
+		got, lacks := reconciler.LacksSessionRoot(tc.own, tc.peer, tc.summary, threshold)
+		if lacks != tc.lacks || (tc.lacks && !got.Equal(tc.root)) {
+			t.Errorf("%s: got %s, %v; want %s, %v", tc.name, got, lacks, tc.root, tc.lacks)
+		}
+	}
+}
+
 func TestStripeCollector(t *testing.T) {
 	t.Parallel()
 

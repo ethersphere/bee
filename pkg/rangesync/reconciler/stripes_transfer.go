@@ -830,6 +830,39 @@ func (r *Reconciler) enqueueStripes(ranges []fingerprint.Range) bool {
 	return all
 }
 
+// Stripe is the rangesync.Striper of the sessions this node serves
+// (rangesync.Options.Striper): the peer's Fingerprint of rg counts remote
+// elements, more than LargeDiff above this node's local (candidate A of
+// AC-B2, T4.7 part 1). It takes rg over in every case, so that the session
+// answers nothing for rg and the peer lists none of its IDs to this node,
+// and registers rg for a striped transfer (registerStripeLocked) unless the
+// bootstrap plan holds it: while a bootstrap transfer is queued or in flight,
+// and while this node is bootstrapping (IsBootstrap), since the next round
+// registers the bootstrap of its root and a registered range inside the root
+// would keep it from doing so. A range that is not registered (covered by a
+// registered one, past the registry bound, after Close) is offered again by
+// a later session. It is called on the goroutine of the served session.
+//
+// The registry holds SyncRate for as long as rg is registered, whatever the
+// transfer stores: the stripe-registry SyncRate pin (T4.7 part 3), which a
+// peer claiming a far larger count now reaches through the sessions this
+// node serves too.
+func (r *Reconciler) Stripe(rg fingerprint.Range, _, _ uint64) bool {
+	if r.ctx.Err() != nil {
+		return true
+	}
+	if local, err := r.svc.LocalStatus(); err == nil && IsBootstrap(local, r.peerStatuses()) {
+		return true
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.foundDiff = true
+	if !r.bootstrapping {
+		r.registerStripeLocked(stripeJob{rg: rg})
+	}
+	return true
+}
+
 // registerStripeLocked queues job for the stripe worker, so that no range is
 // transferred twice. Prefix ranges overlap only by containment:
 //   - a range inside a registered (queued or in-flight) range is not

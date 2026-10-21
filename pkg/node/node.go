@@ -1205,10 +1205,7 @@ func NewBee(
 	)
 	if registerRangesync {
 		reconcilerSvc = reconciler.New(swarmAddress, kad, nil, logger, reconciler.Options{})
-		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesync.Options{
-			Scorer: reconcilerSvc,
-			Wants:  reconcilerSvc.Wants,
-		})
+		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesyncOptions(reconcilerSvc))
 		b.rangesyncCloser = rangesyncCloser{reconciler: reconcilerSvc, service: rangesyncService}
 		reconcilerSvc.SetService(rangesyncService)
 		if err := rangesyncService.Start(); err != nil {

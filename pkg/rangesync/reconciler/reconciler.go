@@ -115,6 +115,11 @@ type Options struct {
 	StartupGuardTimeout time.Duration
 	// StripeTimeout overrides StripeTimeout.
 	StripeTimeout time.Duration
+	// LargeDiff overrides rangesync.LargeDiff in the session-root check of
+	// the rounds (lacksSessionRootLocked); it must equal the Service's
+	// rangesync.Options.LargeDiff. It is for tests that scale a bootstrap:
+	// the node leaves it zero.
+	LargeDiff uint64
 }
 
 // peerState is what the reconciler keeps for a connected peer.
@@ -186,6 +191,7 @@ type Reconciler struct {
 	guardTimeout  time.Duration
 	stripeTimeout time.Duration
 	stripeRetry   time.Duration // stripeRetryInterval; tests shorten it
+	largeDiff     uint64        // rangesync.LargeDiff; tests scale it
 	rate          *rateWindow
 	metrics       metrics
 	// sources is the id → peers map of the IDs the want set denied a fetch
@@ -258,6 +264,7 @@ type Reconciler struct {
 
 var (
 	_ rangesync.PeerScorer = (*Reconciler)(nil)
+	_ rangesync.Striper    = (*Reconciler)(nil)
 	_ storer.Syncer        = (*Reconciler)(nil)
 )
 
@@ -291,6 +298,9 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 	if o.StripeTimeout <= 0 {
 		o.StripeTimeout = StripeTimeout
 	}
+	if o.LargeDiff == 0 {
+		o.LargeDiff = rangesync.LargeDiff
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Reconciler{
 		overlay:       overlay,
@@ -302,6 +312,7 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		guardTimeout:  o.StartupGuardTimeout,
 		stripeTimeout: o.StripeTimeout,
 		stripeRetry:   stripeRetryInterval,
+		largeDiff:     o.LargeDiff,
 		rate:          newRateWindow(SyncRateWindow, o.Now),
 		sources:       newWantSources(),
 		retryLocks:    newPeerLocks(),

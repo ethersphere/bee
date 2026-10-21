@@ -7,9 +7,14 @@ package node_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type mockSyncer struct {
@@ -157,5 +162,24 @@ func TestRangesyncCloserOrder(t *testing.T) {
 	}
 	if len(order) != 2 || order[0] != "reconciler" || order[1] != "service" {
 		t.Fatalf("close order %v, want [reconciler service]", order)
+	}
+}
+
+// TestRangesyncOptions: the node's rangesync service reports its sessions'
+// outcomes and the wants of the sessions it serves to the reconciler, which
+// is also the Striper of those sessions (T4.7 part 1); the rest keeps its
+// defaults.
+func TestRangesyncOptions(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(swarm.RandAddress(t), nil, nil, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+	o := node.RangesyncOptions(r)
+	if o.Scorer != r || o.Striper != r || o.Wants == nil {
+		t.Fatalf("options %+v, want the reconciler as scorer, striper and wants", o)
+	}
+	o.Scorer, o.Striper, o.Wants = nil, nil, nil
+	if !reflect.DeepEqual(o, rangesync.Options{}) {
+		t.Fatalf("options %+v set past the reconciler's", o)
 	}
 }
