@@ -78,15 +78,22 @@ type outcome struct {
 // metadata bytes, within ±20%, against the numbers the proposal states.
 //
 // Where the implementation differs from the proposal's numbers, the case
-// lists the measured outcome too, with the reason (T2.6 Decisions log):
+// lists the measured outcome too, with the reason (T2.6 Decisions log). The
+// symbol streams grow by GrowthFactor 2 since T4.7 part 2 (G6); the
+// proposal's text of examples 2 and 3 and §7.2 still has GrowthFactor 4's
+// More requests, so those cases take GrowthFactor 2's outcomes (the phase-4
+// Follow-ups list the proposal text to update):
 //
 //   - Example 2: a first batch of 68 symbols decodes 45 differences only
 //     about half of the time (the median stream needs 68 symbols, not ~62),
-//     otherwise one More(root, UpTo 272) follows, as the proposal notes.
-//   - Example 3: the proposal's own sequence has 7 Messages with parts (3
-//     plus 2 round trips of More and Symbols), not 5.
+//     otherwise one More(root, UpTo 136) follows (the proposal's UpTo 272
+//     is GrowthFactor 4's), and for a few draws a second one (UpTo 272).
+//   - Example 3: the stream grows 4, 8, 16, 32, 64: 11 Messages with parts
+//     (3 plus 4 round trips of More and Symbols; the proposal's own sequence,
+//     UpTo 16 and 64, has GrowthFactor 4's 7, not 5), or 9 when 32 symbols
+//     decode the 25 differences.
 //   - §7.2: the counts N+1 and N+2 give d̂ = 1, not 3, so n0 = 4 (not 7):
-//     ~0.46 KB when 4 symbols decode, else one More(root, UpTo 16).
+//     ~0.46 KB when 4 symbols decode, else one More(root, UpTo 8).
 //   - §7.3: the split sends A's 16 streams and B's 16 Items parts.
 func TestWorkedExamples(t *testing.T) {
 	t.Parallel()
@@ -102,7 +109,8 @@ func TestWorkedExamples(t *testing.T) {
 		name  string
 		seeds int
 		build func(rng *rand.Rand) (common, onlyA, onlyB []fingerprint.ID)
-		// want is the proposal's outcome; also are the other outcomes the
+		// want is the proposal's outcome (GrowthFactor 2's where the case
+		// list above says so); also are the other outcomes the
 		// implementation takes for some draws of the sets
 		want outcome
 		also []outcome
@@ -125,7 +133,7 @@ func TestWorkedExamples(t *testing.T) {
 				return randIDs(rng, root, n), []fingerprint.ID{x, z}, append(onlyB, restampedID(z))
 			},
 			want: outcome{3, fp + 68*symbol + 2*item},
-			also: []outcome{{5, fp + 272*symbol + 2*item}},
+			also: []outcome{{5, fp + 136*symbol + 2*item}, {7, fp + 272*symbol + 2*item}},
 		},
 		{
 			name:  "example 3: equal counts hide a larger difference",
@@ -133,7 +141,8 @@ func TestWorkedExamples(t *testing.T) {
 			build: func(rng *rand.Rand) ([]fingerprint.ID, []fingerprint.ID, []fingerprint.ID) {
 				return randIDs(rng, root, n), randIDs(rng, root, 12), randIDs(rng, root, 13)
 			},
-			want: outcome{7, 64*symbol + 12*item},
+			want: outcome{11, 64*symbol + 12*item},
+			also: []outcome{{9, 32*symbol + 12*item}},
 		},
 		{
 			name:  "7.2: small difference from the root",
@@ -142,7 +151,7 @@ func TestWorkedExamples(t *testing.T) {
 				return randIDs(rng, root, n), randIDs(rng, root, 1), randIDs(rng, root, 2)
 			},
 			want: outcome{3, fp + 4*symbol + item},
-			also: []outcome{{5, fp + 16*symbol + item}},
+			also: []outcome{{5, fp + 8*symbol + item}},
 		},
 		{
 			name:  "7.3: one split, then level-1 streams",

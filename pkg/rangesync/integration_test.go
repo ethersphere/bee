@@ -102,6 +102,16 @@ func computeMeyerBounds(a, b []fingerprint.ID, leafDepth int) meyerBounds {
 	}
 }
 
+// mores returns the More requests that grow a symbol stream from MinBatch to
+// capR, each up to GrowthFactor times the symbols received.
+func mores(capR int) int {
+	n := 0
+	for sent := rangesync.MinBatch; sent < capR; sent = min(rangesync.GrowthFactor*sent, capR) {
+		n++
+	}
+	return n
+}
+
 func fpIDs(tb testing.TB, chs []swarm.Chunk) []fingerprint.ID {
 	tb.Helper()
 	ids := make([]fingerprint.ID, len(chs))
@@ -233,11 +243,13 @@ func TestProtocolConverges(t *testing.T) {
 			bound := computeMeyerBounds(fpIDs(t, setA), fpIDs(t, setB), serviceLeafBits)
 			// Symbol streams (Phase 2) can cost more than the Meyer bound
 			// when the count estimate is low (equal counts give d̂ = 1): each
-			// More is one extra round trip, 5 from MinBatch to RootSymbols
-			// and 4 to Level1Symbols, and a stream that is exhausted before
-			// it decodes wastes its symbols (the root and the 16 level-1
-			// streams at most). T2.6 asserts the worked examples literally.
-			bound.messages += 2 * (5 + 4)
+			// More is one extra round trip, as many as GrowthFactor takes
+			// from MinBatch to RootSymbols and to Level1Symbols (mores: 10
+			// and 7 with GrowthFactor 2), and a stream that is exhausted
+			// before it decodes wastes its symbols (the root and the 16
+			// level-1 streams at most). T2.6 asserts the worked examples
+			// literally.
+			bound.messages += 2 * (mores(fingerprint.RootSymbols) + mores(fingerprint.Level1Symbols))
 			bound.bytes += (fingerprint.RootSymbols + 16*fingerprint.Level1Symbols) * fingerprint.MaxSymbolSize
 			messages := len(sent) + len(received)
 			bytes := 0

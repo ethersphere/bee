@@ -24,8 +24,13 @@ const (
 	// least 1.
 	BatchFactorNum = 16
 	BatchFactorDen = 10
-	// GrowthFactor is how much a symbol stream grows on each More request.
-	GrowthFactor = 4
+	// GrowthFactor is how much a symbol stream grows on each More request:
+	// the requester asks for up to GrowthFactor times the symbols it
+	// received. It is 2 since G6 (proposal §6.3 had 4): a smaller step
+	// overshoots the decoder's need less, for more round trips on a low
+	// estimate. Only the requester reads it, so peers with different growth
+	// factors interoperate.
+	GrowthFactor = 2
 
 	// ItemsPageSize is the largest number of IDs in one Items part.
 	ItemsPageSize = 1024

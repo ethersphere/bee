@@ -236,11 +236,12 @@ func TestSREPDecodeTable(t *testing.T) {
 // first batch FirstBatch(d) = ⌈1.6 d⌉ + 2 lies above the median threshold
 // (T2.6: p50 68 and p90 79 at d = 45, against 74), so most first batches
 // decode (85% at d = 45) and a stream costs 2.0–2.4 symbols per difference
-// for d ≥ 45; BatchFactor 2.0 decodes nearly all of them. The count estimate
-// alone (|cA − cB| = |2X − d|, X binomial(d, 1/2)) is far below d, and the
-// Mores it takes cost 3.3–3.6 symbols per difference with GrowthFactor 4
-// and 2.1–2.4 with 2. It logs the table, with the oracle that stops at the
-// threshold.
+// for d ≥ 45 with GrowthFactor 4, ~1.9 at d = 45 with GrowthFactor 2 (the
+// compiled constant since T4.7 part 2, whose Mores overshoot less); BatchFactor
+// 2.0 decodes nearly all of them. The count estimate alone (|cA − cB| = |2X −
+// d|, X binomial(d, 1/2)) is far below d, and the Mores it takes cost 3.3–3.6
+// symbols per difference with GrowthFactor 4 and 2.1–2.4 with 2. It logs the
+// table, with the oracle that stops at the threshold.
 func TestSREPSessionCost(t *testing.T) {
 	t.Parallel()
 
@@ -254,8 +255,8 @@ func TestSREPSessionCost(t *testing.T) {
 		noMoreAt45   [2]float64
 		perDiffExact [2]float64
 	}{
-		{name: "now", growth: rangesync.GrowthFactor, bf: srepFactor{rangesync.BatchFactorNum, rangesync.BatchFactorDen}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{2, 2.8}},
-		{name: "GrowthFactor 2", growth: 2, bf: srepFactor{16, 10}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{1.6, 2.2}},
+		{name: "now", growth: rangesync.GrowthFactor, bf: srepFactor{rangesync.BatchFactorNum, rangesync.BatchFactorDen}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{1.6, 2.2}},
+		{name: "GrowthFactor 4", growth: 4, bf: srepFactor{16, 10}, noMoreAt45: [2]float64{0.7, 0.95}, perDiffExact: [2]float64{2, 2.8}},
 		{name: "BatchFactor 2.0", growth: 4, bf: srepFactor{2, 1}, noMoreAt45: [2]float64{0.9, 1}, perDiffExact: [2]float64{1.9, 2.4}},
 	} {
 		p := srepParams{GrowthFactor: c.growth, BatchFactor: c.bf}.withDefaults()
@@ -321,7 +322,8 @@ func TestSREPPullsync(t *testing.T) {
 // pair one session per round on the round's snapshot): n_Δ per upload is
 // exactly p(N − p), an oracle that sends exactly the symbols the decoder
 // needs costs §4.3.7's per-difference cost, and the current constants cost
-// more than that.
+// more than that but less than GrowthFactor 4 (the constant before T4.7 part
+// 2).
 func TestSREPIdeal(t *testing.T) {
 	t.Parallel()
 
@@ -342,9 +344,9 @@ func TestSREPIdeal(t *testing.T) {
 		if id.SymbolsPerDiff <= id.OracleSymbolsPerDiff {
 			t.Errorf("N = %d: %.2f symbols per difference with the constants, not above the oracle's %.2f", n, id.SymbolsPerDiff, id.OracleSymbolsPerDiff)
 		}
-		p.GrowthFactor = 2
-		if g2 := p.ideal(t, table, perRound); g2.SymbolsPerDiff >= id.SymbolsPerDiff {
-			t.Errorf("N = %d: GrowthFactor 2 costs %.2f symbols per difference, not below GrowthFactor 4's %.2f", n, g2.SymbolsPerDiff, id.SymbolsPerDiff)
+		p.GrowthFactor = 4
+		if g4 := p.ideal(t, table, perRound); id.SymbolsPerDiff >= g4.SymbolsPerDiff {
+			t.Errorf("N = %d: the constants (GrowthFactor %d) cost %.2f symbols per difference, not below GrowthFactor 4's %.2f", n, rangesync.GrowthFactor, id.SymbolsPerDiff, g4.SymbolsPerDiff)
 		}
 		t.Logf("N = %d: %s", n, id)
 	}

@@ -69,13 +69,14 @@ var srepConfigCompiled = srepConfig{
 	bf:     srepFactor{Num: rangesync.BatchFactorNum, Den: rangesync.BatchFactorDen},
 }
 
-// srepConfigs are the session constants G6 decides between: "now" is the
-// compiled constants.
+// srepConfigs are the session constants G6 decided between: "now" is the
+// compiled constants (GrowthFactor 2 and BatchFactor 1.6 since T4.7 part 2),
+// "GrowthFactor 4" those before G6.
 var srepConfigs = []srepConfig{
 	srepConfigCompiled,
-	{name: "GrowthFactor 2", growth: 2, bf: srepFactor{16, 10}},
-	{name: "BatchFactor 2.0", growth: 4, bf: srepFactor{2, 1}},
-	{name: "both", growth: 2, bf: srepFactor{2, 1}},
+	{name: "GrowthFactor 4", growth: 4, bf: srepFactor{16, 10}},
+	{name: "BatchFactor 2.0", growth: 2, bf: srepFactor{2, 1}},
+	{name: "GrowthFactor 4, BatchFactor 2.0", growth: 4, bf: srepFactor{2, 1}},
 }
 
 // srepFigures are the figures the model and the harness are compared on,
@@ -334,7 +335,7 @@ func srepRecorded(c srepConfig, row srepRow) (srepRef, bool) {
 // change of the protocol that moves the harness's figures fails the record
 // check of TestSREPModelVsHarness; record them again then.
 var srepHarnessRef = []srepRef{
-	// the compiled constants (GrowthFactor 4, BatchFactor 1.6)
+	// GrowthFactor 4, BatchFactor 1.6 (the constants before G6)
 	{4, srepFactor{16, 10}, srepRow{9, 0, false}, 6, 0.7806, 0.0261, 18.30, 0.13, 3.088, 0.135},
 	{4, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7688, 0.0170, 18.13, 0.05, 3.064, 0.093},
 	{4, srepFactor{16, 10}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7204, 0.0238, 18.06, 0.10, 2.844, 0.127},
@@ -343,7 +344,7 @@ var srepHarnessRef = []srepRef{
 	{4, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6213, 0.0200, 49.64, 0.62, 3.484, 0.112},
 	{4, srepFactor{16, 10}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6623, 0.0397, 54.79, 1.05, 3.355, 0.191},
 	{4, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0124, 49.15, 0.75, 3.315, 0.094},
-	// GrowthFactor 2
+	// GrowthFactor 2, BatchFactor 1.6 (compiled since T4.7 part 2)
 	{2, srepFactor{16, 10}, srepRow{9, 0, false}, 6, 0.6066, 0.0153, 18.49, 0.25, 2.192, 0.044},
 	{2, srepFactor{16, 10}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.5951, 0.0048, 18.16, 0.11, 2.189, 0.027},
 	{2, srepFactor{16, 10}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.5975, 0.0094, 18.04, 0.14, 2.225, 0.036},
@@ -352,7 +353,7 @@ var srepHarnessRef = []srepRef{
 	{2, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.4860, 0.0115, 49.46, 1.03, 2.559, 0.062},
 	{2, srepFactor{16, 10}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.5215, 0.0078, 53.89, 0.42, 2.537, 0.070},
 	{2, srepFactor{16, 10}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.4430, 0.0092, 48.52, 0.52, 2.316, 0.071},
-	// BatchFactor 2.0
+	// GrowthFactor 4, BatchFactor 2.0
 	{4, srepFactor{2, 1}, srepRow{9, 0, false}, 6, 0.6913, 0.0200, 18.32, 0.14, 2.637, 0.088},
 	{4, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.7107, 0.0199, 18.18, 0.09, 2.768, 0.111},
 	{4, srepFactor{2, 1}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.7062, 0.0177, 18.04, 0.13, 2.775, 0.089},
@@ -361,7 +362,7 @@ var srepHarnessRef = []srepRef{
 	{4, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, false}, 6, 0.6121, 0.0183, 49.59, 0.14, 3.422, 0.113},
 	{4, srepFactor{2, 1}, srepRow{17, 200 * time.Millisecond, false}, 6, 0.6378, 0.0165, 54.62, 0.73, 3.225, 0.074},
 	{4, srepFactor{2, 1}, srepRow{17, 50 * time.Millisecond, true}, 6, 0.5916, 0.0121, 49.13, 0.87, 3.316, 0.105},
-	// both
+	// GrowthFactor 2, BatchFactor 2.0
 	{2, srepFactor{2, 1}, srepRow{9, 0, false}, 6, 0.6137, 0.0130, 18.25, 0.18, 2.264, 0.059},
 	{2, srepFactor{2, 1}, srepRow{9, 50 * time.Millisecond, false}, 6, 0.6224, 0.0088, 18.13, 0.17, 2.333, 0.042},
 	{2, srepFactor{2, 1}, srepRow{9, 200 * time.Millisecond, false}, 6, 0.6397, 0.0084, 18.04, 0.17, 2.440, 0.039},
