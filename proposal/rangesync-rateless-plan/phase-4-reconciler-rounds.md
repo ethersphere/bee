@@ -3480,6 +3480,179 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     No `-race` on this host: the new and changed tests ran with `-count=3 -cpu=1,2,4` (the
     harness tests `-count=1 -cpu=1,2,4`); the CI list is in Follow-ups. The `-tags=sim` runs
     above are one at a time.
+- **(T4.7 part 1 fix round 1) Review findings: a peer's claim lowers no threshold; the stripe clock
+  is an inactivity timeout; the bootstrap tests assert their claims.** Commits 3992a351 (code and
+  unit tests), f325a8a7 (harness tests) and 002c6460 (own transfers past the registry bound). The
+  review's findings, in its order:
+  - *Medium 1: a peer's claim and this node's own transfers.* A registered range is now one of two
+    kinds (`stripeJob.own`). Own: the bootstrap of the root (`planCatchUp`: `IsBootstrap`, against
+    the median of the peers' counts) and a radius decrease's new half (`enqueueRadiusHalf`). A
+    claim: anything a peer's count put there, a range a session's Striper took over (served:
+    `Reconciler.ServedStriper`; opened: the round session's `StripeCollector` through
+    `enqueueStripes`) or a session root the rounds' check found far behind the peer's Status
+    (`LacksSessionRoot`); `stripeJob.peer` is that peer. Four rules follow:
+    - only own jobs set the threshold to 0 (`Transferring`, its served, collector and
+      `lacksSessionRootLocked` users alike), so a liar's claim stops neither the round sessions
+      with the other peers nor their small differences (pushsync misses, §7.7) in the claimed range;
+      the claimed range moves through the claim's stripes and the rounds both, as before T4.7;
+    - claims are capped: a session registers at most `maxSessionStripes` = 1 range, the others it
+      takes over are dropped (taken over all the same, offered again by a later session), and a
+      peer holds at most `maxPeerStripes` = 2 claims in the registry, trimmed parts counted one by
+      one (dropped past it, `stripes_total{dropped}`). One opening of 256 ranges registers one;
+    - an own job is not refused for a claim in its way: registering it drops the claims that
+      overlap it, ends the claim in flight whatever its range (the one stripe worker would run it
+      first, as long as its peers keep it going: `stripeJob.cancel`, set by the worker), and queues
+      it before every claim (`addStripeLocked`); nor is it dropped at `maxStripeRegistry`, which
+      now bounds the claims (the own jobs, at most a bootstrap and a radius half, come on top).
+      Only another own job in its way refuses it, as before (`TestRoundBootstrapOverlap`,
+      `TestRadiusHalfOverlapRetried`; `HoldStripe` now holds an own job);
+    - to know the peer, `rangesync.Options.Striper` becomes a per-session factory
+      (`func(peer swarm.Address) Striper`, called once per served session; pkg/node wires
+      `r.ServedStriper`); the reconciler no longer is a Striper itself.
+
+    This supersedes, in "(T4.7 part 1) AC-B2: the lacking side declines (candidate A), as built":
+    "in a range a registered transfer covers, the threshold is 0" and "`lacksSessionRootLocked`
+    uses 0 for a covered session root" (own transfers only, and over their union, below), "it takes
+    every offered range over and registers it ... except while the bootstrap plan holds it" (capped
+    claims), and, in `registerStripeLocked`'s rules, "a bootstrap or radius job that contains
+    registered ranges is not registered" (own ranges only). Tests: `TestClaimKeepsRounds` (real
+    services: a claim of node 0's whole root, registered and in flight for the whole test, and node
+    0 still syncs the 3 chunks an honest peer holds beyond it through round sessions, as initiator
+    and as responder; with claims counted in `Transferring` both subtests time out),
+    `TestClaimCaps`, `TestOwnJobPreemptsClaims` (bootstrap: claims inside the root dropped, the one
+    in flight ended, the threshold 0; radius: the overlapping claim dropped, the one in flight
+    ended, the other claim queued behind the half; a registry full of claims: the half registered
+    on top, queued first), `TestTransferring` (rewritten: own transfers
+    and their union cover, a claim covers nothing, a round runs over a claimed root),
+    `TestServedStripeRegisters` (through `ServedStriper`), `TestReconcileServedStriper` (one
+    Striper per served session, for its peer), `TestRangesyncOptions`. The own bootstrap's tail
+    still reads threshold 0: no peer lists node 0 anything it lacked (`checkDeclined`, Low 1
+    below, in every bootstrap run, `TestG6BootstrapTail` included).
+
+    The cost falls on the two cases whose transfer is a claim: the responder-only lacking node and
+    a bootstrapping node whose root no neighbor shares (constraint (d)). Their tails, below
+    `LargeDiff`, are reconciled by the sessions again, as candidate A's text expected (up to
+    `LargeDiff` × 70 B ≈ 4.6 MB per session at 2^22): `TestNeighborhoodBootstrapResponderOnly`
+    reads 67 KB (1.91 × of 35 KB lacked, as in part 1), `TestNeighborhoodBootstrapForeignRoot`
+    1.00× and 1.08× (as in part 1); at 2^22 not measured (Follow-ups).
+  - *The StripeTimeout relisting (Follow-ups, the PRE-T6.1 finding).* `stripeClock` is an
+    inactivity timeout: it expires once it has run `StripeTimeout` since the attempt's fetches
+    last stored a chunk (`progress`: `FetchWithProgress`'s stored callback through `fetchFrom`'s
+    new `progress` argument, or the fetch's return with chunks stored without a
+    `progressFetcher`), or since the attempt started. Its cap is what is left of the peer's budget,
+    `stripePeerBudget` = 1 + `maxStripeRestarts` = 9 `StripeTimeout`s on the clock for all the
+    attempts of one stripe with one peer (`runStripe` sums `StripeResult.clock`); an attempt that
+    ran out of it (`capped`) is reassigned, not restarted, so a peer that drips a real chunk now
+    and then holds a stripe no longer than the 9 attempts of 15 minutes did (2.25 h per peer, 9 h
+    per stripe). This narrows the orchestrator's "a hard cap of (1 + `maxStripeRestarts`) ×
+    `StripeTimeout` per attempt": with a cap per attempt only, a peer that drips and stalls just
+    before the cap would be restarted 8 times, up to ~20 h; with the budget per peer each attempt's
+    cap is that product less what the peer's earlier attempts ran. A verification is one attempt
+    with the whole budget as its cap. Kept: the clock
+    pauses for the peer's Busy with no fetch running and runs through this node's Busy, on the
+    injected clock, and `expireIfDue` runs after every timed wait; new, it also runs before each
+    listed batch is fetched, and a batch is no longer fetched once the attempt's context ended (so
+    the timeout is exact on a fake clock: the fetch goroutine starts no fetch past it). This
+    supersedes T4.3 fix round 3's "the stripe timeout bounds the fetch after the session again" in
+    its bound (15 minutes of the attempt became 15 minutes of no chunk stored, capped by the
+    budget), and T4.5 part 2a's "*The bound* ... 36 attempts of `StripeTimeout` on the stripe
+    clock (9 h)" (now: at most 36 attempts, and at most `stripePeerBudget` × `StripeTimeout` on the
+    clock per peer, 9 h per stripe; 12 attempts held up only by this node, each ending at 15
+    minutes of inactivity, 3 h) and its "The attempt calls `expireIfDue` after each session answer
+    and each wait" (and before each fetch). A restart still lists the remainder again (it opens at
+    the node's count), but only after a peer stored nothing for `StripeTimeout` or lost its whole
+    budget. Tests: `TestStripeInactivityTimeout` (fake clock, a stripe of peers A then B: A
+    delivering one chunk per fetch at 0.9 timeout apart finishes at 5.4 timeouts in one session;
+    A dripping without end is reassigned to B after 9 timeouts, one session with A; A stalling is
+    reassigned after one timeout; with `progress` a no-op "slow" goes to B and "drip" runs 5
+    sessions with A) and `TestNeighborhoodBootstrapStripeTimeout` (Low 1 below).
+  - *Low 1: the tests assert their headlines.* The harness records the distinct IDs a node wanted
+    from the sessions it served (`simNodeResult.ServedWants`) and how many of them are lagging base
+    chunks (`ServedLagging`). `bootstrapFigures.checkDeclined`: the peers of a node that
+    bootstraps by `IsBootstrap` list it no ID it lacked, and no more distinct IDs than the uploads.
+    Distinct, not the per-session sum `wants`: an upload pushed late is listed by each peer whose
+    session finds node 0 without it (part 1's lifted runs read 2–9 for 4 uploads). `atRank(k)`
+    places node 0 at rank k (its first byte 0x80, k peers below, the others above).
+    `TestG6BootstrapScaled` runs ranks 1–4 at both Bases (seed = rank), checks `check` and
+    `checkDeclined` in every run, and asserts takeovers in the 2-minute runs at ranks 1–3 at both
+    Bases; `TestG6BootstrapTail` runs the default `StripeTimeout` (seeds 1, 2 and highest; one
+    3 h row kept for comparison) and checks `check`, `checkDeclined` and zero wants in every run;
+    `TestNeighborhoodBootstrapScaled` (default build) runs at rank 2 and asserts takeovers (rank 2,
+    16 takeovers, 1.01×, no ID listed); new `TestNeighborhoodBootstrapStripeTimeout` (default
+    build, rank 1, the 2-minute transfer, `StripeTimeout` 30 s, so each stripe outlasts it about 4
+    times): `check`, `checkDeclined`, at most two completed stripe sessions per stripe (transfer and
+    verification); 564 KB (1.01×) of the 1644 KB bound, 4 stripes done, none timed out. With the old
+    clock (`progress` a no-op): 3446 KB (6.15×, over the bound), 250 duplicate deliveries, 26
+    completed stripe sessions for 4 stripes, caught up after 191 s instead of 122 s.
+  - *Low 2: `Transferring` over the union of the own transfers.* A range is covered when the own
+    ranges cover it together (`trimStripe` with no room left: no uncovered part), not only one
+    containing it; claims never count. In practice the own transfers are one bootstrap root or one
+    radius half, and both at once only after a radius decrease during a bootstrap, so the union
+    matters there. Not closed: a range only partly inside the own transfers (the new root over a
+    radius half in its tail) keeps the session's threshold. Declining it would decline its other
+    part too, and splitting it does not help: the frozen wire makes the splitting side send all
+    `R.Children(FanoutBits)` in one Message (§6.4, `Handle`'s rules), and the holder decides on
+    them, so a child inside the half that node 0 still lacks entirely is listed. At 2^22 the
+    root's difference passes below `LargeDiff` only once node 0 holds over 97% of the half, when
+    no child is empty, so what is listed is what the symbols or items of a small difference cost
+    (up to `LargeDiff` IDs per session); not measured.
+  - *Low 3:* `recheckSession` reruns the session-root check (`lacksLocked`) for a session over the
+    session root (no Open): a session that waited for a slot no longer opens once this node is far
+    behind the peer, or once its own transfer of the root was registered and the peer holds more.
+    The round registers the claim, as before. `TestSessionRecheckAfterSlot` adds both cases (each
+    fails without the check).
+  - *Low 4:* the `Striper` and `Config.Striper` docs (session.go) say "more than the threshold
+    (LargeDiff, or 0 where Transferring)". The proposal-text follow-up's "§6.3 L834 (constants)" is
+    L830 (Follow-ups).
+  - Checks: `go build ./...`; `go vet` on pkg/rangesync/... and pkg/node/..., and with `-tags=sim`
+    on pkg/rangesync/...; `GOTOOLCHAIN=go1.26.1 make lint`, and `golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues; gofumpt and gci on the changed files only (no change). `go
+    test ./pkg/rangesync/... ./pkg/node/...` pass (`pkg/rangesync` ~29 s);
+    `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` and pkg/node
+    (`TestCombinedSyncerBothDrivers`, `TestSyncWiring`) pass (pkg/node changed one line of
+    `rangesyncOptions`, wiring only; the defaults build no rangesync service). No `-race`: the
+    reconciler package ran `-count=3 -cpu=1,2,4` nine times (one failure of
+    `TestSyncRateBootstrap`, not reproduced in 90 runs of it alone, nor in six base-code runs of
+    the package; Follow-ups), the changed pkg/rangesync tests `-count=2 -cpu=1,2,4`. No wire, proto,
+    pkg/pullsync, pkg/puller, go.mod or `*_fuzz_test.go` change; one line in followup-fuzzing.md.
+  - Scaled acceptance re-run (`-tags=sim`, one at a time, 2189 s, peak RSS 710 MB; every run
+    passes `check` and `checkDeclined`; at f325a8a7, before 002c6460, which changes only an own
+    job's registration in a full registry):
+    - `TestG6BootstrapScaled` (N = 5, node 0 empty, `LargeDiff` Base/64, Delay 50 ms, ranks 1–4 by
+      `atRank`): node 0 reads 4.908–4.913 MB at Base 70000 (bound 6.64 MB) and 7.010–7.014 MB at
+      100000 (bound 9.05 MB), 1.001–1.003× of the lacked IDs at every rank in both modes, as part 1
+      (1.002–1.003×). Takeovers, ranks 1 / 2 / 3 / 4: "2 min" 24 / 15 / 7 / 0 at Base 70000 and
+      23 / 15 / 8 / 0 at 100000; "lifted" 3 / 2 / 1 / 0 at both. The peers' sessions listed node 0
+      no ID it lacked; their wants sum to 0 in the "2 min" runs and 1–7 in the "lifted" ones, 1–3
+      distinct IDs, all uploads (4 per run). No stripe timed out, no duplicate. 1561 s.
+    - `TestG6BootstrapTail` (Base 16000, `LargeDiff` 250, 3 per second on the clock, the transfer
+      ~89 minutes, stripes ~6 × `StripeTimeout`), rank (seed), the default `StripeTimeout`: 1 (1)
+      1232 KB of 2288 KB, 1.100×; 2 (2) 1263 KB, 1.128×; 4 (1, highest) 1326 KB, 1.184×; caught up
+      after 5334 s (part 1 with the default timeout: 9.34–9.45×, 38–40 stripe sessions for 4
+      stripes, ~129 minutes), 9–12 stripe sessions (4 transfers, 4 verifications, Busy retries),
+      none timed out, 0 wants, no duplicate. The 3 h row reads the same as the default one (seed 1:
+      1232 KB, 1.100×), and as part 1's lifted rows (1.10, 1.13, 1.18×): the inactivity timeout
+      costs nothing over lifting the timeout. 628 s.
+  - The rest of the `-tags=sim` suite (the verifier's gap), after the fix, one at a time (2895 s,
+    then 32 s; peak RSS 1.36 GB, sampled): every test passes, and no figure moved outside its seed
+    spread (the steady and catch-up runs register no stripe, so the fix changes nothing there).
+    `TestG6Constants` (308 s): shares, hint on, at 50 / 100 / 200 ms 77.2 / 76.1 / 71.9% at N = 9
+    and 61.0 / 62.3 / 64.9% at N = 17 (G6: 77.5 / 76.4 / 72.3 and 61.7 / 61.6 / 65.6, sd 2–3
+    points), convergence 3.40 s / 5.90 s and 3.73 s / 6.45 s (G6 3.39 / 5.90 and 3.73 / 6.45).
+    `TestG6Load` (235 s): n_Δ p50 / p99 / max within the seeds' noise of the G6 Q2 table (N = 9,
+    15.4/s: 40 / 55 / 58 against 40 / 54 / 58; N = 17, 100/s: 174 / 360 / 488 against 176 / 365 /
+    484), no stream exhausted; sides ≥ `CatchUpMinDiff` at N = 17, 100/s: 15 (G6: 7 in one run;
+    max wants 393 against 400). `TestG6RoundInterval` (441 s): the sparse runs' longest 10.75 and
+    10.95 s (G6: 10.75–10.95). `TestG6Catchup` (306 s): caught up 0.85 / 1.08 / 1.80 / 2.62 / 4.03
+    / 6.75 s at Lag 300–12000 (G6 0.85 / 1.08 / 1.85 / 2.62 / 3.97 / 6.90), symbols the same,
+    exhausted 68 and 349 (68, 350). `TestG6Bootstrap` (32 s): 1411 and 1410 KB at ranks 4 and 14
+    (part 1: 1412, 1409), 16 stripes done, none reassigned or timed out. `TestG6BootstrapPeers`
+    (760 s): 4908–4909 KB and 7011–7012 KB (part 1 the same). `TestG6EqualCounts` (1 s): the G6
+    GF4 column exactly. `TestG6FetchOpenFails` (19 s): 3.41 s, 75.7% (G6 3.41 s, 75.6%).
+    `TestSREPModelVsHarness` (190 s): its record check passes (every live − recorded within its
+    bound); `TestSREPModelG6` (64 s), `TestSREPModelG6Part3` (536 s). Then `go test -tags=sim
+    ./pkg/rangesync/... -skip 'TestG6|TestSREPModelVsHarness|TestSREPModelG6'`: the other 1316
+    tests and subtests (`TestNeighborhood*` included) pass.
 
 ## Follow-ups
 _(sessions append here)_
@@ -4756,3 +4929,71 @@ _(sessions append here)_
   harness (the responder Striper, radii, roots, the clock fetch rate) every neighborhood test; and
   re-run `TestRound*`, `TestRoundBootstrap*`, `TestStartupGuard*`, `TestSyncRate*`,
   `TestTransferStripes*`, `TestStripe*`, `TestCombinedSyncerBothDrivers`.
+- **(T4.7 part 1 fix round 1 → T6.1, AC-B2) Fixed: a stripe that outlasts `StripeTimeout` no
+  longer lists again what it had listed.** This supersedes the status "PRE-T6.1 FINDING" of "(T4.7
+  part 1 → T6.1, AC-B2) PRE-T6.1 FINDING: a stripe that outlasts `StripeTimeout` lists again what
+  it had listed", and its directions: `StripeTimeout` is an inactivity timeout, reset when the
+  attempt's fetches store chunks, with a per-peer budget of 9 timeouts (Decisions, "(T4.7 part 1
+  fix round 1) Review findings"). Measured (`TestG6BootstrapTail`, the default `StripeTimeout`, the
+  transfer ~89 minutes, each stripe ~6 timeouts long): 1.10–1.18× of the lacked IDs at ranks 1, 2
+  and 4 (bound 2288 KB; 9.34–9.45× before), no stripe timed out or restarted, caught up after the
+  transfer's 89 minutes instead of ~129; and `TestNeighborhoodBootstrapStripeTimeout` (default
+  build, a 30 s timeout, 2-minute stripes): 1.01× (6.15× and 250 duplicate deliveries with the
+  old clock). A restart still relists the remainder, now
+  only after a peer stored nothing for 15 minutes or spent its budget (a dripping or stalling
+  peer, not an honest slow one). Left for T6.1: the real clock's fetch limiter (the harness's
+  fetch rate on the clock is an upper bound of it).
+- **(T4.7 part 1 fix round 1 → part 3) The registry `SyncRate` pin, corrected.** This corrects
+  "(T4.7 part 1 → part 3) The registry `SyncRate` pin, widened": "each job ends quickly when the
+  peer delivers nothing" holds for the honest peers' stripes of a claim's job, which find little
+  to do, not for the liar's own stripe, which ends only when its attempt has stored nothing for
+  `StripeTimeout` (15 minutes, then it is reassigned to an honest peer), or, if the liar delivers
+  a real chunk now and then, after its budget of 9 timeouts (2.25 h). And "While a liar's range is
+  registered, the node also declines every lack inside it in its round sessions (`Transferring`)"
+  no longer holds: a claim lowers no threshold (fix round 1), and the claims are capped
+  (`maxPeerStripes` 2 per peer, `maxSessionStripes` 1 per session). What is left for part 3: (1)
+  the pin itself, now by at most `maxPeerStripes` claims per peer at a time, re-registered as soon
+  as one ends; (2) a liar's claim in flight occupies the one stripe worker for as long as its own
+  stripe lasts (above), so the other claims (an honest responder-only lack, a constraint-(d)
+  session root) wait behind at most `maxPeerStripes` claims per lying peer; this node's own
+  transfers do not wait (they end the claim in flight). Part 3's "hold for a stripe only while its
+  job stores chunks, past a grace" is where (2) fits too: end a claim whose job stores nothing past
+  the grace. Part 4's fetch credit does not change either.
+- **(T4.7 part 1 fix round 1 → T6.1, AC-B2) The tails of the two claimed transfers.** A transfer
+  that a peer's count registered (a claim) keeps the sessions' threshold at `LargeDiff`, so below
+  it its tail is reconciled by the round sessions again: the responder-only lacking node (served
+  claims) and a bootstrapping node whose root no neighbor shares (constraint (d), the session-root
+  claim). Up to `LargeDiff` IDs (~4.6 MB at 2^22) per session through the tail, as candidate A's
+  text estimated and as part 1 measured for the `IsBootstrap` tail before its zero threshold
+  (536–1703 wanted IDs at Base 16000, ~10–31 MB at 2^22 and N = 5, past AC-B2's ~46 MB headroom at
+  N = 17, estimated). The scaled default-build cases read as in part 1 (67 KB; 1.00× and 1.08×);
+  the 2^22 geometry of these two cases is not measured. A direction that keeps a liar out: make
+  the session-root transfer an own job when the median of the peers comparable over that session
+  root says this node is far behind (`IsBootstrap`'s rule per session root), not one peer's
+  Status.
+- **(T4.7 part 1 fix round 1 → the proposal) Corrections to "(T4.7 part 1 → the proposal) The
+  decision rule's text after candidate A".** "§6.3 L834 (constants)" is §6.3 L830 (L834 is §6.4).
+  "0 instead of `LargeDiff` in a range the node's own striped transfer covers" means its own
+  transfers only (its bootstrap and a radius decrease's half, over their union), not a range a
+  peer's count registered; §7.4 L931's addition should say that the session-root check's transfer
+  is the peer's claim (capped per peer, preempted by the node's own transfers, no zero threshold).
+  §9's "stripe timeout and reassignment" (L1272) could say that the timeout runs while the stripe
+  stores nothing, within a per-peer budget.
+- **(T4.7 part 1 fix round 1, low) `TestSyncRateBootstrap` can race its own clock.** Its loop
+  moves the clock 20 minutes per pass (`pastWindow`), past `StripeTimeout`, while the fetches are
+  gated: the stripes time out, are reassigned, fail on the second pass, and the bootstrap is
+  registered again a round later; a pass whose `SyncRate` read falls in that gap reads 0. Seen once
+  in nine `-count=3 -cpu=1,2,4` runs of the package, not in 90 runs of the test alone nor in six
+  runs of the package on the base code; the mechanism predates fix round 1 (the old timeout
+  expired the gated attempts the same way). A `StripeTimeout` above the loop's 60 minutes in that
+  test would remove it.
+- **(T4.7 part 1 fix round 1) Tests to run with `-race` on CI.** They ran with `-count=3
+  -cpu=1,2,4` instead (the harness tests `-count=2 -cpu=1,2,4`). New: `TestClaimCaps`,
+  `TestOwnJobPreemptsClaims`, `TestClaimKeepsRounds`, `TestStripeInactivityTimeout`
+  (reconciler; the stripe clock is now shared by the attempt's goroutine, its fetch goroutine and
+  the fetch callbacks, under its own mutex), `TestNeighborhoodBootstrapStripeTimeout`. Changed:
+  `TestTransferring`, `TestServedStripeRegisters`, `TestSessionRecheckAfterSlot`,
+  `TestReconcileServedStriper`, `TestRangesyncOptions`, `TestNeighborhoodBootstrapScaled`; and
+  re-run every `TestStripe*`, `TestTransferStripes*`, `TestEnqueueStripes*`,
+  `TestRoundBootstrap*`, `TestRadius*`, `TestSyncRate*`, `TestVerifyStripes*` (the registry's
+  entries and the stripe worker's claim context changed).
