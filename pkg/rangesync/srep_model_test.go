@@ -502,6 +502,12 @@ type srepResult struct {
 	Diffs          []int
 	MoreCounts     []int
 	SymbolsPerDiff []float64
+	// Wants holds the wants of each side of every completed session
+	// (pairwise_diff_half's value, what CatchUpMinDiff is compared with),
+	// and Thresholds the decoder threshold K of every decoded stream (the
+	// symbols a stream that stops once decoded would take).
+	Wants      []int
+	Thresholds []int
 	// Fetches counts the fetches (Want streams), Fetched the chunks they
 	// stored, Denied the claims the want set denied and Duplicates the
 	// deliveries of a chunk the node held already.
@@ -1195,7 +1201,8 @@ func (s *srepSim) decode(sess *srepSession) {
 	}
 	diff := len(sess.onlyA) + len(sess.onlyB)
 	ks := s.table.thresholds(s.tb, diff)
-	sess.st = s.p.stream(sess.n0, ks[s.rng.IntN(len(ks))], sess.capR)
+	k := ks[s.rng.IntN(len(ks))]
+	sess.st = s.p.stream(sess.n0, k, sess.capR)
 	start := 0
 	for i, n := range sess.st.batches {
 		if i > 0 {
@@ -1214,6 +1221,7 @@ func (s *srepSim) decode(sess *srepSession) {
 		s.res.Recovered += diff
 		s.res.Mores += sess.st.mores()
 		s.res.Diffs = append(s.res.Diffs, diff)
+		s.res.Thresholds = append(s.res.Thresholds, k)
 		s.res.MoreCounts = append(s.res.MoreCounts, sess.st.mores())
 		if diff == 0 {
 			s.res.ZeroDecoded++
@@ -1258,6 +1266,9 @@ func (s *srepSim) decoded(sess *srepSession) {
 			}
 		}
 		s.count(srepEmptyBytes, s.wire.empty())
+		if s.counting {
+			s.res.Wants = append(s.res.Wants, len(wantsA), len(wantsB))
+		}
 		s.at(s.now+2*d, func() { s.servedDone(b, a, wantsB) })
 		s.at(s.now+3*d, func() { s.initiatorDone(sess, wantsA, false) })
 	})
@@ -1287,6 +1298,7 @@ func (s *srepSim) initiatorDone(sess *srepSession, wants []int, equal bool) {
 		s.res.Sessions++
 		s.res.Equal++
 		s.res.Diffs = append(s.res.Diffs, 0)
+		s.res.Wants = append(s.res.Wants, 0, 0)
 	}
 	if len(wants) > 0 {
 		a.foundDiff = true

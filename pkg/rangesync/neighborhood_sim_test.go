@@ -137,6 +137,18 @@ type simOptions struct {
 	// symbol batch then comes from the count estimate alone, as for G6's
 	// sweep with the hint on and off.
 	NoHints bool
+	// Lag base chunks, the last Lag of Base, are missing from node LagNode
+	// (an index into simNeighborhood's nodes) at the start: the node rejoins
+	// after an absence and catches up, in a session past CatchUpMinDiff, a
+	// split past a cache, or a bootstrap (Lag = Base). With Lag set, the
+	// counters are taken from the start of the run instead of from the first
+	// upload, and the run converges once the node holds those chunks too
+	// (simResult.CaughtUp).
+	Lag, LagNode int
+	// FetchOpenFails lists nodes (indexes into simNeighborhood's nodes) to
+	// which every fetch stream open fails (errSimOpenRefused): a peer that
+	// lists its IDs in sessions and never serves a Want.
+	FetchOpenFails []int
 	// MinRoundInterval and MaxRoundInterval override the bounds of the
 	// adaptive round interval (reconciler.Options); zero keeps
 	// reconciler.MinRoundInterval and MaxRoundInterval.
@@ -186,7 +198,9 @@ func (o simOptions) withDefaults() simOptions {
 }
 
 // simResult is what a simulation measured. Counters of the nodes are taken
-// from the first upload to the end of the run (the warm-up is left out).
+// from the first upload to the end of the run (the warm-up is left out), or
+// from the start with a lagging node (simOptions.Lag): "from the first upload"
+// below means from then.
 type simResult struct {
 	// Batches holds each upload batch's convergence.
 	Batches []simBatch
@@ -201,9 +215,16 @@ type simResult struct {
 	// Sessions counts the sessions the reconcilers opened, by result
 	// (reconciler sessions_total), from the first upload.
 	Sessions map[string]float64
+	// Counters holds, summed over the nodes and from the first upload, the
+	// counters of simCounterNames by their labels, keyed as
+	// "streams_exhausted_total{level=root}". With a lagging node,
+	// CatchUpCounters holds the part of them counted before the first upload
+	// (the catch-up's, once it ended by then).
+	Counters, CatchUpCounters map[string]float64
 	// StreamBytes holds the bytes written on the streams opened from the
-	// first upload on, both directions, by stream name.
-	StreamBytes map[string]int
+	// first upload on, both directions, by stream name, and TailBytes those
+	// of the streams opened after the last upload converged.
+	StreamBytes, TailBytes map[string]int
 	// Spans holds every call of a reconciler into its service (a session it
 	// opened, a fetch, a Status sent), warm-up included, in the order they
 	// ended.
@@ -222,6 +243,9 @@ type simResult struct {
 	// the last upload, and LastSession the time from then to the start of
 	// the last session a reconciler opened (0 if none started after it).
 	Converged, LastSession time.Duration
+	// CaughtUp is the time from the start of the run until the lagging node
+	// (simOptions.Lag) held every base chunk, 0 without one.
+	CaughtUp time.Duration
 	// End is the time from the start of the run to its end.
 	End time.Duration
 	// Steps is the number of times the clock moved, and Wall the real time
@@ -306,6 +330,18 @@ type simSample struct {
 	Node    int
 	Diff    float64
 	Session rangesync.SessionSample
+	// Wants is the number of IDs the side handed to its reconciler, the
+	// value of pairwise_diff_half and what the reconciler compares with
+	// CatchUpMinDiff: the wants ReconcileWith returned to an initiator, and
+	// those a responder passed to Options.Wants (0 when it passed none).
+	Wants int
+}
+
+// simSampleKey is the side of a session whose sample waits for its wants.
+type simSampleKey struct {
+	node      int
+	peer      string
+	initiator bool
 }
 
 // wantClaimResults are the label values of want_claims.
@@ -338,19 +374,25 @@ type simNeighborhood struct {
 	pairSeq atomic.Uint64
 	pairs   sync.Map // pair id → *simPair, until its handler takes it
 
+	closing atomic.Bool // close was called
+
 	mu        sync.Mutex
-	chunks    map[string]*simChunk // uploads by ID
+	chunks    map[string]*simChunk // uploads and lagging base chunks by ID
 	uploads   []*simChunk
+	lagging   []*simChunk // the base chunks the lagging node lacks
 	batchAt   []time.Time
 	samples   []simSample
+	awaiting  map[simSampleKey]int // samples waiting for their wants, by side
 	protocols map[string]bool
 	arrivals  map[simArrival][]time.Time
 	sessions  []time.Time // starts of the sessions the reconcilers opened
 	streams   []*simPair
 	closed    bool // close closed the streams: NewStream opens no more
 	spans     []simSpan
-	converged int // uploads held by every node
+	converged int       // uploads and lagging chunks held by every node
+	from      time.Time // the counters are taken from then (snapshot)
 	baseline  []simCounters
+	atUpload  map[string]float64 // with a lagging node: Counters at the first upload
 	sessions0 map[string]float64
 }
 
@@ -373,6 +415,15 @@ type simCounters struct {
 	metaIn, metaOut, chunksIn, chunksOut, mores float64
 	claims                                      map[string]float64
 	diffs                                       uint64
+	labeled                                     map[string]float64 // simCounterNames
+}
+
+// simCounterNames are the labeled counters that simResult.Counters holds:
+// the service's (stream exhaustion by level, parts sent by type, fetches
+// skipped by reason, Busy answers) and the reconciler's (stripes by result).
+var simCounterNames = struct{ service, reconciler []string }{
+	service:    []string{"streams_exhausted_total", "parts_sent", "fetch_skipped_total", "session_busy_total"},
+	reconciler: []string{"stripes_total"},
 }
 
 // simNode is one node of the neighborhood.
@@ -405,11 +456,15 @@ func newNeighborhood(tb testing.TB, o simOptions) *simNeighborhood {
 	if o.Replication > o.Nodes {
 		tb.Fatalf("replication %d over %d nodes", o.Replication, o.Nodes)
 	}
+	if o.Lag < 0 || o.Lag > o.Base || o.LagNode < 0 || o.LagNode >= o.Nodes {
+		tb.Fatalf("lag %d of %d base chunks at node %d of %d", o.Lag, o.Base, o.LagNode, o.Nodes)
+	}
 	nb := &simNeighborhood{
 		tb:        tb,
 		o:         o,
 		rng:       rand.New(rand.NewPCG(o.Seed, o.Seed^0x9e3779b97f4a7c15)),
 		chunks:    make(map[string]*simChunk),
+		awaiting:  make(map[simSampleKey]int),
 		protocols: make(map[string]bool),
 		arrivals:  make(map[simArrival][]time.Time),
 	}
@@ -417,6 +472,25 @@ func newNeighborhood(tb testing.TB, o simOptions) *simNeighborhood {
 	base := make([]swarm.Chunk, o.Base)
 	for i := range base {
 		base[i] = swarm.NewChunk(nb.randAddr(), []byte{1}).WithStamp(nb.newStamp())
+	}
+	// the lagging node fetches the chunks it lacks, so they must pass the
+	// content check: valid content-addressed chunks (the other base chunks
+	// are never fetched, and runs without a lag keep their chunks)
+	for i := o.Base - o.Lag; i < o.Base; i++ {
+		ch, err := cac.New(nb.randBytes(8))
+		if err != nil {
+			tb.Fatal(err)
+		}
+		base[i] = ch.WithStamp(nb.newStamp())
+	}
+	for _, ch := range base[o.Base-o.Lag:] {
+		key, err := chunkKey(ch)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		c := &simChunk{batch: -1, at: nb.clock.Now(), holders: o.Nodes - 1}
+		nb.chunks[key] = c
+		nb.lagging = append(nb.lagging, c)
 	}
 	addrs := make([]swarm.Address, 0, o.Nodes)
 	for len(addrs) < o.Nodes {
@@ -427,7 +501,11 @@ func newNeighborhood(tb testing.TB, o simOptions) *simNeighborhood {
 	}
 	tb.Cleanup(nb.close)
 	for i, a := range addrs {
-		nb.nodes = append(nb.nodes, nb.newNode(i, a, addrs, base))
+		held := base
+		if i == o.LagNode {
+			held = base[:o.Base-o.Lag]
+		}
+		nb.nodes = append(nb.nodes, nb.newNode(i, a, addrs, held))
 	}
 	for _, n := range nb.nodes {
 		for _, p := range nb.nodes {
@@ -516,7 +594,11 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 	}
 	n.r = reconciler.New(a, &simTopology{n: n, peers: peers}, nil, log.Noop, ro)
 
-	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: n.r.Wants, Now: nb.clock.Now}
+	wants := func(peer swarm.Address, ids []storer.ChunkID) {
+		nb.setWants(n, peer, false, len(ids))
+		n.r.Wants(peer, ids)
+	}
+	so := rangesync.Options{LeafBits: serviceLeafBits, Scorer: n.r, Wants: wants, Now: nb.clock.Now}
 	if o.Service != nil {
 		o.Service(&so)
 	}
@@ -545,8 +627,13 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 // close, simCloseDeadline) is due on the clock, which no longer moves, and
 // Reconciler.Close waits for its calls to end. A FullClose then returns as on
 // the remote's close (simPipe.awaitEOF), and a read returns io.EOF after the
-// bytes that arrived. It is safe to call more than once.
+// bytes that arrived. Only the first call closes: a later one returns at once,
+// also while the first still waits (the cleanup of a test that gave up on a
+// stuck teardown would otherwise wait for it too).
 func (nb *simNeighborhood) close() {
+	if !nb.closing.CompareAndSwap(false, true) {
+		return
+	}
 	nb.mu.Lock()
 	nb.closed = true
 	streams := slices.Clone(nb.streams)
@@ -637,6 +724,9 @@ func (nb *simNeighborhood) run() *simResult {
 	for b := range o.Batches {
 		nb.clock.AfterFunc(o.Warmup+time.Duration(b)*o.BatchInterval, func() { nb.upload(b) })
 	}
+	if o.Lag > 0 {
+		nb.snapshot() // the catch-up starts with the first round
+	}
 	for _, n := range nb.nodes {
 		n.r.Start(context.Background())
 	}
@@ -655,7 +745,7 @@ func (nb *simNeighborhood) run() *simResult {
 			return nb.result(done, steps, time.Since(wall))
 		case !ok:
 			nb.tb.Fatal("no timer pending")
-		case next.After(limit):
+		case done.IsZero() && next.After(limit): // a long Tail may pass it once converged
 			nb.tb.Fatalf("uploads not converged %v after the last one: %s", o.Limit, nb.progress())
 		}
 		nb.clock.advance(next)
@@ -663,11 +753,11 @@ func (nb *simNeighborhood) run() *simResult {
 }
 
 // allConverged reports whether every batch was uploaded and every node holds
-// every upload.
+// every upload and every base chunk.
 func (nb *simNeighborhood) allConverged() bool {
 	nb.mu.Lock()
 	defer nb.mu.Unlock()
-	return len(nb.batchAt) == nb.o.Batches && nb.converged == len(nb.uploads)
+	return len(nb.batchAt) == nb.o.Batches && nb.converged == len(nb.uploads)+len(nb.lagging)
 }
 
 // progress describes the uploads that have not converged.
@@ -680,18 +770,28 @@ func (nb *simNeighborhood) progress() string {
 			missing++
 		}
 	}
+	lagging := 0
+	for _, c := range nb.lagging {
+		if c.holders < len(nb.nodes) {
+			lagging++
+		}
+	}
 	held := make([]string, len(nb.nodes))
 	for i, n := range nb.nodes {
 		held[i] = strconv.Itoa(len(n.held))
 	}
-	return fmt.Sprintf("%d of %d uploads (%d batches) not held by every node; IDs stored per node: %s", missing, len(nb.uploads), len(nb.batchAt), strings.Join(held, " "))
+	return fmt.Sprintf("%d of %d uploads (%d batches) and %d of %d lagging base chunks not held by every node; IDs stored per node: %s",
+		missing, len(nb.uploads), len(nb.batchAt), lagging, len(nb.lagging), strings.Join(held, " "))
 }
 
 // upload pushes batch b: BatchSize new chunks, each to Replication random
 // nodes.
 func (nb *simNeighborhood) upload(b int) {
-	if b == 0 {
+	switch {
+	case b == 0 && nb.o.Lag == 0:
 		nb.snapshot()
+	case b == 0:
+		nb.atUpload = nb.labeledSince()
 	}
 	now := nb.clock.Now()
 	nb.mu.Lock()
@@ -720,8 +820,24 @@ func (nb *simNeighborhood) upload(b int) {
 	}
 }
 
-// snapshot records the counters at the first upload.
+// labeledSince returns the labeled counters (simCounterNames) summed over
+// the nodes since the snapshot.
+func (nb *simNeighborhood) labeledSince() map[string]float64 {
+	out := make(map[string]float64)
+	for i, n := range nb.nodes {
+		for k, v := range n.counters().labeled {
+			out[k] += v - nb.baseline[i].labeled[k]
+		}
+	}
+	return out
+}
+
+// snapshot records the counters at the first upload, or at the start with a
+// lagging node.
 func (nb *simNeighborhood) snapshot() {
+	nb.mu.Lock()
+	nb.from = nb.clock.Now()
+	nb.mu.Unlock()
 	nb.baseline = make([]simCounters, len(nb.nodes))
 	for i, n := range nb.nodes {
 		nb.baseline[i] = n.counters()
@@ -744,7 +860,29 @@ func (n *simNode) counters() simCounters {
 	for _, m := range gathered(n.nb.tb, n.svc.Metrics(), "_pairwise_diff") {
 		c.diffs += m.GetHistogram().GetSampleCount()
 	}
+	c.labeled = make(map[string]float64)
+	for _, name := range simCounterNames.service {
+		maps.Copy(c.labeled, labeledCounters(n.nb.tb, n.svc.Metrics(), name))
+	}
+	for _, name := range simCounterNames.reconciler {
+		maps.Copy(c.labeled, labeledCounters(n.nb.tb, n.r.Metrics(), name))
+	}
 	return c
+}
+
+// labeledCounters returns the counters of cs named name (after the
+// namespace), keyed by name and labels, as "streams_exhausted_total{level=root}".
+func labeledCounters(tb testing.TB, cs []prometheus.Collector, name string) map[string]float64 {
+	tb.Helper()
+	out := make(map[string]float64)
+	for _, m := range gathered(tb, cs, "_"+name) {
+		labels := make([]string, 0, len(m.GetLabel()))
+		for _, l := range m.GetLabel() {
+			labels = append(labels, l.GetName()+"="+l.GetValue())
+		}
+		out[name+"{"+strings.Join(labels, ",")+"}"] += m.GetCounter().GetValue()
+	}
+	return out
 }
 
 // gathered returns the metrics of cs whose name ends with suffix, as a
@@ -786,6 +924,21 @@ func (nb *simNeighborhood) sample(n *simNode, ss rangesync.SessionSample) {
 	nb.mu.Lock()
 	defer nb.mu.Unlock()
 	nb.samples = append(nb.samples, simSample{At: nb.clock.Now().Sub(nb.start), Node: n.i, Diff: float64(ss.Difference), Session: ss})
+	nb.awaiting[simSampleKey{node: n.i, peer: ss.Peer.ByteString(), initiator: ss.Initiator}] = len(nb.samples) - 1
+}
+
+// setWants records the wants of node n's side of its last session with peer
+// on its sample. The sample comes first (the service's session seam runs
+// before it returns the wants or passes them on), and a node runs one
+// session per peer and side at a time.
+func (nb *simNeighborhood) setWants(n *simNode, peer swarm.Address, initiator bool, wants int) {
+	key := simSampleKey{node: n.i, peer: peer.ByteString(), initiator: initiator}
+	nb.mu.Lock()
+	defer nb.mu.Unlock()
+	if i, ok := nb.awaiting[key]; ok {
+		nb.samples[i].Wants = wants
+		delete(nb.awaiting, key)
+	}
 }
 
 // arrived records a Status or session that node to received from peer from.
@@ -806,15 +959,18 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 	nb.mu.Lock()
 	defer nb.mu.Unlock()
 	res := &simResult{
-		PairwiseDiff: slices.Clone(nb.samples),
-		Spans:        slices.Clone(nb.spans),
-		Sessions:     make(map[string]float64),
-		StreamBytes:  make(map[string]int),
-		Protocols:    maps.Clone(nb.protocols),
-		Converged:    done.Sub(nb.batchAt[0]),
-		End:          nb.clock.Now().Sub(nb.start),
-		Steps:        steps,
-		Wall:         wall,
+		PairwiseDiff:    slices.Clone(nb.samples),
+		Spans:           slices.Clone(nb.spans),
+		Sessions:        make(map[string]float64),
+		StreamBytes:     make(map[string]int),
+		TailBytes:       make(map[string]int),
+		Protocols:       maps.Clone(nb.protocols),
+		Counters:        make(map[string]float64),
+		CatchUpCounters: maps.Clone(nb.atUpload),
+		Converged:       done.Sub(nb.batchAt[0]),
+		End:             nb.clock.Now().Sub(nb.start),
+		Steps:           steps,
+		Wall:            wall,
 	}
 	for k, v := range sessions {
 		res.Sessions[k] = v - nb.sessions0[k]
@@ -841,12 +997,18 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 	for _, at := range nb.sessions {
 		res.LastSession = max(res.LastSession, at.Sub(done))
 	}
+	for _, c := range nb.lagging {
+		res.CaughtUp = max(res.CaughtUp, c.converged.Sub(nb.start))
+	}
 
 	// rangesync deliveries, read off the fetch streams
 	delivered := make(map[*simNode]map[string]int)
 	for _, s := range nb.streams {
-		if !s.at.Before(nb.batchAt[0]) {
+		if !s.at.Before(nb.from) {
 			res.StreamBytes[s.stream] += s.toHandler.size() + s.toInitiator.size()
+		}
+		if s.at.After(done) {
+			res.TailBytes[s.stream] += s.toHandler.size() + s.toInitiator.size()
 		}
 		if s.stream != rangesync.FetchStreamName {
 			continue
@@ -882,6 +1044,9 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 		}
 		for r, v := range c.claims {
 			nr.WantClaims[r] = v - base.claims[r]
+		}
+		for k, v := range c.labeled {
+			res.Counters[k] += v - base.labeled[k]
 		}
 		for _, m := range gathered(nb.tb, n.r.Metrics(), "_round_interval_seconds") {
 			nr.RoundInterval = time.Duration(m.GetGauge().GetValue() * float64(time.Second))
@@ -1088,7 +1253,7 @@ func (s *simService) SendStatusWith(ctx context.Context, peer swarm.Address, st 
 	return s.Service.SendStatusWith(ctx, peer, st)
 }
 
-func (s *simService) ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) (_ []storer.ChunkID, err error) {
+func (s *simService) ReconcileWith(ctx context.Context, peer swarm.Address, opts rangesync.ReconcileOptions) (wants []storer.ChunkID, err error) {
 	nb := s.n.nb
 	now := nb.clock.Now()
 	ctx, done := s.call(ctx, "reconcile", peer, now)
@@ -1096,7 +1261,11 @@ func (s *simService) ReconcileWith(ctx context.Context, peer swarm.Address, opts
 	nb.mu.Lock()
 	nb.sessions = append(nb.sessions, now)
 	nb.mu.Unlock()
-	return s.Service.ReconcileWith(ctx, peer, opts)
+	wants, err = s.Service.ReconcileWith(ctx, peer, opts)
+	if err == nil {
+		nb.setWants(s.n, peer, true, len(wants))
+	}
+	return wants, err
 }
 
 func (s *simService) Fetch(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (n int, err error) {
@@ -1201,6 +1370,9 @@ type simStreamer struct {
 
 func (s *simStreamer) NewStream(ctx context.Context, addr swarm.Address, _ p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
 	nb := s.n.nb
+	if stream == rangesync.FetchStreamName && slices.ContainsFunc(nb.o.FetchOpenFails, func(i int) bool { return nb.nodes[i].addr.Equal(addr) }) {
+		return nil, errSimOpenRefused
+	}
 	pair := &simPair{
 		from:        s.n,
 		stream:      stream,
@@ -1260,12 +1432,14 @@ func (nb *simNeighborhood) handlerEnd(s p2p.Stream) p2p.Stream {
 // the remote's end of the writes, and when that does not arrive within
 // simCloseDeadline (libp2p's errExpectedEof and its read deadline);
 // errSimClosed is what NewStream returns once the harness closed the streams
-// (simNeighborhood.close).
+// (simNeighborhood.close), and errSimOpenRefused what it returns for a fetch
+// stream to a node of simOptions.FetchOpenFails.
 var (
 	errSimReset        = errors.New("sim: stream reset")
 	errSimExpectedEOF  = errors.New("sim: read on full close: expected eof")
 	errSimCloseTimeout = errors.New("sim: full close deadline exceeded")
 	errSimClosed       = errors.New("sim: neighborhood closed")
+	errSimOpenRefused  = errors.New("sim: fetch stream open refused")
 )
 
 // simCloseDeadline bounds FullClose's wait for the remote's end of the

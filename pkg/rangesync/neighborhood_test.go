@@ -5,6 +5,7 @@
 package rangesync_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // convergenceBound is the most time an upload pushed to p nodes takes to
@@ -222,59 +224,131 @@ func TestNeighborhoodSteady(t *testing.T) {
 // waits in its FullClose for the handler's close still tears down. That close
 // is a leg on the clock, which no longer moves once the run ended, so the
 // harness must end the wait itself (simNeighborhood.close) before it waits for
-// the reconcilers. A first run finds a Status sent after the convergence; the
-// second ends mid-way through its FullClose (from its second leg to its
-// fourth, see TestNeighborhoodDelay).
+// the reconcilers. A first run finds the Statuses sent after the convergence;
+// a second ends mid-way through the earliest one's FullClose (from its second
+// leg to its fourth, see TestNeighborhoodDelay). The harness is
+// near-deterministic, not exactly repeatable (which session claims a chunk
+// first within an instant is up to the scheduler), so the second run may not
+// repeat the first one's timeline: then it tries the next send, up to tries
+// runs.
 func TestNeighborhoodTeardown(t *testing.T) {
 	t.Parallel()
 
 	const (
 		delay    = 100 * time.Millisecond
 		watchdog = 30 * time.Second // a teardown takes milliseconds
+		tries    = 3
 	)
 	o := simOptions{Nodes: 5, Replication: 3, Seed: 5, Delay: delay}
 	res := runNeighborhood(t, o)
 	done := o.withDefaults().Warmup + res.Converged
-	sent := time.Duration(-1) // when the earliest Status after the convergence started
+	var sent []time.Duration // when the Statuses sent after the convergence started
 	for _, sp := range res.Spans {
-		if at := sp.At + sp.Wait; sp.Kind == "status" && sp.Err == nil && at >= done && (sent < 0 || at < sent) {
-			sent = at
+		if at := sp.At + sp.Wait; sp.Kind == "status" && sp.Err == nil && at >= done {
+			sent = append(sent, at)
 		}
 	}
-	if sent < 0 {
+	slices.Sort(sent)
+	sent = slices.Compact(sent)
+	if len(sent) == 0 {
 		t.Fatal("no Status sent after the convergence")
 	}
 
-	o.Tail = sent - done + 3*delay
-	nb := newNeighborhood(t, o)
-	res = nb.run()
-	closed := make(chan struct{})
+	var tails []time.Duration
+	for _, at := range sent[:min(tries, len(sent))] {
+		o.Tail = at - done + 3*delay
+		tails = append(tails, o.Tail)
+		nb := newNeighborhood(t, o)
+		res := nb.run()
+		closed := make(chan struct{})
+		go func() {
+			defer close(closed)
+			nb.close() // again in the cleanup: it returns at once then
+		}()
+		select {
+		case <-closed:
+		case <-time.After(watchdog):
+			// end the waits on the clock, so that the teardown can end
+			// before the test does; the cleanup's close returns at once
+			for range 100 {
+				nb.clock.advance(nb.clock.Now().Add(simCloseDeadline))
+				select {
+				case <-closed:
+					t.Fatalf("teardown of a run that ended mid-FullClose still waited after %v", watchdog)
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			t.Fatalf("teardown of a run that ended mid-FullClose still waits after %v and the close deadlines", watchdog)
+		}
+		// did the run end with a Status send in its FullClose, past its open?
+		nb.mu.Lock()
+		hit := slices.ContainsFunc(nb.spans[len(res.Spans):], func(sp simSpan) bool {
+			return sp.Kind == "status" && sp.Duration >= 2*delay && sp.Duration < 4*delay
+		})
+		nb.mu.Unlock()
+		if hit {
+			return
+		}
+	}
+	t.Errorf("no Status send ended in the teardown within its FullClose in %d runs that ended %v after the convergence: "+
+		"either each run's timeline differed from the first run's (the harness is near-deterministic, not exactly repeatable), "+
+		"or the protocol's timing moved the sends past the close", len(tails), tails)
+}
+
+// TestSimClose checks the harness's teardown (simNeighborhood.close) on its
+// own: it ends a read and a FullClose parked on the clock, which no longer
+// moves, refuses new streams with errSimClosed, and only the first call
+// closes: a second returns at once, also while the first still waits.
+func TestSimClose(t *testing.T) {
+	t.Parallel()
+
+	nb := &simNeighborhood{tb: t, o: simOptions{}.withDefaults()}
+	nb.clock = &simClock{now: time.Unix(1_000_000, 0), touch: nb.touch}
+	newEnd := func() *simEnd {
+		pair := &simPair{stream: rangesync.ReconcileStreamName, toHandler: newSimPipe(nb, false), toInitiator: newSimPipe(nb, false)}
+		nb.streams = append(nb.streams, pair)
+		return &simEnd{Stream: nopStream{}, in: pair.toInitiator, out: pair.toHandler}
+	}
+	reader, closer := newEnd(), newEnd()
+	read, fullClose := make(chan error, 1), make(chan error, 1)
 	go func() {
-		defer close(closed)
-		nb.close() // again in the cleanup: a no-op then
+		_, err := reader.Read(make([]byte, 1)) // nothing arrives
+		read <- err
+	}()
+	go func() { fullClose <- closer.FullClose() }() // the remote never closes
+	waitFor(t, "parked read and full close", func() bool { return nb.parked.Load() == 2 })
+
+	// the first close waits for nb.mu, which the test holds; the second
+	// returns at once
+	nb.mu.Lock()
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		nb.close()
+	}()
+	waitFor(t, "first close", nb.closing.Load)
+	second := make(chan struct{})
+	go func() {
+		defer close(second)
+		nb.close()
 	}()
 	select {
-	case <-closed:
-	case <-time.After(watchdog):
-		t.Errorf("teardown of a run that ended mid-FullClose still waits after %v", watchdog)
-		// end the waits on the clock so that the cleanup does not hang
-		for range 100 {
-			nb.clock.advance(nb.clock.Now().Add(simCloseDeadline))
-			select {
-			case <-closed:
-				return
-			case <-time.After(10 * time.Millisecond):
-			}
-		}
-		t.Fatal("teardown still waits after the close deadlines")
+	case <-second:
+	case <-time.After(10 * time.Second):
+		t.Fatal("a second close waits for the first")
 	}
-	// the run ended with a Status send in its FullClose: one past its open
-	nb.mu.Lock()
-	defer nb.mu.Unlock()
-	if !slices.ContainsFunc(nb.spans[len(res.Spans):], func(sp simSpan) bool {
-		return sp.Kind == "status" && sp.Duration >= 2*delay && sp.Duration < 4*delay
-	}) {
-		t.Errorf("no Status send ended in the teardown within its FullClose; the run ended %v after the convergence", o.Tail)
+	nb.mu.Unlock()
+	<-first
+
+	if err := <-read; !errors.Is(err, io.EOF) {
+		t.Errorf("parked read after the close: %v, want EOF", err)
+	}
+	if err := <-fullClose; err != nil {
+		t.Errorf("parked full close after the close: %v, want nil (as on the remote's close)", err)
+	}
+	s := &simStreamer{n: &simNode{nb: nb}}
+	if _, err := s.NewStream(context.Background(), swarm.ZeroAddress, nil, rangesync.ProtocolName, rangesync.ProtocolVersion, rangesync.ReconcileStreamName); !errors.Is(err, errSimClosed) {
+		t.Errorf("stream opened after the close: %v, want %v", err, errSimClosed)
 	}
 }
 
