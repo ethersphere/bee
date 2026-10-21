@@ -9,9 +9,12 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
+	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,11 +29,13 @@ import (
 	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/gorilla/websocket"
 )
 
@@ -901,29 +906,70 @@ func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
 	jsonhttptest.Request(t, http.DefaultClient, http.MethodGet, "http://"+addr+"/chunks/stream?mode=invalid", http.StatusBadRequest)
 }
 
+// cacheRecordingStorer records the cache flag of each download.
+type cacheRecordingStorer struct {
+	api.Storer
+	caches chan bool
+}
+
+func (c *cacheRecordingStorer) Download(cache bool) storage.Getter {
+	c.caches <- cache
+	return c.Storer.Download(cache)
+}
+
+// The connection default comes from Swarm-Cache, then ?cache=, then true, and
+// a request's CacheOption overrides it.
 // nolint:paralleltest
 func TestChunkBidirectionalStream_CacheOption(t *testing.T) {
 	cs := inmemchunkstore.New()
-	storerMock := mockstorer.NewWithChunkStore(cs)
-
-	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:       storerMock,
-		Post:         mockpost.New(mockpost.WithAcceptAll()),
-		WsPath:       "/chunks/stream",
-		WsHeaders:    streamHeaders(true),
-		DirectUpload: true,
-	})
-
 	ch := testingc.GenerateTestRandomChunk()
 	if err := cs.Put(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, opt := range []pb.CacheOption{pb.CacheOption_CACHE_DISABLE, pb.CacheOption_CACHE_ENABLE} {
-		sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), opt))
-		if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
-			t.Fatalf("expected STATUS_OK with %v, got %v", opt, resp.Status)
-		}
+	for _, tc := range []struct {
+		name   string
+		header string
+		query  string
+		option pb.CacheOption
+		want   bool
+	}{
+		{name: "default", option: pb.CacheOption_CACHE_DEFAULT, want: true},
+		{name: "header false", header: "false", option: pb.CacheOption_CACHE_DEFAULT, want: false},
+		{name: "query false", query: "false", option: pb.CacheOption_CACHE_DEFAULT, want: false},
+		{name: "header wins over query", header: "true", query: "false", option: pb.CacheOption_CACHE_DEFAULT, want: true},
+		{name: "request disables", option: pb.CacheOption_CACHE_DISABLE, want: false},
+		{name: "request enables over header", header: "false", option: pb.CacheOption_CACHE_ENABLE, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storerMock := &cacheRecordingStorer{
+				Storer: mockstorer.NewWithChunkStore(cs),
+				caches: make(chan bool, 1),
+			}
+			h := streamHeaders(false)
+			if tc.header != "" {
+				h.Set("Swarm-Cache", tc.header)
+			}
+			q := url.Values{}
+			if tc.query != "" {
+				q.Set("cache", tc.query)
+			}
+			_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:    storerMock,
+				Post:      mockpost.New(mockpost.WithAcceptAll()),
+				WsPath:    "/chunks/stream",
+				WsQuery:   q,
+				WsHeaders: h,
+			})
+
+			sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), tc.option))
+			if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+				t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+			}
+			if got := <-storerMock.caches; got != tc.want {
+				t.Fatalf("downloaded with cache %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -1129,73 +1175,117 @@ func TestChunkBidirectionalStream_BatchPerRequest(t *testing.T) {
 	batchB := bytes.Repeat([]byte{0xbb}, swarm.HashSize)
 	unknown := bytes.Repeat([]byte{0xcc}, swarm.HashSize)
 
-	post := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("a", "a", batchA, big.NewInt(3), 24, 6, 1000, false)))
-	if err := post.Add(postage.NewStampIssuer("b", "b", batchB, big.NewInt(3), 24, 6, 1000, false)); err != nil {
-		t.Fatal(err)
-	}
+	// newStream opens a stream on a node that has issuers for batches A and B,
+	// and returns it with a function that reports the batch a pushed chunk was
+	// stamped with.
+	newStream := func(t *testing.T, connBatch []byte) (*websocket.Conn, func(swarm.Chunk) []byte) {
+		t.Helper()
 
-	h := streamHeaders(false)
-	h.Set(api.SwarmPostageBatchIdHeader, hex.EncodeToString(batchA))
+		post := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("a", "a", batchA, big.NewInt(3), 24, 6, 1000, false)))
+		if err := post.Add(postage.NewStampIssuer("b", "b", batchB, big.NewInt(3), 24, 6, 1000, false)); err != nil {
+			t.Fatal(err)
+		}
 
-	_, wsConn, _, chanStorer, _ := newTestServer(t, testServerOptions{
-		Storer:       mockstorer.New(),
-		Post:         post,
-		WsPath:       "/chunks/stream",
-		WsHeaders:    h,
-		DirectUpload: true,
-	})
+		h := streamHeaders(false)
+		if connBatch != nil {
+			h.Set(api.SwarmPostageBatchIdHeader, hex.EncodeToString(connBatch))
+		}
 
-	var (
-		mu         sync.Mutex
-		stampBatch = make(map[string][]byte)
-	)
-	chanStorer.Subscribe(func(ch swarm.Chunk) {
-		mu.Lock()
-		stampBatch[ch.Address().ByteString()] = ch.Stamp().BatchID()
-		mu.Unlock()
-	})
+		_, wsConn, _, chanStorer, _ := newTestServer(t, testServerOptions{
+			Storer: mockstorer.New(),
+			Post:   post,
+			// A stored batch lets a pre-signed stamp get as far as its
+			// signature check.
+			BatchStore:   mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc(), mockbatchstore.WithBatch(testingpostage.MustNewBatch())),
+			WsPath:       "/chunks/stream",
+			WsHeaders:    h,
+			DirectUpload: true,
+		})
 
-	for _, tc := range []struct {
-		name      string
-		batchID   []byte
-		wantBatch []byte
-	}{
-		{name: "no batch on the request uses the connection's", wantBatch: batchA},
-		{name: "a batch on the request overrides it", batchID: batchB, wantBatch: batchB},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ch := testingc.GenerateTestRandomChunk()
-			sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), nil, tc.batchID))
-			if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
-				t.Fatalf("expected STATUS_OK, got %v (err: %s)", resp.Status, resp.Error)
-			}
+		var (
+			mu         sync.Mutex
+			stampBatch = make(map[string][]byte)
+		)
+		chanStorer.Subscribe(func(ch swarm.Chunk) {
+			mu.Lock()
+			stampBatch[ch.Address().ByteString()] = ch.Stamp().BatchID()
+			mu.Unlock()
+		})
+
+		pushedBatch := func(ch swarm.Chunk) []byte {
+			t.Helper()
+			var got []byte
 			err := spinlock.Wait(streamTestTimeout, func() bool {
 				mu.Lock()
 				defer mu.Unlock()
-				return stampBatch[ch.Address().ByteString()] != nil
+				got = stampBatch[ch.Address().ByteString()]
+				return got != nil
 			})
 			if err != nil {
 				t.Fatal("chunk was not pushed")
 			}
-			mu.Lock()
-			got := stampBatch[ch.Address().ByteString()]
-			mu.Unlock()
-			if !bytes.Equal(got, tc.wantBatch) {
-				t.Fatalf("stamped with batch %x, want %x", got, tc.wantBatch)
-			}
-		})
+			return got
+		}
+		return wsConn, pushedBatch
 	}
 
-	// A batch the node has no issuer for is rejected for that request only.
-	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), nil, unknown))
-	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found" {
-		t.Fatalf("expected an unknown batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+	type upload struct {
+		name      string
+		batchID   []byte
+		stamp     []byte
+		wantBatch []byte // nil when the upload is rejected
+		wantError string
 	}
-	sendPBRequest(t, wsConn, chunkPut(ch))
-	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected the connection to stay usable, got %v (err: %s)", resp.Status, resp.Error)
+	run := func(t *testing.T, connBatch []byte, uploads []upload) {
+		t.Helper()
+
+		wsConn, pushedBatch := newStream(t, connBatch)
+		for _, u := range uploads {
+			ch := testingc.GenerateTestRandomChunk()
+			sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), u.stamp, u.batchID))
+			resp := readPut(t, wsConn)
+			if u.wantBatch == nil {
+				if resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != u.wantError {
+					t.Fatalf("%s: expected STATUS_BAD_REQUEST %q, got %v (err: %s)", u.name, u.wantError, resp.Status, resp.Error)
+				}
+				continue
+			}
+			if resp.Status != pb.Status_STATUS_OK {
+				t.Fatalf("%s: expected STATUS_OK, got %v (err: %s)", u.name, resp.Status, resp.Error)
+			}
+			if got := pushedBatch(ch); !bytes.Equal(got, u.wantBatch) {
+				t.Fatalf("%s: stamped with batch %x, want %x", u.name, got, u.wantBatch)
+			}
+		}
 	}
+
+	// Without a connection batch, every request picks its own, and a failing
+	// request leaves the connection usable.
+	t.Run("no connection batch", func(t *testing.T) {
+		run(t, nil, []upload{
+			{name: "batch A", batchID: batchA, wantBatch: batchA},
+			{name: "batch B", batchID: batchB, wantBatch: batchB},
+			{name: "no batch", wantError: "missing postage stamp or batch id"},
+			{name: "unknown batch", batchID: unknown, wantError: "postage batch not found"},
+			{name: "batch A again", batchID: batchA, wantBatch: batchA},
+		})
+	})
+
+	// A serialised stamp starts with its batch id; the rest is never looked at
+	// before the batch is checked.
+	stampB := append(bytes.Clone(batchB), make([]byte, postage.StampSize-swarm.HashSize)...)
+
+	// A connection batch pins it, so that a proxy setting the header decides
+	// the batch of every upload, pre-signed ones included.
+	t.Run("connection batch", func(t *testing.T) {
+		run(t, batchA, []upload{
+			{name: "no batch uses the connection's", wantBatch: batchA},
+			{name: "the connection's batch", batchID: batchA, wantBatch: batchA},
+			{name: "a different batch", batchID: batchB, wantError: "batch id differs from the connection batch"},
+			{name: "a stamp from a different batch", stamp: stampB, wantError: "stamp batch differs from the connection batch"},
+			{name: "connection still usable", wantBatch: batchA},
+		})
+	})
 }
 
 // nolint:paralleltest
@@ -1309,8 +1399,7 @@ func TestChunkBidirectionalStream_ShutdownClientStoppedReading(t *testing.T) {
 
 // A stream that ends on its own, here on a protocol violation, while its
 // workers are blocked writing to a client that has stopped reading must still
-// release them. The shutdown watcher is gone by then, so only closing the socket
-// before waiting on the workers lets the handler return.
+// release them, which only closing the socket does.
 // nolint:paralleltest
 func TestChunkBidirectionalStream_ProtocolViolationClientStoppedReading(t *testing.T) {
 	var svc *api.Service
@@ -1553,5 +1642,179 @@ func TestChunkBidirectionalStream_NoStampAfterStreamEnds(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if got := stamped(); got != api.DefaultStreamSubWorkers {
 		t.Fatalf("expected no stamps after the stream ended, got %d more", got-api.DefaultStreamSubWorkers)
+	}
+}
+
+// downloadStorer serves downloads with get instead of the chunk store.
+type downloadStorer struct {
+	api.Storer
+	get storage.GetterFunc
+}
+
+func (d *downloadStorer) Download(bool) storage.Getter {
+	return d.get
+}
+
+// A chunk that no peer could be asked for may still exist, so it is reported
+// as unavailable rather than not found.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_DownloadErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		err        error
+		wantStatus pb.Status
+		wantError  string
+	}{
+		{name: "not found", err: storage.ErrNotFound, wantStatus: pb.Status_STATUS_NOT_FOUND, wantError: "chunk not found"},
+		{name: "no usable peer", err: topology.ErrNotFound, wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "no peer could serve the chunk"},
+		{name: "wrapped no usable peer", err: fmt.Errorf("retrieve: %w", topology.ErrNotFound), wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "no peer could serve the chunk"},
+		{name: "other failure", err: errors.New("disk on fire"), wantStatus: pb.Status_STATUS_ERROR, wantError: "chunk read error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storerMock := &downloadStorer{
+				Storer: mockstorer.New(),
+				get: func(context.Context, swarm.Address) (swarm.Chunk, error) {
+					return nil, tc.err
+				},
+			}
+			_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:    storerMock,
+				Post:      mockpost.New(mockpost.WithAcceptAll()),
+				WsPath:    "/chunks/stream",
+				WsHeaders: streamHeaders(false),
+			})
+
+			addr := testingc.GenerateTestRandomChunk().Address()
+			sendPBRequest(t, wsConn, getRequest(addr.Bytes(), pb.CacheOption_CACHE_DEFAULT))
+			resp := readGet(t, wsConn)
+			if resp.Status != tc.wantStatus || resp.Error != tc.wantError {
+				t.Fatalf("expected %v %q, got %v %q", tc.wantStatus, tc.wantError, resp.Status, resp.Error)
+			}
+			if !bytes.Equal(resp.Address, addr.Bytes()) {
+				t.Fatalf("expected a reply for %s, got %x", addr, resp.Address)
+			}
+		})
+	}
+}
+
+// Download requests still queued when the stream ends must not start a
+// retrieval: nobody is left to read the chunk.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_NoDownloadAfterStreamEnds(t *testing.T) {
+	var started atomic.Int64
+	storerMock := &downloadStorer{
+		Storer: mockstorer.New(),
+		get: func(ctx context.Context, _ swarm.Address) (swarm.Chunk, error) {
+			started.Add(1)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:    storerMock,
+		Post:      mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:    "/chunks/stream",
+		WsHeaders: streamHeaders(false),
+	})
+
+	// Every download worker blocks in a retrieval; the rest queue.
+	for range api.DefaultStreamSubWorkers + 100 {
+		addr := testingc.GenerateTestRandomChunk().Address()
+		sendPBRequest(t, wsConn, getRequest(addr.Bytes(), pb.CacheOption_CACHE_DEFAULT))
+	}
+	if err := spinlock.Wait(streamTestTimeout, func() bool { return started.Load() == api.DefaultStreamSubWorkers }); err != nil {
+		t.Fatalf("expected %d retrievals, got %d", api.DefaultStreamSubWorkers, started.Load())
+	}
+
+	// End the stream with a protocol violation.
+	if err := wsConn.WriteMessage(websocket.TextMessage, []byte("not a request")); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsConn.SetReadDeadline(time.Now().Add(streamTestTimeout))
+	if _, _, err := wsConn.ReadMessage(); err == nil {
+		t.Fatal("expected the stream to close")
+	}
+
+	// Give the released workers time to drain the queue.
+	time.Sleep(500 * time.Millisecond)
+	if got := started.Load(); got != api.DefaultStreamSubWorkers {
+		t.Fatalf("expected no retrievals after the stream ended, got %d more", got-api.DefaultStreamSubWorkers)
+	}
+}
+
+// A client that pauses reading must keep its stream when a keepalive, in either
+// direction, waits behind replies the client has not read yet: gorilla treats a
+// control frame write that times out as fatal to the connection.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_KeepaliveWhileClientPausesReading(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		serverPings bool
+	}{
+		{name: "node pings", serverPings: true},
+		{name: "client pings", serverPings: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := inmemchunkstore.New()
+			opts := testServerOptions{
+				Storer:    mockstorer.NewWithChunkStore(cs),
+				Post:      mockpost.New(mockpost.WithAcceptAll()),
+				WsPath:    "/chunks/stream",
+				WsHeaders: streamHeaders(false),
+			}
+			if tc.serverPings {
+				opts.WsPingPeriod = time.Millisecond
+			}
+			_, wsConn, _, _, _ := newTestServer(t, opts)
+
+			// The client pings often, so that one lands while the node's
+			// socket buffer is full.
+			if !tc.serverPings {
+				stop := make(chan struct{})
+				defer close(stop)
+				go func() {
+					for {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						_ = wsConn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second))
+						time.Sleep(time.Millisecond)
+					}
+				}()
+			}
+
+			// Fewer requests than the queue holds, so none is answered BUSY,
+			// but enough replies to fill the socket buffers.
+			const requests = 1000
+			for range requests {
+				ch := testingc.GenerateTestRandomChunk()
+				if err := cs.Put(context.Background(), ch); err != nil {
+					t.Fatal(err)
+				}
+				sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
+				time.Sleep(2 * time.Millisecond)
+			}
+
+			// Pause for longer than any control frame deadline, a few times:
+			// the replies read in between let the node fill the socket buffer
+			// again, which is when a keepalive can get stuck.
+			const rounds, perRound = 3, 150
+			for range rounds {
+				time.Sleep(1100 * time.Millisecond)
+				for range perRound {
+					if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+						t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+					}
+				}
+			}
+
+			for i := range requests - rounds*perRound {
+				if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+					t.Fatalf("reply %d: expected STATUS_OK, got %v: %s", i, resp.Status, resp.Error)
+				}
+			}
+		})
 	}
 }

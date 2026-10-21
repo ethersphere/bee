@@ -52,10 +52,12 @@ message PutRequest {
   // SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
   bytes Data = 2;
   // Stamp is a serialised pre-signed postage stamp. When set, it is used as is
-  // and BatchId is ignored.
+  // and BatchId is ignored. When the connection has a Swarm-Postage-Batch-Id, a
+  // stamp from a different batch is rejected.
   bytes Stamp = 3;
   // BatchId has the node stamp the chunk with this 32-byte postage batch. When
-  // empty, the connection's Swarm-Postage-Batch-Id is used.
+  // empty, the connection's Swarm-Postage-Batch-Id is used. When the connection
+  // has a Swarm-Postage-Batch-Id, a different BatchId is rejected.
   bytes BatchId = 4;
 }
 
@@ -73,7 +75,9 @@ message GetResponse {
   bytes Address = 1;
   // Status is the outcome of the retrieval.
   Status Status = 2;
-  // Data is the chunk (span + payload) when Status is STATUS_OK.
+  // Data is the chunk when Status is STATUS_OK, as stored under Address.
+  // CAC: span (8 bytes) + payload (up to 4096 bytes).
+  // SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
   bytes Data = 3;
   // Error is a sanitised description when Status is not STATUS_OK.
   string Error = 4;
@@ -104,4 +108,8 @@ enum Status {
   STATUS_BAD_REQUEST = 4;
   // STATUS_BUSY: the request queue is full; retry with backoff.
   STATUS_BUSY = 5;
+  // STATUS_UNAVAILABLE: no peer could serve the chunk, either because none was
+  // usable or because every peer was tried. The chunk may or may not exist;
+  // retry later, a limited number of times.
+  STATUS_UNAVAILABLE = 6;
 }

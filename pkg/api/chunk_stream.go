@@ -5,8 +5,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -42,10 +44,10 @@ const (
 	// chunkUploadRequestTimeout bounds a single chunk upload/push.
 	chunkUploadRequestTimeout = 30 * time.Second
 
-	// chunkStreamControlDeadline bounds a close or ping frame write. It is kept
-	// short because gorilla queues a control frame behind an in-progress write,
-	// and the goroutine sending it also watches for node shutdown.
-	chunkStreamControlDeadline = 250 * time.Millisecond
+	// chunkStreamCloseDeadline bounds a close frame write. It is kept short
+	// because gorilla queues a control frame behind an in-progress write, and
+	// the goroutine sending it also watches for node shutdown.
+	chunkStreamCloseDeadline = 250 * time.Millisecond
 
 	chunkStreamSubprotocol = "swarm-chunk-stream"
 
@@ -604,7 +606,7 @@ func (s *Service) handleBidirectionalStream(
 		_ = conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(code, errmsg),
-			time.Now().Add(chunkStreamControlDeadline),
+			time.Now().Add(chunkStreamCloseDeadline),
 		)
 	}
 
@@ -621,26 +623,47 @@ func (s *Service) handleBidirectionalStream(
 		return conn.SetReadDeadline(time.Now().Add(s.chunkStreamReadTimeout))
 	})
 
+	// gorilla treats a timeout while a control frame is being written as fatal
+	// to the connection, so pings and pongs get the same deadline as responses:
+	// a client that pauses reading must not lose its stream to a keepalive.
+	conn.SetPingHandler(func(data string) error {
+		err := conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(s.chunkDeliveryWriteDeadline))
+		if err == nil || errors.Is(err, websocket.ErrCloseSent) {
+			return nil
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil
+		}
+		return err
+	})
+
 	go func() {
+		select {
+		case <-s.quit:
+			cancel()
+			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
+		case <-ctx.Done():
+			// The stream also ends when a response write fails, while the
+			// read loop may still be blocked reading.
+		}
+		// Closing the socket releases the read loop and any blocked write.
+		_ = conn.Close()
+	}()
+
+	// Pings run on their own, since one can block for as long as a response
+	// write to a client that has paused reading.
+	workersWg.Add(1)
+	go func() {
+		defer workersWg.Done()
 		ticker := time.NewTicker(s.WsPingPeriod)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-s.quit:
-				cancel()
-				sendErrorClose(websocket.CloseGoingAway, "node shutting down")
-				_ = conn.Close()
-				return
 			case <-ctx.Done():
-				// The stream also ends when a response write fails, while the
-				// read loop may still be blocked reading. Closing the socket
-				// releases it.
-				_ = conn.Close()
 				return
 			case <-ticker.C:
-				// A failed ping is not fatal: it can time out behind a slow
-				// response write to a client that is still there.
-				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(chunkStreamControlDeadline)); err != nil {
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(s.chunkDeliveryWriteDeadline)); err != nil {
 					logger.Debug("chunk bidirectional stream: ping failed", "error", err)
 				}
 			}
@@ -772,6 +795,12 @@ func (s *Service) processStreamGetRequest(
 		}
 	}
 
+	// A request still queued when the stream ends must not start a retrieval
+	// that nobody will read.
+	if streamCtx.Err() != nil {
+		return
+	}
+
 	if len(req.Address) != swarm.HashSize {
 		reply(getResponse(req.Address, pb.Status_STATUS_BAD_REQUEST, nil, "invalid chunk address length"))
 		return
@@ -798,11 +827,18 @@ func (s *Service) processStreamGetRequest(
 		}
 		status := pb.Status_STATUS_ERROR
 		errMsg := "chunk read error"
-		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			status = pb.Status_STATUS_NOT_FOUND
 			errMsg = "chunk not found"
 			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("not_found").Inc()
 			logger.V(1).Build().Debug("chunk bidirectional stream: chunk not found", "address", addr)
+		} else if errors.Is(err, topology.ErrNotFound) {
+			// No peer could serve the chunk: none was usable, or every peer
+			// was tried. The chunk may or may not exist.
+			status = pb.Status_STATUS_UNAVAILABLE
+			errMsg = "no peer could serve the chunk"
+			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("unavailable").Inc()
+			logger.V(1).Build().Debug("chunk bidirectional stream: no peer could serve the chunk", "address", addr)
 		} else if errors.Is(err, context.DeadlineExceeded) {
 			errMsg = "chunk retrieval timed out"
 			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("error").Inc()
@@ -894,6 +930,12 @@ func (s *Service) processStreamPutRequest(
 			reply(pb.Status_STATUS_BAD_REQUEST, "invalid postage stamp")
 			return
 		}
+		// A connection batch pins pre-signed stamps too, as on the legacy
+		// stream, where a batch header rules them out.
+		if len(defaultBatchID) > 0 && !bytes.Equal(presigned.BatchID(), defaultBatchID) {
+			reply(pb.Status_STATUS_BAD_REQUEST, "stamp batch differs from the connection batch")
+			return
+		}
 
 		batchID := presigned.BatchID()
 		batchIDKey := string(batchID)
@@ -930,6 +972,12 @@ func (s *Service) processStreamPutRequest(
 		}
 		if len(batchID) != swarm.HashSize {
 			reply(pb.Status_STATUS_BAD_REQUEST, "invalid batch id")
+			return
+		}
+		// A batch set on the connection pins it, so that a proxy which sets
+		// Swarm-Postage-Batch-Id also decides the batch of every upload.
+		if len(defaultBatchID) > 0 && !bytes.Equal(batchID, defaultBatchID) {
+			reply(pb.Status_STATUS_BAD_REQUEST, "batch id differs from the connection batch")
 			return
 		}
 
