@@ -131,6 +131,42 @@ state machine + scheduler; keep the `storer.Syncer` contract (T1.11, T3.5) uncha
 
 ---
 
+## T4.7 Hardening: G6 constants and pre-testnet blockers (added at G6, 2026-10-21)
+
+**Depends on:** T4.6 (G6 decided). **Blocks:** T6.1 (AC-B2 is a T6.1 entry blocker) and any testnet
+cohort that enables `rangesync`.
+
+**Scope (each item lands as its own part, verified and reviewed separately):**
+1. **AC-B2 bootstrap listing (first; T6.1 entry blocker).** A peer whose session finds an empty or
+   near-empty node lists its whole reserve to it, and repeats every round (measured 1.4–3.8× over the
+   AC-B2 bound; ≈ 294 MB per session at 2^22). Fix within constraints (a)–(d) of the T4.6 part 3
+   round-2 AC-B2 entry, taking the round-2 review notes into account (only candidate A closes every
+   case; B and C don't combine). Acceptance: the scaled case (test-settable `LargeDiff` or a Base large
+   enough for stripes above `LargeDiff` and the child-range stripe path), including a
+   responder-only-lacking-node case; AC-B2 within bound.
+2. **G6 constants.** `GrowthFactor` 4 → 2, with the four tests that encode growth 4
+   (TestProtocolConverges/4k, TestWorkedExamples, TestSREPSessionCost, TestSREPIdeal) and a follow-up
+   listing the proposal text to update (L467, L824, L830, L894, L1175, L1191–1194); a per-node
+   initiated-session cap replacing the constant `MaxInitiatedSessions` 8 (the constant 16 only fits
+   N ≤ 17; keep room for inbound sessions and stripes); `LargeDiff` settable in tests. Caches,
+   `BatchFactor` 1.6, `CatchUpMinDiff` 256 and `RoundInterval` 5–30 s stay. Re-measure AC-B1 at
+   N = 9 / 17 with the harness after the change.
+3. **Stripe-registry `SyncRate` pin.** The registry hold is unconditional, so a higher-overlay peer
+   claiming a count difference above `LargeDiff` pins `SyncRate` for free. Hold for a stripe only while
+   its job stores chunks, past a grace (as T4.5 part 2c did for fetches).
+4. **Per-peer fetch credit that survives reconnects.** A peer's share of the fetch rate refills only
+   with chunks it delivered; keyed so a reconnect doesn't reset it. Bounds every junk-lister path at
+   once (residual today ≈ 70 junk IDs/s per connected Sybil, ≥ 100 with reconnect cycling).
+
+**Tests:** each item's acceptance above; honest-churn tests for items 3–4 (no honest peer scored or
+starved); `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` if pkg/node or pkg/storer is
+touched.
+
+**Size:** L (four parts). Not in scope: the sustained-overwrite `SyncRate` pin (a T6.3 item and a fix
+before mainnet), AC-B1 re-basing at N = 9 (T6.4).
+
+---
+
 ## Decisions log
 _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
 - **(T4.1) One Status send path with a per-peer schedule.** The round and a new gossip loop
@@ -3286,6 +3322,16 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     ./pkg/rangesync/...` passes (`pkg/rangesync` 10 s); with `-tags=sim`,
     `TestNeighborhoodG6Figures` and `TestG6EqualCounts` pass (3 s). gofumpt ran on the changed test
     file only. No test's behavior changed, so nothing is new for `-race`.
+- **(Orchestrator, G6, 2026-10-21) G6 decided by the user.**
+  - Constants: the "G6 decision sheet (final)" as recommended — `GrowthFactor` 4 → 2 (+ the four test
+    updates and the proposal text), a per-node initiated-session cap, `LargeDiff` test-settable; caches
+    4096/512/32, `BatchFactor` 1.6, `CatchUpMinDiff` 256, `RoundInterval` 5–30 s, request-driven `More`
+    and hint(R) unchanged. Applied in T4.7, before T6.1.
+  - T4.6 part 3 landed after two unclean fix rounds with the round-2 review notes appended to the AC-B2
+    blocker (user's choice); T4.6 ticked.
+  - Next: T4.7 hardening (AC-B2 first, then G6 constants, stripe-registry pin, per-peer fetch credit),
+    then Phase 6. P8: Phase 5 after Phase 6, before mainnet. P9: the earlier proposal committed as
+    history on the docs branch.
 
 ## Follow-ups
 _(sessions append here)_
