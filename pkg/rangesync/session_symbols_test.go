@@ -159,7 +159,8 @@ func TestDecideSymbols(t *testing.T) {
 		{"hint within the cap", root, 100, 100, fingerprint.BucketSymbols, 10, false, rangesync.DecisionSymbols},
 		{"unlimited leaf", leaf, 100, 3, rangesync.CapUnlimited, 0, false, rangesync.DecisionSymbols},
 		{"unlimited, over a batch", root, 1 << 20, 1, rangesync.CapUnlimited, 0, false, rangesync.DecisionSplit},
-		{"stripe first", root, 1 << 20, 1, rangesync.CapUnlimited, 0, true, rangesync.DecisionStripe},
+		{"stripe first, lacking side", root, 1, 1 << 20, rangesync.CapUnlimited, 0, false, rangesync.DecisionStripe},
+		{"no stripe on the holder", root, 1 << 20, 1, rangesync.CapUnlimited, 0, true, rangesync.DecisionSplit},
 		{"empty peer: items", root, 100, 0, fingerprint.RootSymbols, 0, false, rangesync.DecisionSendItems},
 	} {
 		in := rangesync.DecisionInput{

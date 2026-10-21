@@ -121,6 +121,16 @@ type Options struct {
 	// node served listed and this node does not hold, once the session
 	// completed. The batch IDs are not known and are nil.
 	Wants func(peer swarm.Address, wants []storer.ChunkID)
+	// Striper, if not nil, is the Striper of the sessions this node serves
+	// (Config.Striper): it is offered the ranges in which this node holds
+	// fewer elements than the peer by more than LargeDiff, as the session
+	// finds them, and a range it takes over gets no answer (T4.7 part 1,
+	// AC-B2). The reconciler implements it. Sessions this node opens use
+	// ReconcileOptions.Striper instead.
+	Striper Striper
+	// LargeDiff is the threshold of DecisionStripe in every session (zero
+	// means LargeDiff); other values are for tests that scale a bootstrap.
+	LargeDiff uint64
 	// LeafBits is the leaf depth of the fingerprint index below its root.
 	// Zero means fingerprint.LeafBits; other values are for tests.
 	LeafBits uint8
@@ -155,6 +165,9 @@ type Service struct {
 	metrics  metrics
 	scorer   PeerScorer
 	wants    func(peer swarm.Address, wants []storer.ChunkID)
+	striper  Striper // of the sessions this node serves
+	// largeDiff is Options.LargeDiff, 0 for LargeDiff.
+	largeDiff uint64
 
 	unwrap      func(swarm.Chunk)
 	gsocHandler func(*soc.SOC)
@@ -250,6 +263,8 @@ func New(
 		logger:           logger.WithName(loggerName).Register(),
 		scorer:           o.Scorer,
 		wants:            o.Wants,
+		striper:          o.Striper,
+		largeDiff:        o.LargeDiff,
 		unwrap:           unwrap,
 		gsocHandler:      gsocHandler,
 		validStamp:       validStamp,

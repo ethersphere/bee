@@ -111,6 +111,9 @@ type nodeOpts struct {
 	getHook func()
 	// addr is the node's overlay; random if zero.
 	addr swarm.Address
+	// striper and largeDiff are Options.Striper and Options.LargeDiff.
+	striper   rangesync.Striper
+	largeDiff uint64
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -187,6 +190,8 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 		LeafBits:     serviceLeafBits,
 		FetchTimeout: o.fetchTimeout,
 		FetchRate:    o.fetchRate,
+		Striper:      o.striper,
+		LargeDiff:    o.largeDiff,
 	})
 	tb.Cleanup(func() {
 		if err := n.svc.Close(); err != nil {
@@ -1397,6 +1402,94 @@ func TestReconcileInitiatorSessionLimit(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestReconcileServedStriper checks Options.Striper and Options.LargeDiff
+// (T4.7 part 1, AC-B2): a node that lacks far more than LargeDiff of a peer's
+// elements and serves the peer's session hands the root to its Striper and
+// answers nothing, so the holder lists none of its IDs; the node's stripe
+// session, opened at count 0 without a Striper, is still listed in full by
+// the holder, which has a Striper too and is offered nothing.
+func TestReconcileServedStriper(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 100
+	chs := stampedChunks(t, 300)
+	var (
+		mu      sync.Mutex
+		offered []fingerprint.Range
+	)
+	lacking := striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if local != 0 || remote != uint64(len(chs)) {
+			t.Errorf("offered %s at %d, %d", r, local, remote)
+		}
+		offered = append(offered, r)
+		return true
+	})
+	holding := striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+		t.Errorf("the holder offered %s (%d, %d)", r, local, remote)
+		return false
+	})
+	a := newTestNodeOpts(t, nodeOpts{striper: holding, largeDiff: largeDiff}, chs...)
+	b := newTestNodeOpts(t, nodeOpts{striper: lacking, largeDiff: largeDiff})
+	a.start(t)
+	b.start(t)
+	connect(t, a, b)
+
+	// a's round session: b declines the root
+	wants, err := a.svc.Reconcile(context.Background(), b.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wants) != 0 {
+		t.Fatalf("holder wants %d IDs", len(wants))
+	}
+	st, err := b.svc.LocalStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	if len(offered) != 1 || !offered[0].Equal(st.Root) {
+		t.Fatalf("offered %v, want the root %s", offered, st.Root)
+	}
+	mu.Unlock()
+	sent, received := reconcileMessages(t, a, b.addr)
+	for _, m := range sent {
+		if _, items := partsOf(t, m); len(items) != 0 {
+			t.Fatalf("the holder sent %d items parts", len(items))
+		}
+	}
+	if len(received) != 1 || len(received[0].GetParts()) != 0 {
+		t.Fatalf("received %v, want the empty answer", received)
+	}
+	waitFor(t, "served session", func() bool {
+		_, succeeds := b.scorer.get(a.addr)
+		return succeeds == 1
+	})
+	if w := b.responderWants(a.addr); len(w) != 0 {
+		t.Fatalf("the lacking node wants %d IDs from the served session", len(w))
+	}
+
+	// b's stripe session at count 0: the holder lists the whole stripe
+	stripe := st.Root.Child(1, 1)
+	var want []storer.ChunkID
+	for _, ch := range chs {
+		if stripe.Contains(ch.Address()) {
+			want = append(want, chunkIDOf(t, ch))
+		}
+	}
+	got, err := b.svc.ReconcileWith(context.Background(), a.addr, rangesync.ReconcileOptions{Open: []fingerprint.Range{stripe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got, want...)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(offered) != 1 {
+		t.Fatalf("offered %d ranges after the stripe session, want 1", len(offered))
+	}
 }
 
 func TestReconcileWithStripe(t *testing.T) {

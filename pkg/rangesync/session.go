@@ -62,14 +62,15 @@ type Local interface {
 	Symbols(r fingerprint.Range, start, end uint64) (syms []fingerprint.CodedSymbol, exhausted bool, err error)
 }
 
-// Striper takes over ranges whose estimated difference is too large to
-// reconcile in a session, for a striped transfer from several peers
-// (proposal §6.3, §7.4). It is implemented by the reconciler in Phase 3; until
-// then sessions run without one.
+// Striper takes over ranges in which this node holds too few elements to
+// reconcile them in a session, for a striped transfer from several peers
+// (proposal §6.3, §7.4). The reconciler implements it.
 type Striper interface {
 	// Stripe offers range r, in which this node holds local elements and the
-	// peer remote. It returns true if it takes r over: the session then emits
-	// nothing more for r. It returns false to let the session split r.
+	// peer remote, more than the session's LargeDiff above local. It returns
+	// true if it takes r over: the session then emits nothing more for r. It
+	// returns false to let the session decide on r as if the difference
+	// were small: a listing at count 0, a split, or an item exchange.
 	Stripe(r fingerprint.Range, local, remote uint64) bool
 }
 
@@ -79,9 +80,14 @@ type Config struct {
 	Scope Scope
 	// Local reads the node's elements.
 	Local Local
-	// Striper, if not nil, is offered ranges with a large difference. It is
-	// used by initiators only; responders split such ranges.
+	// Striper, if not nil, is offered the ranges in which this node holds
+	// fewer elements than the peer by more than LargeDiff (DecisionStripe),
+	// on either side of the session: the lacking side takes them out of the
+	// session, and the holder never lists them to it (T4.7 part 1, AC-B2).
 	Striper Striper
+	// LargeDiff is the threshold of DecisionStripe; zero means LargeDiff.
+	// Other values are for tests that scale the geometry of a bootstrap.
+	LargeDiff uint64
 	// Open lists the ranges whose Fingerprints form the opening Message of an
 	// initiator: the whole scope by default (nil means {Scope.Root}), a
 	// stripe, or the two halves of a new root. The ranges must pass
@@ -119,7 +125,8 @@ type Config struct {
 // metric label by its integer value.
 type Decision int
 
-// Decisions in the order Decide tests them.
+// Decisions in the order Decide tests them, except DecisionStripe, which
+// comes second.
 const (
 	// DecisionEqual: both summaries are equal and the range is reconciled;
 	// nothing is emitted.
@@ -130,10 +137,12 @@ const (
 	// DecisionRequestItems: this node has no element in the range (cL == 0);
 	// Items{R, no IDs, Reply} is emitted and the peer answers with its IDs.
 	DecisionRequestItems
-	// DecisionStripe: initiator only, the range is splittable (R.Bits +
-	// fingerprint.FanoutBits <= LeafDepth) and the estimated difference
-	// max(|cL − cR|, 1) exceeds LargeDiff; the range is offered to the
-	// Striper and split if it is declined or there is none.
+	// DecisionStripe: the range is splittable (R.Bits +
+	// fingerprint.FanoutBits <= LeafDepth) and this node holds fewer
+	// elements than the peer by more than the threshold (cR − cL >
+	// DecisionInput.LargeDiff), in either role; the range is offered to the
+	// Striper, and decided by the rest of the rule if it is declined or
+	// there is none.
 	DecisionStripe
 	// DecisionSymbols: the first batch of FirstBatch(d̂) symbols, with d̂ =
 	// max(|cL − cR|, Hint, 1), fits in the range's capacity (Cap) and in
@@ -169,6 +178,8 @@ type DecisionInput struct {
 	// Hint is the size of the last decoded difference of the range with
 	// this peer, 0 if none.
 	Hint uint64
+	// LargeDiff is the threshold of DecisionStripe; zero means LargeDiff.
+	LargeDiff uint64
 }
 
 // Estimate returns d̂ = max(|cL − cR|, Hint, 1) of in (proposal §6.3).
@@ -177,28 +188,57 @@ func (in DecisionInput) Estimate() uint64 {
 }
 
 // Decide applies the per-range decision rule of proposal §6.3 to in. It is a
-// pure function. The order is: DecisionEqual, DecisionSendItems,
-// DecisionRequestItems, DecisionStripe, DecisionSymbols, DecisionSplit,
+// pure function. The order is: DecisionEqual, DecisionStripe,
+// DecisionSendItems, DecisionRequestItems, DecisionSymbols, DecisionSplit,
 // DecisionExchangeItems.
+//
+// The large-difference test comes before the count-0 branches and acts on
+// the side that holds fewer, the initiator or the responder (candidate A of
+// AC-B2, T4.7 part 1): that side neither asks for the peer's items nor
+// splits, but hands the range to its Striper, and the holder decides as for
+// a small difference, so that its listing at the lacking side's count 0
+// (DecisionSendItems) still serves the stripe sessions, which the lacking
+// side opens at count 0 (§7.4). This deviates from §6.3's order, where the
+// count-0 branches come first and the initiator stripes in either direction.
 func Decide(in DecisionInput) Decision {
 	if in.Local == in.Remote {
 		return DecisionEqual
 	}
+	if in.lacks() {
+		return DecisionStripe
+	}
+	return in.decideSmall()
+}
+
+// lacks reports whether the range is splittable and this node holds fewer
+// elements than the peer by more than the threshold (DecisionStripe).
+func (in DecisionInput) lacks() bool {
+	threshold := in.LargeDiff
+	if threshold == 0 {
+		threshold = LargeDiff
+	}
+	return in.splittable() && in.Remote.Count > in.Local.Count && in.Remote.Count-in.Local.Count > threshold
+}
+
+// splittable reports whether the range may be split: R.Bits +
+// fingerprint.FanoutBits <= LeafDepth.
+func (in DecisionInput) splittable() bool {
+	return int(in.Range.Bits)+fingerprint.FanoutBits <= int(in.Scope.LeafDepth)
+}
+
+// decideSmall is Decide past DecisionStripe, for differing summaries: the
+// decision of a range the lacking side does not stripe.
+func (in DecisionInput) decideSmall() Decision {
 	if in.Remote.Count == 0 {
 		return DecisionSendItems
 	}
 	if in.Local.Count == 0 {
 		return DecisionRequestItems
 	}
-	splittable := int(in.Range.Bits)+fingerprint.FanoutBits <= int(in.Scope.LeafDepth)
-	d := in.Estimate()
-	if splittable && in.Initiator && d > LargeDiff {
-		return DecisionStripe
-	}
-	if n0 := FirstBatch(d); in.Cap > 0 && n0 <= in.Cap && n0 <= MaxBatchSymbols {
+	if n0 := FirstBatch(in.Estimate()); in.Cap > 0 && n0 <= in.Cap && n0 <= MaxBatchSymbols {
 		return DecisionSymbols
 	}
-	if splittable {
+	if in.splittable() {
 		return DecisionSplit
 	}
 	return DecisionExchangeItems
@@ -389,7 +429,7 @@ func NewInitiator(cfg Config) (*Session, *pb.Message, error) {
 // Message it handles is the initiator's opening Message. The stream handler
 // reads the opening Message's AuditRound before calling NewResponder, to
 // choose a cfg.Local that salts its summaries for that round (Phase 5); the
-// Session itself ignores AuditRound. cfg.Striper and cfg.Open are not used.
+// Session itself ignores AuditRound. cfg.Open is not used.
 func NewResponder(cfg Config) *Session {
 	return newSession(cfg, false)
 }
@@ -727,7 +767,7 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 		return fmt.Errorf("local summary of %s: %w", r, err)
 	}
 	s.peerCounts[r.Key()] = remote.Count
-	in := DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator}
+	in := DecisionInput{Scope: s.cfg.Scope, Range: r, Local: local, Remote: remote, Initiator: s.initiator, LargeDiff: s.cfg.LargeDiff}
 	// No symbol stream once the budget is spent either way, nor past
 	// MaxScansPerMessage starts that scan (each reads at least symbol 0):
 	// those ranges take the Fingerprint or items path.
@@ -739,17 +779,22 @@ func (s *Session) decide(r fingerprint.Range, remote fingerprint.Summary) error 
 			in.Hint = s.cfg.Hints.Hint(r)
 		}
 	}
-	switch Decide(in) {
+	d := Decide(in)
+	if d == DecisionStripe {
+		if s.cfg.Striper != nil && s.cfg.Striper.Stripe(r, local.Count, remote.Count) {
+			// taken over: nothing is emitted for r, which the peer then
+			// sees as equal at the end of the session (a responder's
+			// answer is the empty one of DecisionEqual)
+			return nil
+		}
+		d = in.decideSmall()
+	}
+	switch d {
 	case DecisionEqual:
 	case DecisionSendItems:
 		s.addListing(r, false, false, remote.Count)
 	case DecisionRequestItems:
 		s.addListing(r, true, true, remote.Count)
-	case DecisionStripe:
-		if s.cfg.Striper != nil && s.cfg.Striper.Stripe(r, local.Count, remote.Count) {
-			break
-		}
-		s.tasks = append(s.tasks, &split{r: r})
 	case DecisionSymbols:
 		if scan {
 			s.startScans++

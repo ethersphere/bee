@@ -62,8 +62,9 @@ type ReconcileOptions struct {
 	// Open is Config.Open: the ranges of the opening Message, the session
 	// root when empty. A striped transfer opens with its stripe.
 	Open []fingerprint.Range
-	// Striper is Config.Striper: it is offered the ranges with a large
-	// difference.
+	// Striper is Config.Striper: it is offered the ranges in which this
+	// node holds far fewer elements than the peer. Nil means none, as for a
+	// stripe session, whose ranges must not be taken out of it.
 	Striper Striper
 	// Wants, if not nil, receives the wants as the session finds them, once
 	// per handled Message with wants, instead of ReconcileWith returning
@@ -148,7 +149,8 @@ func (s *Service) ReconcileWith(ctx context.Context, peer swarm.Address, opts Re
 }
 
 // sessionConfig returns the Config of a session with peer in scope, where
-// local is this node's Status and remote the peer's.
+// local is this node's Status and remote the peer's. Its Striper is that of
+// the sessions this node serves (Options.Striper); ReconcileWith replaces it.
 func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote Status) Config {
 	cfg := Config{
 		Scope:      scope,
@@ -156,6 +158,8 @@ func (s *Service) sessionConfig(peer swarm.Address, scope Scope, local, remote S
 		PeerCount:  remote.Summary.Count,
 		Status:     local,
 		PeerStatus: remote,
+		Striper:    s.striper,
+		LargeDiff:  s.largeDiff,
 	}
 	if s.hints != nil { // nil only in simulations that run without hints
 		cfg.Hints = s.hints.peer(peer)

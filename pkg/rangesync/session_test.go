@@ -49,11 +49,22 @@ func TestDecide(t *testing.T) {
 		{"one past the last splittable depth", scope, bits(11), sum(5, 1), sum(6, 2), false, rangesync.DecisionExchangeItems},
 		{"at leaf depth", scope, bits(14), sum(5, 1), sum(6, 2), true, rangesync.DecisionExchangeItems},
 		{"below leaf depth", scope, bits(17), sum(5, 1), sum(6, 2), false, rangesync.DecisionExchangeItems},
-		{"large difference, initiator", scope, bits(2), sum(rangesync.LargeDiff+2, 1), sum(1, 2), true, rangesync.DecisionStripe},
-		{"large difference, other sign", scope, bits(2), sum(1, 1), sum(rangesync.LargeDiff+2, 2), true, rangesync.DecisionStripe},
-		{"large difference, responder", scope, bits(2), sum(rangesync.LargeDiff+2, 1), sum(1, 2), false, rangesync.DecisionSplit},
-		{"difference of exactly LargeDiff", scope, bits(2), sum(rangesync.LargeDiff+1, 1), sum(1, 2), true, rangesync.DecisionSplit},
-		{"large difference not splittable", scope, bits(11), sum(rangesync.LargeDiff+2, 1), sum(1, 2), true, rangesync.DecisionExchangeItems},
+		// The large-difference test comes before the count-0 branches and
+		// acts on the side that holds fewer, in either role (T4.7 part 1).
+		{"lacking, initiator", scope, bits(2), sum(1, 1), sum(rangesync.LargeDiff+2, 2), true, rangesync.DecisionStripe},
+		{"lacking, responder", scope, bits(2), sum(1, 1), sum(rangesync.LargeDiff+2, 2), false, rangesync.DecisionStripe},
+		{"holding, initiator", scope, bits(2), sum(rangesync.LargeDiff+2, 1), sum(1, 2), true, rangesync.DecisionSplit},
+		{"holding, responder", scope, bits(2), sum(rangesync.LargeDiff+2, 1), sum(1, 2), false, rangesync.DecisionSplit},
+		{"lacking by exactly LargeDiff", scope, bits(2), sum(1, 1), sum(rangesync.LargeDiff+1, 2), true, rangesync.DecisionSplit},
+		{"lacking, local empty, initiator", scope, bits(2), sum(0, 0), sum(rangesync.LargeDiff+1, 2), true, rangesync.DecisionStripe},
+		{"lacking, local empty, responder", scope, bits(2), sum(0, 0), sum(rangesync.LargeDiff+1, 2), false, rangesync.DecisionStripe},
+		{"local empty, exactly LargeDiff", scope, bits(2), sum(0, 0), sum(rangesync.LargeDiff, 2), false, rangesync.DecisionRequestItems},
+		// a stripe session's opening at count 0: the holder lists (constraint (a))
+		{"holding, peer empty, responder", scope, bits(2), sum(rangesync.LargeDiff+1, 1), sum(0, 0), false, rangesync.DecisionSendItems},
+		{"holding, peer empty, initiator", scope, bits(2), sum(rangesync.LargeDiff+1, 1), sum(0, 0), true, rangesync.DecisionSendItems},
+		{"lacking, not splittable", scope, bits(11), sum(1, 1), sum(rangesync.LargeDiff+2, 2), true, rangesync.DecisionExchangeItems},
+		{"lacking, local empty, not splittable", scope, bits(11), sum(0, 0), sum(rangesync.LargeDiff+2, 2), false, rangesync.DecisionRequestItems},
+		{"holding, not splittable", scope, bits(11), sum(rangesync.LargeDiff+2, 1), sum(1, 2), true, rangesync.DecisionExchangeItems},
 		{"misaligned root", misaligned, bits(3), sum(5, 1), sum(6, 2), false, rangesync.DecisionSplit},
 		{"misaligned level 1", misaligned, bits(7), sum(5, 1), sum(6, 2), false, rangesync.DecisionSplit},
 		{"misaligned level 2", misaligned, bits(11), sum(5, 1), sum(6, 2), false, rangesync.DecisionExchangeItems},
@@ -362,6 +373,10 @@ func (f striperFunc) Stripe(r fingerprint.Range, local, remote uint64) bool {
 	return f(r, local, remote)
 }
 
+// TestSessionStriper checks the large-difference branch on the side that
+// holds fewer (candidate A of AC-B2, T4.7 part 1): in either role the
+// lacking side offers its Striper the range, and emits nothing for it when
+// the Striper takes it over; the holder is never offered a range.
 func TestSessionStriper(t *testing.T) {
 	t.Parallel()
 
@@ -371,48 +386,199 @@ func TestSessionStriper(t *testing.T) {
 	}}
 	small := &fakeLocal{summary: func(fingerprint.Range) (fingerprint.Summary, error) { return sum(1, 2), nil }}
 	never := striperFunc(func(fingerprint.Range, uint64, uint64) bool {
-		t.Error("responder offered a range to its striper")
+		t.Error("the holder offered a range to its striper")
 		return false
 	})
-
-	for _, take := range []bool{true, false} {
-		var offered []fingerprint.Range
-		striper := striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
-			if local != rangesync.LargeDiff+10 || remote != 1 {
+	offers := func(take bool, offered *[]fingerprint.Range) rangesync.Striper {
+		return striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+			if local != 1 || remote != rangesync.LargeDiff+10 {
 				t.Errorf("offered counts %d, %d", local, remote)
 			}
-			offered = append(offered, r)
+			*offered = append(*offered, r)
 			return take
 		})
-		a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: big, Striper: striper})
-		if err != nil {
-			t.Fatal(err)
-		}
-		b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: small, Striper: never})
+	}
 
-		// the responder splits the root
-		split, _, err := b.Handle(wire(t, open))
-		if err != nil {
-			t.Fatal(err)
+	t.Run("lacking initiator", func(t *testing.T) {
+		t.Parallel()
+		for _, take := range []bool{true, false} {
+			var offered []fingerprint.Range
+			a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: small, Striper: offers(take, &offered)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: big, Striper: never})
+
+			// the holder splits the root
+			split, _, err := b.Handle(wire(t, open))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fps, _ := partsOf(t, split)
+			if len(fps) != 16 {
+				t.Fatalf("responder sent %d fingerprints, want the split", len(fps))
+			}
+			out, _, err := a.Handle(wire(t, split))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(offered) != 16 {
+				t.Fatalf("offered %d ranges, want 16", len(offered))
+			}
+			fps, items := partsOf(t, out)
+			if take && (len(fps) != 0 || len(items) != 0) {
+				t.Fatalf("taken ranges: got %d fingerprints and %d items, want none", len(fps), len(items))
+			}
+			if !take && len(fps) != 256 {
+				t.Fatalf("declined ranges: got %d fingerprints, want 256", len(fps))
+			}
 		}
-		fps, _ := partsOf(t, split)
-		if len(fps) != 16 {
-			t.Fatalf("responder sent %d fingerprints, want the split", len(fps))
+	})
+
+	t.Run("lacking responder", func(t *testing.T) {
+		t.Parallel()
+		for _, take := range []bool{true, false} {
+			var offered []fingerprint.Range
+			a, open, err := rangesync.NewInitiator(rangesync.Config{Scope: scope, Local: big, Striper: never})
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := rangesync.NewResponder(rangesync.Config{Scope: scope, Local: small, Striper: offers(take, &offered)})
+
+			out, _, err := b.Handle(wire(t, open))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(offered) != 1 || !offered[0].Equal(scope.Root) {
+				t.Fatalf("offered %v, want the root", offered)
+			}
+			fps, items := partsOf(t, out)
+			if take {
+				// the empty answer: the initiator's session ends, the root
+				// unanswered (equal at its end)
+				if len(out.GetParts()) != 0 {
+					t.Fatalf("taken root: got %d parts, want the empty message", len(out.GetParts()))
+				}
+				end, wants, err := a.Handle(wire(t, out))
+				if err != nil || end != nil || len(wants) != 0 {
+					t.Fatalf("initiator after the empty answer: %v, %d wants, %v; want the end of the session", end, len(wants), err)
+				}
+				continue
+			}
+			if len(fps) != 16 || len(items) != 0 {
+				t.Fatalf("declined root: got %d fingerprints and %d items, want the split", len(fps), len(items))
+			}
+			// the holder splits the children; it offers nothing
+			out, _, err = a.Handle(wire(t, out))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fps, _ := partsOf(t, out); len(fps) != 256 {
+				t.Fatalf("holder answered the split with %d fingerprints, want 256", len(fps))
+			}
 		}
-		out, _, err := a.Handle(wire(t, split))
-		if err != nil {
-			t.Fatal(err)
+	})
+}
+
+// TestSessionLackingSideDeclines runs whole sessions with a scaled LargeDiff
+// (Config.LargeDiff) between a holder and a node that lacks most of its
+// elements (T4.7 part 1, AC-B2): the holder lists nothing in a round session
+// whichever side opens it, a stripe session (opened at count 0, without a
+// Striper) is still listed in full (constraint (a)), and without a Striper
+// the lacking side reconciles as before.
+func TestSessionLackingSideDeclines(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 100
+	scope := rangesync.Scope{Root: rangeOf("01"), LeafDepth: 14}
+	holderIDs := randIDs(newRand(11), scope.Root, 4000)
+	stripe := rangeOf("0110")
+	never := striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+		t.Errorf("the holder offered %s (%d, %d) to its striper", r, local, remote)
+		return false
+	})
+	inStripe := func(ids []fingerprint.ID) []fingerprint.ID {
+		var out []fingerprint.ID
+		for _, id := range ids {
+			if stripe.ContainsID(id) {
+				out = append(out, id)
+			}
 		}
-		if len(offered) != 16 {
-			t.Fatalf("offered %d ranges, want 16", len(offered))
-		}
-		fps, items := partsOf(t, out)
-		if take && (len(fps) != 0 || len(items) != 0) {
-			t.Fatalf("taken ranges: got %d fingerprints and %d items, want none", len(fps), len(items))
-		}
-		if !take && len(fps) != 256 {
-			t.Fatalf("declined ranges: got %d fingerprints, want 256", len(fps))
-		}
+		return out
+	}
+
+	for _, tc := range []struct {
+		name string
+		// lackerIDs is what the lacking node holds, of holderIDs
+		lackerIDs []fingerprint.ID
+		// lackerOpens: the lacking node initiates; striper: it has one
+		lackerOpens, striper bool
+		open                 []fingerprint.Range
+		// offered is the number of ranges the lacking node's Striper takes;
+		// listed the IDs the holder sends; wants the IDs the lacking node
+		// wants (nil: none)
+		offered, listed int
+		wants           []fingerprint.ID
+	}{
+		{name: "empty responder declines the root", lackerOpens: false, striper: true, offered: 1},
+		{name: "near-empty responder declines the root", lackerIDs: holderIDs[:50], lackerOpens: false, striper: true, offered: 1},
+		{name: "near-empty initiator stripes the children", lackerIDs: holderIDs[:50], lackerOpens: true, striper: true, offered: 16},
+		{name: "stripe session at count 0", lackerOpens: true, open: []fingerprint.Range{stripe}, listed: len(inStripe(holderIDs)), wants: inStripe(holderIDs)},
+		{name: "empty initiator without a striper", lackerOpens: true, listed: len(holderIDs), wants: holderIDs},
+		{name: "empty responder without a striper", lackerOpens: false, listed: len(holderIDs), wants: holderIDs},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			offered := 0
+			lacker := rangesync.Config{Scope: scope, Local: newFakeLocal(tc.lackerIDs...), LargeDiff: largeDiff, Open: tc.open}
+			if tc.striper {
+				lacker.Striper = striperFunc(func(r fingerprint.Range, local, remote uint64) bool {
+					if remote <= local+largeDiff {
+						t.Errorf("offered %s at %d, %d", r, local, remote)
+					}
+					offered++
+					return true
+				})
+			}
+			holder := rangesync.Config{Scope: scope, Local: newFakeLocal(holderIDs...), LargeDiff: largeDiff, Striper: never}
+
+			init, resp := holder, lacker
+			if tc.lackerOpens {
+				init, resp = lacker, holder
+			}
+			a, open, err := rangesync.NewInitiator(init)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := rangesync.NewResponder(resp)
+			listed := 0
+			wantsA, wantsB, _ := drive(t, a, open, b, func(fromInitiator bool, m *pb.Message) {
+				if fromInitiator != tc.lackerOpens {
+					_, items := partsOf(t, m)
+					for _, it := range items {
+						listed += len(it.IDs)
+					}
+				}
+			})
+			wants, other := wantsB, wantsA
+			if tc.lackerOpens {
+				wants, other = wantsA, wantsB
+			}
+			if offered != tc.offered {
+				t.Fatalf("offered %d ranges, want %d", offered, tc.offered)
+			}
+			if listed != tc.listed {
+				t.Fatalf("the holder listed %d IDs, want %d", listed, tc.listed)
+			}
+			if len(other) != 0 {
+				t.Fatalf("the holder wants %d IDs", len(other))
+			}
+			want := slices.Clone(tc.wants)
+			if len(tc.lackerIDs) > 0 {
+				want = slices.DeleteFunc(want, func(id fingerprint.ID) bool { return slices.Contains(tc.lackerIDs, id) })
+			}
+			assertSet(t, wants, want)
+		})
 	}
 }
 
