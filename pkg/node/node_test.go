@@ -5,6 +5,9 @@
 package node_test
 
 import (
+	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -181,5 +184,39 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 		if got != want {
 			t.Fatalf("closer %q registered with the wrong instance", name)
 		}
+	}
+}
+
+// orderedCloser records its name in order when closed and returns err.
+type orderedCloser struct {
+	name  string
+	order *[]string
+	err   error
+}
+
+func (c *orderedCloser) Close() error {
+	*c.order = append(*c.order, c.name)
+	return c.err
+}
+
+// Shutdown must close the API service, not only its http.Server: hijacked
+// websocket connections outlive the server, and only the service tells their
+// handlers to send a close frame and return.
+func TestShutdownClosesAPIService(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	server := &orderedCloser{name: "server", order: &order}
+	service := &orderedCloser{name: "service", order: &order, err: errors.New("open websockets")}
+
+	err := node.NewTestBeeWithAPI(server, service).Shutdown()
+
+	// The server stops accepting connections before the service closes the
+	// websockets that are already open.
+	if want := []string{"server", "service"}; !slices.Equal(order, want) {
+		t.Fatalf("closed %v, want %v", order, want)
+	}
+	if err == nil || !strings.Contains(err.Error(), "api service: open websockets") {
+		t.Fatalf("expected the api service close error in the shutdown error, got %v", err)
 	}
 }

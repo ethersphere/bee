@@ -99,6 +99,7 @@ type Bee struct {
 	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
+	apiServiceCloser         io.Closer
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
@@ -559,6 +560,7 @@ func NewBee(
 
 		b.apiServer = apiServer
 		b.apiCloser = apiServer
+		b.apiServiceCloser = apiService
 	}
 
 	if chainEnabled {
@@ -1531,6 +1533,9 @@ func (b *Bee) Shutdown() error {
 	}
 
 	tryClose(b.apiCloser, "api")
+	// Closing the server leaves hijacked websocket connections open; closing
+	// the service tells their handlers to send a close frame and return.
+	tryClose(b.apiServiceCloser, "api service")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
