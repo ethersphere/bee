@@ -62,6 +62,7 @@ func (s *Service) CacheGsocWrappedChunks(address swarm.Address) func() {
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket
+	MetricsMethod         = metricsMethod
 )
 
 func (s *Service) ResolveNameOrAddress(str string) (swarm.Address, error) {

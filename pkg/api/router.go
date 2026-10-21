@@ -47,10 +47,24 @@ func (s *Service) Mount() {
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
+		noSniffHandler,
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(router),
 	)
 }
+
+// noSniffHandler stops browsers from guessing a content type other than the
+// one the uploader declared, so content is handled as the declared type.
+func noSniffHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(xContentTypeOptionsHeader, "nosniff")
+		h.ServeHTTP(w, r)
+	})
+}
+
+// xContentTypeOptionsHeader carries nosniff, which stops browsers from
+// guessing the content type of a response.
+const xContentTypeOptionsHeader = "X-Content-Type-Options"
 
 // EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
 func (s *Service) EnableFullAPI() {
@@ -102,6 +116,7 @@ func (s *Service) EnableFullAPI() {
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
 		s.corsHandler,
+		noSniffHandler,
 		web.FinalHandler(s.router),
 	)
 }
