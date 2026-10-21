@@ -6,6 +6,7 @@ package rangesync_test
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"testing"
@@ -209,6 +210,17 @@ func TestNeighborhoodG6Figures(t *testing.T) {
 		}
 		if got := f.Status + f.Reconcile + f.Want; math.Abs(got-f.Metadata) > 1e-6*f.Metadata {
 			t.Errorf("stream bytes %v per upload, metadata %v", got, f.Metadata)
+		}
+		// the flows split the stream bytes by direction, between two nodes
+		flows := make(map[string]int)
+		for k, v := range res.Flows {
+			if k.From == k.To || (k.Opener != k.From && k.Opener != k.To) {
+				t.Errorf("flow %+v", k)
+			}
+			flows[k.Stream] += v
+		}
+		if !maps.Equal(flows, res.StreamBytes) {
+			t.Errorf("flows %v, stream bytes %v", flows, res.StreamBytes)
 		}
 		if f.Duplicates != 0 || f.RateExceeded != 0 || f.exhausted() != 0 {
 			t.Errorf("%d duplicates, %d over a rate, %v exhausted streams", f.Duplicates, f.RateExceeded, f.exhausted())

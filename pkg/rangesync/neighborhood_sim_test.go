@@ -225,6 +225,9 @@ type simResult struct {
 	// first upload on, both directions, by stream name, and TailBytes those
 	// of the streams opened after the last upload converged.
 	StreamBytes, TailBytes map[string]int
+	// Flows holds the bytes of StreamBytes by direction: what one node
+	// wrote to another on the streams of one name that one of them opened.
+	Flows map[simFlow]int
 	// Spans holds every call of a reconciler into its service (a session it
 	// opened, a fetch, a Status sent), warm-up included, in the order they
 	// ended.
@@ -252,6 +255,14 @@ type simResult struct {
 	// of the run.
 	Steps int
 	Wall  time.Duration
+}
+
+// simFlow keys simResult.Flows: node From wrote the bytes and node To read
+// them (indexes into simNeighborhood's nodes) on streams named Stream that
+// node Opener, one of the two, opened.
+type simFlow struct {
+	From, To, Opener int
+	Stream           string
 }
 
 // simBatch is the convergence of one upload batch.
@@ -964,6 +975,7 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 		Sessions:        make(map[string]float64),
 		StreamBytes:     make(map[string]int),
 		TailBytes:       make(map[string]int),
+		Flows:           make(map[simFlow]int),
 		Protocols:       maps.Clone(nb.protocols),
 		Counters:        make(map[string]float64),
 		CatchUpCounters: maps.Clone(nb.atUpload),
@@ -1006,6 +1018,10 @@ func (nb *simNeighborhood) result(done time.Time, steps int, wall time.Duration)
 	for _, s := range nb.streams {
 		if !s.at.Before(nb.from) {
 			res.StreamBytes[s.stream] += s.toHandler.size() + s.toInitiator.size()
+			if s.to != nil {
+				res.Flows[simFlow{From: s.from.i, To: s.to.i, Opener: s.from.i, Stream: s.stream}] += s.toHandler.size()
+				res.Flows[simFlow{From: s.to.i, To: s.from.i, Opener: s.from.i, Stream: s.stream}] += s.toInitiator.size()
+			}
 		}
 		if s.at.After(done) {
 			res.TailBytes[s.stream] += s.toHandler.size() + s.toInitiator.size()
@@ -1355,7 +1371,7 @@ const simPairHeader = "sim-pair"
 
 // simPair is one stream: its pipes in each direction.
 type simPair struct {
-	from                   *simNode
+	from, to               *simNode // the opener and the handler's node (nil if none)
 	stream                 string
 	at                     time.Time // opened
 	toHandler, toInitiator *simPipe
@@ -1379,6 +1395,9 @@ func (s *simStreamer) NewStream(ctx context.Context, addr swarm.Address, _ p2p.H
 		at:          nb.clock.Now(),
 		toHandler:   newSimPipe(nb, false),
 		toInitiator: newSimPipe(nb, stream == rangesync.FetchStreamName),
+	}
+	if i := slices.IndexFunc(nb.nodes, func(n *simNode) bool { return n.addr.Equal(addr) }); i >= 0 {
+		pair.to = nb.nodes[i]
 	}
 	nb.mu.Lock()
 	if nb.closed {

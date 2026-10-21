@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 )
 
 // The G6 sweeps of the harness (T4.6 part 3), behind the sim build tag, one
@@ -367,6 +368,109 @@ func TestG6Bootstrap(t *testing.T) {
 		})
 	}
 	t.Logf("%s; N = 17, Base %d, node 0 empty, Delay 50 ms; counted from the start:%s", g6Label(), base, tbl)
+}
+
+// TestG6BootstrapPeers measures, per peer, the metadata an empty node
+// receives in a bootstrap past LargeDiff (the T4.6 part 3 review, AC-B2):
+// node 0 of N = 5 starts without any of the Base base chunks (70000, so its
+// root difference is past LargeDiff = 65536, as TestG6Catchup's reserve), and
+// stripes its root while its peers' rounds run sessions with it. The fetch
+// limit is lifted as in TestG6Bootstrap; Delay 50 ms; seeds 1–4, for node 0's
+// rank (its peers with a lower overlay, which initiate their pairs with it).
+// Per peer: the bytes node 0 read on the reconcile streams it opened (its
+// stripes) and on those the peer opened (rounds; takeovers, which wait for
+// the clock, do not fire here), with the IDs node 0 wanted from the latter.
+func TestG6BootstrapPeers(t *testing.T) {
+	const seeds = 4
+	tbl := &g6Table{header: []string{"Base", "seed", "rank", "caught up s", "node 0 metadata in KB (AC-B2 bound)", "of it: stripes, peers' sessions, Status KB", "peers' sessions: KB, sessions, wants (lower-overlay peers first)", "stripes done", "duplicates", "wall"}}
+	for _, base := range []int{70000, 100000} {
+		for seed := range uint64(seeds) {
+			o := simOptions{
+				Nodes: 5, Replication: 3, Seed: seed + 1, Base: base, Lag: base, Batches: 1, BatchSize: 4, Delay: 50 * time.Millisecond,
+				Service: func(so *rangesync.Options) { so.FetchRate = 1 << 20 },
+			}
+			t.Run(fmt.Sprintf("base=%d/seed=%d", base, seed+1), func(t *testing.T) {
+				start := time.Now()
+				res := runNeighborhood(t, o)
+				n0 := res.Nodes[0]
+				type peer struct {
+					i, lower           int // lower: 1 for a peer with a lower overlay
+					stripes, sessions  int // bytes node 0 read
+					opened, wants, max int
+				}
+				peers := make([]peer, 0, len(res.Nodes)-1)
+				for i, n := range res.Nodes[1:] {
+					p := peer{i: i + 1}
+					if bytes.Compare(n.Addr.Bytes(), n0.Addr.Bytes()) < 0 {
+						p.lower = 1
+					}
+					p.stripes = res.Flows[simFlow{From: p.i, To: 0, Opener: 0, Stream: rangesync.ReconcileStreamName}]
+					p.sessions = res.Flows[simFlow{From: p.i, To: 0, Opener: p.i, Stream: rangesync.ReconcileStreamName}]
+					for _, sp := range res.Spans {
+						if sp.Kind == "reconcile" && sp.Node == p.i && sp.Peer.Equal(n0.Addr) && sp.Err == nil {
+							p.opened++
+						}
+					}
+					for _, s := range res.PairwiseDiff {
+						if s.Node == 0 && !s.Session.Initiator && s.Session.Peer.Equal(n.Addr) {
+							p.wants += s.Wants
+							p.max = max(p.max, s.Wants)
+						}
+					}
+					peers = append(peers, p)
+				}
+				slices.SortStableFunc(peers, func(a, b peer) int { return b.lower - a.lower })
+				rank, stripes, sessions, status := 0, 0, 0, 0
+				cells := make([]string, 0, len(peers))
+				for _, p := range peers {
+					rank += p.lower
+					stripes += p.stripes
+					sessions += p.sessions
+					status += res.Flows[simFlow{From: p.i, To: 0, Opener: p.i, Stream: rangesync.StatusStreamName}] +
+						res.Flows[simFlow{From: p.i, To: 0, Opener: 0, Stream: rangesync.StatusStreamName}]
+					cells = append(cells, fmt.Sprintf("%.0f, %d, %d (max %d)", float64(p.sessions)/1000, p.opened, p.wants, p.max))
+				}
+				tbl.add(fmt.Sprint(base), fmt.Sprint(seed+1), fmt.Sprint(rank), fmt.Sprintf("%.2f", res.CaughtUp.Seconds()),
+					fmt.Sprintf("%.0f (%.0f)", n0.MetadataIn/1000, (1.15*float64(base)*70+1e6)/1000),
+					fmt.Sprintf("%.0f, %.0f, %.0f", float64(stripes)/1000, float64(sessions)/1000, float64(status)/1000),
+					strings.Join(cells, "; "),
+					fmt.Sprintf("%.0f", res.Counters["stripes_total{result=done}"]),
+					fmt.Sprint(res.Duplicates), time.Since(start).Round(time.Second).String())
+				if res.Duplicates != 0 {
+					t.Errorf("%d duplicate deliveries", res.Duplicates)
+				}
+				t.Logf("node 0 want claims %v; counters %v", n0.WantClaims, res.Counters)
+			})
+		}
+	}
+	t.Logf("%s; N = 5, node 0 empty, Delay 50 ms; counted from the start; bytes node 0 read on the reconcile streams (stripes: those it opened; peers' sessions: those the peer opened) and the Status streams:%s", g6Label(), tbl)
+}
+
+// TestG6EqualCounts measures one session over a two-sided difference with
+// equal counts and no hint (the T4.6 part 3 review, GrowthFactor): A and B
+// share ScanLimit + 1000 IDs (the root is served from its cache) and hold k
+// IDs each that the other lacks, so d̂ = 1, the first batch is MinBatch and
+// the stream grows by GrowthFactor per More up to RootSymbols. 5 seeds per
+// k; the session's Messages with parts, the Mores and the bytes (the means),
+// and how many root streams exhausted their cache (a split follows).
+func TestG6EqualCounts(t *testing.T) {
+	const seeds = 5
+	n := fingerprint.ScanLimit + 1000
+	root := rangeOf("")
+	tbl := &g6Table{header: []string{"k per side (n_Δ = 2k)", "Messages with parts", "Mores", "KB", "root streams exhausted"}}
+	for _, k := range []int{13, 50, 200, 500, 1000, 1500} {
+		var msgs, mores, kb, exhausted float64
+		for seed := range seeds {
+			rng := newRand(uint64(seed))
+			ex := runExample(t, randIDs(rng, root, n), randIDs(rng, root, k), randIDs(rng, root, k))
+			msgs += float64(ex.messages) / seeds
+			mores += float64(ex.a.Stats().MoreRequests+ex.b.Stats().MoreRequests) / seeds
+			kb += float64(ex.bytes) / 1000 / seeds
+			exhausted += float64(ex.a.Stats().ExhaustedByLevel[0] + ex.b.Stats().ExhaustedByLevel[0]) // the root's
+		}
+		tbl.add(fmt.Sprintf("%d (%d)", k, 2*k), fmt.Sprintf("%.1f", msgs), fmt.Sprintf("%.1f", mores), fmt.Sprintf("%.1f", kb), fmt.Sprintf("%.0f in %d sessions", exhausted, seeds))
+	}
+	t.Logf("%s; one session, equal counts, no hint, %d seeds; mean:%s", g6Label(), seeds, tbl)
 }
 
 // TestG6FetchOpenFails measures the cost of a peer that fails every fetch
