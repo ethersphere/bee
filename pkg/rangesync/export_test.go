@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
+	"golang.org/x/time/rate"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
@@ -365,10 +366,21 @@ func NewCreditBook(capacity int, now time.Time) CreditBook {
 	return CreditBook{b}
 }
 
+// NewCreditBookPool is NewCreditBook with a pool that regains CreditInitial
+// per interval instead of per CreditPoolInterval.
+func NewCreditBookPool(capacity int, now time.Time, interval time.Duration) CreditBook {
+	b := newCreditBook(capacity)
+	b.pool = rate.NewLimiter(rate.Limit(float64(creditInitial)/interval.Seconds()), creditPoolBurst)
+	b.pool.AllowN(now, 0)
+	return CreditBook{b}
+}
+
 func (b CreditBook) Take(peer swarm.Address, n int, now time.Time) int { return b.b.take(peer, n, now) }
 func (b CreditBook) Give(peer swarm.Address, n int)                    { b.b.give(peer, n) }
+func (b CreditBook) Stored(peer swarm.Address)                         { b.b.stored(peer) }
+func (b CreditBook) Excuse(peer swarm.Address) bool                    { return b.b.excuse(peer) }
 func (b CreditBook) Credit(peer swarm.Address) (int, bool)             { return b.b.credit(peer) }
-func (b CreditBook) Len() (peers, debts int)                           { return b.b.size() }
+func (b CreditBook) Len() (peers, forgotten int)                       { return b.b.size() }
 
 // DisableFetchCredit lifts the per-peer fetch credit: every request is
 // granted, as before T4.7 part 4. It must be called before the service is

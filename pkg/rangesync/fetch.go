@@ -514,6 +514,33 @@ func stampRejected(err error) bool {
 	return false
 }
 
+// chainStateRejected reports whether err, an error of the stamp validator for
+// a stamp whose signature recovers, depends on the chain state this node has
+// seen: an unknown or expired batch (postage.ErrNotFound), or an index past
+// the batch depth (postage.ErrInvalidIndex), which a dilution this node has
+// not seen yet raises. An honest peer that has seen another chain state (a
+// batch that expired here first, a dilution or a new batch not seen here
+// yet) delivers such stamps, and so does a peer that makes them up: the
+// batch store forgets an expired batch, and the index is checked before the
+// stamp's owner.
+func chainStateRejected(err error) bool {
+	return errors.Is(err, postage.ErrNotFound) || errors.Is(err, postage.ErrInvalidIndex)
+}
+
+// excuseChainState gives back the unit of fetch credit of a delivery of id
+// by peer that this node rejected for the chain state it has seen
+// (chainStateRejected) when this node held id itself, until it removed it
+// from its reserve (removals: the batch expired here first), and else when
+// the peer has an excuse left, which it spends (credit.go). Each removal
+// excuses one delivery.
+func (s *Service) excuseChainState(peer swarm.Address, id fingerprint.ID) {
+	if s.removals.take(id) {
+		s.credits.give(peer, 1)
+		return
+	}
+	s.credits.excuse(peer)
+}
+
 // chunkID returns the storer.ChunkID of id, without a batch ID.
 func chunkID(id fingerprint.ID) storer.ChunkID {
 	return storer.ChunkID{Address: id.Address(), StampHash: id.StampHash()}
@@ -657,9 +684,12 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stre
 // stores is reported to stored, if not nil. A delivery whose claim had
 // expired is counted late (want_claims). A violation wraps ErrInvalidMessage.
 // It gives the peer the fetch credit the delivery earns (credit.go): a stored
-// chunk creditStoredRefund, a valid chunk the reserve holds already, a stamp
-// that could not be checked for a cause on this node and a local error one,
-// a rejected stamp or chunk nothing.
+// chunk creditStoredRefund and an excuse; a valid chunk the reserve holds
+// already or one older than the reserve's, a stamp that could not be checked
+// for a cause on this node and a local error one; a stamp rejected for the
+// chain state this node has seen one if this node held the ID itself or the
+// peer spends an excuse (excuseChainState); another rejected stamp or chunk
+// nothing.
 func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult, sf *shortfall, stored func()) error {
 	if len(d.Address) != swarm.HashSize {
 		return invalid("delivery address of %d bytes", len(d.Address))
@@ -696,6 +726,9 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		if stampRejected(err) || !recovers {
 			s.wantSet.RejectFrom(id, peer)
 			res.Rejected++
+			if recovers && chainStateRejected(err) {
+				s.excuseChainState(peer, id)
+			}
 			return nil
 		}
 		s.wantSet.Release(id, peer)
@@ -740,10 +773,12 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	if err != nil {
 		if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 			// a newer stamp of the chunk is held: do not fetch this one
-			// again for RejectTTL
+			// again for RejectTTL. Neutral: a peer that holds the older
+			// one delivers it honestly (§7.7)
 			s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk_address", addr)
 			s.wantSet.RejectFrom(id, peer)
 			res.Rejected++
+			s.credits.give(peer, 1)
 			return nil
 		}
 		s.undelivered(peer, id, res)
@@ -753,7 +788,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()
 	res.Stored++
-	s.credits.give(peer, creditStoredRefund)
+	s.credits.stored(peer)
 	if stored != nil {
 		stored()
 	}

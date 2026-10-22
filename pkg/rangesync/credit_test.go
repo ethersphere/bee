@@ -14,8 +14,9 @@ import (
 
 // TestCreditBook checks the per-peer fetch credit's book (T4.7 part 4): what
 // a new overlay starts with, what asking and delivering cost and give back,
-// the probe of a peer with no credit left, the node-wide pool of initial
-// credit, and the bound on the overlays it keeps.
+// the excuses of chain-state rejections, the probe of a peer with no credit
+// left, the node-wide pool of initial credit, and the bound on the overlays
+// it keeps.
 func TestCreditBook(t *testing.T) {
 	t.Parallel()
 	start := time.Unix(1_000_000, 0)
@@ -57,7 +58,7 @@ func TestCreditBook(t *testing.T) {
 		if c, _ := b.Credit(p); c != rangesync.CreditMax {
 			t.Fatalf("credit %d, want %d", c, rangesync.CreditMax)
 		}
-		// a peer the book forgot gets nothing back
+		// a peer the book neither keeps nor remembers gets nothing
 		q := swarm.RandAddress(t)
 		b.Give(q, 10)
 		if c, known := b.Credit(q); c != 0 || known {
@@ -140,12 +141,129 @@ func TestCreditBook(t *testing.T) {
 		}
 	})
 
+	t.Run("excuses", func(t *testing.T) {
+		t.Parallel()
+		b := rangesync.NewCreditBook(rangesync.MaxCreditPeers, start)
+		if b.Excuse(swarm.RandAddress(t)) {
+			t.Fatal("excused an overlay the book does not know")
+		}
+		p := swarm.RandAddress(t)
+		b.Take(p, rangesync.CreditInitial, start)
+		// a new overlay has none: a peer that stored nothing cannot mint them
+		if b.Excuse(p) {
+			t.Fatal("excused a peer that stored nothing")
+		}
+		// each chunk stored gives one, and each excuse gives back a unit
+		const stored = 3
+		for range stored {
+			b.Stored(p)
+		}
+		for i := range stored {
+			if !b.Excuse(p) {
+				t.Fatalf("excuse %d of %d refused", i, stored)
+			}
+		}
+		if b.Excuse(p) {
+			t.Fatalf("more than %d excuses", stored)
+		}
+		if c, _ := b.Credit(p); c != stored*rangesync.CreditStoredRefund+stored {
+			t.Fatalf("credit %d, want %d", c, stored*rangesync.CreditStoredRefund+stored)
+		}
+		// at most CreditMax
+		for range 2 * rangesync.CreditMax {
+			b.Stored(p)
+		}
+		excused := 0
+		for b.Excuse(p) {
+			excused++
+		}
+		if excused != rangesync.CreditMax {
+			t.Fatalf("%d excuses, want %d", excused, rangesync.CreditMax)
+		}
+	})
+
+	t.Run("pool charged", func(t *testing.T) {
+		t.Parallel()
+		// a pool that regains a unit per 14.4 s, where the pool's rounding
+		// can ask for a unit it does not hold yet in the last nanoseconds
+		// before it does (review Low 3; never at CreditPoolInterval)
+		const interval = time.Hour
+		b := rangesync.NewCreditBookPool(rangesync.MaxCreditPeers, start, interval)
+		for range rangesync.CreditPoolBurst / rangesync.CreditInitial {
+			b.Take(swarm.RandAddress(t), rangesync.CreditInitial, start)
+		}
+		unit := interval / rangesync.CreditInitial
+		early := start.Add(unit - 5*time.Nanosecond)
+		for i := range 2 {
+			if got := b.Take(swarm.RandAddress(t), rangesync.CreditInitial, early); got != 0 {
+				t.Fatalf("newcomer %d before the pool regained a unit took %d", i, got)
+			}
+		}
+		at := start.Add(unit)
+		if got := b.Take(swarm.RandAddress(t), rangesync.CreditInitial, at); got != 1 {
+			t.Fatalf("newcomer once the pool regained a unit took %d, want 1", got)
+		}
+		if got := b.Take(swarm.RandAddress(t), rangesync.CreditInitial, at); got != 0 {
+			t.Fatalf("second newcomer took %d of the unit the pool granted", got)
+		}
+	})
+
+	t.Run("least credit first", func(t *testing.T) {
+		t.Parallel()
+		// review Low 1: a synced neighbor is asked for nothing for long, and
+		// new overlays asked meanwhile (which drained the pool) pushed it out
+		// of the book with its credit, to come back with none
+		const capacity = 4
+		b := rangesync.NewCreditBook(capacity, start)
+		neighbor := swarm.RandAddress(t)
+		b.Take(neighbor, rangesync.CreditInitial, start)
+		b.Give(neighbor, rangesync.CreditMax)
+		for range rangesync.CreditPoolBurst/rangesync.CreditInitial + 2*capacity {
+			b.Take(swarm.RandAddress(t), 1, start)
+		}
+		if c, kept := b.Credit(neighbor); c != rangesync.CreditMax || !kept {
+			t.Fatalf("neighbor's credit %d, kept %v, want %d kept", c, kept, rangesync.CreditMax)
+		}
+		if got := b.Take(neighbor, rangesync.CreditMax, start); got != rangesync.CreditMax {
+			t.Fatalf("neighbor took %d, want %d", got, rangesync.CreditMax)
+		}
+	})
+
+	t.Run("forgotten credit", func(t *testing.T) {
+		t.Parallel()
+		// review Low 3: the refund of a Want of a peer forgotten meanwhile
+		// with at least CreditInitial left was dropped, and the peer came
+		// back with the pool's credit
+		const capacity = 4
+		b := rangesync.NewCreditBook(capacity, start)
+		p := swarm.RandAddress(t)
+		b.Take(p, rangesync.CreditInitial, start)
+		b.Give(p, rangesync.CreditMax)
+		if got := b.Take(p, rangesync.CreditInitial, start); got != rangesync.CreditInitial {
+			t.Fatalf("took %d, want %d", got, rangesync.CreditInitial)
+		}
+		// while its Want is in flight, overlays with more credit push it out
+		for range capacity {
+			q := swarm.RandAddress(t)
+			b.Take(q, 1, start)
+			b.Give(q, rangesync.CreditMax)
+		}
+		if c, kept := b.Credit(p); kept || c != rangesync.CreditMax-rangesync.CreditInitial {
+			t.Fatalf("forgotten peer's credit %d, kept %v, want %d remembered", c, kept, rangesync.CreditMax-rangesync.CreditInitial)
+		}
+		// its Want's refund reaches it, and back it resumes its credit
+		b.Give(p, rangesync.CreditInitial)
+		if got := b.Take(p, rangesync.CreditMax, start); got != rangesync.CreditMax {
+			t.Fatalf("forgotten peer back took %d, want %d", got, rangesync.CreditMax)
+		}
+	})
+
 	t.Run("evicted", func(t *testing.T) {
 		t.Parallel()
 		const capacity = 4
 		b := rangesync.NewCreditBook(capacity, start)
-		// fill fills the book with capacity overlays asked after the others,
-		// each spending all its credit, so in debt
+		// fill asks capacity new overlays, each spending all its credit, so
+		// in debt
 		fill := func(now time.Time) {
 			for range capacity {
 				b.Take(swarm.RandAddress(t), rangesync.CreditInitial, now)
@@ -153,12 +271,12 @@ func TestCreditBook(t *testing.T) {
 		}
 		sybil := swarm.RandAddress(t)
 		b.Take(sybil, rangesync.CreditInitial, start)
-		fill(start) // forgets it, the least recently asked, in debt
+		fill(start) // forgets it: the least recently asked of those in debt
 		if _, known := b.Credit(sybil); known {
-			t.Fatal("least recently asked overlay kept past the capacity")
+			t.Fatal("least recently asked debtor kept past the capacity")
 		}
-		if peers, debts := b.Len(); peers != capacity || debts != 1 {
-			t.Fatalf("book keeps %d overlays and %d debts, want %d and 1", peers, debts, capacity)
+		if peers, forgotten := b.Len(); peers != capacity || forgotten != 1 {
+			t.Fatalf("book keeps %d overlays and remembers %d, want %d and 1", peers, forgotten, capacity)
 		}
 		// asked again, it resumes its debt, although the pool has credit,
 		// and its probe clock starts over
@@ -173,27 +291,14 @@ func TestCreditBook(t *testing.T) {
 			t.Fatalf("forgotten debtor's probe took %d, want 1", got)
 		}
 
-		// an overlay forgotten with at least the initial credit is not
-		// remembered: back, it gets at most what it had
-		honest := swarm.RandAddress(t)
-		n := b.Take(honest, rangesync.CreditInitial, now)
-		b.Give(honest, n*rangesync.CreditStoredRefund)
+		// what it remembers is bounded: once capacity more overlays were
+		// forgotten after it, it is forgotten, and that overlay back is a
+		// new one
 		fill(now)
-		if _, known := b.Credit(honest); known {
-			t.Fatal("least recently asked overlay kept past the capacity")
+		peers, forgotten := b.Len()
+		if peers > capacity || forgotten > capacity {
+			t.Fatalf("book keeps %d overlays and remembers %d, over %d", peers, forgotten, capacity)
 		}
-		if got := b.Take(honest, rangesync.CreditMax, now); got != rangesync.CreditInitial {
-			t.Fatalf("forgotten creditor back took %d, want %d", got, rangesync.CreditInitial)
-		}
-
-		// the debts are bounded: once capacity more overlays were forgotten
-		// in debt after it, the oldest debt is forgotten, and that overlay
-		// back is a new one
-		peers, debts := b.Len()
-		if peers > capacity || debts > capacity {
-			t.Fatalf("book keeps %d overlays and %d debts, over %d", peers, debts, capacity)
-		}
-		fill(now)
 		fill(now)
 		if got := b.Take(sybil, rangesync.CreditInitial, now); got != rangesync.CreditInitial {
 			t.Fatalf("overlay whose debt was forgotten took %d, want the pool's %d", got, rangesync.CreditInitial)

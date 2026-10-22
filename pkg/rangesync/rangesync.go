@@ -187,6 +187,7 @@ type Service struct {
 	fetchResets     *peerBudget        // per peer, fetch streams failed with ids undelivered
 	shortfalls      *shortfallBook     // per peer, the fetch shortfall's memory
 	credits         *creditBook        // per overlay, the fetch credit (kept across disconnects)
+	removals        *removals          // the IDs the reserve removed, which excuse a rejected delivery once (credit.go)
 	now             func() time.Time
 
 	index   *fingerprint.Index
@@ -282,6 +283,7 @@ func New(
 		fetchResets:      newPeerBudget(fetchResetInterval, maxFetchResets),
 		shortfalls:       newShortfallBook(),
 		credits:          newCreditBook(maxCreditPeers),
+		removals:         newRemovals(),
 		now:              o.Now,
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
@@ -302,14 +304,15 @@ func New(
 	return s
 }
 
-// Start registers the Indexer as the reserve observer and, if that
-// succeeded, starts it: the Indexer waits for ReserveAddrIndexReady and
-// builds the index. It returns the registration error (for example
-// storer.ErrAddrIndexDisabled), in which case rangesync must not be run.
-// Until the index is built, sessions are answered with Busy and SendStatus
-// fails.
+// Start registers the Indexer as the reserve observer, together with the
+// record of the IDs the reserve removes (removalObserver, which the fetch
+// credit reads), and, if that succeeded, starts it: the Indexer waits for
+// ReserveAddrIndexReady and builds the index. It returns the registration
+// error (for example storer.ErrAddrIndexDisabled), in which case rangesync
+// must not be run. Until the index is built, sessions are answered with Busy
+// and SendStatus fails.
 func (s *Service) Start() error {
-	if err := s.store.SetReserveObserver(s.indexer); err != nil {
+	if err := s.store.SetReserveObserver(removalObserver{indexer: s.indexer, removals: s.removals}); err != nil {
 		return fmt.Errorf("register reserve observer: %w", err)
 	}
 	s.indexer.Start()

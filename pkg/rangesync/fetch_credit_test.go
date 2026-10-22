@@ -6,6 +6,7 @@ package rangesync_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/wantset"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -854,4 +856,195 @@ func TestFetchCreditJunkResidual(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withTimestamp returns ch with its stamp's timestamp set to ts: another
+// version of the same stamp index, older or newer.
+func withTimestamp(ch swarm.Chunk, ts uint64) swarm.Chunk {
+	st := ch.Stamp()
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, ts)
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(postage.NewStamp(st.BatchID(), st.Index(), b, st.Sig()))
+}
+
+// newerWins is a reserve put hook that keeps the newest version of a chunk,
+// as the reserve keeps the newest stamp of a stamp index: a version older
+// than the one stored fails with storage.ErrOverwriteNewerChunk.
+func newerWins() func(swarm.Chunk) error {
+	var (
+		mu     sync.Mutex
+		newest = make(map[string]uint64)
+	)
+	return func(ch swarm.Chunk) error {
+		ts := binary.BigEndian.Uint64(ch.Stamp().Timestamp())
+		k := ch.Address().ByteString()
+		mu.Lock()
+		defer mu.Unlock()
+		if n, ok := newest[k]; ok && ts < n {
+			return storage.ErrOverwriteNewerChunk
+		}
+		newest[k] = ts
+		return nil
+	}
+}
+
+// fetchAll fetches ids from peer, per IDs per call, and checks that every
+// fetch ends without an error and with each ID stored or rejected, as
+// rejected says.
+func fetchAll(t *testing.T, a *testNode, peer swarm.Address, ids []storer.ChunkID, rejected bool) {
+	t.Helper()
+	const per = 12 // streamtest deadlocks past 16 deliveries per Want
+	for i := 0; i < len(ids); i += per {
+		next := ids[i:min(i+per, len(ids))]
+		res, err := a.svc.FetchWithResult(context.Background(), peer, next)
+		want := res.Stored
+		if rejected {
+			want = res.Rejected
+		}
+		if err != nil || want != len(next) {
+			t.Fatalf("fetch %d of %d IDs (rejected %v): %+v, %v", i/per, len(next), rejected, res, err)
+		}
+	}
+}
+
+// TestFetchCreditStaleStamps is review Medium 1 of T4.7 part 4, the stale
+// stamps of §7.7: a delivery older than the version the reserve holds
+// (storage.ErrOverwriteNewerChunk) gave nothing back, so an attacker with one
+// mutable batch, who uploads chunks to the neighborhood and delivers newer
+// versions of them to this node alone through a Sybil, drained this node's
+// honest neighbors with their older versions, one unit each, and this node
+// then refused their real chunks. Such a delivery is now neutral: the honest
+// neighbor keeps its credit over more older versions than its credit could
+// pay for at the cap, and its real chunks are fetched as before. Nobody is
+// scored.
+func TestFetchCreditStaleStamps(t *testing.T) {
+	t.Parallel()
+
+	const pairs = rangesync.CreditMax + rangesync.CreditInitial + 50
+	chs := validChunks(pairs + 12)
+	older, newer := make([]swarm.Chunk, 0, len(chs)), make([]swarm.Chunk, 0, pairs)
+	for _, ch := range chs[:pairs] {
+		older, newer = append(older, withTimestamp(ch, 1)), append(newer, withTimestamp(ch, 2))
+	}
+	lacked := chs[pairs:] // chunks this node lacks
+	routes := make(map[string]p2p.ProtocolSpec)
+	a := newTestNodeOpts(t, nodeOpts{routes: routes, putHook: newerWins(), fetchRate: 1 << 20})
+	sybil := newTestNode(t, newer...)
+	honest := newTestNode(t, append(older, lacked...)...)
+	for _, b := range []*testNode{sybil, honest} {
+		b.svc.DisableDeliveryLimit() // on the real clock
+		route(routes, a, b)
+		sendRoot(t, b, a, whole)
+	}
+	// the Sybil delivers the newer versions to this node alone
+	fetchAll(t, a, sybil.addr, idsOf(t, newer...), false)
+	// the honest neighbor lists the older ones, which this node lacks: each
+	// is delivered and rejected
+	fetchAll(t, a, honest.addr, idsOf(t, older...), true)
+	if c := a.svc.FetchCredit(honest.addr); c != rangesync.CreditInitial {
+		t.Fatalf("honest neighbor's credit %d after %d older versions, want %d", c, pairs, rangesync.CreditInitial)
+	}
+	fetchAll(t, a, honest.addr, idsOf(t, lacked...), false)
+	assertNotScored(t, a, honest.addr)
+	assertNotScored(t, a, sybil.addr)
+}
+
+// TestFetchCreditChainState is review Medium 1 of T4.7 part 4, the stamps
+// rejected for the chain state this node has seen (an unknown or expired
+// batch, an index past the batch depth): they gave nothing back, so the
+// honest neighbors that had not seen a batch expire yet lost a unit for each
+// of its chunks they delivered, and with a large batch ran out. A delivery of
+// an ID this node held itself, until the batch expired here first and its
+// chunks were evicted, is now neutral, once per eviction; any other is
+// neutral while the peer has an excuse left, one per chunk it stored.
+func TestFetchCreditChainState(t *testing.T) {
+	t.Parallel()
+
+	t.Run("expired here first", func(t *testing.T) {
+		t.Parallel()
+		const n = rangesync.CreditMax + rangesync.CreditInitial + 50
+		chs := validChunks(n)
+		batch := make(map[string]bool, n)
+		for _, ch := range chs {
+			batch[ch.Address().ByteString()] = true
+		}
+		var expired atomic.Bool
+		a := newTestNodeOpts(t, nodeOpts{fetchRate: 1 << 20, validStamp: func(ch swarm.Chunk) (swarm.Chunk, error) {
+			if expired.Load() && batch[ch.Address().ByteString()] {
+				return unknownBatch(ch)
+			}
+			return ch, nil
+		}}, chs...)
+		// rejections expire at once, so that an ID can be delivered again
+		a.svc.SetWantSet(wantset.New(rangesync.ClaimDeadline, time.Nanosecond))
+		if err := a.svc.Start(); err != nil {
+			t.Fatal(err)
+		}
+		b := newTestNode(t, chs...)  // it has not seen the batch expire yet
+		b.svc.DisableDeliveryLimit() // on the real clock
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+
+		// the batch expires here first: the reserve evicts its chunks
+		expired.Store(true)
+		ids := idsOf(t, chs...)
+		for _, id := range ids {
+			if err := a.store.RemoveID(id.Address, id.StampHash); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// the neighbor still lists them: each is delivered and rejected
+		fetchAll(t, a, b.addr, ids, true)
+		if c := a.svc.FetchCredit(b.addr); c != rangesync.CreditInitial {
+			t.Fatalf("neighbor's credit %d after %d chunks of a batch expired here first, want %d", c, n, rangesync.CreditInitial)
+		}
+		assertNotScored(t, a, b.addr)
+
+		// each eviction excuses one delivery: delivered again, they cost
+		// the peer, as any chain-state rejection of a peer with no excuse
+		const per = 12
+		fetchAll(t, a, b.addr, ids[:per], true)
+		if c := a.svc.FetchCredit(b.addr); c != rangesync.CreditInitial-per {
+			t.Fatalf("credit %d after the evicted IDs delivered again, want %d", c, rangesync.CreditInitial-per)
+		}
+	})
+
+	t.Run("excuses", func(t *testing.T) {
+		t.Parallel()
+		// chunks of a batch diluted (an index past the depth this node
+		// knows) or created (a batch it does not know yet) on a chain state
+		// this node has not seen, which it never held
+		const per = 12
+		chs, skew := validChunks(per), validChunks(3*per)
+		kind := make(map[string]int, len(skew))
+		for i, ch := range skew {
+			kind[ch.Address().ByteString()] = 1 + i%2
+		}
+		a := newTestNodeOpts(t, nodeOpts{validStamp: func(ch swarm.Chunk) (swarm.Chunk, error) {
+			switch kind[ch.Address().ByteString()] {
+			case 1:
+				return nil, postage.ErrInvalidIndex
+			case 2:
+				return unknownBatch(ch)
+			}
+			return ch, nil
+		}})
+		b := newTestNode(t, append(chs, skew...)...)
+		connect0(a, b)
+		sendRoot(t, b, a, whole)
+
+		// the peer delivers chunks this node lacks: each stored gives
+		// CreditStoredRefund and an excuse
+		fetchAll(t, a, b.addr, idsOf(t, chs...), false)
+		credit := rangesync.CreditInitial + per*(rangesync.CreditStoredRefund-1)
+		if c := a.svc.FetchCredit(b.addr); c != credit {
+			t.Fatalf("credit %d, want %d", c, credit)
+		}
+		// the first per rejections are excused, the others cost a unit each
+		fetchAll(t, a, b.addr, idsOf(t, skew...), true)
+		if c, want := a.svc.FetchCredit(b.addr), credit-2*per; c != want {
+			t.Fatalf("credit %d after %d chain-state rejections and %d excuses, want %d", c, len(skew), per, want)
+		}
+		assertNotScored(t, a, b.addr)
+	})
 }
