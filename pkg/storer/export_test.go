@@ -5,6 +5,7 @@
 package storer
 
 import (
+	"context"
 	"errors"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
@@ -64,6 +65,19 @@ func (db *DB) WaitAddrIndexDrop() {
 	if db.addrIndex.dropDone != nil {
 		<-db.addrIndex.dropDone
 	}
+}
+
+// AddrIndexDropStarted reports whether New started a background drop of the
+// address index.
+func (db *DB) AddrIndexDropStarted() bool {
+	return db.addrIndex.dropDone != nil
+}
+
+// CountWithinRadius runs the reserve worker's count of the reserve chunks
+// within the storage radius, which also evicts the chunks of batches the
+// batch store does not know.
+func (db *DB) CountWithinRadius(ctx context.Context) (int, error) {
+	return db.countWithinRadius(ctx)
 }
 
 // SetReserveTestOptions sets options New passes to the reserve.
