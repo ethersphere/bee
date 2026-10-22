@@ -1,0 +1,8 @@
+# Redocly CLI configuration for the Bee OpenAPI specification.
+# Run from the repository root: npx @redocly/cli lint --config openapi/redocly.yaml
+extends:
+  - recommended
+
+rules:
+  # The Bee API is unauthenticated by design.
+  security-defined: off

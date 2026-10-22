@@ -1,0 +1,62 @@
+name: OpenAPI Checks
+
+on:
+  push:
+    branches:
+      - 'master'
+    paths:
+      - 'openapi/**'
+  pull_request:
+    branches:
+      - '**'
+    paths:
+      - 'openapi/**'
+      - '.github/workflows/openapi-checks.yml'
+
+permissions:
+  contents: read
+
+env:
+  REDOCLY_CLI_VERSION: "2.60.0"
+  OASDIFF_VERSION: "1.33.0"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Lint the OpenAPI specs
+        run: npx --yes @redocly/cli@${REDOCLY_CLI_VERSION} lint --config openapi/redocly.yaml openapi/Swarm.yaml
+  breaking:
+    name: Breaking changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install oasdiff
+        run: |
+          mkdir -p "${RUNNER_TEMP}/oasdiff"
+          curl -sSfL "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz" | tar -xz -C "${RUNNER_TEMP}/oasdiff" oasdiff
+          echo "${RUNNER_TEMP}/oasdiff" >> "$GITHUB_PATH"
+      - name: Extract base specs
+        run: |
+          mkdir -p "${RUNNER_TEMP}/base/openapi"
+          for f in Swarm.yaml SwarmCommon.yaml; do
+            git show "origin/${GITHUB_BASE_REF}:openapi/${f}" > "${RUNNER_TEMP}/base/openapi/${f}"
+          done
+      # Advisory: breaking changes are reported as annotations, they do not
+      # fail the build. Intentional breaking changes must bump info.version.
+      - name: Report breaking changes
+        run: |
+          if ! oasdiff breaking --format githubactions "${RUNNER_TEMP}/base/openapi/Swarm.yaml" openapi/Swarm.yaml; then
+            echo "::warning::oasdiff could not compare the base and head OpenAPI specs"
+          fi
+          {
+            echo "## OpenAPI changes"
+            oasdiff changelog --format markdown "${RUNNER_TEMP}/base/openapi/Swarm.yaml" openapi/Swarm.yaml || echo "oasdiff could not compare the base and head OpenAPI specs."
+          } >> "$GITHUB_STEP_SUMMARY"
