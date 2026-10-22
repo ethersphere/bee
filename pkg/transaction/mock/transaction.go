@@ -40,7 +40,22 @@ func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash comm
 	if m.waitForReceipt != nil {
 		return m.waitForReceipt(ctx, txHash)
 	}
-	return nil, errors.New("not implemented")
+	if m.watchSentTransaction == nil {
+		return nil, errors.New("not implemented")
+	}
+
+	receiptC, errC, err := m.WatchSentTransaction(txHash)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case receipt := <-receiptC:
+		return &receipt, nil
+	case err := <-errC:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (m *transactionServiceMock) WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error) {

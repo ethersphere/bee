@@ -610,6 +610,7 @@ func NewBee(
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				erc20Service,
+				o.BlockTime,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("init chequebook service: %w", err)

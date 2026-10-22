@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -34,6 +34,8 @@ const (
 	totalIssuedKey            = "swap_chequebook_total_issued_"
 
 	coveringBalanceCacheValidity = 5 * time.Minute
+	coveringBalanceReadTimeout   = 5 * time.Second
+	minedWithdrawalBlocks        = 5
 )
 
 var (
@@ -71,6 +73,7 @@ type Service interface {
 
 type service struct {
 	lock               sync.Mutex
+	logger             log.Logger
 	transactionService transaction.Service
 
 	address      common.Address
@@ -79,30 +82,35 @@ type service struct {
 
 	erc20Service erc20.Service
 
-	store               storage.StateStorer
-	chequeSigner        ChequeSigner
-	totalIssuedReserved *big.Int
-	coveringBalance     *big.Int
-	coveringBalanceAt   time.Time
-	withdrawalsReserved *big.Int
-	pendingWithdrawals  map[common.Hash]*big.Int
-	metrics             metrics
+	store                      storage.StateStorer
+	chequeSigner               ChequeSigner
+	totalIssuedReserved        *big.Int
+	coveringBalance            *big.Int
+	coveringBalanceAt          time.Time
+	coveringBalanceReadTimeout time.Duration
+	withdrawalReceiptHold      time.Duration
+	withdrawalsReserved        *big.Int
+	pendingWithdrawals         map[common.Hash]*big.Int
+	metrics                    metrics
 }
 
 // New creates a new chequebook service for the provided chequebook contract.
-func New(transactionService transaction.Service, address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, erc20Service erc20.Service) (Service, error) {
+func New(transactionService transaction.Service, address, ownerAddress common.Address, store storage.StateStorer, chequeSigner ChequeSigner, erc20Service erc20.Service, blockTime time.Duration) (Service, error) {
 	return &service{
-		transactionService:  transactionService,
-		address:             address,
-		contract:            newChequebookContract(address, transactionService),
-		ownerAddress:        ownerAddress,
-		erc20Service:        erc20Service,
-		store:               store,
-		chequeSigner:        chequeSigner,
-		totalIssuedReserved: big.NewInt(0),
-		withdrawalsReserved: big.NewInt(0),
-		pendingWithdrawals:  make(map[common.Hash]*big.Int),
-		metrics:             newMetrics(),
+		logger:                     log.NewLogger(loggerName).Register(),
+		transactionService:         transactionService,
+		address:                    address,
+		contract:                   newChequebookContract(address, transactionService),
+		ownerAddress:               ownerAddress,
+		erc20Service:               erc20Service,
+		store:                      store,
+		chequeSigner:               chequeSigner,
+		totalIssuedReserved:        big.NewInt(0),
+		coveringBalanceReadTimeout: coveringBalanceReadTimeout,
+		withdrawalReceiptHold:      minedWithdrawalBlocks * blockTime,
+		withdrawalsReserved:        big.NewInt(0),
+		pendingWithdrawals:         make(map[common.Hash]*big.Int),
+		metrics:                    newMetrics(),
 	}, nil
 }
 
@@ -136,7 +144,7 @@ func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	available, _, err := s.availableBalance(ctx, false)
+	available, _, err := s.availableBalance(ctx, true)
 	return available, err
 }
 
@@ -160,9 +168,8 @@ func (s *service) availableBalance(ctx context.Context, refresh bool) (*big.Int,
 	return available, fromCache, nil
 }
 
-// availableBalanceFor returns the available balance.
-// When the cached figure cannot cover it, the balance is reloaded from
-// chain first, because a deposit or an external top-up might not be in the cache.
+// When the cached figure cannot cover amount, the balance is reloaded from chain first,
+// because a deposit or an external top-up might not be in the cache.
 func (s *service) availableBalanceFor(ctx context.Context, amount *big.Int) (*big.Int, error) {
 	available, fromCache, err := s.availableBalance(ctx, false)
 	if err != nil {
@@ -186,8 +193,10 @@ func (s *service) coveringBalanceValid() bool {
 	return s.coveringBalance != nil && time.Since(s.coveringBalanceAt) < coveringBalanceCacheValidity
 }
 
-// loadCoveringBalance returns balance + totalPaidOut. With refresh it always
-// reads the chain. Otherwise it returns the cached value while that value is valid.
+// getOrLoadCoveringBalance returns balance plus totalPaidOut.
+// forceRefresh always reads the chain. Otherwise the cached value is returned
+// while it is younger than coveringBalanceCacheValidity. The bool is true when
+// the returned value came from the cache.
 func (s *service) getOrLoadCoveringBalance(ctx context.Context, forceRefresh bool) (*big.Int, bool, error) {
 	if !forceRefresh {
 		if s.coveringBalanceValid() {
@@ -197,21 +206,34 @@ func (s *service) getOrLoadCoveringBalance(ctx context.Context, forceRefresh boo
 		s.metrics.CoveringBalanceCacheMiss.Inc()
 	}
 
+	coveringBalance, err := s.getCoveringBalance(ctx)
+	if err != nil {
+		s.coveringBalance = nil
+		s.coveringBalanceAt = time.Time{}
+		return nil, false, err
+	}
+
+	s.coveringBalance = coveringBalance
+	s.coveringBalanceAt = time.Now()
+	setTokenGauge(s.metrics.CoveringBalance, s.coveringBalance)
+	return new(big.Int).Set(s.coveringBalance), false, nil
+}
+
+// getCoveringBalance is called with s.lock held, so a stalled RPC must not
+// outlive the timeout or it would block every cheque issue.
+func (s *service) getCoveringBalance(ctx context.Context) (*big.Int, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.coveringBalanceReadTimeout)
+	defer cancel()
+
 	totalPaidOut, err := s.contract.TotalPaidOut(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-
 	balance, err := s.Balance(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-
-	s.coveringBalance = new(big.Int).Add(balance, totalPaidOut)
-	s.coveringBalanceAt = time.Now()
-	value, _ := new(big.Float).SetInt(s.coveringBalance).Float64()
-	s.metrics.CoveringBalance.Set(value)
-	return new(big.Int).Set(s.coveringBalance), false, nil
+	return new(big.Int).Add(balance, totalPaidOut), nil
 }
 
 func (s *service) invalidateCoveringBalance() {
@@ -252,6 +274,7 @@ func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big
 
 	if !s.covers(availableBalance, amount) {
 		s.metrics.OutOfFunds.Inc()
+		setTokenGauge(s.metrics.AvailableBalance, new(big.Int).Sub(availableBalance, s.totalIssuedReserved))
 		return nil, ErrOutOfFunds
 	}
 
@@ -328,7 +351,11 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		return nil, err
 	}
 	totalIssued = totalIssued.Add(totalIssued, amount)
-	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
+	if err := s.store.Put(totalIssuedKey, totalIssued); err != nil {
+		return nil, err
+	}
+	setTokenGauge(s.metrics.AvailableBalance, availableBalance)
+	return availableBalance, nil
 }
 
 // returns the total amount in cheques issued so far
@@ -404,12 +431,12 @@ func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
 func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
 	amount = new(big.Int).Set(amount)
 
-	if err := s.reserveWithdrawal(ctx, amount); err != nil {
+	callData, err := chequebookABI.Pack("withdraw", amount)
+	if err != nil {
 		return common.Hash{}, err
 	}
 
-	callData, err := chequebookABI.Pack("withdraw", amount)
-	if err != nil {
+	if err := s.reserveWithdrawal(ctx, amount); err != nil {
 		return common.Hash{}, err
 	}
 
@@ -423,24 +450,19 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 	}
 
 	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		s.lock.Lock()
-		s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)
-		s.lock.Unlock()
-		return common.Hash{}, err
-	}
 
 	s.lock.Lock()
 	s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)
-	s.pendingWithdrawals[txHash] = amount
+	if err == nil {
+		s.pendingWithdrawals[txHash] = amount
+	}
 	s.lock.Unlock()
 
-	receiptC, errC, err := s.transactionService.WatchSentTransaction(txHash)
 	if err != nil {
-		return txHash, err
+		return common.Hash{}, err
 	}
 
-	go s.waitForWithdrawal(txHash, receiptC, errC)
+	go s.waitForWithdrawal(txHash, amount)
 	return txHash, nil
 }
 
@@ -462,20 +484,47 @@ func (s *service) reserveWithdrawal(ctx context.Context, amount *big.Int) error 
 	return nil
 }
 
-// waitForWithdrawal stops deducting a pending withdrawal once it is mined or cancelled.
+// waitForWithdrawal keeps a mined withdrawal deducted for 5 blocks, then drops it and reloads the covering balance from chain.
+// A reverted or cancelled withdrawal is dropped immediately.
 // On monitor shutdown the withdrawal stays deducted for the rest of the process lifetime.
-func (s *service) waitForWithdrawal(txHash common.Hash, receiptC <-chan types.Receipt, errC <-chan error) {
-	select {
-	case <-receiptC:
-	case err := <-errC:
-		if errors.Is(err, transaction.ErrMonitorClosed) {
+func (s *service) waitForWithdrawal(txHash common.Hash, amount *big.Int) {
+	receipt, err := s.transactionService.WaitForReceipt(context.Background(), txHash)
+	if err != nil {
+		if errors.Is(err, transaction.ErrTransactionCancelled) {
+			s.logger.Warning("withdrawal transaction was not mined", "tx", txHash, "amount", amount, "error", err)
+			s.lock.Lock()
+			delete(s.pendingWithdrawals, txHash)
+			s.lock.Unlock()
 			return
 		}
+		if !errors.Is(err, transaction.ErrMonitorClosed) {
+			// The transaction is already broadcast. Keep it deducted; dropping it would invite a second withdrawal.
+			s.logger.Error(err, "watching withdrawal transaction failed", "tx", txHash, "amount", amount)
+		}
+		return
 	}
 
+	s.logger.Info("withdrawal receipt received", "tx", txHash, "amount", amount, "status", receipt.Status, "block", receipt.BlockNumber)
+	if receipt.Status != 1 {
+		s.lock.Lock()
+		delete(s.pendingWithdrawals, txHash)
+		s.lock.Unlock()
+		return
+	}
+	// The withdrawal is already mined, but the next balance read can hit an RPC that has not seen that block yet
+	time.Sleep(s.withdrawalReceiptHold)
+	s.releaseMinedWithdrawal(txHash)
+}
+
+func (s *service) releaseMinedWithdrawal(txHash common.Hash) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
+	_, _, err := s.getOrLoadCoveringBalance(context.Background(), true)
+	if err != nil {
+		s.logger.Error(err, "reload covering balance after withdrawal failed")
+	} else {
+		setTokenGauge(s.metrics.CoveringBalance, s.coveringBalance)
+	}
 	delete(s.pendingWithdrawals, txHash)
-	s.metrics.CoveringBalanceCacheInvalidation.Inc()
-	s.coveringBalance = nil
 }

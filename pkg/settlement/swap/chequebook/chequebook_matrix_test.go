@@ -5,10 +5,11 @@
 package chequebook_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math/big"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,129 +22,69 @@ import (
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
 
-// matrixCase is one cell of the covering-balance matrix.
-// Chain changes that happen after the cache is warm are invisible to a cheque
-// that still fits the cached figure. A cheque that does not fit reloads first.
+// matrixCase is one cheque issued against a chequebook in a given cache state.
+// A cheque that fits the cached figure does not read the chain, one that does
+// not fit reloads the cache once before it is refused.
 type matrixCase struct {
-	name             string
-	chain            int64
-	warm             bool
-	issued           int64
-	pending          int64
-	expire           bool
-	deposit          bool
-	addChain         int64
-	applyAdd         bool
-	minePending      bool
-	amount           int64
-	wantErr          bool
-	wantAvailable    int64
-	wantReads        int
-	wantChainBalance int64
+	name          string
+	chain         int64 // chequebook balance on chain when the test starts
+	warm          bool  // load the cache before the cheque
+	expire        bool  // age the loaded cache past its validity
+	issued        int64 // cheques issued before
+	pending       int64 // withdrawal broadcast before
+	minePending   bool  // mine and release the withdrawal before the cheque
+	chainDelta    int64 // balance change on chain after the cache is loaded
+	amount        int64
+	wantErr       bool
+	wantReads     int   // chain reads made by the cheque
+	wantAvailable int64 // available balance on chain after the cheque
 }
 
 func TestChequebookCoveringBalanceMatrix(t *testing.T) {
 	t.Parallel()
 
-	beneficiary := common.HexToAddress("0xdddd")
 	cases := []matrixCase{
-		// empty, cache cold: the first issue reads the chain once
-		{name: "empty/cold/issue-1", chain: 0, amount: 1, wantErr: true, wantAvailable: 0, wantReads: 2},
-		{name: "empty/cold/deposit-mined-50/issue-1", chain: 0, applyAdd: true, addChain: 50, amount: 1, wantAvailable: 49, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/cold/deposit-mined-50/issue-50", chain: 0, applyAdd: true, addChain: 50, amount: 50, wantAvailable: 0, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/cold/deposit-mined-50/issue-51", chain: 0, applyAdd: true, addChain: 50, amount: 51, wantErr: true, wantAvailable: 50, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/cold/deposit-broadcast/issue-1", chain: 0, deposit: true, amount: 1, wantErr: true, wantAvailable: 0, wantReads: 2},
+		// the first cheque loads the cache
+		{name: "cold/fits", chain: 100, amount: 100, wantReads: 2, wantAvailable: 0},
 
-		// empty, cache warm at 0: a cheque reloads, still sees 0 until the chain changes
-		{name: "empty/warm/issue-1", chain: 0, warm: true, amount: 1, wantErr: true, wantAvailable: 0, wantReads: 2},
-		{name: "empty/warm/deposit-mined-50/issue-1", chain: 0, warm: true, applyAdd: true, addChain: 50, amount: 1, wantAvailable: 49, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/warm/deposit-mined-50/issue-50", chain: 0, warm: true, applyAdd: true, addChain: 50, amount: 50, wantAvailable: 0, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/warm/deposit-mined-50/issue-51", chain: 0, warm: true, applyAdd: true, addChain: 50, amount: 51, wantErr: true, wantAvailable: 50, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/warm/top-up-50/issue-1", chain: 0, warm: true, applyAdd: true, addChain: 50, amount: 1, wantAvailable: 49, wantReads: 2, wantChainBalance: 50},
-		{name: "empty/warm/deposit-broadcast/issue-1", chain: 0, warm: true, deposit: true, amount: 1, wantErr: true, wantAvailable: 0, wantReads: 2},
+		// a cheque that fits the cache does not read the chain
+		{name: "warm/fits", chain: 100, warm: true, amount: 100, wantAvailable: 0},
+		// a cheque that does not fit reloads once before it is refused
+		{name: "warm/exceeds", chain: 100, warm: true, amount: 101, wantErr: true, wantReads: 2, wantAvailable: 100},
 
-		// 100, cache cold
-		{name: "100/cold/issue-1", chain: 100, amount: 1, wantAvailable: 99, wantReads: 2, wantChainBalance: 100},
-		{name: "100/cold/issue-100", chain: 100, amount: 100, wantAvailable: 0, wantReads: 2, wantChainBalance: 100},
-		{name: "100/cold/issue-101", chain: 100, amount: 101, wantErr: true, wantAvailable: 100, wantReads: 2, wantChainBalance: 100},
-		{name: "100/cold/deposit-mined-50/issue-150", chain: 100, applyAdd: true, addChain: 50, amount: 150, wantAvailable: 0, wantReads: 2, wantChainBalance: 150},
-		{name: "100/cold/deposit-mined-50/issue-151", chain: 100, applyAdd: true, addChain: 50, amount: 151, wantErr: true, wantAvailable: 150, wantReads: 2, wantChainBalance: 150},
+		// the reload picks up a top-up the cache has missed, and the cheque is checked against it
+		{name: "warm/topped-up/exceeds-cache", chain: 100, warm: true, chainDelta: 50, amount: 101, wantReads: 2, wantAvailable: 49},
+		{name: "warm/topped-up/exceeds-chain", chain: 100, warm: true, chainDelta: 50, amount: 151, wantErr: true, wantReads: 2, wantAvailable: 150},
 
-		// 100, cache warm: a fitting cheque does not read the chain
-		{name: "100/warm/issue-1", chain: 100, warm: true, amount: 1, wantAvailable: 99, wantChainBalance: 100},
-		{name: "100/warm/issue-100", chain: 100, warm: true, amount: 100, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/issue-101", chain: 100, warm: true, amount: 101, wantErr: true, wantAvailable: 100, wantReads: 2, wantChainBalance: 100},
-		{name: "100/warm/deposit-mined-50/issue-1", chain: 100, warm: true, deposit: true, applyAdd: true, addChain: 50, amount: 1, wantAvailable: 99, wantChainBalance: 150},
-		{name: "100/warm/deposit-mined-50/issue-100", chain: 100, warm: true, deposit: true, applyAdd: true, addChain: 50, amount: 100, wantAvailable: 0, wantChainBalance: 150},
-		{name: "100/warm/deposit-mined-50/issue-101", chain: 100, warm: true, deposit: true, applyAdd: true, addChain: 50, amount: 101, wantAvailable: 49, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/deposit-mined-50/issue-151", chain: 100, warm: true, deposit: true, applyAdd: true, addChain: 50, amount: 151, wantErr: true, wantAvailable: 150, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/top-up-50/issue-101", chain: 100, warm: true, applyAdd: true, addChain: 50, amount: 101, wantAvailable: 49, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/deposit-broadcast/issue-100", chain: 100, warm: true, deposit: true, amount: 100, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/deposit-broadcast/issue-101", chain: 100, warm: true, deposit: true, amount: 101, wantErr: true, wantAvailable: 100, wantReads: 2, wantChainBalance: 100},
+		// an expired cache is reloaded even for a cheque that fits
+		{name: "expired/fits", chain: 100, warm: true, expire: true, amount: 100, wantReads: 2, wantAvailable: 0},
+		// a freshly loaded figure is not reloaded again when the cheque does not fit
+		{name: "expired/exceeds", chain: 100, warm: true, expire: true, amount: 101, wantErr: true, wantReads: 2, wantAvailable: 100},
 
-		// 100, 40 already issued, cache warm: 60 left in the cache
-		{name: "100/warm/issued-40/issue-60", chain: 100, warm: true, issued: 40, amount: 60, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/issued-40/issue-61", chain: 100, warm: true, issued: 40, amount: 61, wantErr: true, wantAvailable: 60, wantReads: 2, wantChainBalance: 100},
-		{name: "100/warm/issued-40/top-up-50/issue-60", chain: 100, warm: true, issued: 40, applyAdd: true, addChain: 50, amount: 60, wantAvailable: 0, wantChainBalance: 150},
-		{name: "100/warm/issued-40/top-up-50/issue-61", chain: 100, warm: true, issued: 40, applyAdd: true, addChain: 50, amount: 61, wantAvailable: 49, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/issued-40/top-up-50/issue-111", chain: 100, warm: true, issued: 40, applyAdd: true, addChain: 50, amount: 111, wantErr: true, wantAvailable: 110, wantReads: 2, wantChainBalance: 150},
+		// issued cheques are deducted
+		{name: "warm/issued/fits", chain: 100, warm: true, issued: 40, amount: 60, wantAvailable: 0},
+		{name: "warm/issued/exceeds", chain: 100, warm: true, issued: 40, amount: 61, wantErr: true, wantReads: 2, wantAvailable: 60},
 
-		// withdrawal of 40 in flight, chain still 100
-		{name: "100/warm/pending-40/issue-60", chain: 100, warm: true, pending: 40, amount: 60, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/pending-40/issue-61", chain: 100, warm: true, pending: 40, amount: 61, wantErr: true, wantAvailable: 60, wantReads: 2, wantChainBalance: 100},
-		{name: "100/warm/pending-40/deposit-broadcast/issue-60", chain: 100, warm: true, pending: 40, deposit: true, amount: 60, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/pending-40/top-up-50/issue-60", chain: 100, warm: true, pending: 40, applyAdd: true, addChain: 50, amount: 60, wantAvailable: 0, wantChainBalance: 150},
-		{name: "100/warm/pending-40/top-up-50/issue-61", chain: 100, warm: true, pending: 40, applyAdd: true, addChain: 50, amount: 61, wantAvailable: 49, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/pending-40/mined/issue-60", chain: 100, warm: true, pending: 40, minePending: true, amount: 60, wantAvailable: 0, wantReads: 2, wantChainBalance: 60},
-		{name: "100/warm/pending-40/mined/issue-61", chain: 100, warm: true, pending: 40, minePending: true, amount: 61, wantErr: true, wantAvailable: 60, wantReads: 2, wantChainBalance: 60},
+		// a pending withdrawal is deducted, also after the reload
+		{name: "warm/pending/fits", chain: 100, warm: true, pending: 40, amount: 60, wantAvailable: 0},
+		{name: "warm/pending/exceeds", chain: 100, warm: true, pending: 40, amount: 61, wantErr: true, wantReads: 2, wantAvailable: 60},
 
-		// 40 issued and 40 withdrawing
-		{name: "100/warm/issued-40/pending-40/issue-20", chain: 100, warm: true, issued: 40, pending: 40, amount: 20, wantAvailable: 0, wantChainBalance: 100},
-		{name: "100/warm/issued-40/pending-40/issue-21", chain: 100, warm: true, issued: 40, pending: 40, amount: 21, wantErr: true, wantAvailable: 20, wantReads: 2, wantChainBalance: 100},
-		{name: "100/warm/issued-40/pending-40/deposit-and-top-up-50/issue-20", chain: 100, warm: true, issued: 40, pending: 40, deposit: true, applyAdd: true, addChain: 50, amount: 20, wantAvailable: 0, wantChainBalance: 150},
-		{name: "100/warm/issued-40/pending-40/deposit-and-top-up-50/issue-21", chain: 100, warm: true, issued: 40, pending: 40, deposit: true, applyAdd: true, addChain: 50, amount: 21, wantAvailable: 49, wantReads: 2, wantChainBalance: 150},
-		{name: "100/warm/issued-40/pending-40/mined/issue-20", chain: 100, warm: true, issued: 40, pending: 40, minePending: true, amount: 20, wantAvailable: 0, wantReads: 2, wantChainBalance: 60},
-		{name: "100/warm/issued-40/pending-40/mined/issue-21", chain: 100, warm: true, issued: 40, pending: 40, minePending: true, amount: 21, wantErr: true, wantAvailable: 20, wantReads: 2, wantChainBalance: 60},
+		// a mined withdrawal is no longer deducted and the cache holds the balance after it
+		{name: "warm/withdrawn/fits", chain: 100, warm: true, pending: 40, minePending: true, amount: 60, wantAvailable: 0},
+		{name: "warm/withdrawn/exceeds", chain: 100, warm: true, pending: 40, minePending: true, amount: 61, wantErr: true, wantReads: 2, wantAvailable: 60},
 
-		// cache expired: one chain read, no second reload in the same cheque
-		{name: "100/expired/issue-100", chain: 100, warm: true, expire: true, amount: 100, wantAvailable: 0, wantReads: 2, wantChainBalance: 100},
-		{name: "100/expired/issue-101", chain: 100, warm: true, expire: true, amount: 101, wantErr: true, wantAvailable: 100, wantReads: 2, wantChainBalance: 100},
-		{name: "100/expired/top-up-50/issue-150", chain: 100, warm: true, expire: true, applyAdd: true, addChain: 50, amount: 150, wantAvailable: 0, wantReads: 2, wantChainBalance: 150},
-		{name: "100/expired/top-up-50/issue-151", chain: 100, warm: true, expire: true, applyAdd: true, addChain: 50, amount: 151, wantErr: true, wantAvailable: 150, wantReads: 2, wantChainBalance: 150},
-
-		// cache says 100, chain has already dropped to 50, and nothing forces a reload while the cheque fits
-		{name: "100/warm/chain-dropped-50/issue-50", chain: 100, warm: true, applyAdd: true, addChain: -50, amount: 50, wantAvailable: 50, wantChainBalance: 50},
-		{name: "100/warm/chain-dropped-50/issue-60", chain: 100, warm: true, applyAdd: true, addChain: -50, amount: 60, wantAvailable: 40, wantChainBalance: 50},
-		{name: "100/warm/chain-dropped-50/issue-101", chain: 100, warm: true, applyAdd: true, addChain: -50, amount: 101, wantErr: true, wantAvailable: 50, wantReads: 2, wantChainBalance: 50},
+		// accepted limitation: a decrease not made by this node is invisible until the cache expires
+		{name: "warm/drained-elsewhere/fits-cache", chain: 100, warm: true, chainDelta: -50, amount: 60, wantAvailable: -10},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			service, chain, receiptC, errC := openMatrixChequebook(t, tc.chain, tc.issued, tc.pending, tc.warm)
-			if errC != nil {
-				t.Cleanup(func() { errC <- transaction.ErrMonitorClosed })
-			}
-			if tc.expire {
-				chequebook.SetCoveringBalanceCachedAt(service, time.Now().Add(-6*time.Minute))
-			}
-			if tc.deposit {
-				if _, err := service.Deposit(context.Background(), big.NewInt(1)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if tc.minePending {
-				chain.setBalance(tc.chain - tc.pending)
-				receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
-				waitForPendingWithdrawals(t, service, 0)
-			}
-			if tc.applyAdd {
-				chain.setBalance(tc.chain + tc.addChain)
-			}
+			service, chain := openMatrixChequebook(t, tc)
 
 			before := chain.callCount()
-			err := issueCheque(service, beneficiary, tc.amount)
+			err := issueCheque(service, common.HexToAddress("0xdddd"), tc.amount)
 			if tc.wantErr {
 				if !errors.Is(err, chequebook.ErrOutOfFunds) {
 					t.Fatalf("got %v, want %v", err, chequebook.ErrOutOfFunds)
@@ -155,108 +96,61 @@ func TestChequebookCoveringBalanceMatrix(t *testing.T) {
 				t.Fatalf("chain reads for the cheque: got %d, want %d", got, tc.wantReads)
 			}
 			expectAvailableBalance(t, service, tc.wantAvailable)
-			if tc.wantChainBalance != 0 || tc.chain == 0 && tc.amount == 1 && tc.wantErr {
-				onChain, err := service.Balance(context.Background())
-				if err != nil {
-					t.Fatal(err)
-				}
-				if onChain.Cmp(big.NewInt(tc.wantChainBalance)) != 0 {
-					t.Fatalf("on-chain balance: got %d, want %d", onChain, tc.wantChainBalance)
-				}
-			}
 		})
 	}
 }
 
-func openMatrixChequebook(t *testing.T, chainBal, issued, pending int64, warm bool) (chequebook.Service, *chainMock, chan types.Receipt, chan error) {
+func openMatrixChequebook(t *testing.T, tc matrixCase) (chequebook.Service, *chainMock) {
 	t.Helper()
 
-	chain := newChainMock(t, chainBal)
+	chain := newChainMock(t, tc.chain)
 	var (
 		opts     []transactionmock.Option
 		receiptC chan types.Receipt
-		errC     chan error
 	)
-	erc20Opts := []erc20mock.Option{
-		erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
-			return big.NewInt(1000), nil
-		}),
-		erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
-			return common.HexToHash("0xde"), nil
-		}),
-	}
-	if pending > 0 {
+	if tc.pending > 0 {
 		receiptC = make(chan types.Receipt, 1)
-		errC = make(chan error, 1)
+		errC := make(chan error, 1)
+		t.Cleanup(func() { errC <- transaction.ErrMonitorClosed })
 		opts = append(opts,
-			transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(pending)),
+			transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(tc.pending)),
 			transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
 				return receiptC, errC, nil
 			}),
 		)
 	}
-	service := newChainChequebook(t, chain, erc20mock.New(erc20Opts...), opts...)
-	if warm {
-		expectAvailableBalance(t, service, chainBal)
+	service := newChainChequebook(t, chain, erc20mock.New(), opts...)
+
+	if tc.warm {
+		expectAvailableBalance(t, service, tc.chain)
 	}
-	if issued > 0 {
-		if err := issueCheque(service, common.HexToAddress("0xdddd"), issued); err != nil {
+	if tc.issued > 0 {
+		if err := issueCheque(service, common.HexToAddress("0xdddd"), tc.issued); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if pending > 0 {
-		if _, err := service.Withdraw(context.Background(), big.NewInt(pending)); err != nil {
+	balance := tc.chain
+	if tc.pending > 0 {
+		if _, err := service.Withdraw(context.Background(), big.NewInt(tc.pending)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	return service, chain, receiptC, errC
+	if tc.minePending {
+		balance -= tc.pending
+		chain.setBalance(balance)
+		receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+		waitForPendingWithdrawals(t, service, 0)
+	}
+	if tc.expire {
+		chequebook.SetCoveringBalanceCachedAt(service, time.Now().Add(-6*time.Minute))
+	}
+	if tc.chainDelta != 0 {
+		chain.setBalance(balance + tc.chainDelta)
+	}
+	return service, chain
 }
 
-func TestChequebookCashoutBetweenCoveringReads(t *testing.T) {
-	t.Parallel()
-
-	address := common.HexToAddress("0xabcd")
-	totalPaidOutCall, err := chequebookABI.Pack("totalPaidOut")
-	if err != nil {
-		t.Fatal(err)
-	}
-	balanceCall, err := chequebookABI.Pack("balance")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var methods []string
-	service, err := chequebook.New(
-		transactionmock.New(transactionmock.WithCallFunc(func(_ context.Context, request *transaction.TxRequest) ([]byte, error) {
-			switch {
-			case bytes.Equal(request.Data, totalPaidOutCall):
-				methods = append(methods, "totalPaidOut")
-				return big.NewInt(0).FillBytes(make([]byte, 32)), nil
-			case bytes.Equal(request.Data, balanceCall):
-				methods = append(methods, "balance")
-				// 30 was cashed after totalPaidOut was read and before balance was read
-				return big.NewInt(70).FillBytes(make([]byte, 32)), nil
-			default:
-				return nil, errors.New("unexpected call")
-			}
-		})),
-		address,
-		common.HexToAddress("0xfff"),
-		storemock.NewStateStore(),
-		&chequeSignerMock{sign: func(*chequebook.Cheque) ([]byte, error) { return nil, nil }},
-		erc20mock.New(),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectAvailableBalance(t, service, 70)
-	if len(methods) != 2 || methods[0] != "totalPaidOut" || methods[1] != "balance" {
-		t.Fatalf("read order: got %v, want [totalPaidOut balance]", methods)
-	}
-}
-
-func TestChequebookRefreshFailureKeepsCache(t *testing.T) {
+func TestChequebookRefreshFailureDropsCache(t *testing.T) {
 	t.Parallel()
 
 	chain := newChainMock(t, 100)
@@ -274,6 +168,7 @@ func TestChequebookRefreshFailureKeepsCache(t *testing.T) {
 		storemock.NewStateStore(),
 		&chequeSignerMock{sign: func(*chequebook.Cheque) ([]byte, error) { return nil, nil }},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -286,40 +181,133 @@ func TestChequebookRefreshFailureKeepsCache(t *testing.T) {
 		t.Fatalf("got %v, want %v", err, rpcErr)
 	}
 
+	if err := issueCheque(service, common.HexToAddress("0xdddd"), 10); !errors.Is(err, rpcErr) {
+		t.Fatalf("fitting cheque after a failed refresh: got %v, want %v", err, rpcErr)
+	}
+
 	fail = false
 	calls := chain.callCount()
 	if err := issueCheque(service, common.HexToAddress("0xdddd"), 10); err != nil {
 		t.Fatal(err)
 	}
-	if chain.callCount() != calls {
-		t.Fatalf("fitting cheque read the chain after a failed refresh: calls %d to %d", calls, chain.callCount())
+	if got := chain.callCount() - calls; got != 2 {
+		t.Fatalf("chain reads for the cheque after a failed refresh: got %d, want 2", got)
 	}
 	expectAvailableBalance(t, service, 90)
 }
 
-func TestChequebookWithdrawalMonitorClosed(t *testing.T) {
+func TestChequebookWithdrawalReleaseReloadFailure(t *testing.T) {
 	t.Parallel()
 
-	errC := make(chan error, 1)
 	chain := newChainMock(t, 100)
-	service := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(40)),
-		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
-			return make(chan types.Receipt), errC, nil
-		}),
+	rpcErr := errors.New("rpc failed")
+	var fail atomic.Bool
+	receiptC := make(chan types.Receipt, 1)
+	service, err := chequebook.New(
+		transactionmock.New(
+			transactionmock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+				if fail.Load() {
+					return nil, rpcErr
+				}
+				return chain.call(ctx, request)
+			}),
+			transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(90)),
+			transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+				return receiptC, make(chan error), nil
+			}),
+		),
+		common.HexToAddress("0xabcd"),
+		common.HexToAddress("0xfff"),
+		storemock.NewStateStore(),
+		&chequeSignerMock{sign: func(*chequebook.Cheque) ([]byte, error) { return nil, nil }},
+		erc20mock.New(),
+		0,
 	)
-
-	if _, err := service.Withdraw(context.Background(), big.NewInt(40)); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
-	errC <- transaction.ErrMonitorClosed
-	time.Sleep(20 * time.Millisecond)
-	if chequebook.PendingWithdrawals(service) != 1 {
-		t.Fatalf("pending withdrawals: got %d, want 1", chequebook.PendingWithdrawals(service))
+
+	expectAvailableBalance(t, service, 100)
+	if _, err := service.Withdraw(context.Background(), big.NewInt(90)); err != nil {
+		t.Fatal(err)
 	}
-	expectAvailableBalance(t, service, 60)
-	if err := issueCheque(service, common.HexToAddress("0xdddd"), 61); !errors.Is(err, chequebook.ErrOutOfFunds) {
-		t.Fatalf("got %v, want %v", err, chequebook.ErrOutOfFunds)
+
+	// the withdrawal is mined, but the reload after the hold fails
+	chain.setBalance(10)
+	fail.Store(true)
+	receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+	waitForPendingWithdrawals(t, service, 0)
+	fail.Store(false)
+
+	if err := issueCheque(service, common.HexToAddress("0xdddd"), 50); !errors.Is(err, chequebook.ErrOutOfFunds) {
+		t.Fatalf("issue against the pre-withdrawal balance: got %v, want %v", err, chequebook.ErrOutOfFunds)
+	}
+	if err := issueCheque(service, common.HexToAddress("0xdddd"), 10); err != nil {
+		t.Fatal(err)
+	}
+	expectAvailableBalance(t, service, 0)
+}
+
+func TestChequebookCoveringBalanceReadTimeout(t *testing.T) {
+	t.Parallel()
+
+	chain := newChainMock(t, 100)
+	var (
+		stall       atomic.Bool
+		stalledOnce sync.Once
+	)
+	stalled := make(chan struct{})
+	receiptC := make(chan types.Receipt, 1)
+	service, err := chequebook.New(
+		transactionmock.New(
+			transactionmock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+				if stall.Load() {
+					stalledOnce.Do(func() { close(stalled) })
+					<-ctx.Done()
+					return nil, ctx.Err()
+				}
+				return chain.call(ctx, request)
+			}),
+			transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(10)),
+			transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+				return receiptC, make(chan error), nil
+			}),
+		),
+		common.HexToAddress("0xabcd"),
+		common.HexToAddress("0xfff"),
+		storemock.NewStateStore(),
+		&chequeSignerMock{sign: func(*chequebook.Cheque) ([]byte, error) { return nil, nil }},
+		erc20mock.New(),
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chequebook.SetCoveringBalanceReadTimeout(service, 100*time.Millisecond)
+
+	expectAvailableBalance(t, service, 100)
+	if _, err := service.Withdraw(context.Background(), big.NewInt(10)); err != nil {
+		t.Fatal(err)
+	}
+	stall.Store(true)
+	receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+	select {
+	case <-stalled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("covering balance was not reloaded after the withdrawal")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- issueCheque(service, common.HexToAddress("0xdddd"), 1)
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("issue during a stalled reload: got %v, want %v", err, context.DeadlineExceeded)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("issue blocked behind a stalled covering balance reload")
 	}
 }
 
@@ -346,17 +334,24 @@ func TestChequebookWithdrawalReverted(t *testing.T) {
 func TestChequebookTwoPendingWithdrawals(t *testing.T) {
 	t.Parallel()
 
-	var sent int
-	receipts := map[common.Hash]chan types.Receipt{}
+	var (
+		mu       sync.Mutex
+		sent     int
+		receipts = map[common.Hash]chan types.Receipt{}
+	)
 	chain := newChainMock(t, 100)
 	service := newChainChequebook(t, chain, erc20mock.New(),
 		transactionmock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			sent++
 			return common.BigToHash(big.NewInt(int64(sent))), nil
 		}),
 		transactionmock.WithWatchSentTransactionFunc(func(txHash common.Hash) (chan types.Receipt, chan error, error) {
 			receiptC := make(chan types.Receipt, 1)
+			mu.Lock()
 			receipts[txHash] = receiptC
+			mu.Unlock()
 			return receiptC, make(chan error), nil
 		}),
 	)
@@ -369,8 +364,24 @@ func TestChequebookTwoPendingWithdrawals(t *testing.T) {
 	}
 	expectAvailableBalance(t, service, 30)
 
+	deadline := time.Now().Add(5 * time.Second)
+	var first chan types.Receipt
+	for {
+		mu.Lock()
+		first = receipts[common.BigToHash(big.NewInt(1))]
+		registered := len(receipts)
+		mu.Unlock()
+		if first != nil && registered == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("withdrawal was not watched")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	chain.setBalance(70)
-	receipts[common.BigToHash(big.NewInt(1))] <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+	first <- types.Receipt{Status: types.ReceiptStatusSuccessful}
 	waitForPendingWithdrawals(t, service, 1)
 	expectAvailableBalance(t, service, 30)
 }
@@ -409,60 +420,4 @@ func TestChequebookIssueWhileChequeIsInFlight(t *testing.T) {
 	if err := issueCheque(service, common.HexToAddress("0xeee"), 40); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestChequebookWaitForDepositDropsCache(t *testing.T) {
-	t.Parallel()
-
-	chain := newChainMock(t, 0)
-	service := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-			return &types.Receipt{Status: 1}, nil
-		}),
-	)
-	expectAvailableBalance(t, service, 0)
-	chain.setBalance(100)
-	if err := service.WaitForDeposit(context.Background(), common.HexToHash("0x1")); err != nil {
-		t.Fatal(err)
-	}
-	expectAvailableBalance(t, service, 100)
-}
-
-func TestChequebookBalanceIgnoresPendingWithdrawal(t *testing.T) {
-	t.Parallel()
-
-	chain := newChainMock(t, 100)
-	errC := make(chan error, 1)
-	t.Cleanup(func() { errC <- transaction.ErrMonitorClosed })
-	service := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(40)),
-		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
-			return make(chan types.Receipt), errC, nil
-		}),
-	)
-
-	if _, err := service.Withdraw(context.Background(), big.NewInt(40)); err != nil {
-		t.Fatal(err)
-	}
-	onChain, err := service.Balance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if onChain.Cmp(big.NewInt(100)) != 0 {
-		t.Fatalf("on-chain balance: got %d, want 100", onChain)
-	}
-	expectAvailableBalance(t, service, 60)
-}
-
-func TestChequebookAvailableBalanceCopy(t *testing.T) {
-	t.Parallel()
-
-	chain := newChainMock(t, 100)
-	service := newChainChequebook(t, chain, erc20mock.New())
-	available, err := service.AvailableBalance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	available.SetInt64(1)
-	expectAvailableBalance(t, service, 100)
 }

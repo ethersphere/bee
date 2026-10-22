@@ -163,6 +163,7 @@ func InitChequebookService(
 	chequebookFactory chequebook.Factory,
 	initialDeposit string,
 	erc20Service erc20.Service,
+	blockTime time.Duration,
 ) (chequebook.Service, error) {
 	chequeSigner := chequebook.NewChequeSigner(signer, chainID)
 
@@ -183,6 +184,7 @@ func InitChequebookService(
 		overlayEthAddress,
 		chequeSigner,
 		erc20Service,
+		blockTime,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("chequebook init: %w", err)

@@ -21,4 +21,10 @@ var (
 		defer svc.lock.Unlock()
 		return len(svc.pendingWithdrawals)
 	}
+	SetWithdrawalReceiptHold = func(s Service, d time.Duration) {
+		s.(*service).withdrawalReceiptHold = d
+	}
+	SetCoveringBalanceReadTimeout = func(s Service, d time.Duration) {
+		s.(*service).coveringBalanceReadTimeout = d
+	}
 )

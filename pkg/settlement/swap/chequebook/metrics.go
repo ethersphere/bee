@@ -5,6 +5,8 @@
 package chequebook
 
 import (
+	"math/big"
+
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -15,6 +17,7 @@ type metrics struct {
 	// using reflection
 	OutOfFunds                       prometheus.Counter
 	CoveringBalance                  prometheus.Gauge
+	AvailableBalance                 prometheus.Gauge
 	CoveringBalanceCacheHit          prometheus.Counter
 	CoveringBalanceCacheMiss         prometheus.Counter
 	CoveringBalanceCacheInvalidation prometheus.Counter
@@ -34,7 +37,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "covering_balance",
-			Help:      "Chequebook balance plus total paid out, as last read from chain",
+			Help:      "Chequebook balance plus total paid out, as held in the covering balance cache",
+		}),
+		AvailableBalance: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "available_balance",
+			Help:      "Balance available for new cheques after the last cheque issue or refusal",
 		}),
 		CoveringBalanceCacheHit: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -52,11 +61,16 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "covering_balance_cache_invalidation",
-			Help:      "Number of covering balance cache invalidations (confirmed deposit, mined or cancelled withdrawal)",
+			Help:      "Number of covering balance cache invalidations after a confirmed deposit",
 		}),
 	}
 }
 
 func (s *service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
+}
+
+func setTokenGauge(g prometheus.Gauge, v *big.Int) {
+	value, _ := new(big.Float).SetInt(v).Float64()
+	g.Set(value)
 }

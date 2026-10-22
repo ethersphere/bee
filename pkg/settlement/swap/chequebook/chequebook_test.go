@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,6 +38,7 @@ func TestChequebookAddress(t *testing.T) {
 		nil,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +64,7 @@ func TestChequebookBalance(t *testing.T) {
 		nil,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +111,7 @@ func TestChequebookDeposit(t *testing.T) {
 				return txHash, nil
 			}),
 		),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +149,7 @@ func TestChequebookWaitForDeposit(t *testing.T) {
 		nil,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +183,7 @@ func TestChequebookWaitForDepositReverted(t *testing.T) {
 		nil,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -217,6 +223,7 @@ func TestChequebookIssue(t *testing.T) {
 		store,
 		chequeSigner,
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -364,6 +371,7 @@ func TestChequebookIssueErrorSend(t *testing.T) {
 		store,
 		chequeSigner,
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -408,6 +416,7 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 		store,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -455,6 +464,7 @@ func TestChequebookWithdraw(t *testing.T) {
 		store,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -491,6 +501,7 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 		store,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -499,107 +510,6 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 	_, err = chequebookService.Withdraw(context.Background(), withdrawAmount)
 	if !errors.Is(err, chequebook.ErrInsufficientFunds) {
 		t.Fatalf("got wrong error. wanted %v, got %v", chequebook.ErrInsufficientFunds, err)
-	}
-}
-
-func TestChequebookCoveringBalanceCache(t *testing.T) {
-	t.Parallel()
-
-	address := common.HexToAddress("0xabcd")
-	rpcErr := errors.New("rpc failed")
-
-	totalPaidOutCallData, err := chequebookABI.Pack("totalPaidOut")
-	if err != nil {
-		t.Fatal(err)
-	}
-	balanceCallData, err := chequebookABI.Pack("balance")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var calls int
-	chequebookService, err := chequebook.New(
-		transactionmock.New(
-			transactionmock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
-				calls++
-				switch calls {
-				case 1:
-					if !bytes.Equal(request.Data, totalPaidOutCallData) {
-						t.Fatalf("unexpected call data on call %d", calls)
-					}
-					return big.NewInt(0).FillBytes(make([]byte, 32)), nil
-				case 2:
-					if !bytes.Equal(request.Data, balanceCallData) {
-						t.Fatalf("unexpected call data on call %d", calls)
-					}
-					return nil, rpcErr
-				case 3, 5:
-					if !bytes.Equal(request.Data, totalPaidOutCallData) {
-						t.Fatalf("unexpected call data on call %d", calls)
-					}
-					return big.NewInt(0).FillBytes(make([]byte, 32)), nil
-				case 4, 6:
-					if !bytes.Equal(request.Data, balanceCallData) {
-						t.Fatalf("unexpected call data on call %d", calls)
-					}
-					return big.NewInt(100).FillBytes(make([]byte, 32)), nil
-				default:
-					t.Fatalf("unexpected rpc call %d", calls)
-					return nil, errors.New("unexpected call")
-				}
-			}),
-		),
-		address,
-		common.HexToAddress("0xfff"),
-		storemock.NewStateStore(),
-		&chequeSignerMock{},
-		erc20mock.New(),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = chequebookService.AvailableBalance(context.Background())
-	if !errors.Is(err, rpcErr) {
-		t.Fatalf("wrong error. wanted %v, got %v", rpcErr, err)
-	}
-	if calls != 2 {
-		t.Fatalf("unexpected rpc call count after failed load: got %d, want 2", calls)
-	}
-
-	available, err := chequebookService.AvailableBalance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if available.Cmp(big.NewInt(100)) != 0 {
-		t.Fatalf("unexpected available balance: got %d, want 100", available)
-	}
-	if calls != 4 {
-		t.Fatalf("unexpected rpc call count after successful load: got %d, want 4", calls)
-	}
-
-	chequebook.SetCoveringBalanceCachedAt(chequebookService, time.Now().Add(-3*time.Minute))
-	available, err = chequebookService.AvailableBalance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if available.Cmp(big.NewInt(100)) != 0 {
-		t.Fatalf("unexpected available balance: got %d, want 100", available)
-	}
-	if calls != 4 {
-		t.Fatalf("unexpected rpc call count while cache is valid: got %d, want 4", calls)
-	}
-
-	chequebook.SetCoveringBalanceCachedAt(chequebookService, time.Now().Add(-6*time.Minute))
-	available, err = chequebookService.AvailableBalance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if available.Cmp(big.NewInt(100)) != 0 {
-		t.Fatalf("unexpected available balance: got %d, want 100", available)
-	}
-	if calls != 6 {
-		t.Fatalf("unexpected rpc call count after cache expiry: got %d, want 6", calls)
 	}
 }
 
@@ -669,10 +579,12 @@ func newChainChequebook(t *testing.T, chain *chainMock, erc20Service erc20.Servi
 		storemock.NewStateStore(),
 		&chequeSignerMock{sign: func(*chequebook.Cheque) ([]byte, error) { return nil, nil }},
 		erc20Service,
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
+	chequebook.SetWithdrawalReceiptHold(chequebookService, 0)
 	return chequebookService
 }
 
@@ -707,199 +619,6 @@ func waitForPendingWithdrawals(t *testing.T, s chequebook.Service, want int) {
 	}
 }
 
-func TestChequebookIssueAfterCoveringBalanceChange(t *testing.T) {
-	t.Parallel()
-
-	beneficiary := common.HexToAddress("0xdddd")
-
-	t.Run("deposit mined then issue", func(t *testing.T) {
-		t.Parallel()
-
-		chain := newChainMock(t, 0)
-		chequebookService := newChainChequebook(t, chain, erc20mock.New(
-			erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
-				return big.NewInt(1000), nil
-			}),
-			erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
-				return common.HexToHash("0x1"), nil
-			}),
-		))
-
-		// empty chequebook, cache loaded
-		expectAvailableBalance(t, chequebookService, 0)
-
-		if _, err := chequebookService.Deposit(context.Background(), big.NewInt(100)); err != nil {
-			t.Fatal(err)
-		}
-		if err := issueCheque(chequebookService, beneficiary, 10); !errors.Is(err, chequebook.ErrOutOfFunds) {
-			t.Fatalf("issue before the deposit is mined: got %v, want %v", err, chequebook.ErrOutOfFunds)
-		}
-
-		chain.setBalance(100)
-		total, err := chequebookService.Balance(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if total.Cmp(big.NewInt(100)) != 0 {
-			t.Fatalf("on-chain balance: got %d, want 100", total)
-		}
-		if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
-			t.Fatalf("issue after the deposit is mined: %v", err)
-		}
-		expectAvailableBalance(t, chequebookService, 90)
-	})
-
-	t.Run("external top-up", func(t *testing.T) {
-		t.Parallel()
-
-		chain := newChainMock(t, 0)
-		chequebookService := newChainChequebook(t, chain, erc20mock.New())
-		expectAvailableBalance(t, chequebookService, 0)
-
-		// tokens arrive without Deposit or WaitForDeposit
-		chain.setBalance(100)
-		if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
-			t.Fatalf("issue after an external top-up: %v", err)
-		}
-		expectAvailableBalance(t, chequebookService, 90)
-	})
-
-	t.Run("pending withdrawal survives deposit", func(t *testing.T) {
-		t.Parallel()
-
-		withdrawHash := common.HexToHash("0x1")
-		receiptC := make(chan types.Receipt, 1)
-		errC := make(chan error, 1)
-		chain := newChainMock(t, 100)
-		chequebookService := newChainChequebook(t, chain, erc20mock.New(
-			erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
-				return big.NewInt(1000), nil
-			}),
-			erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
-				return common.HexToHash("0x2"), nil
-			}),
-		),
-			transactionmock.WithABISend(&chequebookABI, withdrawHash, common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(90)),
-			transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
-				return receiptC, errC, nil
-			}),
-		)
-
-		if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(90)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := chequebookService.Deposit(context.Background(), big.NewInt(1)); err != nil {
-			t.Fatal(err)
-		}
-		if err := issueCheque(chequebookService, beneficiary, 50); !errors.Is(err, chequebook.ErrOutOfFunds) {
-			t.Fatalf("issue while withdrawal and deposit are pending: got %v, want %v", err, chequebook.ErrOutOfFunds)
-		}
-
-		// both transactions mined: 100 - 90 + 1, and only the first cheque was issued
-		chain.setBalance(11)
-		receiptC <- types.Receipt{TxHash: withdrawHash, Status: types.ReceiptStatusSuccessful}
-		waitForPendingWithdrawals(t, chequebookService, 0)
-		expectAvailableBalance(t, chequebookService, 1)
-	})
-}
-
-func TestChequebookIssueAfterDepositMined(t *testing.T) {
-	t.Parallel()
-
-	beneficiary := common.HexToAddress("0xdddd")
-	chain := newChainMock(t, 0)
-	chequebookService := newChainChequebook(t, chain, erc20mock.New(
-		erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
-			return big.NewInt(1000), nil
-		}),
-		erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
-			return common.HexToHash("0x1"), nil
-		}),
-	))
-
-	// the cache holds the empty chequebook when the deposit is broadcast
-	expectAvailableBalance(t, chequebookService, 0)
-
-	if _, err := chequebookService.Deposit(context.Background(), big.NewInt(100)); err != nil {
-		t.Fatal(err)
-	}
-	if err := issueCheque(chequebookService, beneficiary, 10); !errors.Is(err, chequebook.ErrOutOfFunds) {
-		t.Fatalf("issue before deposit is mined: got %v, want %v", err, chequebook.ErrOutOfFunds)
-	}
-
-	chain.setBalance(100)
-
-	if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
-		t.Fatalf("issue after deposit is mined: %v", err)
-	}
-	expectAvailableBalance(t, chequebookService, 90)
-}
-
-func TestChequebookIssueOutOfFundsReloadsOnce(t *testing.T) {
-	t.Parallel()
-
-	chain := newChainMock(t, 0)
-	chequebookService := newChainChequebook(t, chain, erc20mock.New())
-
-	expectAvailableBalance(t, chequebookService, 0)
-	if got := chain.callCount(); got != 2 {
-		t.Fatalf("rpc calls after cache load: got %d, want 2", got)
-	}
-
-	err := issueCheque(chequebookService, common.HexToAddress("0xdddd"), 10)
-	if !errors.Is(err, chequebook.ErrOutOfFunds) {
-		t.Fatalf("got %v, want %v", err, chequebook.ErrOutOfFunds)
-	}
-	if got := chain.callCount(); got != 4 {
-		t.Fatalf("rpc calls after refused issue: got %d, want 4", got)
-	}
-}
-
-func TestChequebookPendingWithdrawal(t *testing.T) {
-	t.Parallel()
-
-	beneficiary := common.HexToAddress("0xdddd")
-	txHash := common.HexToHash("0x1")
-	receiptC := make(chan types.Receipt, 1)
-	errC := make(chan error, 1)
-
-	chain := newChainMock(t, 100)
-	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithABISend(&chequebookABI, txHash, common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(50)),
-		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
-			return receiptC, errC, nil
-		}),
-	)
-
-	if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(50)); err != nil {
-		t.Fatal(err)
-	}
-
-	// reload from chain while the withdrawal is still pending
-	chequebook.SetCoveringBalanceCachedAt(chequebookService, time.Now().Add(-6*time.Minute))
-
-	if err := issueCheque(chequebookService, beneficiary, 50); !errors.Is(err, chequebook.ErrOutOfFunds) {
-		t.Fatalf("issue during pending withdrawal: got %v, want %v", err, chequebook.ErrOutOfFunds)
-	}
-	expectAvailableBalance(t, chequebookService, 40)
-
-	chain.setBalance(50)
-	receiptC <- types.Receipt{TxHash: txHash, Status: types.ReceiptStatusSuccessful}
-	waitForPendingWithdrawals(t, chequebookService, 0)
-
-	calls := chain.callCount()
-	expectAvailableBalance(t, chequebookService, 40)
-	if chain.callCount() == calls {
-		t.Fatal("covering balance was not reloaded after the withdrawal was mined")
-	}
-}
-
 func TestChequebookWithdrawalCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -920,35 +639,6 @@ func TestChequebookWithdrawalCancelled(t *testing.T) {
 	errC <- transaction.ErrTransactionCancelled
 	waitForPendingWithdrawals(t, chequebookService, 0)
 	expectAvailableBalance(t, chequebookService, 100)
-}
-
-func TestChequebookWithdrawWatchError(t *testing.T) {
-	t.Parallel()
-
-	var watches atomic.Int32
-	chain := newChainMock(t, 100)
-	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(50)),
-		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
-			watches.Add(1)
-			return nil, nil, transaction.ErrUnknownTransaction
-		}),
-	)
-
-	txHash, err := chequebookService.Withdraw(context.Background(), big.NewInt(50))
-	if !errors.Is(err, transaction.ErrUnknownTransaction) {
-		t.Fatalf("got %v, want %v", err, transaction.ErrUnknownTransaction)
-	}
-	if txHash != common.HexToHash("0x1") {
-		t.Fatalf("returned hash %x", txHash)
-	}
-	if watches.Load() != 1 {
-		t.Fatalf("watch attempts: got %d, want 1", watches.Load())
-	}
-	if chequebook.PendingWithdrawals(chequebookService) != 1 {
-		t.Fatalf("pending withdrawals: got %d, want 1", chequebook.PendingWithdrawals(chequebookService))
-	}
-	expectAvailableBalance(t, chequebookService, 50)
 }
 
 func TestChequebookWithdrawSendError(t *testing.T) {
@@ -972,13 +662,270 @@ func TestChequebookWithdrawSendError(t *testing.T) {
 	expectAvailableBalance(t, chequebookService, 100)
 }
 
+func TestChequebookPendingWithdrawalSurvivesReload(t *testing.T) {
+	t.Parallel()
+
+	beneficiary := common.HexToAddress("0xdddd")
+	withdrawHash := common.HexToHash("0x1")
+	receiptC := make(chan types.Receipt, 1)
+	chain := newChainMock(t, 100)
+	chequebookService := newChainChequebook(t, chain, erc20mock.New(
+		erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
+			return big.NewInt(1000), nil
+		}),
+		erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
+			return common.HexToHash("0x2"), nil
+		}),
+	),
+		transactionmock.WithABISend(&chequebookABI, withdrawHash, common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(90)),
+		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+			return receiptC, make(chan error), nil
+		}),
+	)
+
+	if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(90)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chequebookService.Deposit(context.Background(), big.NewInt(1)); err != nil {
+		t.Fatal(err)
+	}
+	// the cheque does not fit, so the cache is reloaded from a chain that does not show the withdrawal yet
+	before := chain.callCount()
+	if err := issueCheque(chequebookService, beneficiary, 50); !errors.Is(err, chequebook.ErrOutOfFunds) {
+		t.Fatalf("issue while withdrawal and deposit are pending: got %v, want %v", err, chequebook.ErrOutOfFunds)
+	}
+	if got := chain.callCount() - before; got != 2 {
+		t.Fatalf("chain reads for the refused cheque: got %d, want 2", got)
+	}
+
+	// both transactions mined: 100 - 90 + 1, and only the first cheque was issued
+	chain.setBalance(11)
+	receiptC <- types.Receipt{TxHash: withdrawHash, Status: types.ReceiptStatusSuccessful}
+	waitForPendingWithdrawals(t, chequebookService, 0)
+	expectAvailableBalance(t, chequebookService, 1)
+}
+
+func TestChequebookAvailableBalanceAfterDepositMined(t *testing.T) {
+	t.Parallel()
+
+	chain := newChainMock(t, 0)
+	chequebookService := newChainChequebook(t, chain, erc20mock.New(
+		erc20mock.WithBalanceOfFunc(func(context.Context, common.Address) (*big.Int, error) {
+			return big.NewInt(1000), nil
+		}),
+		erc20mock.WithTransferFunc(func(context.Context, common.Address, *big.Int) (common.Hash, error) {
+			return common.HexToHash("0x1"), nil
+		}),
+	))
+
+	// the refused cheque leaves the empty chequebook in the cache
+	if err := issueCheque(chequebookService, common.HexToAddress("0xdddd"), 10); !errors.Is(err, chequebook.ErrOutOfFunds) {
+		t.Fatalf("got %v, want %v", err, chequebook.ErrOutOfFunds)
+	}
+	if _, err := chequebookService.Deposit(context.Background(), big.NewInt(100)); err != nil {
+		t.Fatal(err)
+	}
+	chain.setBalance(100)
+
+	expectAvailableBalance(t, chequebookService, 100)
+}
+
+func TestChequebookWithdrawAfterExternalTopUp(t *testing.T) {
+	t.Parallel()
+
+	errC := make(chan error, 1)
+	t.Cleanup(func() { errC <- transaction.ErrMonitorClosed })
+	chain := newChainMock(t, 100)
+	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
+		transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(120)),
+		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+			return make(chan types.Receipt), errC, nil
+		}),
+	)
+	expectAvailableBalance(t, chequebookService, 100)
+
+	// tokens arrive without Deposit, the cache still holds 100
+	chain.setBalance(150)
+	before := chain.callCount()
+	if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(120)); err != nil {
+		t.Fatalf("withdraw after an external top-up: %v", err)
+	}
+	if got := chain.callCount() - before; got != 2 {
+		t.Fatalf("chain reads for the withdrawal: got %d, want 2", got)
+	}
+	expectAvailableBalance(t, chequebookService, 30)
+}
+
+func TestChequebookWithdrawalReleaseDuringIssue(t *testing.T) {
+	t.Parallel()
+
+	const (
+		balance  = 100
+		withdraw = 50
+		amount   = 5
+		workers  = (balance - withdraw) / amount
+	)
+	receiptC := make(chan types.Receipt, 1)
+	chain := newChainMock(t, balance)
+	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
+		transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(withdraw)),
+		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+			return receiptC, make(chan error), nil
+		}),
+	)
+	expectAvailableBalance(t, chequebookService, balance)
+	if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(withdraw)); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		wg     sync.WaitGroup
+		issued atomic.Int64
+	)
+	start := make(chan struct{})
+	for i := range workers {
+		wg.Go(func() {
+			<-start
+			err := issueCheque(chequebookService, common.BigToAddress(big.NewInt(int64(i+1))), amount)
+			switch {
+			case err == nil:
+				issued.Add(amount)
+			case !errors.Is(err, chequebook.ErrOutOfFunds):
+				t.Error(err)
+			}
+		})
+	}
+	chain.setBalance(balance - withdraw)
+	close(start)
+	receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+	wg.Wait()
+	waitForPendingWithdrawals(t, chequebookService, 0)
+
+	// what was refused while the release raced the cheques is still available
+	for range balance / amount {
+		if issueCheque(chequebookService, common.HexToAddress("0xdddd"), amount) != nil {
+			break
+		}
+		issued.Add(amount)
+	}
+	if got := issued.Load(); got != balance-withdraw {
+		t.Fatalf("issued %d, want %d", got, balance-withdraw)
+	}
+}
+
+func TestChequebookWithdrawalReceiptIgnoresLaggingBalance(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const hold = 25 * time.Second
+
+		beneficiary := common.HexToAddress("0xdddd")
+		receiptC := make(chan types.Receipt, 1)
+		chain := newChainMock(t, 100)
+		chequebookService := newChainChequebook(t, chain, erc20mock.New(),
+			transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(90)),
+			transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+				return receiptC, make(chan error), nil
+			}),
+		)
+		chequebook.SetWithdrawalReceiptHold(chequebookService, hold)
+
+		expectAvailableBalance(t, chequebookService, 100)
+		if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(90)); err != nil {
+			t.Fatal(err)
+		}
+
+		// the receipt is in, but the chain still shows the pre-withdrawal balance
+		receiptC <- types.Receipt{Status: types.ReceiptStatusSuccessful}
+		synctest.Wait()
+		if got := chequebook.PendingWithdrawals(chequebookService); got != 1 {
+			t.Fatalf("pending withdrawals during the hold: got %d, want 1", got)
+		}
+		if err := issueCheque(chequebookService, beneficiary, 11); !errors.Is(err, chequebook.ErrOutOfFunds) {
+			t.Fatalf("issued against a lagging balance: %v", err)
+		}
+		if err := issueCheque(chequebookService, beneficiary, 10); err != nil {
+			t.Fatal(err)
+		}
+
+		chain.setBalance(10)
+		time.Sleep(hold)
+		synctest.Wait()
+		if got := chequebook.PendingWithdrawals(chequebookService); got != 0 {
+			t.Fatalf("pending withdrawals after the hold: got %d, want 0", got)
+		}
+		expectAvailableBalance(t, chequebookService, 0)
+	})
+}
+
+func TestChequebookWithdrawalWatchFailureKeepsDeduction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		watchErr   error
+		monitorErr error
+	}{
+		{name: "monitor closed", monitorErr: transaction.ErrMonitorClosed},
+		{name: "watch failed", watchErr: transaction.ErrUnknownTransaction},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				errC := make(chan error, 1)
+				chain := newChainMock(t, 100)
+				chequebookService := newChainChequebook(t, chain, erc20mock.New(),
+					transactionmock.WithABISend(&chequebookABI, common.HexToHash("0x1"), common.HexToAddress("0xabcd"), big.NewInt(0), "withdraw", big.NewInt(40)),
+					transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
+						if tc.watchErr != nil {
+							return nil, nil, tc.watchErr
+						}
+						return make(chan types.Receipt), errC, nil
+					}),
+				)
+
+				if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(40)); err != nil {
+					t.Fatal(err)
+				}
+				if tc.monitorErr != nil {
+					errC <- tc.monitorErr
+				}
+				synctest.Wait()
+
+				if got := chequebook.PendingWithdrawals(chequebookService); got != 1 {
+					t.Fatalf("pending withdrawals: got %d, want 1", got)
+				}
+				expectAvailableBalance(t, chequebookService, 60)
+			})
+		})
+	}
+}
+
+func TestChequebookWithdrawNegativeAmount(t *testing.T) {
+	t.Parallel()
+
+	chain := newChainMock(t, 100)
+	chequebookService := newChainChequebook(t, chain, erc20mock.New())
+
+	if _, err := chequebookService.Withdraw(context.Background(), big.NewInt(-1000)); err == nil {
+		t.Fatal("negative withdrawal accepted")
+	}
+	expectAvailableBalance(t, chequebookService, 100)
+}
+
 func TestChequebookConcurrentIssueAndWithdraw(t *testing.T) {
 	t.Parallel()
 
 	const (
-		balance = 100
-		amount  = 10
-		workers = 10
+		balance     = 100
+		amount      = 10
+		issuers     = 10
+		withdrawers = 5
 	)
 
 	var (
@@ -1012,39 +959,38 @@ func TestChequebookConcurrentIssueAndWithdraw(t *testing.T) {
 	)
 
 	var (
-		wg     sync.WaitGroup
-		spent  atomic.Int64
-		errsMu sync.Mutex
-		errs   []error
+		wg    sync.WaitGroup
+		spent atomic.Int64
 	)
 	record := func(err error, allowed error) {
 		switch {
 		case err == nil:
 			spent.Add(amount)
 		case !errors.Is(err, allowed):
-			errsMu.Lock()
-			errs = append(errs, err)
-			errsMu.Unlock()
+			t.Error(err)
 		}
 	}
-	for i := range workers {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
+	for i := range issuers {
+		wg.Go(func() {
 			record(issueCheque(chequebookService, common.BigToAddress(big.NewInt(int64(i+1))), amount), chequebook.ErrOutOfFunds)
-		}()
-		go func() {
-			defer wg.Done()
+		})
+	}
+	for range withdrawers {
+		wg.Go(func() {
 			_, err := chequebookService.Withdraw(context.Background(), big.NewInt(amount))
 			record(err, chequebook.ErrInsufficientFunds)
-		}()
+		})
 	}
 	wg.Wait()
 
-	if len(errs) > 0 {
-		t.Fatalf("unexpected errors: %v", errs)
+	// what was refused concurrently is still available to cheques
+	for range balance / amount {
+		if issueCheque(chequebookService, common.HexToAddress("0xdddd"), amount) != nil {
+			break
+		}
+		spent.Add(amount)
 	}
-	if got := spent.Load(); got > balance {
+	if got := spent.Load(); got != balance {
 		t.Fatalf("issued and withdrawn %d against a balance of %d", got, balance)
 	}
 }

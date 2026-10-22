@@ -90,7 +90,7 @@ func TestServiceLastChequeNilEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
+	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
