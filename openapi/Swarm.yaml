@@ -991,6 +991,163 @@ paths:
         default:
           description: Default response
 
+  "/bps/subscribe/{owner}/{topic}":
+    get:
+      summary: Subscribe to a BPS cohort
+      description: |
+        WebSocket. The node joins the BPS cohort `{topic, FEED_TOPIC, owner}` (SWIP-74, with
+        the multi-publisher mode of SWIP-87) at `broker` as `identity` and sends every
+        verified delivery as a binary frame
+        `kind (1) | owner (20) | challenge (32) | index (8, big-endian) | soc`, where `soc` is
+        the full single-owner chunk (`id | signature | span | payload`) signed by `owner` with
+        `id = keccak256(sessionTopic | index)`. `kind` is 1 (DATA): an update, by the cohort
+        owner or by an address on its latest roster; 4 (ROSTER): the owner's publisher set,
+        payload a `Roster` protobuf of 20-byte addresses; or 3 (EOS): the owner ended the
+        channel, after which the socket closes with 4004. `sessionTopic` is
+        `keccak256(topic | challenge)` for DATA and `keccak256("bps-service:v1" | kind | topic | challenge)`
+        otherwise. Deliveries that do not verify, by an owner the roster does not admit, or
+        below the subscriber's cursor are dropped.
+        The endpoint is read-only: any client frame closes the socket with 4002.
+        Close codes: 4002 invalid message, 4003 broker stream closed, 4004 end of stream.
+      tags:
+        - BPS
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address of the cohort owner
+        - in: path
+          name: topic
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: 32-byte cohort topic
+        - in: query
+          name: broker
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Overlay address of the broker node. Must not be this node.
+        - in: query
+          name: identity
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address identifying the joiner. Must not be the owner, whose stream would be a pending publisher stream; publish instead.
+        - in: query
+          name: cursor
+          schema:
+            type: integer
+          required: false
+          description: Lowest index of the owner's updates to deliver. Defaults to 0.
+        - in: query
+          name: roster
+          schema:
+            type: string
+          required: false
+          description: |
+            The roster the subscriber last received, with a cursor per grantee:
+            comma-separated `address:index` pairs, each the lowest index of that grantee's
+            updates to deliver (at most 186; not the owner). A dApp keeps it from the
+            deliveries it received and passes it back when it reconnects; it is the set
+            the node admits updates by until the broker delivers a later roster.
+        - in: query
+          name: rosterCursor
+          schema:
+            type: integer
+          required: false
+          description: Lowest roster index to accept — one past the index of the roster passed in `roster`. Defaults to 0.
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for incoming broadcasts
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        "503":
+          description: BPS service is not configured
+        default:
+          description: Default response
+
+  "/bps/publish/{owner}/{topic}":
+    get:
+      summary: Publish to a BPS cohort as its owner or as a rostered seat
+      description: |
+        WebSocket. The node joins the BPS cohort `{topic, FEED_TOPIC, owner}` (SWIP-74, with
+        the multi-publisher mode of SWIP-87) at `broker` declaring `identity` — the owner by
+        default, or an address the owner's roster names or will name (a seat). A seat's
+        stream receives from the start, like a subscriber's; once a roster naming the seat
+        has reached it, the server sends `{"type":"granted"}` and the seat may send its
+        AUTH, which upgrades the stream in place. A seat that sends anything before the
+        grant is closed with 4002. A seat whose address a later roster drops finds the
+        socket closed after that roster (4003).
+
+        1. Server sends `{"type":"challenge","challenge":"<hex>","broker":"<hex>","dataTopic":"<hex>","authTopic":"<hex>"}`,
+           and to the owner also `"rosterTopic"` and `"eosTopic"`.
+           `dataTopic` is `keccak256(topic | challenge)`, the session feed for updates; the
+           others are `keccak256("bps-service:v1" | kind | topic | challenge)` with kind 0x02
+           (AUTH), 0x04 (ROSTER), 0x03 (EOS).
+        2. Client sends binary frames `kind (1) | index (8, big-endian) | soc`, where `soc` is
+           a single-owner chunk with `id = keccak256(sessionTopic | index)`, signed by
+           `identity` for kind 1 (DATA) and 2 (AUTH) and by `owner` for kind 4 (ROSTER) and 3
+           (EOS), which only the owner may send. The first frame must be the AUTH — the empty
+           chunk at index 0 of `authTopic`, which authenticates the stream — and must arrive
+           within 25 seconds — of the connection for the owner, of the grant for a seat;
+           sent again later it is a heartbeat. DATA frames are updates of
+           `dataTopic`. A ROSTER carries a `Roster` protobuf naming every address that may
+           publish besides the owner, full state at each index; an EOS — the empty chunk at
+           index 0 of `eosTopic` — ends the channel. An owner that has a roster MUST publish
+           it again, at its next roster index, right after its AUTH: the broker may hold
+           none, after an inactivity reclaim or a restart. Indexes must not be reused across
+           sessions; frames below the broker's cursor are dropped silently.
+        3. Server sends what the other publishers publish, and the owner's rosters — to
+           the owner too — as binary frames in the subscribe endpoint's format.
+
+        Close codes: 4001 invalid soc (an AUTH or EOS at another index or with a payload
+        included), 4002 invalid message (wrong frame type, any frame before the AUTH, unknown
+        kind, a ROSTER or EOS from a seat, a roster that does not decode, a frame from a seat
+        before its grant, auth timeout), 4003 broker stream closed, 4004 end of stream.
+      tags:
+        - BPS
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address of the cohort owner
+        - in: path
+          name: topic
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: 32-byte cohort topic
+        - in: query
+          name: broker
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Overlay address of the broker node. Must not be this node.
+        - in: query
+          name: identity
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: false
+          description: The address the stream publishes as. Defaults to the owner; any other may publish once the owner's roster names it.
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for publishing broadcasts
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        "503":
+          description: BPS service is not configured
+        default:
+          description: Default response
+
   "/soc/{owner}/{id}":
     post:
       summary: Upload a Single Owner Chunk
