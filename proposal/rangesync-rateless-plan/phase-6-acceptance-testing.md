@@ -298,6 +298,58 @@ _(sessions append here)_
     `pkg/node/...` are clean (0 issues). Only the three files of this task were formatted.
   - The defaults change nothing: there is no production change, and
     `TestReserveAddrIndexDefaultNoWrites`, `TestSyncWiring` and the new defaults tests pass.
+- **(T6.2 fix round 1) The node-level stale check can now fail; earlier text corrected.** In the
+  first version, the "Bullet → tests" entry said `TestRangesyncToggle` "checks the same at the
+  protocol surface". That claim was wrong on the toggle path, for two reasons:
+  - the off period waited for the drop, so the refill always started from an empty namespace;
+  - the stale `Fetch` (error discarded) and `ReserveGetByID` read the chunk through the
+    reserve's own items, keyed by stamp hash, which no stale entry can bring back.
+
+  Changes:
+  - Before the refill, the test now writes the enabled period's `chunkAddr` entries back into the
+    closed store's leveldb (`putRawEntries`). This is what a disabled start whose drop was
+    interrupted leaves.
+  - The stale `Fetch` and the node's stale `ReserveGetByID` check are removed.
+  - The storer's stale `ReserveGetByID` check stays, documented as a check of the served surface
+    rather than of the index.
+
+  Negative control: with no drop in `CheckAddrIndex`, `TestRangesyncToggle` fails at the Index
+  root summary (31 against a brute force of 28). With that comparison disabled, it fails at
+  `ReserveHasID` of a stale element. With that disabled too, it fails at the session: the peer
+  wants 31 IDs, 3 of them stale, and the reserve holds 28. It passes with the drop.
+- **(T6.2 fix round 1) Control (A) record corrected.** With the committed test,
+  `…ToggleServed/drop interrupted` fails first at `checkIndexEqualsReserve` (index keys, 35 entries
+  against a reserve of 20). The "35 elements served" failure at the surface check was measured
+  with that line removed for the control run. Both results hold.
+- **(T6.2 fix round 1) Keep mode against an older build, and an older build's repair.**
+  - With a marker present, start-up recovery (`opts.ReserveAddrIndex || marker`) deletes the
+    `chunkAddr` entries of the corrupted chunks it removes, also in keep mode
+    (`TestRecoveryDeletesChunkAddrItem`). An older build never writes there. This is safe: the
+    removal lowers the count, the marker no longer matches, and the next enabled start refills.
+  - An older build's `db repair-reserve` keeps the marker and the entries, because it does not
+    know them. Its step 0 deletes the `EpochItem`, so the next start creates a new epoch and the
+    next enabled start refills.
+  - New case `TestReserveAddrIndexRepair/older build`: this build's repair, then the marker and
+    the entries written back, which is what an older repair leaves. Result: one refill, and the
+    chunk the repair removed is not served. Controls A (21 index entries against 20) and B
+    (fills 0) both make it fail.
+- **(T6.2 fix round 1) `ReserveRepairer` finding: repro moved, text corrected.**
+  `TestReserveRepairMissingChunk` now lives in `pkg/storer/migration/reserveRepair_test.go`, still
+  skipped with the reason. It uses an in-memory store and one batch in one bin. Four missing chunks
+  hold bin IDs 1–4 and are handled last. It asserts that the repair returns no error and that
+  every `BatchRadiusItem` keeps its `ChunkBinItem`. Unskipped, it fails 1500/1500
+  (`-count=500 -cpu=1,2,4`).
+
+  Correction: steps 3 and 4 commit before `checkBinIDs`. So the chunk without its `ChunkBinItem`
+  is left whether or not the check fails; the check only makes the command fail. The earlier
+  "without that check …" sentence was wrong.
+- **(T6.2 fix round 1) Runs.** No `-race` (no C compiler).
+  - The changed tests pass with `-count=5 -cpu=1,2,4`: `TestRangesyncToggle`,
+    `TestRangesyncDefaultsNoIndex`, the `TestReserveAddrIndex*` tests of
+    `reserveaddr_toggle_test.go`, and `pkg/storer/migration`.
+  - `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/... ./pkg/node/...` passes.
+  - `go vet`, `GOTOOLCHAIN=go1.26.1 make lint` and `go build ./...` are clean.
+  - There is still no production change.
 
 ## Follow-ups
 _(sessions append here)_
@@ -345,3 +397,48 @@ _(sessions append here)_
 
   The other new storer tests run their steps one after another (the fill blocks in `New`) and
   don't need it.
+- **(T6.2 fix round 1) T6.3, runbook (`testnet-runbook.md`), downgrade paragraph, corrected.**
+  This entry replaces the earlier T6.2 runbook entry: that one understated the size, implied that
+  every interrupted reclaim resumes, and named no completion signal.
+  - **What stays on disk.** A node downgraded to a build without `rangesync` starts and runs
+    normally with the leftover `chunkAddr` entries and the `addrIndexValid` marker. That build
+    never reads or changes them (verified, see the Decisions log). They take space:
+    - §5.1 estimates ~80 B per chunk, ≈ 350 MB at 4.2M chunks;
+    - T6.2 measured 85 B per chunk at 4000 chunks, after a restart (leveldb tables after the
+      journal flush);
+    - G4 measured ≈ 600 MiB (≈ 150 B per entry) at 4.2M, right after a fill, uncompacted.
+
+    Plan for 350–600 MiB on a full reserve.
+  - **Reclaim before downgrading.** Start once with a `rangesync`-aware build and
+    `--rangesync-enable=false`. Keep it running until both the background drop and the compaction
+    after it have finished. On G4's host at 4.2M that is ≈ 12–14 s of drop, then ≈ 19–21 s of
+    compaction; allow several times that on a loaded node. Check that `localstore/indexstore` got
+    smaller (`du`) before stopping.
+  - **If it is stopped early.**
+    - During the drop: the next start with `--rangesync-enable=false` resumes the drop, then
+      compacts.
+    - During the compaction: every entry is already deleted, so the next disabled start finds
+      none and runs neither drop nor compaction (`hasAddrIndexEntries`). The space then comes back
+      only as leveldb rewrites those tables in its own compactions. `bee db compact` compacts
+      sharky, not leveldb.
+    - To force the reclaim, start once with `--rangesync-enable=true` (a refill, ≈ 41–44 s at
+      4.2M), then again with `--rangesync-enable=false`, and let it finish.
+  - **Completion signal.** The only one is the Debug log `dropped the disabled reserve address
+    index` (with `count`). It is written when the drop ends, before the compaction. Nothing reports
+    the end of the compaction; a failure is logged at Debug. Set the `storer` logger to debug
+    (`--verbosity` or the `/loggers` API) and wait at least the compaction time after that line,
+    or watch the directory size.
+  - **Upgrading again with the leftovers** costs one refill (≈ 65–75 s at 4.2M). No stale entry is
+    served.
+- **(T6.2 fix round 1) Operator-visible end of the reclaim (production change, outside T6.2).**
+  Today an operator cannot see when the space is back. Suggested: an Info log after the post-drop
+  compaction (entries dropped, drop and compaction durations), or a metric for the
+  drop/compaction state. Both would go in `pkg/storer/reserveaddr.go` (`startAddrIndexDrop`,
+  `compactAddrIndex`).
+- **(T6.2 fix round 1) T6.1 `streamtest` note, corrected.** Once a writer blocks on the full
+  16-slot signal channel while it holds the record lock, the reader cannot drain the channel
+  either: `Read` calls `bytesSize`, which takes the same lock. So the stream deadlocks for both
+  ends: the reader's next `Read` as well as `FullClose`/`Reset`, not only the close.
+- **(T6.2 fix round 1) CI -race list:** no change. `TestReserveRepairMissingChunk` is skipped. The
+  new `TestReserveAddrIndexRepair/older build` runs its steps one after another.
+  `TestRangesyncToggle` is already on the list.
