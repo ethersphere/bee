@@ -113,8 +113,11 @@ type accOptions struct {
 	Radius     uint8
 	NodeRadius func(i int) uint8
 	// Base chunks are held by every node at the start, as by a neighborhood
-	// in sync (default 256): with them no node starts far behind its peers.
-	// A node for which Empty reports true starts with an empty reserve.
+	// in sync (default 4500): with them no node starts far behind its peers,
+	// and the root holds more than fingerprint.ScanLimit elements, so that
+	// sessions read the root's symbol cache, as on a full reserve, instead of
+	// scanning it. A node for which Empty reports true starts with an empty
+	// reserve.
 	Base  int
 	Empty func(i int) bool
 	// Uploads chunks (default 300) are pushed at Rate per second (default
@@ -143,7 +146,7 @@ type accOptions struct {
 
 func (o accOptions) withDefaults() accOptions {
 	if o.Base == 0 {
-		o.Base = 256
+		o.Base = 4500
 	}
 	if o.Uploads == 0 {
 		o.Uploads = 300
@@ -1109,9 +1112,9 @@ func (h *accHarness) snapshot() accSnapshot {
 // the union of the reserves of the nodes it is connected to (and its own)
 // inside that root, and, with rangesync, its Index equals a brute force over
 // the reserve (the root summary and every range down to 4 bits below it)
-// and its symbol caches decode exactly the IDs a probe peer withholds
-// (checkCaches). It returns the reserve of every node.
-func (h *accHarness) checkUnion() []map[fingerprint.ID]struct{} {
+// and its root symbol cache decodes exactly the IDs a probe peer withholds
+// (checkCaches).
+func (h *accHarness) checkUnion() {
 	tb := h.tb
 	tb.Helper()
 
@@ -1173,7 +1176,6 @@ func (h *accHarness) checkUnion() []map[fingerprint.ID]struct{} {
 		}
 		h.checkCaches(n)
 	}
-	return reserves
 }
 
 // accProbeWithheld is the number of IDs a probe peer withholds from a node's
@@ -1182,8 +1184,10 @@ const accProbeWithheld = 40
 
 // checkCaches reconciles a probe peer, holding node n's reserve but
 // accProbeWithheld random IDs, with n over a connection that n's topology
-// does not see. The session decodes n's symbols, read from its caches: the
-// probe must want exactly the withheld IDs, with no corrupt decode.
+// does not see. Both hold more than fingerprint.ScanLimit elements in the
+// root, so the session decodes n's symbols from its root cache (a range of
+// at most ScanLimit elements is scanned instead): the probe must want exactly
+// the withheld IDs, with no corrupt decode.
 func (h *accHarness) checkCaches(n *accNode) {
 	tb := h.tb
 	tb.Helper()
@@ -1196,8 +1200,8 @@ func (h *accHarness) checkCaches(n *accNode) {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if len(chunks) <= accProbeWithheld {
-		tb.Fatalf("node %d: %d chunks, too few to probe", n.i, len(chunks))
+	if len(chunks) <= fingerprint.ScanLimit+accProbeWithheld {
+		tb.Fatalf("node %d: %d chunks, too few to probe its root cache", n.i, len(chunks))
 	}
 	withheld := make(map[fingerprint.ID]struct{})
 	perm := rand.New(h.rng).Perm(len(chunks))
