@@ -3995,6 +3995,236 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   verified clean (no re-review: no High). README's "Shared constants" now shows growth factor 2 and
   the per-node initiated-session cap. AC-B1 after part 2: N = 9 fails (59–61% modeled, 54–56% on the
   wire; re-basing stays with T6.0/T6.4), N = 17 passes by ~10 points, N = 18–24 pass by only 1.5–4.2.
+- **(T4.7 part 3) The stripe-registry `SyncRate` pin, as built: a registered stripe job holds
+  `SyncRate` only while it stores chunks, past a grace.** Commits 98a95800 (reconciler: code and
+  tests) and 68685ce1 (pkg/rangesync: `TestFetchWithProgressNotStored`). The PRE-TESTNET BLOCKER
+  of T4.5 part 2c (round 2), widened by part 1 ("(T4.7 part 1 → part 3) The registry `SyncRate`
+  pin, widened" and "… corrected"). `SyncRate` no longer holds at `StartupGuardRate` because the registry is not
+  empty; it holds for a registered job as follows (reconciler.go `SyncRate`, rate.go):
+  - *A peer's claim* (the served sessions' Striper, a round session's `StripeCollector`, the
+    rounds' session-root check) holds nothing of its own. Its transfer and its verification are
+    catch-up fetches in flight, as before, so they hold `SyncRate` at `StartupGuardRate` only while
+    the rate is above 0 (a catch-up chunk stored within the window) or the node-wide catch-up grace
+    holds (`catchUpGrace` 2 s, refilled only by stored chunks: the T4.5 part 2c rule for catch-up
+    fetches, applied to stripes); a queued claim holds nothing. Why the node-wide budget: peers
+    register claims at will, again as soon as one ends (≤ `maxPeerStripes` per peer, any number of
+    peers, overlays and reconnects), so a grace per claim would be renewed by each registration,
+    the per-fetch grace that T4.5 part 2c rejected.
+  - *This node's own transfers* (its bootstrap, a radius decrease's new half), queued,
+    transferring or being verified, hold `SyncRate` at `StartupGuardRate` while the own-job grace
+    holds: `ownJobGrace` = `radiusHold` = `SyncRateWindow` (10 minutes), one budget for the node
+    (`Reconciler.ownGrace`, a `graceBudget` now sized per use) that drains while an own job is
+    registered (`ownJobsChangedLocked`, at every registration, removal, takeover and on Close) and
+    is refilled to full only when an own job stores a chunk (`jobStored`), never with time or per
+    job. Past the grace an own job holds only through its chunks, as any catch-up does. Why a
+    grace of its own, and that long: an honest own transfer's first chunk can take far longer
+    than the catch-up grace (the stripe and session slots, the wait for the peer's round session
+    to end, up to `maxStripeBusyRetries` Busy retries of 1 s per attempt, this node's index
+    rebuild, re-asks of held IDs), and any peer can drain the catch-up grace; registering a
+    radius half must not shorten the hold it had while pending (`radiusHold`, T3.5 review); 10
+    minutes stay below the reserve worker's 15-minute wake-up. Why one budget for the node, not
+    one per job: a peer cannot start an own job at will, but a Sybil majority of the peers that
+    share this node's root can make it bootstrap again and again (`IsBootstrap` through the median,
+    re-review Low 4, T6.3); with a grace per job each bootstrap cycle (the Sybils' stripes time out
+    after `StripeTimeout`, ≥ 15 minutes, then the bootstrap is registered again) would read above 0
+    for 10 of every ≥ 15 minutes; with one budget it reads above 0 for one grace in all until an
+    own job stores a chunk. Why not the T3.5 hold: a stalling peer among an own job's stripe peers,
+    its reassignments (up to 4 peers in a row) and its verifier held a real own job, and with it
+    `SyncRate`, for up to 4 × 15 + 15 minutes after the honest stripes ended (2.25 h per peer if
+    it drips), and a Sybil-made bootstrap held it all the time.
+  - *Verification phases* count as transfers: their fetches report through the same per-job hook,
+    so a chunk a verification stores refills the own-job grace (and restarts a claim's idle clock,
+    below), and one that stores nothing drains the grace (an honest verification after a transfer
+    that stored lasts seconds, within the window of the transfer's chunks).
+  - *Stored chunks count as they are stored*: the stripe worker passes a per-job `stored` hook
+    (`jobStored`) through `transferStripes`, `runStripe`, `transferStripe` (with the stripe clock's
+    progress), `resolvePending` and the new internal `verifyStripes` (`VerifyStripes` and
+    `TransferStripes` keep their signatures), and `fetchFrom` calls it per chunk through
+    `FetchWithProgress` (`progressFetcher`), or once at the fetch's end without one.
+  - *Unchanged*: the start-up guard (T1.11, T4.2, T4.5 part 2a rules; `StartupGuardTimeout`); a
+    pending half that is not registered holds `SyncRate` for at most `radiusHold` from the
+    decrease or its last failed transfer (T3.5 review). It is not pinnable: only this node's
+    radius decrease and its failed transfers re-arm it, at most `maxRadiusAttempts` per decrease,
+    and the reserve worker lowers the radius only with the reserve below its threshold and
+    `SyncRate` at 0, which no peer controls. `catchUpGrace`, `CatchUpMinDiff`, the 10-minute
+    window, `pkg/node`'s combined syncer.
+  - Numbers. A lying claimant: at most `catchUpGrace` (2 s) of `SyncRate` above 0 per catch-up
+    episode of this node, the T4.5 part 2c bound, whatever its claims; before, `StartupGuardRate`
+    for as long as a claim was registered, that is all the time. A peer that drips: above 0 only
+    while its chunks are in the window (10–20 minutes per chunk this node accepts and stores), as
+    an honest slow peer's would; before, all the time. An own job that stalls: at most the window
+    of its last chunk (≥ `ownJobGrace`) after it; before, until the job ended (≈ 75 minutes for
+    a stall, ≈ 11 h for a drip). A Sybil-made bootstrap: one `ownJobGrace` until an own job stores;
+    before, all the time (its threshold-0 effect stays, T6.3). Honest: an own job stays held
+    through pauses of up to 10 minutes before its first chunk and of the window (≥ 10 minutes)
+    after one; an honest claim before its first chunk reads 0 once the catch-up grace is spent
+    (the T4.5 part 2c honest window, now also for claims: seconds on a working link; at start-up
+    the start-up guard covers a session-root lack, which keeps the guard unarmed for up to
+    `StartupGuardTimeout`), and above 0 from its first chunk through the window.
+- **(T4.7 part 3) A peer's claim that stores nothing leaves the stripe worker
+  (`claimIdleTimeout`).** Part 1's hand-over (2) and re-review Low 2. The worker runs a claim on
+  an idle clock of its own (`stripeJob.idle`, a `stripeClock` with no cap, on the injected clock):
+  once the claim's job has stored no chunk for `claimIdleTimeout` = 2 minutes since it started or
+  last stored one, `endIdleClaim` ends its context (cause `errClaimIdle`), counts
+  `stripes_total{idle}` and logs it (Debug); the worker then removes it, and its peers' later
+  sessions or rounds register it again, behind the claims registered meanwhile. The clock spans
+  the whole job, every stripe's attempts, restarts and reassignments and the verification round;
+  only the job's stored chunks restart it, and it runs through Busy waits. Own jobs are never
+  ended so (one that took a claim over disarms its clock). No peer is scored: an ended claim is
+  nobody's fault. Sizing: an honest claim's first chunk needs at most one attempt's Busy waits
+  (30 × 1 s), its re-asks of IDs the want set held (`maxPendingPasses` × 1 s = 30 s) and a fetch
+  timeout (`ClaimDeadline` / 2 = 15 s) together, 75 s; its verification, after a transfer that
+  stored, sessions that find their stripes equal: seconds. A liar's claim holds the worker for
+  at most `claimIdleTimeout` after its job's last stored chunk, however many lying peers its
+  stripe is reassigned to (up to 4 in a row) and whoever verifies it; before, its stripe's
+  inactivity timeout per lying peer (4 × 15 minutes) and the verification's (15 minutes), ≈ 75
+  minutes, and with a drip up to 4 × 2.25 h + 2.25 h. So an honest claim (a responder-only lack, a
+  constraint-(d) session root) waits behind a stalling liar for at most `claimIdleTimeout` per
+  liar claim queued ahead of it (FIFO among claims, at most `maxPeerStripes` per lying peer). Not
+  bounded: a peer that drips a chunk this node lacks and accepts at least every 2 minutes holds
+  the worker as an honest slow peer would, up to the stripe budgets (Follow-ups); and an honest
+  claim whose plan gives a stripe to a stalling peer now ends `claimIdleTimeout` after its honest
+  stripes' last chunk instead of reassigning that stripe after `StripeTimeout`, so that part is
+  transferred by a later registration, planned afresh (Follow-ups). The idle clock adds one
+  goroutine while a claim runs (doc.go).
+- **(T4.7 part 3) An own job no longer ends the claim in flight of its range (re-review Low 1,
+  AC-B2 headroom).** Both fix directions, since neither alone covers every trigger:
+  - *The session-root check registers no claim while `IsBootstrap` holds* (scheduleLocked, as
+    `servedStriper.Stripe` already did): `planCatchUp` now also returns whether this node is
+    bootstrapping (false while a radius half is pending). This is the failed-bootstrap trigger:
+    the round after a bootstrap that did not complete opens no session with a peer this node lacks
+    far behind and registers no claim of the root, and the next round registers the bootstrap
+    again. `planCatchUp`'s doc ("one round runs the per-peer sessions before the next try") now
+    says so: the sessions of that round run with the peers within `LargeDiff` only.
+  - *An own job whose range is the claim in flight's takes the claim over* (`adoptLocked`, from
+    `planCatchUp` and `enqueueRadiusHalf`) instead of ending it (`preemptLocked`) and listing the
+    range again: the claim becomes the own job (`own`, `bootstrap` or `radius`; a half's context,
+    which a radius increase cancels, ends it too through `context.AfterFunc`), keeps its plan and
+    transfer options (a bootstrap that took a claim over does not keep its peers' locks across
+    asks, `peerLocks.keep`), is not counted as a pending reconcile (its transfer is under way) and
+    lowers the threshold to 0 from then on (`Transferring`). Another own job in its way refuses
+    it as it refuses a registration. The start-up trigger as described (no peer admitted, so
+    `IsBootstrap` is false and a served session registers the root) is mostly harmless: with no
+    admitted peer the claim's plan has no stripe peer and it ends at once (`ErrNoStripePeer`),
+    listing nothing. What remains are the cases where a stripe peer is admitted before
+    `IsBootstrap` turns true (an edge peer admitted before the peers that share the root, a median
+    not yet past the ratio, the race between a round's `admitLocked` and its `planCatchUp`), all of
+    them a running claim of the root that the bootstrap now takes over. A claim in flight of
+    another range (inside the own job's, or containing it) is still ended (Follow-ups).
+- **(T4.7 part 3) Re-review Low 3: a session past the peer's claim cap stops at once.**
+  `enqueueStripes` checks the peer's claims before each range and, at `maxPeerStripes`, drops the
+  rest of the session's ranges at once, counted once (`stripes_total{dropped}`) and logged once
+  with their number (`dropPeerFullLocked`); a served session (`servedStriper.full`) does the same
+  from the first range it cannot register. So `stripes_total{dropped}` counts one per session
+  that met the cap, not one per range. The help text of `stripes_total` lists `dropped` and the
+  new `idle`.
+- **(T4.7 part 3) Item 5: the T4.5 part 2c test gaps.** Closed: `TestFetchWithProgressNotStored`
+  (pkg/rangesync: an ID in the reserve, skipped before the Want; a delivery another protocol
+  stored meanwhile; a stale stamp, `ErrOverwriteNewerChunk`: none of them reported, the other
+  chunk once) and `TestSyncRateCatchUpAfterGraceDrained` (reconciler, real Service: after a
+  stalled catch-up drained the grace, an honest catch-up reads 0 until its first chunk and at
+  least `StartupGuardRate` from it on, its fetch still in flight). Not done (optional): the
+  one-chunk-then-reset pin (L4685–4688); part 4's per-peer fetch credit is the fix that bounds it.
+- **(T4.7 part 3) Superseded.**
+  - T3.5 (phase 3, "(T3.5) Catch-up span of striping"): "`SyncRate` reports at least
+    `StartupGuardRate` while any range is in the stripe registry (queued, transferring, between
+    transfer and verification, verifying)": a claim never does; an own job within the own-job
+    grace, past it only through its chunks.
+  - T3.5 review ("Radius decrease before registration"): "A registered half counts through the
+    registry with no bound (its transfer has its own StripeTimeout/reassign bounds)": a registered
+    half counts within the own-job grace. Its `radiusHold`, `maxRadiusAttempts` and the pending
+    half's hold stand.
+  - T4.5 part 2c fix round 2, "Unchanged: a registered stripe range, a pending radius half (at most
+    `radiusHold`) and the start-up guard … each hold `SyncRate` at least at `StartupGuardRate`, as
+    T3.5 and T1.11 have them": the registered stripe range no longer does (above).
+  - "(T3.2 part 2 review) Bootstrap and the start-up guard (D9/D18)" (phase 3): "after one that did
+    not complete (any stripe error), the next round runs per-peer sessions before bootstrapping
+    again": with the peers within `LargeDiff` only, and no claim of the root while `IsBootstrap`
+    holds (`planCatchUp`'s doc said it too); and "The bootstrap round counts as a pending reconcile
+    only when it registers the root": not when it takes a claim of the root over.
+  - T4.7 part 1 fix round 1, Medium 1: an own job "ends the claim in flight whatever its range":
+    except the claim in flight of its own range, which it takes over.
+  - The hand-overs "(T4.7 part 1 → part 3) The registry `SyncRate` pin, widened" and "… corrected"
+    (Follow-ups) are closed by the two entries above; so is the re-review's Low 2 (the worker
+    hold, sized with the verification phase and Sybil reassignment) and the PRE-TESTNET BLOCKER
+    "stripe registry SyncRate pin". The per-peer fetch credit (part 4) is the other blocker.
+- **(T4.7 part 3) Tests, scope and checks.**
+  - New (reconciler): `TestSyncRateClaimPin` (status and opening paths: a higher-overlay peer
+    claims a count more than `LargeDiff` above and stalls its stripe; `SyncRate` 0 past the
+    catch-up grace with the claim registered and in flight, the claim leaves the worker after
+    `ClaimIdleTimeout` and a claim queued behind it runs, registered again and still 0, no peer
+    scored), `TestSyncRateClaimDrip` (one stored chunk per 25 minutes from the liar's claim,
+    registered again each time: above 0 after each chunk, 0 from two windows after it, the claim
+    leaves the worker each time), `TestSyncRateHonestChurn` (a claim storing every 90 s, a
+    bootstrap and a radius half storing every 3 minutes, each after Busy answers, the own ones
+    after a 5-minute stall before their first chunk: `SyncRate` above 0 (the reserve worker does
+    not lower the radius) throughout and through the verification, nothing ended, no score, 0
+    past the window), `TestSyncRateOwnJobGrace` (a stalled bootstrap: above 0 within the grace, 0
+    past it, still 0 when it fails and is registered again, above 0 once it stores),
+    `TestClaimStoringNotEnded` (real services: an honest claim whose one fetch stores a chunk
+    every 30 s for 6 minutes is not ended: each chunk restarts the idle clock as it is stored),
+    `TestRoundBootstrapFailedPastLargeDiff` (Low 1's failed-bootstrap trigger, the gap of
+    `TestRoundBootstrapFailedResumesSessions`), `TestRoundBootstrapTakesOverStartupClaim` (Low 1's
+    start-up trigger, an edge peer's claim of the empty root taken over once a same-root peer is
+    admitted: one stripe session with the edge peer, nothing listed twice),
+    `TestOwnJobTakesOverClaim` (bootstrap and radius half; a radius increase ends a half taken
+    over), `TestClaimCapDropsOnce` (Low 3), `TestSyncRateCatchUpAfterGraceDrained`; pkg/rangesync:
+    `TestFetchWithProgressNotStored`. Each new test of a changed rule fails on the old code
+    (checked: the pin and drip tests on the old `SyncRate`, the failed-bootstrap test without the
+    `IsBootstrap` skip, the takeover tests without `adoptLocked`, `TestClaimStoringNotEnded` with
+    the chunks counted at the fetch's end).
+  - Changed by design (an own job that stores nothing no longer holds `SyncRate` past the own-job
+    grace): `TestSyncRateBootstrap` (within the grace above 0, past it 0, then as before),
+    `TestSyncRateRadiusDecreaseSequencing` and `TestSyncRateRadiusHalfRegistryFull` (their stalled
+    halves checked within the grace instead of two windows on), `TestDualModeSyncRate` (the puller
+    pulls first and its window passes during the bootstrap's grace). `TestSyncRateRegisteredStripe`
+    passes unchanged (a registered own job within the grace).
+  - Test harness: `pinService` (syncrate_pin_test.go: per-peer stripe stalls, listings, gated
+    fetches that report each chunk as `FetchWithProgress` does), `newPinHarness`; `roundNodeOptions.after`;
+    export_test: `OwnJobGrace`, `ClaimIdleTimeout`, `RunningStripe`, `Bootstrapping`,
+    `FailBootstrap`; `HoldStripe`/`ReleaseStripe` keep the own-job grace's bookkeeping. On a fake
+    clock a `stripeClock` that a progress moved re-arms from the clock it reads then, so its expiry
+    can come up to one clock step late; `TestSyncRateClaimDrip` steps the clock until the claim ends.
+    `streamtest` deadlocks when its writer runs more than 16 deliveries ahead of a lagging reader
+    (known), so the real-service tests fetch at most 12 chunks.
+  - Code: reconciler.go (`SyncRate`, `ownGrace`, `ownJobsLocked`, `ownJobsChangedLocked`),
+    rate.go (`ownJobGrace`, `graceBudget.size`, `newGraceBudget`), stripes_transfer.go
+    (`claimIdleTimeout`, `stripeIdle`, `errClaimIdle`, `stored` plumbing, `stripeJob.idle`,
+    `dropPeerFullLocked`, `servedStriper.full`, `adoptLocked`, `planCatchUp`, the worker,
+    `jobStored`, `endIdleClaim`), stripes_verify.go (`verifyStripes`), scheduler.go (round,
+    `scheduleLocked`), radius.go (`enqueueRadiusHalf`, docs), metrics.go (help text), doc.go
+    (goroutines). No pkg/node, pkg/pullsync, pkg/puller, pkg/storer, go.mod, proto or
+    `*_fuzz_test.go` change; no new parser of peer input (followup-fuzzing.md untouched); README not
+    ticked.
+  - Checks: `go build ./...`; `go vet` on pkg/rangesync/... (default and `-tags=sim`);
+    `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues; gofumpt and gci on the changed files only (coexistence_test.go's
+    import order is gci-flagged on rangesync/phase-4 already and untouched). `go test
+    ./pkg/rangesync/...` passes (pkg/rangesync 32 s, reconciler 6 s); pkg/node's
+    `TestCombinedSyncerBothDrivers`, `TestSyncWiring`, `TestRangesyncOptions` pass. No `-race`
+    here: the reconciler package ran `-count=3 -cpu=1,2,4` (48 s), `TestSyncRate*`,
+    `TestStartupGuard*`, `TestRadius*`, `TestRoundBootstrap*`, `TestStripe*`,
+    `TestTransferStripes*`, `TestVerifyStripes*`, `TestClaim*`, `TestOwnJob*`,
+    `TestEnqueueStripes*` and `TestDualModeSyncRate` `-count=20 -cpu=1,2,4` (163 s), and
+    `TestNeighborhoodBootstrap*` and `TestFetch*` (pkg/rangesync) `-count=5 -cpu=1,2,4` (379 s): no
+    failure. The CI list is in Follow-ups.
+  - AC-B2 re-check (`-tags=sim`, `go test -run TestG6Bootstrap`, one run, 2975 s; no RSS
+    figure, no `/usr/bin/time` on this host): every run passes its `check` and
+    `checkDeclined`, no stripe timed out, no duplicate, and every figure is part 1 fix round 1's
+    within the seeds' spread. The own transfers of these runs store throughout, so the own-job
+    grace never ran out, and no claim was ended. `TestG6BootstrapScaled` (N = 5, node 0 empty,
+    `LargeDiff` Base/64, ranks 1–4): node 0 reads 4908–4913 KB at Base 70000 (bound 6635 KB) and
+    7010–7014 KB at 100000 (bound 9050 KB), 1.001–1.003× of the lacked IDs (part 1 fix round 1:
+    4.908–4.913 and 7.010–7.014 MB); takeovers ranks 1 / 2 / 3 / 4, "2 min": 24 / 16 / 7 / 0 at Base
+    70000 and 23 / 15 / 7 / 0 at 100000 (24 / 15 / 7 / 0, 23 / 15 / 8 / 0), "lifted" 3 / 2 / 1 / 0;
+    the peers listed node 0 no ID it lacked (wants 0 in "2 min", 1–7 uploads in "lifted"); 1557 s.
+    `TestG6BootstrapTail` (Base 16000, `LargeDiff` 250, 3 per second on the clock): 1232 KB
+    (1.100×), 1263 KB (1.128×), 1326 KB (1.184×) of 2288 KB at ranks 1, 2, 4, caught up after
+    5334–5335 s, 0 wants, 9–13 stripe sessions, the 3 h row as the default one (identical to part
+    1 fix round 1); 620 s. `TestG6Bootstrap` (N = 17, Base 20000): 1410 and 1408 KB at ranks 4 and
+    14 of 2610 KB (1411, 1410), 16 stripes done, none reassigned or timed out; 35 s.
+    `TestG6BootstrapPeers` (production `LargeDiff`): 4908–4909 KB at Base 70000 and 7011 KB at
+    100000 (4908–4909, 7011–7012); 758 s.
 
 ## Follow-ups
 _(sessions append here)_
@@ -5466,3 +5696,68 @@ _(sessions append here)_
   `TestRoundSessionCapPerNode`, `TestRoundSessionCapFollowsPeers` (the gauge) (reconciler). The
   new gauge is read under the slot pool's lock from the metrics collector while rounds resize it,
   so also run `TestPeersGauge` and `TestMetrics` and the whole reconciler package.
+- **(T4.7 part 3 → T6.3) A claimant that drips holds the stripe worker.** A peer whose claim's
+  job stores a chunk this node lacks and accepts at least every `claimIdleTimeout` (2 minutes:
+  about 720 stamped chunks a day per victim, uploads of its own) keeps its claim on the one stripe
+  worker as an honest slow peer would, up to its stripes' budgets (`stripePeerBudget` ×
+  `StripeTimeout` per peer, up to 4 peers, and its verification's: ≈ 11 h per claim); the other
+  claims (a responder-only lack, a constraint-(d) session root) wait behind it, this node's own
+  transfers do not. It holds `SyncRate` only through its chunks' window, as any catch-up does.
+  Directions: a cap on a claim's worker time of at least an honest claim's transfer at the fetch
+  rate (≈ 70 minutes for a whole root at 2^22), or turns between the claimants (a turn that ends
+  lists again what its stripes had listed and not fetched, at most `stripeQueue` batches per
+  stripe); part 4's fetch credit makes each dripped chunk a real one but does not shorten the
+  hold. Not measured.
+- **(T4.7 part 3 → T6.3) An honest claim with a stalling stripe peer is planned again.** A claim's
+  job ends `claimIdleTimeout` after its honest stripes' last chunk, before a stalling peer's stripe
+  is reassigned (`StripeTimeout`, 15 minutes), so that part of the range waits for the claimant's
+  next session or round to register the claim again; the new plan follows the map order of the
+  peers ("(T4.7 part 1, low) `PlanStripes` follows the map order of the peers"), so with s stalling
+  peers among k that cover the range it takes about k / (k − s) registrations, each listing only
+  what is still missing. Directions: a claim's stripes on an inactivity timeout below
+  `claimIdleTimeout`, so that they are reassigned within the job, or a re-registered claim planned
+  away from the peers its last job found stalling. Not measured with the harness.
+- **(T4.7 part 3, re-review Low 1, the rest) An own job still ends a claim in flight of another
+  range.** `adoptLocked` takes over only a claim of the own job's range. A bootstrap of the root
+  still ends a running claim inside it (a served claim of a child range registered before
+  `IsBootstrap` turned true), and a radius decrease's new half ends a running claim that contains
+  it: between the root change and the round that registers the half, a session this node serves
+  for a peer with the new root offers the new root itself (the peer counts about twice this
+  node's), which the served Striper registers as a claim. What the ended claim listed and had not
+  fetched is listed again (the re-review's ≈ 4–6 MB per running stripe at 2^22, at most 4
+  stripes). Directions: the served Striper registers no claim that overlaps a pending half (as it
+  registers none while bootstrapping), or an own job takes over a containing claim. Not measured.
+- **(T4.7 part 3 → T6.3) The Sybil-made bootstrap, after part 3.** The re-review's Low 4 (a Sybil
+  majority of the peers that share this node's root triggers `IsBootstrap` through the median)
+  now holds `SyncRate` above 0 for one `ownJobGrace` in all until an own transfer stores a chunk
+  (Decisions, "(T4.7 part 3) The stripe-registry `SyncRate` pin, as built"); its threshold-0
+  effect on the sessions this node serves is unchanged and stays with T6.3.
+- **(T4.7 part 3 → T6.1/T6.3) Claims' first-chunk window.** A claim reads `SyncRate` 0 from the
+  end of the catch-up grace to its first stored chunk, as a catch-up fetch does (T4.5 part 2c
+  round-2 Lows, 1): the responder-only lack and a constraint-(d) session root after start-up (at
+  start-up the start-up guard holds while a session-root lack keeps it unarmed). Measure the
+  claims' first-chunk latency on testnet with the stripes' (T4.6's first-chunk latency item).
+- **(T4.7 part 3 → the proposal) §8.4: the holds.** §8.4 (L1247–1262) defines `SyncRate` and the
+  start-up guard; what else holds it is not in the proposal. After "Steady-state rounds, which carry
+  live traffic, do not count; …" add: "While catch-up work runs and has stored nothing yet,
+  `SyncRate` is held at a small non-zero rate for a bounded time only: a catch-up fetch (a large
+  session's or a stripe's) within one node-wide grace of 2 s, and this node's own striped
+  transfers (its bootstrap and a radius decrease's new half) within one node-wide grace of 10
+  minutes, each refilled only by a chunk that work stores; a radius decrease's new half that
+  waits for its transfer for at most 10 minutes. A range a peer's count made this node stripe
+  holds nothing of its own, so no peer can keep `SyncRate` above 0 by what it claims."
+  (Decisions, "(T4.7 part 3) The stripe-registry `SyncRate` pin, as built".)
+- **(T4.7 part 3) The one-chunk-then-reset pin (T4.5 part 2c round-2 Lows, 2) was not done** (it
+  was optional); part 4's per-peer fetch credit is the fix that bounds it.
+- **(T4.7 part 3) Tests to run with `-race` on CI.** No C compiler here: they ran with `-count=20
+  -cpu=1,2,4` (the reconciler package `-count=3`, the pkg/rangesync ones `-count=5`). New:
+  `TestSyncRateClaimPin`, `TestSyncRateClaimDrip`, `TestSyncRateHonestChurn`,
+  `TestSyncRateOwnJobGrace`, `TestClaimStoringNotEnded`, `TestRoundBootstrapFailedPastLargeDiff`,
+  `TestRoundBootstrapTakesOverStartupClaim`, `TestOwnJobTakesOverClaim`, `TestClaimCapDropsOnce`,
+  `TestSyncRateCatchUpAfterGraceDrained` (reconciler); `TestFetchWithProgressNotStored`
+  (rangesync). Changed: `TestSyncRateBootstrap`, `TestSyncRateRadiusDecreaseSequencing`,
+  `TestSyncRateRadiusHalfRegistryFull`, `TestDualModeSyncRate` (reconciler). The claim's idle
+  clock runs a goroutine and calls back under the reconciler's lock, every stored chunk of a
+  stripe job takes that lock on its fetch goroutine (`jobStored`), and a round may turn the job in
+  flight into an own job (`adoptLocked`) while the worker runs it, so re-run the whole reconciler
+  package, and `TestNeighborhoodBootstrap*` (rangesync).
