@@ -4740,6 +4740,158 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     - `TestG6BootstrapTail`: 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2
       and 4. Caught up after 5333.93–5335.13 s, with 0 wants and 9–13 stripe sessions, none timed
       out.
+- **(T4.7 part 4 fix round 2) Review Medium: one overtake count for the stripe worker, not one per
+  claim. This supersedes fix round 1's per-claim budget.** Under a sustained Sybil flood, fix round
+  1's budget fell back to FIFO. That is the failure fix round 1 gave for rejecting the age bound.
+  Each pick of a claim with more credit added one to every claim queued before it. After
+  `maxClaimOvertakes` (4) such picks, every Sybil claim queued before them was due. They then ran
+  one after the other, ≤ 2 minutes each (`claimIdleTimeout`), while every honest claim waited.
+  Sybils claim again at each idle end, so the flood never drains. The review simulated it: S = 64
+  Sybils that claim again at each idle end, and an honest claim at credit 1000 every 10 minutes. The
+  honest median wait was 102 minutes under the budget, 142 in FIFO and 1 in pure credit order.
+  Commit 5585ecae (reconciler: reconciler.go, stripes_transfer.go and tests).
+  - *Built: one count for the worker* (`Reconciler.claimOvertakes`, under `r.mu`).
+    - `nextJobLocked` still runs an own job first. Otherwise it runs the claim of the peer with the
+      most `FetchCredit`, the first queued among equals.
+    - A pick of any claim but the first queued adds one to the count. A pick of the first queued
+      claim starts the count over, whether its credit or the bound chose it. Once the count is
+      `maxClaimOvertakes`, the first queued claim runs next. So the first queued claim runs at
+      least once in every 5 claims.
+    - `stripeJob.overtaken` is gone. Own jobs, preemption (`preemptLocked`) and adoption
+      (`adoptLocked`) are unchanged.
+    - If an own job drops the first queued claim, the next claim inherits the count. That can only
+      make it run sooner.
+  - *Bounds.*
+    - A claim with n claims queued before it runs within 5 × (n + 1) claims, its own included.
+      Each claim it waits for holds the worker ≤ 2 minutes when it stores nothing. Fix round 1's
+      bound was n + 5 claims.
+    - The new bound is reached only when the claims queued before it have less credit than claims
+      that keep arriving behind it. Example: S Sybil claims of no credit, then an honest claimant
+      of no credit, and liars at the cap behind it that claim again at each idle end (the cap needs
+      a batch, through minted overwrites). The honest claim then waits 5 × (S + 1) claims. At
+      S = 64 that is ≈ 10.8 hours, against ≈ 2.3 hours under fix round 1 and ≈ 2.2 hours in
+      FIFO.
+    - When a claim queued before it always has the most credit, every pick runs a claim queued
+      before it. Sybils at the pool's 250 that claim again, ahead of a claimant of no credit, are
+      an example. It then runs within n + 5 claims, as under fix round 1.
+    - While a claim with more credit waits, claims that run only because they were queued first
+      get at most one in 5 of the claims run. A claim with more credit than all those queued waits
+      for the claim in flight and at most one more: ≤ 4 minutes, behind any number of Sybil claims
+      that store nothing. That covers an honest neighbor with earned credit (up to 1000) against
+      Sybils with none, or with the pool's 250.
+    - *Why this trade.* In steady state, most claims come from honest neighbors with earned
+      credit, and the flood is cheap: a claim costs an overlay only a session. A claimant with no
+      credit is the exception: this node never fetched from it, restarted, or forgot it. It earns
+      credit with its first delivered chunks. It stays a T6.3 residual (Follow-ups).
+  - *The review's case, re-run in a scratch model (not committed).* S = 64, honest claims at credit
+    1000 every 10 minutes that run 1 minute each, and Sybils that claim again at each idle end. The
+    honest median wait is 140 minutes in FIFO and 100 under fix round 1's budget. With the worker's
+    count it is 0.5 minutes (max 1), the same as in pure credit order.
+  - *Tests.*
+    - `TestClaimOrderFlood` (new). 16 Sybils of no credit, which store nothing and claim again at
+      each idle end, are queued. Twice, a burst of 5 honest claims at the cap queues behind them.
+      Each honest claim must run after the claim in flight and at most one Sybil claim.
+    - Observed: the honest claims ran after 0, 0, 0, 0 and 1 Sybil claims in the first burst, and
+      after 0, 0, 0, 1 and 1 in the second. Each burst had one Sybil claim, the one the bound made
+      due. Under fix round 1's budget, the fifth honest claim of the first burst ran after all 15
+      Sybil claims queued before it, and the test fails.
+    - `TestClaimOrderBounded` (changed). It keeps its guarantee and checks it further back in the
+      queue. A liar's claim is in flight. Behind it, two claimants of no credit queue a claim each,
+      then the honest claimant (no credit), then the other liar. The liars are at the cap and claim
+      again at each idle end.
+    - Each claim of no credit must run in the order queued, after at most 4 liar claims since the
+      one before it, and the first one after exactly 4. So the honest claim, third in the order
+      queued, runs within 3 × 5 = 15 claims. Observed: the three ran at picks 5, 10 and 15. Under
+      fix round 1 they ran at picks 5, 6 and 7. Without any bound (pure credit order), the honest
+      claim has not run after 15 claims, and the test fails.
+    - `TestClaimOrderByCredit` is unchanged.
+    - A shared test helper, `claimRunner`, runs the worker one idle claim at a time.
+- **(T4.7 part 4 fix round 2) Corrections (review Lows 1, 2 and 3). No code changed for them.**
+  - *Low 1: the "0.22 IDs/s floor for an attacker without a batch" is wrong.* This corrects fix
+    round 1's "Corrections" (the second item), the residual table of "Item 4", and the Follow-up
+    "(T4.7 part 4 fix round 1) Correction to … Junk up to the chunks a peer stores".
+    - A delivery older than the reserve's version (`ErrOverwriteNewerChunk`) gives its unit back,
+      with no cap (fetch.go, `deliver`).
+    - A neighborhood node without a batch can keep superseded (chunk, stamp) pairs. These are the
+      older versions at stamp indices that a mutable batch wrapped around and overwrote, and the
+      node once held them honestly. It can list them, and this node fetches them.
+    - Each such delivery is rejected and refunded, so it costs the peer no credit. The stamps are
+      valid (the batch is live), so nothing scores the peer either.
+    - The only brake is the want set's rejection memory. A rejected ID is not fetched again for
+      `RejectTTL` (10 minutes), but only while the peer holds fewer than `MaxRejectedPerPeer`
+      (2500) rejections.
+    - With N ≤ 2500 pairs, the peer gets N fetches per 10 minutes (≤ 4.2 IDs/s). With more, it
+      pushes out its own oldest rejections and cycles through them. Then only the node-wide fetch
+      rate (`DefaultFetchRate` 1000/s), its two stream slots and `MaxClaimsPerPeer` (1000) bound
+      it.
+    - So the 0.22 IDs/s floor holds only for a peer without a batch that also holds no superseded
+      pairs of this node's neighborhood. The supply of pairs grows with the neighborhood's
+      mutable-batch overwrites.
+    - Each such fetch costs this node what junk does: a delivery, a stamp check and a refused Put.
+    - Not fixed (Follow-ups). A per-peer cap over time on neutral refunds trades this path against
+      the drain of honest neighbors that fix round 1's Medium 1 closed.
+  - *Low 2: overwrite churn can flush the record of removals, not only a radius eviction.* This
+    corrects fix round 1's "How this node knows" and the Follow-up "(T4.7 part 4 fix round 1 → T6)
+    Chain-state rejections to read off testnet", which name only a radius eviction.
+    - Every overwrite removes the old version from the reserve, and the reserve observer reports
+      it (`removalObserver`). A peer with a batch can mint 65536 overwrites (`maxRemovals`), each
+      of which earns it credit, and so flush the record.
+    - An honest neighbor's chain-state rejections for a batch that expired here first are then no
+      longer excused by a removal. They fall back to its excuses, then to its credit.
+    - The cost is bounded by the neighbor's excuses and credit (each ≤ 1000), and it recovers as
+      the neighbor delivers. The fallback is the same as after a radius eviction. An attacker with
+      a batch already has cheaper ways to spend this node's fetches: its junk is not bounded (fix
+      round 1).
+  - *Low 3: least-credit eviction can pick an honest neighbor whose credit is all in flight.*
+    - `evictLocked` reads the balance net of the Wants in flight. A ramping newcomer whose credit
+      is all in its Wants in flight has balance 0, so the book can forget it. An example is a
+      newcomer whose 250 are all in its first Want.
+    - Its refunds then go to its remembered record (`give` reaches a forgotten overlay). When it is
+      asked next, it resumes that credit, but its probe clock starts over. Meanwhile its claims
+      keep their rank (`FetchCredit` reads a remembered credit).
+    - This is no worse than the LRU eviction before fix round 1. Memory stays bounded at
+      4096 + 4096 records (≈ 1.2 MB).
+- **(T4.7 part 4 fix round 2) Superseded.**
+  - "(T4.7 part 4 fix round 1) Review Medium 2: a claim is overtaken at most `maxClaimOvertakes`
+    times". Its *Built* (a count per claim, `stripeJob.overtaken`) and its *Bound* ("a claim waits
+    for the claims queued before it … and for at most 4 more"; "behind at most the claims already
+    overtaken 4 times") are replaced by the worker's count and the bounds above. Its rejection of
+    the age bound stands. That reasoning now applies to a count per claim too.
+  - Fix round 1's "Superseded", item 3: "no claim is overtaken more than `maxClaimOvertakes` times"
+    now reads "the first queued claim runs at least once in every `maxClaimOvertakes` + 1 claims".
+  - Fix round 1's "Tests, scope and checks", *New and changed code*: `stripeJob.overtaken` is now
+    `Reconciler.claimOvertakes`.
+  - Tests changed by design: `TestClaimOrderBounded` (above).
+- **(T4.7 part 4 fix round 2) Tests, scope and checks.**
+  - *Commits.* 5585ecae (reconciler: reconciler.go, stripes_transfer.go, credit_test.go) and this
+    record.
+  - *New and changed code.* No new export. In the reconciler, `Reconciler.claimOvertakes` replaces
+    `stripeJob.overtaken`, and `nextJobLocked` changed. In the tests: `TestClaimOrderFlood`, the
+    `claimRunner` helper, and the changed `TestClaimOrderBounded`.
+  - *Scope.* No pkg/pullsync, pkg/puller, pkg/node, pkg/storer, go.mod, proto or `*_fuzz_test.go`
+    change. README not ticked.
+  - *Checks.* All passed:
+    - `go build ./...`.
+    - `go vet` on pkg/rangesync/..., default and `-tags=sim`.
+    - `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+      ./pkg/rangesync/...`: 0 issues.
+    - gofumpt and gci on the changed files only.
+    - `go test ./pkg/rangesync/... -count=1`: pkg/rangesync 58 s, reconciler 6 s.
+  - *Stress runs instead of `-race`.* No `-race` here, so these ran instead, with no failure:
+    - `TestClaim*` at `-count=20 -cpu=1,2,4` (2 s);
+    - the whole reconciler package at `-count=5 -cpu=1,2,4` (78 s): `TestClaim*`, `TestStripe*`,
+      `TestSyncRate*` and `TestWantSet*` among them.
+  - *Each test fails with its old rule restored*: `TestClaimOrderFlood` under fix round 1's
+    per-claim budget, and `TestClaimOrderBounded` with no bound (above).
+  - *Sim* (`-tags=sim`, one run, 660 s). The results are identical to fix round 1, and AC-B2 is
+    within bound. The sims queue no peer's claim (peers' stripe sessions 0), so they do not reach
+    the new pick; this checks that nothing else moved.
+    - `TestG6Bootstrap`: 1410 and 1409 KB of 2610 KB at ranks 4 and 14. 16 stripes done, none
+      reassigned or timed out, 0 duplicates. Fetches were skipped only as `held` and `in_reserve`
+      (no `no_credit`).
+    - `TestG6BootstrapTail`: 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2
+      and 4. Caught up after 5333.93–5335.13 s, with 0 wants and 9–12 stripe sessions, none timed
+      out.
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -6436,3 +6588,36 @@ _(sessions append here)_
     `TestIndexer*`, `TestReconcile*` and `TestNeighborhoodBootstrap*`.
   - `pkg/rangesync/reconciler`, new: `TestClaimOrderBounded`. `nextJobLocked` now changes
     `stripeJob.overtaken` under `r.mu`, so re-run the whole reconciler package.
+- **(T4.7 part 4 fix round 2) Correction to "(T4.7 part 4 fix round 1) Correction to … Claims of
+  an honest claimant this node never fetched from".**
+  - "A claim waits for the claims queued before it plus at most `maxClaimOvertakes` (4) claims
+    queued after it: ≤ 8 minutes over FIFO" now reads as follows. A claim with n claims queued
+    before it runs within 5 × (n + 1) claims, ≤ 10 × (n + 1) minutes when they store nothing.
+  - It waits that long only when the claims queued before it have less credit than claims that keep
+    arriving behind it (Decisions log, "(T4.7 part 4 fix round 2) Review Medium").
+  - A claim with more credit than all those queued waits for the claim in flight and at most one
+    more.
+  - The T6.3 measurement stands. Also measure there how long claimants with no credit wait behind a
+    flood of claims.
+- **(T4.7 part 4 fix round 2 → T6) Refunds for older versions are uncapped (review Low 1).**
+  - The problem: a neighborhood node without a batch that kept superseded (chunk, stamp) pairs can
+    have this node fetch them at no credit cost. Each is rejected with `ErrOverwriteNewerChunk` and
+    gives its unit back. Past `MaxRejectedPerPeer` (2500) rejections, the peer cycles through its
+    own. Only the node-wide fetch rate and its stream slots and claims bound it (Decisions log,
+    "(T4.7 part 4 fix round 2) Corrections").
+  - A fix: a per-peer cap over time on these refunds, with a unit charged past it. The cap must sit
+    above the rate at which honest neighbors deliver older versions, which is the overwrite churn
+    they relay.
+  - What the cap trades: it bounds an attacker without a batch at the cap rate. But an attacker
+    with a batch can then drain an honest neighbor again (fix round 1's Medium 1), at its minting
+    rate minus the cap.
+  - To read off testnet first: how often, and per peer, honest neighbors' deliveries end in
+    `ErrOverwriteNewerChunk`. No metric counts them; only the Debug log "overwrite newer chunk"
+    names the peer. Add a metric to read it.
+- **(T4.7 part 4 fix round 2) Tests to run with `-race` on CI.** There is no C compiler here, so
+  they ran with `-count=N -cpu=1,2,4` instead (Decisions log, "(T4.7 part 4 fix round 2) Tests,
+  scope and checks").
+  - `pkg/rangesync/reconciler`: `TestClaimOrderFlood` is new. `TestClaimOrderBounded` changed.
+    `TestClaimOrderByCredit` is unchanged but runs through the new pick.
+  - `nextJobLocked` now changes `Reconciler.claimOvertakes` under `r.mu`, so re-run the whole
+    reconciler package.
