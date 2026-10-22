@@ -803,6 +803,14 @@ _(sessions append here)_
     lint`, `golangci-lint run --build-tags integration ./pkg/node/...` and `go build ./...` are
     clean. Only the two changed test files were formatted (gofumpt, gci).
   - No production code changed.
+- **(Orchestrator, T6.1 part 1 landing, 2026-10-22) Part 1 landed after one fix round.** Tests
+  only (pkg/node, `-tags=integration`). Review: no High; Medium 1 (the push-race exception ignored
+  timing) and Medium 2 (Mixed had no duplicate gate) and four Lows fixed in fix round 1, which
+  verified clean (no re-review: no High). The fix round's verifier re-ran the suite: N = 5 R÷B
+  metadata 0.68–0.72, CPU 0.58–0.65; N = 9 metadata 0.57–0.58, CPU 0.50–0.53; N = 17 (30/s)
+  metadata 0.35, CPU 0.49; AC-V1 max 5.38 s. The spread between runs (a few points) is run-to-run
+  variance; no verdict changes. AC-B1 fails at N = 5 and 9 and passes at N = 17 (T6.4 decides the
+  per-N re-basing, as the G6 sheet proposed). T6.1 is ticked after part 2.
 
 ## Follow-ups
 _(sessions append here)_
