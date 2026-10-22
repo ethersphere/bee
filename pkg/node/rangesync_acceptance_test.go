@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -47,6 +48,29 @@ func accSizes(t *testing.T) []int {
 	return sizes
 }
 
+// accUploadPhase is how long the uploads last: 4 rounds of MinRoundInterval.
+const accUploadPhase = 20 * time.Second
+
+// accRate returns the upload rate of a network of n nodes, at the reference
+// load of acceptance-criteria.md §1 (median pairwise_diff ≥ 20 per
+// steady-state session): 15 per second up to 9 nodes, the simulation's
+// steadyOptions rate. Two nodes differ on the uploads one of them holds and
+// the other lacks, a share 2p(N − p)/(N(N − 1)) of them with p holders, so
+// at a fixed rate a pair's difference per round falls with N: 37.5 per
+// 5 s at N = 9, 23 at N = 17, whose median then fell in the pairwise_diff
+// bucket 16–31, which cannot tell 16–19 from 20–31. Above 9 nodes the rate
+// gives a pair 1.2 × N = 9's expected difference per 5 s round (45), rounded
+// up to 5 per second: 30 at N = 17.
+func accRate(n int) float64 {
+	const base = 15.0
+	if n <= 9 {
+		return base
+	}
+	const p = 3.0 // accOptions.Replication's default
+	share := func(n float64) float64 { return 2 * p * (n - p) / (n * (n - 1)) }
+	return 5 * math.Ceil(1.2*base*share(9)/share(float64(n))/5)
+}
+
 // accMixedMode gives the nodes of the Mixed scenario their flags in turn:
 // pullsync-only, rangesync-only, dual.
 func accMixedMode(i int) accMode {
@@ -61,29 +85,75 @@ func accMixedMode(i int) accMode {
 //     Index equals a brute force over its reserve (AC-C1); rangesync
 //     delivers every ID at most once per node and no chunk the node held at
 //     the start (AC-D1), and at most 1 % of its deliveries race the chunk's
-//     push (AC-D2's draft bound); no corrupt decode (AC-K3) and quiescence
-//     within 120 s of the last upload (AC-C2);
-//   - Mixed: every node converges (AC-C1), and every rangesync-only node
-//     serves the pullsync peers that pull from it (AC-S3).
+//     push (AC-D2's draft bound), each within accPushRaceWindow of it;
+//     every upload reaches every node within 2 × MinRoundInterval (AC-V1);
+//     no corrupt decode (AC-K3) and quiescence within 120 s of the last
+//     upload (AC-C2);
+//   - Mixed: every node converges (AC-C1); on every rangesync-only and dual
+//     node rangesync meets AC-D1 as above, and the pullsync-only nodes pull
+//     from it (AC-S3); AC-V1 and AC-K3.
+//
+// The upload rate is accRate(N), the reference load.
 func TestAcceptance(t *testing.T) {
 	for _, n := range accSizes(t) {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			seed := uint64(n)
+			rate := accRate(n)
+			o := accOptions{Nodes: n, Seed: seed, Radius: 2, Rate: rate, Uploads: int(math.Round(rate * accUploadPhase.Seconds()))}
 			var baseline, rangesyncOnly, mixed *accResult
 			t.Run("baseline", func(t *testing.T) {
-				baseline = runAccScenario(t, "baseline", accOptions{Nodes: n, Seed: seed, Radius: 2})
+				baseline = runAccScenario(t, "baseline", o)
 				checkBaseline(t, baseline)
 			})
 			t.Run("rangesync", func(t *testing.T) {
-				rangesyncOnly = runAccScenario(t, "rangesync", accOptions{Nodes: n, Seed: seed, Radius: 2, Mode: func(int) accMode { return accRangesyncOnly }})
+				ro := o
+				ro.Mode = func(int) accMode { return accRangesyncOnly }
+				rangesyncOnly = runAccScenario(t, "rangesync", ro)
 				checkRangesyncOnly(t, rangesyncOnly)
 			})
 			t.Run("mixed", func(t *testing.T) {
-				mixed = runAccScenario(t, "mixed", accOptions{Nodes: n, Seed: seed, Radius: 2, Mode: accMixedMode})
+				mo := o
+				mo.Mode = accMixedMode
+				mixed = runAccScenario(t, "mixed", mo)
 				checkMixed(t, mixed)
 			})
 			logAccTable(t, baseline, rangesyncOnly, mixed)
 		})
+	}
+}
+
+// TestAccDuplicateClassification checks the suite's duplicate
+// classification (classifyDeliveries): rangesync's first delivery of a pushed
+// chunk races the push if it lands within accPushRaceWindow of it, before or
+// after; past it (a late refetch) it is a rangesync repeat, as a second
+// delivery is; a delivery of a base chunk is a false difference, a fetched ID
+// delivered by both protocols a cross-protocol duplicate, and pullsync's
+// first delivery of a pushed chunk is not timed.
+func TestAccDuplicateClassification(t *testing.T) {
+	t.Parallel()
+
+	push := time.Now()
+	id := func(b byte) fingerprint.ID {
+		var x fingerprint.ID
+		x[0] = b
+		return x
+	}
+	deliveries := map[fingerprint.ID]*accDeliveries{
+		id(1): {n: [2]int{0, 1}, first: [2]time.Time{{}, push.Add(100 * time.Millisecond)}},
+		id(2): {n: [2]int{0, 1}, first: [2]time.Time{{}, push.Add(-50 * time.Millisecond)}},
+		id(3): {n: [2]int{0, 1}, first: [2]time.Time{{}, push.Add(accPushRaceWindow + time.Millisecond)}},
+		id(4): {n: [2]int{0, 2}},
+		id(5): {n: [2]int{0, 1}},
+		id(6): {n: [2]int{1, 1}},
+		id(7): {n: [2]int{1, 0}, first: [2]time.Time{push.Add(3 * accPushRaceWindow)}},
+	}
+	placed := map[fingerprint.ID]accPlacement{id(1): accPush, id(2): accPush, id(3): accPush, id(5): accBase, id(7): accPush}
+	pushed := map[fingerprint.ID]time.Time{id(1): push, id(2): push, id(3): push, id(7): push}
+
+	got := classifyDeliveries(deliveries, placed, pushed, accPushRaceWindow)
+	want := accDups{total: 7, base: 1, pushPS: 1, pushRS: 2, latePushRS: 1, rs: 2, cross: 1, raceMax: 100 * time.Millisecond}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 
@@ -104,9 +174,10 @@ func checkRangesyncOnly(t *testing.T, r *accResult) {
 
 	// AC-D1: rangesync delivers every ID at most once per node, and no base
 	// chunk; a delivery that raced the chunk's push (pushsync racing a
-	// fetch, AC-D2) is reported, not a rangesync duplicate
+	// fetch, AC-D2) is reported, not a rangesync duplicate, if it landed
+	// within accPushRaceWindow of the push
 	if r.dupRS != 0 || r.dupBase != 0 {
-		t.Errorf("rangesync delivered %d IDs again and %d base chunks, want 0", r.dupRS, r.dupBase)
+		t.Errorf("rangesync delivered %d IDs again (%d of them pushed chunks past %v of the push) and %d base chunks, want 0", r.dupRS, r.dupLatePushRS, accPushRaceWindow, r.dupBase)
 	}
 	// AC-D2's draft bound on those races, 1 % of the chunks fetched
 	if limit := math.Ceil(0.01 * r.rsFetched); float64(r.dupPushRS) > limit {
@@ -121,6 +192,7 @@ func checkRangesyncOnly(t *testing.T, r *accResult) {
 	if r.rsFetched == 0 {
 		t.Error("rangesync fetched nothing")
 	}
+	checkConvergenceTime(t, r)
 	checkNoFaults(t, r)
 }
 
@@ -128,20 +200,39 @@ func checkMixed(t *testing.T, r *accResult) {
 	t.Helper()
 
 	for i, nr := range r.perNode {
-		if nr.mode != accRangesyncOnly {
+		if !nr.mode.Rangesync {
 			continue
 		}
-		if nr.psSentOffered == 0 || nr.psSent == 0 {
-			t.Errorf("rangesync-only node %d served pullsync peers %v offers and %v chunks, want both > 0", i, nr.psSentOffered, nr.psSent)
+		// AC-D1 on the rangesync drivers of the rangesync-only and dual
+		// nodes, where the index and the observer run next to pullsync
+		if nr.dupRS != 0 || nr.dupBase != 0 {
+			t.Errorf("node %d (%s): rangesync delivered %d IDs again and the node got %d base chunks, want 0", i, nr.mode, nr.dupRS, nr.dupBase)
 		}
-		if nr.psDelivered != 0 {
+		// AC-S3: the pullsync-only nodes pull from it (from a dual node,
+		// the T1.13 gap)
+		if nr.psSentOffered == 0 || nr.psSent == 0 {
+			t.Errorf("node %d (%s) served pullsync peers %v offers and %v chunks, want both > 0", i, nr.mode, nr.psSentOffered, nr.psSent)
+		}
+		if nr.mode == accRangesyncOnly && nr.psDelivered != 0 {
 			t.Errorf("rangesync-only node %d pulled %v chunks with pullsync", i, nr.psDelivered)
 		}
 	}
 	if r.decodeCorruption != 0 {
 		t.Errorf("decode_corruption_total %v, want 0", r.decodeCorruption)
 	}
+	checkConvergenceTime(t, r)
 	checkNoFaults(t, r)
+}
+
+// checkConvergenceTime checks AC-V1: every upload reached every node whose
+// root holds it within 2 × MinRoundInterval, so within 2 × RoundInterval
+// whatever the adaptive interval was at the upload.
+func checkConvergenceTime(t *testing.T, r *accResult) {
+	t.Helper()
+
+	if r.v1Within != r.uploads {
+		t.Errorf("AC-V1: %d of %d uploads reached every node within %v (the slowest took %v)", r.v1Within, r.uploads, 2*reconciler.MinRoundInterval, r.latMax)
+	}
 }
 
 // checkNoFaults checks that no protocol disconnected or blocklisted a peer:
@@ -184,21 +275,29 @@ type accResult struct {
 	wire                                         map[string]uint64 // bytes written, by protocol
 	wireStream                                   map[string]uint64 // bytes written, by protocol/stream
 	psDeliveryWire                               uint64
-	// duplicate deliveries: of base chunks (false differences), racing a
-	// push (by protocol), a protocol's repeats, cross-protocol
+	// duplicate deliveries (classifyDeliveries): of base chunks (false
+	// differences), racing a push (by protocol), a protocol's repeats
+	// (rangesync's with its late deliveries of pushed chunks),
+	// cross-protocol
 	dupTotal, dupBase, dupPushPS, dupPushRS int
+	dupLatePushRS                           int
 	dupPS, dupRS, dupCross                  int
+	raceMax                                 time.Duration // the largest distance of a rangesync race from its push
 	crossMetric                             float64
-	wantClaims, sessions, parts             map[string]float64
-	wantsDecoded                            float64 // Σ pairwise_diff_half: IDs sessions found missing
-	symMedian, symP95, symMean              float64
-	symCount                                uint64
-	diffMedian, diffHalfMedian, diffHalfP99 float64
-	diffCount                               uint64
-	decodeCorruption, moreRequests          float64
-	disconnects, blocklists                 int64
-	lastReason                              string
-	perNode                                 []accNodeResult
+	// the window's bounds (accPushRaceWindow): the rangesync fetch latency
+	// from the reserve's last miss, and the longest push over its holders
+	fetchLatMedian, fetchLatP99, fetchLatMax time.Duration
+	pushSpan                                 time.Duration
+	wantClaims, sessions, parts              map[string]float64
+	wantsDecoded                             float64 // Σ pairwise_diff_half: IDs sessions found missing
+	symMedian, symP95, symMean               float64
+	symCount                                 uint64
+	diffMedian, diffHalfMedian, diffHalfP99  float64
+	diffCount                                uint64
+	decodeCorruption, moreRequests           float64
+	disconnects, blocklists                  int64
+	lastReason                               string
+	perNode                                  []accNodeResult
 }
 
 // accNodeResult is what one node measured.
@@ -206,7 +305,10 @@ type accNodeResult struct {
 	mode                               accMode
 	psSent, psSentOffered, psDelivered float64
 	rsFetched, cross                   float64
-	dups, dupRS                        int // duplicate deliveries, and rangesync's repeats
+	// duplicate deliveries, deliveries of base chunks, rangesync's repeats
+	// (with its late deliveries of pushed chunks) and rangesync's
+	// deliveries racing a push (classifyDeliveries)
+	dups, dupBase, dupRS, pushRS int
 }
 
 // runAccScenario builds the network of o, waits until it is ready, pushes
@@ -448,42 +550,102 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 		r.latMax = lat[len(lat)-1]
 	}
 
-	// duplicates: a delivery of an ID the node holds or got already.
-	// Deliveries of a base chunk are false differences. The first delivery
-	// of a pushed chunk by a protocol raced the push: the node lacked the
-	// chunk when a session found it missing (or a pullsync offer came) and
-	// the push landed before the delivery; on a network that is pushsync
-	// racing a fetch (AC-D2). The others are a protocol's repeated
-	// deliveries, or the second protocol's delivery of an ID the first
-	// delivered (cross-protocol).
 	for i := range h.nodes {
-		for id, d := range h.deliveries[i] {
-			ps, rs := d[accViaPullsync], d[accViaRangesync]
-			held := 0
-			if h.placed[i][id] != 0 {
-				held = 1
-			}
-			total := max(0, ps+rs+held-1)
-			r.dupTotal += total
-			r.perNode[i].dups += total
-			r.perNode[i].dupRS += max(0, rs-1)
-			switch h.placed[i][id] {
-			case accBase:
-				r.dupBase += ps + rs
-				continue
-			case accPush:
-				r.dupPushPS += min(ps, 1)
-				r.dupPushRS += min(rs, 1)
-			default:
-				if ps > 0 && rs > 0 {
-					r.dupCross++
+		d := classifyDeliveries(h.deliveries[i], h.placed[i], h.pushed[i], accPushRaceWindow)
+		nr := &r.perNode[i]
+		nr.dups, nr.dupBase, nr.dupRS, nr.pushRS = d.total, d.base, d.rs, d.pushRS
+		r.dupTotal += d.total
+		r.dupBase += d.base
+		r.dupPushPS += d.pushPS
+		r.dupPushRS += d.pushRS
+		r.dupLatePushRS += d.latePushRS
+		r.dupPS += d.ps
+		r.dupRS += d.rs
+		r.dupCross += d.cross
+		r.raceMax = max(r.raceMax, d.raceMax)
+	}
+	fetchLat := slices.Clone(h.fetchLat)
+	slices.Sort(fetchLat)
+	if len(fetchLat) > 0 {
+		r.fetchLatMedian = fetchLat[len(fetchLat)/2]
+		r.fetchLatP99 = fetchLat[min(len(fetchLat)-1, int(math.Ceil(0.99*float64(len(fetchLat))))-1)]
+		r.fetchLatMax = fetchLat[len(fetchLat)-1]
+	}
+	r.pushSpan = h.pushSpan
+	return r
+}
+
+// accPushRaceWindow is how far from the push's Put to a node a protocol's
+// first delivery of the pushed chunk to that node may land and still count
+// as racing the push (classifyDeliveries). A delivery races the push in two
+// ways. The push lands between the fetch's last reserve check (the claim's
+// re-check) and the delivery: the delivery follows the push by less than the
+// fetch's latency from that check. Or the fetch stores the chunk first, from
+// a holder the same push reached a moment earlier: the delivery precedes the
+// push by less than the push's span over its holders. The suite measures
+// both in every run (fetch latency, push span); with latency 0 they stay in
+// the tens of milliseconds (Decisions log), so 1 s leaves a wide margin and
+// is still a fifth of MinRoundInterval. A delivery further from its push is
+// one the node's reserve check should have stopped, a rangesync duplicate.
+const accPushRaceWindow = time.Second
+
+// accDups are a node's duplicate deliveries, by cause (classifyDeliveries).
+type accDups struct {
+	total          int // deliveries of an ID the node held or got already
+	base           int // of base chunks: false differences
+	pushPS, pushRS int // a protocol's first delivery of a pushed chunk that raced the push
+	latePushRS     int // rangesync's first delivery of a pushed chunk past the window (in rs)
+	ps, rs         int // a protocol's repeats; rs also counts latePushRS
+	cross          int // fetched IDs that both protocols delivered
+	raceMax        time.Duration
+}
+
+// classifyDeliveries classifies the deliveries of one node: a delivery of an
+// ID the node holds or got already is a duplicate. Deliveries of a base chunk
+// are false differences. The first delivery of a pushed chunk by a protocol
+// raced the push when the node lacked the chunk at the protocol's last check
+// (a session found it missing, or a pullsync offer came) and the push landed
+// before the delivery; on a network that is pushsync racing a fetch (AC-D2).
+// For rangesync, whose duplicates are asserted, it must land within window
+// of the push's Put (accPushRaceWindow); past it, it counts as a rangesync
+// repeat (latePushRS). Pullsync's are reported only and are not timed. The
+// others are a protocol's repeated deliveries, or the second protocol's
+// delivery of an ID the first delivered (cross-protocol). raceMax is the
+// largest distance of a rangesync race from its push.
+func classifyDeliveries(deliveries map[fingerprint.ID]*accDeliveries, placed map[fingerprint.ID]accPlacement, pushed map[fingerprint.ID]time.Time, window time.Duration) accDups {
+	var c accDups
+	for id, d := range deliveries {
+		ps, rs := d.n[accViaPullsync], d.n[accViaRangesync]
+		held := 0
+		if placed[id] != 0 {
+			held = 1
+		}
+		c.total += max(0, ps+rs+held-1)
+		switch placed[id] {
+		case accBase:
+			c.base += ps + rs
+			continue
+		case accPush:
+			c.pushPS += min(ps, 1)
+			if rs > 0 {
+				at, ok := pushed[id]
+				if dist := d.first[accViaRangesync].Sub(at).Abs(); ok && dist <= window {
+					c.pushRS++
+					c.raceMax = max(c.raceMax, dist)
+				} else {
+					c.latePushRS++
+					c.rs++
 				}
 			}
-			r.dupPS += max(0, ps-1)
-			r.dupRS += max(0, rs-1)
+		default:
+			if ps > 0 && rs > 0 {
+				c.cross++
+			}
 		}
+		c.ps += max(0, ps-1)
+		c.rs += max(0, rs-1)
 	}
-	return r
+	return c
 }
 
 // logAccTable logs the scenarios' results side by side, with the ratios to
@@ -576,17 +738,26 @@ func logAccTable(t *testing.T, base, rs, mixed *accResult) {
 		return fmt.Sprintf("%d (%d/%d/%d)", r.dupTotal, r.dupPS, r.dupRS, r.dupCross)
 	})
 	row("deliveries racing a push pullsync/rangesync", func(r *accResult) string {
-		return fmt.Sprintf("%d / %d", r.dupPushPS, r.dupPushRS)
+		return fmt.Sprintf("%d / %d (max %v)", r.dupPushPS, r.dupPushRS, r.raceMax.Round(time.Millisecond))
+	})
+	row("rangesync pushed-chunk deliveries past window", func(r *accResult) string { return strconv.Itoa(r.dupLatePushRS) })
+	row("rs fetch latency median/p99/max; push span", func(r *accResult) string {
+		if r.fetchLatMax == 0 {
+			return "-"
+		}
+		ms := func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) }
+		return fmt.Sprintf("%s/%s/%s; %s ms", ms(r.fetchLatMedian), ms(r.fetchLatP99), ms(r.fetchLatMax), ms(r.pushSpan))
 	})
 	row("deliveries of base chunks", func(r *accResult) string { return strconv.Itoa(r.dupBase) })
-	row("duplicates (rangesync repeats) at P / R / D", func(r *accResult) string {
-		var dups, own [3]int
+	row("duplicates (rangesync repeats; races) P / R / D", func(r *accResult) string {
+		var dups, own, races [3]int
 		for _, nr := range r.perNode {
 			k := slices.Index([]accMode{accPullsyncOnly, accRangesyncOnly, accDual}, nr.mode)
 			dups[k] += nr.dups
 			own[k] += nr.dupRS
+			races[k] += nr.pushRS
 		}
-		return fmt.Sprintf("%d / %d (%d) / %d (%d)", dups[0], dups[1], own[1], dups[2], own[2])
+		return fmt.Sprintf("%d / %d (%d; %d) / %d (%d; %d)", dups[0], dups[1], own[1], races[1], dups[2], own[2], races[2])
 	})
 	row("cross_protocol_duplicates_total", func(r *accResult) string { return fmt.Sprintf("%.0f", r.crossMetric) })
 	row("CPU s per 1000 uploads", func(r *accResult) string { return fmt.Sprintf("%.2f", cpu(r)) })

@@ -182,8 +182,11 @@ const (
 )
 
 // accDeliveries counts the deliveries of one chunk ID to one node, by
-// protocol.
-type accDeliveries [2]int
+// protocol, and records when the first of each protocol came.
+type accDeliveries struct {
+	n     [2]int
+	first [2]time.Time
+}
 
 // accStabilizer is a node's warm-up stabilization (stabilization.Subscriber):
 // the harness stabilizes the nodes once they are connected, as the detector
@@ -238,11 +241,36 @@ func (n *accNode) root() fingerprint.Range {
 }
 
 // accStore is the reserve the node's protocols get: the node's storer.DB,
-// whose putter records the arrivals.
+// whose putter records the arrivals, whose ReserveHasID records the IDs it
+// found missing and whose ReserveIterateAddr counts the iterations over the
+// whole root.
 type accStore struct {
 	*storer.DB
 	h *accHarness
 	i int
+
+	rootIters atomic.Int64
+}
+
+// ReserveHasID records when the reserve last lacked the ID. Only rangesync
+// calls it (pullsync calls ReserveHas): before a delivery, the last miss is
+// the claim's re-check, or a later check by another session or fetch.
+func (s *accStore) ReserveHasID(addr swarm.Address, stampHash []byte) (bool, error) {
+	has, err := s.DB.ReserveHasID(addr, stampHash)
+	if err == nil && !has {
+		s.h.missed(s.i, fingerprint.NewID(addr, stampHash))
+	}
+	return has, err
+}
+
+// ReserveIterateAddr counts the iterations over the whole root (a scan or a
+// listing of it): a session that reads the root's symbols from the root
+// cache makes none.
+func (s *accStore) ReserveIterateAddr(prefix swarm.Address, bits uint8, after []byte, cb func(storer.ChunkID) (bool, error)) error {
+	if bits <= s.StorageRadius() {
+		s.rootIters.Add(1)
+	}
+	return s.DB.ReserveIterateAddr(prefix, bits, after, cb)
 }
 
 func (s *accStore) ReservePutter() storage.Putter {
@@ -288,7 +316,14 @@ type accHarness struct {
 	arrivals   []map[fingerprint.ID]time.Time      // per node, first in the reserve
 	deliveries []map[fingerprint.ID]*accDeliveries // per node
 	placed     []map[fingerprint.ID]accPlacement   // per node, put by the harness
+	pushed     []map[fingerprint.ID]time.Time      // per node, when the push's Put returned
+	misses     []map[fingerprint.ID]time.Time      // per node, the last ReserveHasID that lacked the ID
 	uploads    []*accUpload
+	// fetchLat is, per first rangesync delivery of an ID to a node, the time
+	// since the node's reserve last lacked the ID (the claim's re-check, or
+	// a later check); pushSpan the longest push over its holders
+	fetchLat []time.Duration
+	pushSpan time.Duration
 
 	psDeliveryBytes atomic.Uint64 // wire bytes of the pullsync Deliveries received
 
@@ -463,6 +498,8 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 	h.arrivals = append(h.arrivals, make(map[fingerprint.ID]time.Time))
 	h.deliveries = append(h.deliveries, make(map[fingerprint.ID]*accDeliveries))
 	h.placed = append(h.placed, make(map[fingerprint.ID]accPlacement))
+	h.pushed = append(h.pushed, make(map[fingerprint.ID]time.Time))
+	h.misses = append(h.misses, make(map[fingerprint.ID]time.Time))
 	h.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -567,6 +604,7 @@ func (h *accHarness) delivered(i, via int, ch swarm.Chunk) {
 			h.psDeliveryBytes.Add(uint64(n + uvarintSize(uint64(n))))
 		}
 	}
+	now := time.Now()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	d, ok := h.deliveries[i][id]
@@ -574,7 +612,20 @@ func (h *accHarness) delivered(i, via int, ch swarm.Chunk) {
 		d = new(accDeliveries)
 		h.deliveries[i][id] = d
 	}
-	d[via]++
+	if d.n[via]++; d.n[via] == 1 {
+		d.first[via] = now
+		if at, ok := h.misses[i][id]; ok && via == accViaRangesync {
+			h.fetchLat = append(h.fetchLat, now.Sub(at))
+		}
+	}
+}
+
+// missed records that node i's reserve lacked id.
+func (h *accHarness) missed(i int, id fingerprint.ID) {
+	now := time.Now()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.misses[i][id] = now
 }
 
 func uvarintSize(x uint64) int {
@@ -627,6 +678,12 @@ func (h *accHarness) put(n *accNode, ch swarm.Chunk, how accPlacement) {
 	if err := n.store.ReservePutter().Put(context.Background(), ch); err != nil {
 		h.tb.Fatalf("node %d: reserve put: %v", n.i, err)
 	}
+	if how == accPush {
+		now := time.Now()
+		h.mu.Lock()
+		h.pushed[n.i][id] = now
+		h.mu.Unlock()
+	}
 }
 
 // push puts ch into the reserves of the Replication nodes closest to it.
@@ -655,6 +712,10 @@ func (h *accHarness) push(ch swarm.Chunk) {
 	for _, i := range u.holders {
 		h.put(h.nodes[i], ch, accPush)
 	}
+	span := time.Since(u.at)
+	h.mu.Lock()
+	h.pushSpan = max(h.pushSpan, span)
+	h.mu.Unlock()
 }
 
 // start connects every pair of nodes, stabilizes them (the reserve workers
@@ -1257,7 +1318,8 @@ func (h *accHarness) checkCaches(n *accNode) {
 		_, ok := probe.LastStatus(n.overlay)
 		return ok, ""
 	})
-	before := gatherAcc(tb, prometheusRegistry(tb, probe.Metrics()...)).value("bee_rangesync_decode_corruption_total")
+	probeReg := prometheusRegistry(tb, probe.Metrics()...)
+	probe0, node0, iters0 := gatherAcc(tb, probeReg), gatherAcc(tb, n.reg), n.store.rootIters.Load()
 	wants, err := probe.Reconcile(ctx, n.overlay)
 	if err != nil {
 		tb.Fatalf("node %d: probe session: %v", n.i, err)
@@ -1265,8 +1327,22 @@ func (h *accHarness) checkCaches(n *accNode) {
 	if got := idSet(wants); !maps.Equal(got, withheld) {
 		tb.Errorf("node %d: the probe wants %d IDs (%d of them withheld), want the %d withheld", n.i, len(got), len(got)-len(minus(got, withheld)), len(withheld))
 	}
-	if after := gatherAcc(tb, prometheusRegistry(tb, probe.Metrics()...)).value("bee_rangesync_decode_corruption_total"); after != before {
-		tb.Errorf("node %d: the probe decoded %v corrupt streams", n.i, after-before)
+	pm, nm := gatherAcc(tb, probeReg).since(probe0), gatherAcc(tb, n.reg).since(node0)
+	if v := pm.value("bee_rangesync_decode_corruption_total"); v != 0 {
+		tb.Errorf("node %d: the probe decoded %v corrupt streams", n.i, v)
+	}
+	// the cache path: the node answered the probe's root Fingerprint with
+	// symbols (no split), the probe decoded them before the stream ran out,
+	// and the node neither scanned nor listed its root
+	sent := nm.byLabel("bee_rangesync_parts_sent")
+	exhausted := 0.0
+	for _, v := range pm.byLabel("bee_rangesync_streams_exhausted_total") {
+		exhausted += v
+	}
+	decoded := pm.hists["bee_rangesync_symbols_per_difference"].count
+	iters := n.store.rootIters.Load() - iters0
+	if sent["symbols"] == 0 || sent["fingerprint"] != 0 || decoded == 0 || exhausted != 0 || iters != 0 {
+		tb.Errorf("node %d: the probe session did not decode the root from its cache: the node sent %v symbol and %v fingerprint parts and iterated its root %d times; the probe decoded %d streams, %v exhausted", n.i, sent["symbols"], sent["fingerprint"], iters, decoded, exhausted)
 	}
 }
 
