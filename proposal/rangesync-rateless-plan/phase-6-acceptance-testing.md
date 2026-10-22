@@ -1734,6 +1734,78 @@ _(sessions append here)_
   `bee_rangesync_peer_failures_total{reason}`, `bee_rangesync_stripe_queue_wait_seconds{kind}`,
   `bee_rangesync_first_chunk_seconds{kind}`, the Info line "reclaimed the disabled reserve address
   index", the corrected S4 query, and NTP / direct uploads / pusher backlog (T6.5 part 1 review Low 2).
+- **(T6.3 docs) Produced: [testnet-runbook.md](testnet-runbook.md); the runs remain (G7).** The
+  documentation part of T6.3 only; README.md stays unticked until the comparison runs are done and
+  recorded here (template in the runbook, §10.3). Docs only: no `.go`, Makefile or `go.mod` change.
+  The runbook has: the decisions to take at G7 (§0); the flag matrix and how to tell a node's mode
+  from `/metrics` (§2); the cohort rules (§3); procedures for start, upgrade, rollback, downgrade
+  (the corrected T6.2 paragraph), load, upload pause, bootstrap, radius decrease, batch expiry and
+  a node-away catch-up (§4); three helper scripts (§5); the dashboard (§6); per AC row naming
+  T6.3 (29 rows) the segment, the reading and the threshold (§7); the special items (§8); the G6
+  confirmation queries and rules (§9); the run plan (§10); the known issues (§11); and a map from
+  every handed entry to where it is covered (Appendix A). Every flag, metric, label value, log line
+  and API field was checked against the code at d6fe508a (each metric name in the runbook was
+  grepped back to its definition).
+- **(T6.3 docs) Dashboard as a PromQL panel list in the runbook, not a Grafana JSON.** The testnet's
+  Grafana version, datasource and scrape labels are unknown here, so a JSON could be validated for
+  syntax only, not for rendering; a panel list with its PromQL can be reviewed next to the
+  thresholds it feeds and typed into any Grafana. Labels are set in the scrape config (`node`,
+  `cohort`, `neighborhood`, `group`, `arch`). `isFullySynced`, `isFrozen` and the address-index
+  size come from a poller of `/status` and `/redistributionstate` that writes a node_exporter
+  textfile (`runbook_*` gauges, not bee metrics), as T6.0's follow-up proposed (polling).
+- **(T6.3 docs) Cohorts are assigned per sibling pair of neighborhoods**, not per neighborhood. A
+  radius decrease merges two siblings; if they ran different cohorts, a rangesync-only node and a
+  pullsync-only node would share the merged neighborhood (D12 broken) and AC-V4 would fail by
+  design. The upgrade and the rollback go through dual for the same reason (dual + pullsync-only is
+  allowed, rangesync-only + pullsync-only is not).
+- **(T6.3 docs) Testnet stand-ins for in-process signals.**
+  - AC-C1 (reserve = union): `/rchash/<committedDepth>/<a>/<a>` on every node of a neighborhood in
+    one round; its sample covers the chunks older than the previous round's start, so equal
+    reserves give one hash.
+  - AC-V1: a probe uploads random chunks with `Swarm-Deferred-Upload: false` and polls
+    `HEAD /chunks/<ref>` (a local `ChunkStore().Has`) on the inventory nodes of the address's
+    neighborhood; the bound per probe is min(2 × the largest `round_interval_seconds` at the upload,
+    15 s), T6.1's two bounds. This answers the T6.0 follow-up; acceptance-criteria.md §6 item 2
+    (does AC-V1 gate on testnet) is left to G7.
+  - `t_union` (AC-V3, AC-V4): the joiner's `bee_localstore_reserve_size` within 0.1 % of its
+    neighborhood's median, as T6.1 recommended comparing the time to the union rather than to
+    `sync_rate` 0.
+  - AC-B2 IDs: the joiner's `bytes_metadata{dir="in"}` minus its neighbors' over the same interval;
+    the ≤ 1 MB verification part is not separable under load (round sessions add ~7 KB/s per node).
+  - AC-D2's denominator is `fetch_delivered_total + cross_protocol_duplicates_total` (the proposed
+    `chunks_fetched_total` was never added); AC-D3/AC-D5's "unique chunks added" is
+    `delta(reserve_size) − increase(pushsync_storer)` over windows with no eviction or expiry.
+  - Bucket edges: AC-V2 reads p95 ≤ 4 (`session_rounds` buckets are powers of 2), AC-R3 and
+    AC-R4 read means (`_sum/_count`): 30 s lies between the 20 and 40 buckets, and the reserve
+    `Put` histogram has the default buckets (first edge 5 ms).
+- **(T6.3 docs) Radius decrease and AC-N5 need opposite reserve fills.** A node is "fully synced"
+  only with ≥ half its capacity within the radius (both `isFullySynced` functions in
+  `pkg/node/node.go`); the reserve worker lowers the radius only below half. The plan therefore
+  seeds the network to ≥ 2^(21+r) chunks (Run S), measures AC-N5 in Run 2, and runs the radius
+  decrease (Run 4) after a batch expiry has taken the neighborhoods below half. Method B holds the
+  rest of the network with `--minimum-storage-radius` and releases one sibling pair per cohort; it
+  needs every full node of the network on that minimum (salud's self-health check), so a private
+  network.
+- **(T6.3 docs) Draft decision triggers for the team (G7-5).** Two rules of the runbook's §9 have no
+  number in the G6 sheet and are T6.3's drafts: catch-ups past the root or level-1 split more than
+  once per node per hour outside bootstraps and radius changes (then consider doubling
+  `RootSymbols`/`Level1Symbols`), and exhausted bucket-level streams in more than 10 % of the
+  deeper nodes' sessions with mixed radii (then the half-range cache).
+- **(T6.3 docs) Handed items.** Appendix A maps 38 handed entries (grouped where they are one item):
+  32 are placed with a procedure and a reading; 3 only partially, for want of a metric (the claims'
+  first-chunk window and queue wait, a catch-up fetch's first-chunk latency, the wait of a claimant
+  with no credit); 4 cannot run with stock builds (a dripping claimant, the one-chunk-then-reset pin,
+  a Sybil-made bootstrap, a flood of claims) and go to T6.4 as not exercised.
+- **(T6.3 docs) Found in the code on the way.** `bee_init_full_sync_duration_minutes` always
+  observes 0: `pkg/node/node.go` sets `pullSyncStartTime = t` in `warmupMeasurement` and then
+  observes `pullSyncStartTime.Sub(t)` for the same `t` (pre-existing, outside this plan; the
+  runbook uses the timestamp of the Info `full sync done` line). There is no flag for any rangesync
+  constant: `rangesync.Options.FetchRate` exists but `rangesyncOptions` (`pkg/node/syncer.go`) leaves
+  it at `DefaultFetchRate`.
+- **(T6.3 docs) Checks.** The three scripts were run against a Python mock of the API endpoints
+  they use (`/status`, `/redistributionstate`, `/addresses`, `/status/peers`, `/metrics`,
+  `POST /chunks`, `HEAD /chunks/{address}`), not against a live node; the runbook says to try them
+  on one node first. The markdown tables were checked for consistent column counts.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2198,3 +2270,48 @@ _(sessions append here)_
   `Close` closed the store; 5 s each), `TestReserveAddrIndexReclaimLog`. `pkg/node`:
   `TestResolveFetchRate`, `TestRangesyncFetchRateWiring` (changed), and `TestRangesyncToggle`,
   `TestRangesyncDefaultsNoIndex` (their node builder changed).
+- **(T6.3 docs) No flag for rangesync's fetch rate (owner: `pkg/node` + `cmd/bee`, an additive
+  wiring task like T1.12; decide at G7-2).** The T6.3 scope asks to "lower rangesync's fetch limit
+  for dual cohorts". `rangesync.Options.FetchRate` exists, but `rangesyncOptions`
+  (`pkg/node/syncer.go`) does not set it and no flag reaches it, so the node always fetches at
+  `DefaultFetchRate` (1000 chunks/s). Until a flag (for example `--rangesync-fetch-rate`) exists, a
+  dual cohort on constrained hosts needs a test build with a lower constant (on every node, so the
+  build stays the same) or OS-level shaping (which slows both protocols).
+- **(T6.3 docs) No `reason` on `bee_rangesync_peer_failures_total` (owner:
+  `pkg/rangesync/reconciler`).** The counter cannot tell the stripe verification's false positives
+  (`ErrStripeVerification`, the Medium "(T6.1 part 2 fix round 1 → before T6.3)") from shortfalls or
+  withholding; only the Debug line `peer failed` (`reason`) can. A label with a bounded set of
+  values (the sentinel errors) would make S10 and K2 readable from the dashboard.
+- **(T6.3 docs) No metric for a stripe job's queue wait and first-chunk latency, or for a catch-up
+  fetch's first chunk (owner: `pkg/rangesync/reconciler`).** The handed items "(T4.7 part 3 →
+  T6.1/T6.3) Claims' first-chunk window" (with its correction: record the queue wait apart),
+  "(T4.7 part 4 → T6.3) Claims of an honest claimant this node never fetched from" and "(T4.5 part 2c
+  fix round 2 → T4.6) Measure the first-chunk latency of catch-up fetches" can only be read on
+  testnet as `sync_rate` dipping to 0 while the reserve lags. Histograms by job kind (own, claim,
+  catch-up), or a Debug log at a job's start and first stored chunk, would measure them.
+- **(T6.3 docs) AC-B2's verification part is not separable on testnet (owner: T6.4, or
+  `pkg/rangesync` metrics).** Under load the joiner's round sessions dwarf the ≤ 1 MB verification.
+  Either AC-B2's verification part stays an in-process criterion (T6.1 measured 147–196 B), or
+  `bytes_metadata` gets a session-kind label (round, stripe, verification).
+- **(T6.3 docs) Criteria that the buckets cannot resolve (owner: T6.4 wording; else metric buckets).**
+  AC-V2's p95 ≤ 3 (`session_rounds` buckets 1, 2, 4, …: the runbook reads ≤ 4); AC-R4's median
+  `Put` latency (default buckets in `pkg/storer`, outside this plan: the runbook compares means);
+  AC-R3's 30 s (`index_rebuild_seconds` buckets 20 and 40: the runbook reads the mean per rebuild);
+  the reference load's median `pairwise_diff` ≥ 20 (bucket 16–31, as T6.1 found).
+- **(T6.3 docs) `bee_init_full_sync_duration_minutes` always observes 0 (owner: bee maintainers,
+  outside this plan).** `pkg/node/node.go` observes `pullSyncStartTime.Sub(t)` right after
+  `warmupMeasurement` set `pullSyncStartTime = t`; the Info `full sync done` line logs the same 0 as
+  its `duration`. A separate issue; the runbook reads the line's timestamp.
+- **(T6.3 docs) Tooling for the runs (owner: the G7 operators).** The runbook's scripts are tested
+  against a mock only; confirm them on one live node first. Its load generator spreads uploads
+  uniformly, so S1's 200 IDs/s per neighborhood costs 200 × 2^r uploads/s in total; a generator
+  that mines chunk addresses into one neighborhood (beekeeper or a small tool) would avoid that. A
+  Grafana JSON can be built from the runbook's §6 once the testnet's Grafana and datasource are
+  known.
+- **(T6.3 docs) Existing follow-ups the runbook depends on, unchanged.** "(T6.0) T6.3: no Prometheus
+  metric exposes `isFullySynced`…" (the runbook polls); "(T6.2 fix round 1) Operator-visible end of
+  the reclaim" (no completion signal for the compaction); "(T6.1 part 1 → T6.4) AC-K2 cannot be
+  measured as defined"; in phase-4, the per-peer credit refusals ("(T4.7 part 4 → T6) Credit
+  parameters…"), the excused/charged chain-state rejections ("(T4.7 part 4 fix round 1 → T6)") and
+  `ErrOverwriteNewerChunk` per peer ("(T4.7 part 4 fix round 2 → T6)"): each has no metric, and the
+  runbook reads Debug logs instead.
