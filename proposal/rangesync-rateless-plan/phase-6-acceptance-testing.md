@@ -1343,6 +1343,18 @@ _(sessions append here)_
     `GOTOOLCHAIN=go1.26.1 make lint`, `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags
     integration ./pkg/node/...` and `go build ./...` are clean. Only the three edited files were
     formatted (gofumpt, gci).
+- **(Orchestrator, T6.1 part 2 landing, 2026-10-22) Part 2 landed after one fix round; T6.1 done.**
+  Tests only (pkg/node, `-tags=integration`). Review: no High; five Mediums and three Lows. The
+  test-side ones (AC-B4's overlay order, AC-B2's split assertion, the runtime margin and AC-V1's
+  bound, the verdict wording) were fixed in fix round 1, which verified clean (no re-review: no
+  High). The two production findings ranked Medium (the stripe worker racing the moved-root
+  Status; stripe verification scoring honest deliverers while uploads land in their stripes) are
+  NOT fixed here (T6.1 is tests only). They are recorded to be fixed or explicitly accepted before
+  T6.3's testnet comparison runs, a decision for the user at G7. The fix round's verifier: default
+  integration run 357–407 s; `RANGESYNC_ACCEPTANCE_FULL=1` 602 s (needs `-timeout`, Follow-ups).
+  `make test-integration` fails outside the plan on the base too: `pkg/jsonhttp`
+  `TestPanicRespond` under the host's go1.27.0 (passes under go1.26.1) and the `ens` integration
+  test, which does not compile (`undefined: testutil`).
 
 ## Follow-ups
 _(sessions append here)_
