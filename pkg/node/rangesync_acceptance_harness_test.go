@@ -139,9 +139,28 @@ type accOptions struct {
 	Limit time.Duration
 	// ReserveCapacity is every reserve's capacity (default 1<<16, no
 	// eviction), ReserveWakeUpDuration the reserve worker's radius check
-	// interval (default the storer's 30 min).
+	// interval (default the storer's 30 min). WakeUp, if set, gives node i
+	// its own interval instead (0 keeps ReserveWakeUpDuration).
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
+	WakeUp                func(i int) time.Duration
+	// Hold, if set and true for node i, holds its reserve worker's radius
+	// decrease until the harness releases it (accNode.release): the worker
+	// reads a non-zero sync rate meanwhile. It stands for the moment the
+	// reserve falls below its threshold, which the scenario picks.
+	Hold func(i int) bool
+	// Overlay, if set, returns node i's overlay from a random address and
+	// the neighborhood's prefix; it must share the first Radius bits of the
+	// prefix. By default the random address gets the first Radius bits.
+	Overlay func(i int, random, prefix swarm.Address) swarm.Address
+	// Window bounds the bytes a stream writer may send ahead of its reader,
+	// per direction (0: unbounded; see accPipe).
+	Window int
+	// LargeDiff, if set, is every rangesync node's threshold of a striped
+	// transfer: rangesync.Options.LargeDiff and reconciler.Options.LargeDiff
+	// (the node leaves both at rangesync.LargeDiff). It scales a bootstrap
+	// down to the suite's reserves.
+	LargeDiff uint64
 }
 
 func (o accOptions) withDefaults() accOptions {
@@ -216,7 +235,7 @@ type accNode struct {
 	i       int
 	overlay swarm.Address
 	mode    accMode
-	radius  uint8
+	radius  uint8 // the radius it starts with
 
 	host  *accHost
 	topo  *accTopology
@@ -231,13 +250,33 @@ type accNode struct {
 	svc      *rangesync.Service     // nil without --rangesync-enable
 	rsCloser io.Closer              // the node's rangesync closer
 	syncer   storer.Syncer          // the combined syncer
+	gate     *accSyncGate           // syncer, as the reserve worker reads it
 	cancel   context.CancelFunc     // ends the node's context, as Shutdown
 	reg      *prometheus.Registry   // every metric of the node
+	offline  bool                   // left the network (accHarness.leave)
 }
 
 // root returns the node's root: its overlay prefix of its storage radius.
 func (n *accNode) root() fingerprint.Range {
 	return fingerprint.NewRange(n.overlay, n.db.StorageRadius())
+}
+
+// release lets the node's reserve worker lower the radius (accOptions.Hold).
+func (n *accNode) release() { n.gate.held.Store(false) }
+
+// accSyncGate is the node's combined syncer as its reserve worker reads it:
+// while held, SyncRate reports a non-zero rate, so the worker does not lower
+// the radius (accOptions.Hold); otherwise it is the syncer's.
+type accSyncGate struct {
+	storer.Syncer
+	held atomic.Bool
+}
+
+func (g *accSyncGate) SyncRate() float64 {
+	if g.held.Load() {
+		return 1
+	}
+	return g.Syncer.SyncRate()
 }
 
 // accStore is the reserve the node's protocols get: the node's storer.DB,
@@ -303,6 +342,7 @@ type accHarness struct {
 
 	rng        *rand.ChaCha8
 	prefix     swarm.Address // the neighborhood
+	base       []swarm.Chunk // the base chunks (validated)
 	signer     crypto.Signer
 	batch      *postage.Batch
 	batchStore postage.Storer
@@ -346,7 +386,7 @@ func newAccHarness(t *testing.T, o accOptions) *accHarness {
 		tb:      t,
 		o:       o,
 		logger:  accLogger(),
-		net:     newAccNet(o.Latency),
+		net:     newAccNet(o.Latency, o.Window),
 		rng:     rand.NewChaCha8(seed),
 		slots:   make(map[uint32]uint32),
 		process: prometheus.NewRegistry(),
@@ -373,25 +413,61 @@ func newAccHarness(t *testing.T, o accOptions) *accHarness {
 	h.validStamp = postage.ValidStamp(h.batchStore)
 
 	h.prefix = swarm.NewAddress(h.randBytes(swarm.HashSize))
-	base := make([]swarm.Chunk, o.Base)
-	for i := range base {
+	h.base = make([]swarm.Chunk, o.Base)
+	for i := range h.base {
 		valid, err := h.validStamp(h.newChunk())
 		if err != nil {
 			t.Fatal(err)
 		}
-		base[i] = valid
+		h.base[i] = valid
 	}
 	for i := range o.Nodes {
-		radius, chunks := o.Radius, base
-		if o.NodeRadius != nil {
-			radius = o.NodeRadius(i)
-		}
-		if o.Empty != nil && o.Empty(i) {
-			chunks = nil
-		}
-		h.addNode(i, withPrefix(swarm.NewAddress(h.randBytes(swarm.HashSize)), h.prefix, o.Radius), o.Mode(i), radius, chunks)
+		h.addNode(h.nodeSpec(i))
 	}
 	return h
+}
+
+// accNodeSpec is what makes a node: its overlay, flags and radius, the base
+// chunks it holds at the start, its reserve worker's interval and whether
+// the harness holds its radius decrease.
+type accNodeSpec struct {
+	overlay swarm.Address
+	mode    accMode
+	radius  uint8
+	base    []swarm.Chunk
+	wakeUp  time.Duration
+	hold    bool
+}
+
+// nodeSpec returns the spec of node i from the options: a new overlay, and
+// the base chunks inside its root unless it starts empty.
+func (h *accHarness) nodeSpec(i int) accNodeSpec {
+	o := h.o
+	s := accNodeSpec{mode: o.Mode(i), radius: o.Radius, wakeUp: o.ReserveWakeUpDuration}
+	random := swarm.NewAddress(h.randBytes(swarm.HashSize))
+	if o.Overlay != nil {
+		s.overlay = o.Overlay(i, random, h.prefix)
+	} else {
+		s.overlay = withPrefix(random, h.prefix, o.Radius)
+	}
+	if o.NodeRadius != nil {
+		s.radius = o.NodeRadius(i)
+	}
+	if o.WakeUp != nil {
+		if d := o.WakeUp(i); d != 0 {
+			s.wakeUp = d
+		}
+	}
+	s.hold = o.Hold != nil && o.Hold(i)
+	if o.Empty == nil || !o.Empty(i) {
+		root := fingerprint.NewRange(s.overlay, s.radius)
+		for _, ch := range h.base {
+			if root.Contains(ch.Address()) {
+				s.base = append(s.base, ch)
+			}
+		}
+	}
+	return s
 }
 
 // accLogger returns the nodes' logger: none, unless
@@ -467,6 +543,24 @@ func (h *accHarness) newStamp(addr swarm.Address) *postage.Stamp {
 	return postage.NewStamp(h.batch.ID, index, ts, sig)
 }
 
+// restamp returns ch with a newer stamp of the same batch and index: a later
+// timestamp and a new signature (§7.7: the same chunk stamped twice).
+func (h *accHarness) restamp(ch swarm.Chunk) swarm.Chunk {
+	st := ch.Stamp()
+	h.stampTime++
+	ts := make([]byte, 8)
+	binary.BigEndian.PutUint64(ts, max(binary.BigEndian.Uint64(st.Timestamp())+1, uint64(time.Now().UnixNano())+h.stampTime))
+	digest, err := postage.ToSignDigest(ch.Address().Bytes(), st.BatchID(), st.Index(), ts)
+	if err != nil {
+		h.tb.Fatal(err)
+	}
+	sig, err := h.signer.Sign(digest)
+	if err != nil {
+		h.tb.Fatal(err)
+	}
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(postage.NewStamp(st.BatchID(), st.Index(), ts, sig))
+}
+
 func chunkIDOf(ch swarm.Chunk) (fingerprint.ID, error) {
 	sh, err := ch.Stamp().Hash()
 	if err != nil {
@@ -475,12 +569,13 @@ func chunkIDOf(ch swarm.Chunk) (fingerprint.ID, error) {
 	return fingerprint.NewID(ch.Address(), sh), nil
 }
 
-// addNode builds node i, as NewBee builds the parts the sync flags change,
-// with the base chunks in its reserve.
-func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius uint8, base []swarm.Chunk) *accNode {
+// addNode builds the next node of spec, as NewBee builds the parts the sync
+// flags change, with spec's base chunks in its reserve.
+func (h *accHarness) addNode(spec accNodeSpec) *accNode {
 	tb := h.tb
 	tb.Helper()
 
+	i, overlay, mode, radius := len(h.nodes), spec.overlay, spec.mode, spec.radius
 	addrIndex, registerRangesync, buildPuller, err := node.ResolveSyncWiring(true, false, mode.Rangesync, mode.Puller)
 	if err != nil {
 		tb.Fatal(err)
@@ -512,7 +607,7 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 		RadiusSetter:          n.topo,
 		StartupStabilizer:     n.stab,
 		ReserveCapacity:       h.o.ReserveCapacity,
-		ReserveWakeUpDuration: h.o.ReserveWakeUpDuration,
+		ReserveWakeUpDuration: spec.wakeUp,
 		ReserveAddrIndex:      addrIndex,
 		CacheCapacity:         1000,
 	})
@@ -521,7 +616,7 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 		tb.Fatal(err)
 	}
 	n.store = &accStore{DB: n.db, h: h, i: i}
-	for _, ch := range base {
+	for _, ch := range spec.base {
 		h.put(n, ch, accBase)
 	}
 
@@ -530,8 +625,12 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 	gsoc := func(*soc.SOC) {}
 	n.pullsync = pullsync.New(n.host, n.store, unwrap, gsoc, h.counting(i, accViaPullsync), h.logger, pullsync.DefaultMaxPage)
 	if registerRangesync {
-		n.rec = reconciler.New(overlay, n.topo, nil, h.logger, reconciler.Options{})
-		n.svc = rangesync.New(n.host, n.store, overlay, unwrap, gsoc, h.counting(i, accViaRangesync), h.logger, node.RangesyncOptions(n.rec))
+		// LargeDiff is the one deviation from the node's wiring, and only
+		// where a scenario sets it
+		n.rec = reconciler.New(overlay, n.topo, nil, h.logger, reconciler.Options{LargeDiff: h.o.LargeDiff})
+		opts := node.RangesyncOptions(n.rec)
+		opts.LargeDiff = h.o.LargeDiff
+		n.svc = rangesync.New(n.host, n.store, overlay, unwrap, gsoc, h.counting(i, accViaRangesync), h.logger, opts)
 		n.rsCloser = node.NewRangesyncCloser(n.rec, n.svc)
 		n.rec.SetService(n.svc)
 		if err := n.svc.Start(); err != nil {
@@ -557,7 +656,9 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 		syncers = append(syncers, n.rec)
 	}
 	n.syncer = node.NewCombinedSyncer(syncers...)
-	n.db.StartReserveWorker(ctx, n.syncer, func() (uint8, error) { return radius, nil }, nil)
+	n.gate = &accSyncGate{Syncer: n.syncer}
+	n.gate.held.Store(spec.hold)
+	n.db.StartReserveWorker(ctx, n.gate, func() (uint8, error) { return radius, nil }, nil)
 
 	register := func(reg *prometheus.Registry, cs ...prometheus.Collector) {
 		for _, c := range cs {
@@ -686,11 +787,14 @@ func (h *accHarness) put(n *accNode, ch swarm.Chunk, how accPlacement) {
 	}
 }
 
-// push puts ch into the reserves of the Replication nodes closest to it.
+// push puts ch into the reserves of the Replication online nodes closest to
+// it (pushsync does not reach a node that left).
 func (h *accHarness) push(ch swarm.Chunk) {
-	order := make([]int, len(h.nodes))
-	for i := range order {
-		order[i] = i
+	order := make([]int, 0, len(h.nodes))
+	for _, n := range h.nodes {
+		if !n.offline {
+			order = append(order, n.i)
+		}
 	}
 	sort.Slice(order, func(a, b int) bool {
 		c, _ := swarm.DistanceCmp(ch.Address(), h.nodes[order[a]].overlay, h.nodes[order[b]].overlay)
@@ -768,7 +872,7 @@ func (h *accHarness) waitReady() {
 				}
 			}
 			if n.puller != nil {
-				want := float64(n.topo.peerCount() * (int(swarm.MaxBins) - int(n.radius)))
+				want := float64(pullerLiveWorkers(n, n.radius))
 				if got := gatherAcc(h.tb, n.reg).value("bee_puller_worker"); got != want {
 					return false, fmt.Sprintf("node %d puller workers %v, want %v", n.i, got, want)
 				}
@@ -776,6 +880,24 @@ func (h *accHarness) waitReady() {
 		}
 		return true, ""
 	})
+}
+
+// pullerLiveWorkers returns the sync workers node n's puller runs at radius
+// once its historical sync is done: a live worker per bin from the radius up
+// for each connected peer in the neighborhood, and one for the peer's bin
+// for a peer at most 2 bins below the radius (puller.go, syncPeer).
+func pullerLiveWorkers(n *accNode, radius uint8) int {
+	peers, pos := n.topo.byBin()
+	workers := 0
+	for i := range peers {
+		switch {
+		case pos[i] >= radius:
+			workers += int(swarm.MaxBins) - int(radius)
+		case radius-pos[i] <= 2:
+			workers++
+		}
+	}
+	return workers
 }
 
 // accWait polls cond until it holds, failing tb after limit with what cond
@@ -798,7 +920,56 @@ func accWait(tb testing.TB, what string, limit time.Duration, cond func() (bool,
 
 // expected reports whether node n's root holds addr.
 func (h *accHarness) expected(n *accNode, addr swarm.Address) bool {
-	return fingerprint.NewRange(n.overlay, n.radius).Contains(addr)
+	return n.root().Contains(addr)
+}
+
+// join adds a node of spec to the running network: it connects to every
+// online node, then stabilizes (its reserve worker sets its radius and starts
+// its sync drivers), as a node that starts next to a running neighborhood.
+func (h *accHarness) join(spec accNodeSpec) *accNode {
+	h.tb.Helper()
+
+	n := h.addNode(spec)
+	h.sampler.add(h, n)
+	for _, p := range h.nodes {
+		if p == n || p.offline {
+			continue
+		}
+		if err := h.net.connect(n.host, p.host); err != nil {
+			h.tb.Fatal(err)
+		}
+	}
+	n.stab.stabilize()
+	return n
+}
+
+// leave disconnects node n from every peer: it is offline until rejoin.
+func (h *accHarness) leave(n *accNode) {
+	h.tb.Helper()
+
+	for _, p := range h.nodes {
+		if p != n && h.net.conn(n.overlay, p.overlay) != nil {
+			if err := h.net.disconnect(n.host, p.host); err != nil {
+				h.tb.Fatal(err)
+			}
+		}
+	}
+	n.offline = true
+}
+
+// rejoin connects node n to every online node again.
+func (h *accHarness) rejoin(n *accNode) {
+	h.tb.Helper()
+
+	for _, p := range h.nodes {
+		if p == n || p.offline {
+			continue
+		}
+		if err := h.net.connect(n.host, p.host); err != nil {
+			h.tb.Fatal(err)
+		}
+	}
+	n.offline = false
 }
 
 // pending returns the number of (upload, node) pairs where the node's root
@@ -876,33 +1047,27 @@ type accSampler struct {
 	done chan struct{}
 
 	mu           sync.Mutex
-	indexPeak    []float64 // per node, since resetPeaks
-	indexPeakRun []float64 // per node, since start
+	sampled      []*accSampled // per node, nil for a node without rangesync
+	indexPeak    []float64     // per node, since resetPeaks
+	indexPeakRun []float64     // per node, since start
 	sessions     float64
 	sessionsAt   time.Time // the last change of sessions
 	heapPeak     uint64
 	// the smallest and the largest round interval of the rangesync nodes
 	// since resetPeaks, seconds
 	roundMin, roundMax float64
+	// rateMax is the largest sync rate of a reconciler since resetPeaks
+	// (AC-N1: 0 in steady state with live uploads)
+	rateMax float64
 }
 
 const accSampleInterval = 100 * time.Millisecond
 
 func (s *accSampler) start(h *accHarness) {
 	s.quit, s.done = make(chan struct{}), make(chan struct{})
-	s.indexPeak = make([]float64, len(h.nodes))
-	s.indexPeakRun = make([]float64, len(h.nodes))
 	s.roundMin = math.Inf(1)
-	sampled := make([]*accSampled, len(h.nodes))
 	for _, n := range h.nodes {
-		if n.svc == nil {
-			continue
-		}
-		sampled[n.i] = &accSampled{
-			index:    findCollector(h.tb, "bee_rangesync_index_memory_bytes", n.svc.Metrics()...),
-			sessions: findCollector(h.tb, "bee_rangesync_sessions_total", n.rec.Metrics()...),
-			round:    findCollector(h.tb, "bee_rangesync_round_interval_seconds", n.rec.Metrics()...),
-		}
+		s.add(h, n)
 	}
 	go func() {
 		defer close(s.done)
@@ -910,9 +1075,12 @@ func (s *accSampler) start(h *accHarness) {
 		t := time.NewTicker(accSampleInterval)
 		defer t.Stop()
 		for {
-			var sessions float64
+			var sessions, rate float64
 			roundMin, roundMax := math.Inf(1), 0.0
-			peaks := make([]float64, len(h.nodes))
+			s.mu.Lock()
+			sampled := slices.Clone(s.sampled)
+			s.mu.Unlock()
+			peaks := make([]float64, len(sampled))
 			for i, c := range sampled {
 				if c == nil {
 					continue
@@ -921,6 +1089,7 @@ func (s *accSampler) start(h *accHarness) {
 				sessions += collectSum(c.sessions)
 				round := collectSum(c.round)
 				roundMin, roundMax = min(roundMin, round), max(roundMax, round)
+				rate = max(rate, collectSum(c.rate))
 			}
 			rtmetrics.Read(heap)
 			now := time.Now()
@@ -938,6 +1107,7 @@ func (s *accSampler) start(h *accHarness) {
 			if roundMax > 0 {
 				s.roundMin, s.roundMax = min(s.roundMin, roundMin), max(s.roundMax, roundMax)
 			}
+			s.rateMax = max(s.rateMax, rate)
 			s.mu.Unlock()
 			select {
 			case <-s.quit:
@@ -948,9 +1118,30 @@ func (s *accSampler) start(h *accHarness) {
 	}()
 }
 
+// add samples node n from now on (a node that joins after start).
+func (s *accSampler) add(h *accHarness, n *accNode) {
+	var c *accSampled
+	if n.svc != nil {
+		c = &accSampled{
+			index:    findCollector(h.tb, "bee_rangesync_index_memory_bytes", n.svc.Metrics()...),
+			sessions: findCollector(h.tb, "bee_rangesync_sessions_total", n.rec.Metrics()...),
+			round:    findCollector(h.tb, "bee_rangesync_round_interval_seconds", n.rec.Metrics()...),
+			rate:     findCollector(h.tb, "bee_rangesync_sync_rate", n.rec.Metrics()...),
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for len(s.sampled) <= n.i {
+		s.sampled = append(s.sampled, nil)
+		s.indexPeak = append(s.indexPeak, 0)
+		s.indexPeakRun = append(s.indexPeakRun, 0)
+	}
+	s.sampled[n.i] = c
+}
+
 // accSampled is the collectors a sampler reads of a rangesync node.
 type accSampled struct {
-	index, sessions, round prometheus.Collector
+	index, sessions, round, rate prometheus.Collector
 }
 
 // findCollector returns the collector of cs that describes the metric name.
@@ -1007,6 +1198,7 @@ func (s *accSampler) resetPeaks() {
 	clear(s.indexPeak)
 	s.heapPeak = 0
 	s.roundMin, s.roundMax = math.Inf(1), 0
+	s.rateMax = 0
 }
 
 // lastSession returns the sessions started so far and when their number
@@ -1163,15 +1355,44 @@ type accSnapshot struct {
 	nodes   []accMetrics
 	process accMetrics
 	wire    []map[string]uint64 // per node, bytes written by "protocol/stream"
+	wireIn  []map[string]uint64 // per node, bytes written to it by "protocol/stream"
 	psBytes uint64              // pullsync Delivery bytes received
+}
+
+// node returns node i's metrics, none for a node that joined after the
+// snapshot.
+func (s accSnapshot) node(i int) accMetrics {
+	if i < len(s.nodes) {
+		return s.nodes[i]
+	}
+	return accMetrics{values: map[string]float64{}, counter: map[string]bool{}, hists: map[string]accHist{}}
+}
+
+// wireOf returns node i's wire bytes written, none for a node that joined
+// after the snapshot.
+func (s accSnapshot) wireOf(i int) map[string]uint64 {
+	if i < len(s.wire) {
+		return s.wire[i]
+	}
+	return nil
+}
+
+// wireInOf returns the wire bytes written to node i, none for a node that
+// joined after the snapshot.
+func (s accSnapshot) wireInOf(i int) map[string]uint64 {
+	if i < len(s.wireIn) {
+		return s.wireIn[i]
+	}
+	return nil
 }
 
 func (h *accHarness) snapshot() accSnapshot {
 	s := accSnapshot{at: time.Now(), process: gatherAcc(h.tb, h.process), psBytes: h.psDeliveryBytes.Load()}
 	for _, n := range h.nodes {
 		s.nodes = append(s.nodes, gatherAcc(h.tb, n.reg))
-		_, out := n.host.bytes()
+		in, out := n.host.bytes()
 		s.wire = append(s.wire, out)
+		s.wireIn = append(s.wireIn, in)
 	}
 	return s
 }
@@ -1183,6 +1404,17 @@ func (h *accHarness) snapshot() accSnapshot {
 // and its root symbol cache decodes exactly the IDs a probe peer withholds
 // (checkCaches).
 func (h *accHarness) checkUnion() {
+	h.tb.Helper()
+	h.checkUnionProbe(true)
+}
+
+// checkUnionNoProbe is checkUnion without the probe sessions (checkCaches).
+func (h *accHarness) checkUnionNoProbe() {
+	h.tb.Helper()
+	h.checkUnionProbe(false)
+}
+
+func (h *accHarness) checkUnionProbe(probe bool) {
 	tb := h.tb
 	tb.Helper()
 
@@ -1194,11 +1426,21 @@ func (h *accHarness) checkUnion() {
 		root := n.root()
 		union := make(map[fingerprint.ID]struct{})
 		mine := make(map[fingerprint.ID]struct{})
+		outside := 0
 		for id := range reserves[n.i] {
 			if root.ContainsID(id) {
 				union[id] = struct{}{}
 				mine[id] = struct{}{}
+			} else {
+				outside++
 			}
+		}
+		// no scenario raises a radius (which leaves chunks outside the root
+		// until they are evicted), so a reserve holds no chunk outside its
+		// root: a node with a nested root (an edge peer, §7.6) synced only
+		// the overlapping range (AC-C4)
+		if outside != 0 {
+			tb.Errorf("node %d (%s): reserve holds %d IDs outside its root %v", n.i, n.mode, outside, root)
 		}
 		for _, p := range h.nodes {
 			if p == n || h.net.conn(n.overlay, p.overlay) == nil {
@@ -1242,7 +1484,9 @@ func (h *accHarness) checkUnion() {
 				}
 			}
 		}
-		h.checkCaches(n)
+		if probe {
+			h.checkCaches(n)
+		}
 	}
 }
 
@@ -1319,30 +1563,50 @@ func (h *accHarness) checkCaches(n *accNode) {
 		return ok, ""
 	})
 	probeReg := prometheusRegistry(tb, probe.Metrics()...)
-	probe0, node0, iters0 := gatherAcc(tb, probeReg), gatherAcc(tb, n.reg), n.store.rootIters.Load()
-	wants, err := probe.Reconcile(ctx, n.overlay)
-	if err != nil {
-		tb.Fatalf("node %d: probe session: %v", n.i, err)
+	// the node's metrics and root iterations count every session it serves:
+	// a session another peer runs with it meanwhile (an edge peer with
+	// another root, which a round cannot tell is in sync, T6.1 part 2)
+	// would count in, so the probe runs again after one
+	others := func() int64 {
+		var sum int64
+		for _, p := range h.nodes {
+			if p != n {
+				k, _ := h.net.pairStats(n.overlay, p.overlay, "rangesync/reconcile")
+				sum += k
+			}
+		}
+		return sum
 	}
-	if got := idSet(wants); !maps.Equal(got, withheld) {
-		tb.Errorf("node %d: the probe wants %d IDs (%d of them withheld), want the %d withheld", n.i, len(got), len(got)-len(minus(got, withheld)), len(withheld))
-	}
-	pm, nm := gatherAcc(tb, probeReg).since(probe0), gatherAcc(tb, n.reg).since(node0)
-	if v := pm.value("bee_rangesync_decode_corruption_total"); v != 0 {
-		tb.Errorf("node %d: the probe decoded %v corrupt streams", n.i, v)
-	}
-	// the cache path: the node answered the probe's root Fingerprint with
-	// symbols (no split), the probe decoded them before the stream ran out,
-	// and the node neither scanned nor listed its root
-	sent := nm.byLabel("bee_rangesync_parts_sent")
-	exhausted := 0.0
-	for _, v := range pm.byLabel("bee_rangesync_streams_exhausted_total") {
-		exhausted += v
-	}
-	decoded := pm.hists["bee_rangesync_symbols_per_difference"].count
-	iters := n.store.rootIters.Load() - iters0
-	if sent["symbols"] == 0 || sent["fingerprint"] != 0 || decoded == 0 || exhausted != 0 || iters != 0 {
-		tb.Errorf("node %d: the probe session did not decode the root from its cache: the node sent %v symbol and %v fingerprint parts and iterated its root %d times; the probe decoded %d streams, %v exhausted", n.i, sent["symbols"], sent["fingerprint"], iters, decoded, exhausted)
+	for attempt := 1; ; attempt++ {
+		probe0, node0, iters0, others0 := gatherAcc(tb, probeReg), gatherAcc(tb, n.reg), n.store.rootIters.Load(), others()
+		wants, err := probe.Reconcile(ctx, n.overlay)
+		if err != nil {
+			tb.Fatalf("node %d: probe session: %v", n.i, err)
+		}
+		pm, nm := gatherAcc(tb, probeReg).since(probe0), gatherAcc(tb, n.reg).since(node0)
+		iters := n.store.rootIters.Load() - iters0
+		if others() != others0 && attempt < 3 {
+			continue
+		}
+		if got := idSet(wants); !maps.Equal(got, withheld) {
+			tb.Errorf("node %d: the probe wants %d IDs (%d of them withheld), want the %d withheld", n.i, len(got), len(got)-len(minus(got, withheld)), len(withheld))
+		}
+		if v := pm.value("bee_rangesync_decode_corruption_total"); v != 0 {
+			tb.Errorf("node %d: the probe decoded %v corrupt streams", n.i, v)
+		}
+		// the cache path: the node answered the probe's root Fingerprint
+		// with symbols (no split), the probe decoded them before the stream
+		// ran out, and the node neither scanned nor listed its root
+		sent := nm.byLabel("bee_rangesync_parts_sent")
+		exhausted := 0.0
+		for _, v := range pm.byLabel("bee_rangesync_streams_exhausted_total") {
+			exhausted += v
+		}
+		decoded := pm.hists["bee_rangesync_symbols_per_difference"].count
+		if sent["symbols"] == 0 || sent["fingerprint"] != 0 || decoded == 0 || exhausted != 0 || iters != 0 {
+			tb.Errorf("node %d: the probe session did not decode the root from its cache: the node sent %v symbol and %v fingerprint parts and iterated its root %d times; the probe decoded %d streams, %v exhausted", n.i, sent["symbols"], sent["fingerprint"], iters, decoded, exhausted)
+		}
+		return
 	}
 }
 

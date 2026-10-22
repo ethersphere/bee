@@ -36,9 +36,11 @@ import (
 // at once, and its handlers run on context.Background, so a disconnect cannot
 // end them. accNet's streams have libp2p's semantics instead, on the real
 // clock: an unbounded buffer per direction (a writer never waits for its
-// reader), Close ends this end's writes, FullClose also waits for the remote's
-// end of the writes (closeDeadline, as pkg/p2p/libp2p), Reset fails both
-// directions at once, and handlers run on a context that a disconnect cancels.
+// reader), or, with a window, a bounded one (a writer waits until its reader
+// drains, as yamux's stream receive window makes it), Close ends this end's
+// writes, FullClose also waits for the remote's end of the writes
+// (closeDeadline, as pkg/p2p/libp2p), Reset fails both directions at once,
+// and handlers run on a context that a disconnect cancels.
 
 // Errors of accNet's streams, standing in for libp2p's.
 var (
@@ -59,6 +61,9 @@ const accCloseDeadline = 30 * time.Second
 // either end opens streams.
 type accNet struct {
 	latency time.Duration // one-way latency of every stream
+	// window bounds the bytes written to one direction of a stream that its
+	// reader has not read yet (0: unbounded); see accPipe
+	window int
 
 	ctx    context.Context // ends every handler at close
 	cancel context.CancelFunc
@@ -66,6 +71,7 @@ type accNet struct {
 	mu     sync.Mutex
 	hosts  map[string]*accHost
 	conns  map[[2]string]*accConn
+	pairs  map[accPairKey]*accPairCounter
 	closed bool
 
 	handlers sync.WaitGroup // running stream handlers
@@ -75,15 +81,54 @@ type accNet struct {
 	lastReason  atomic.Value // string: the reason of the last of them
 }
 
-func newAccNet(latency time.Duration) *accNet {
+// accPairKey names the streams of one protocol stream ("protocol/stream")
+// that the host from opened to the host to, across its connections.
+type accPairKey struct {
+	from, to string // overlays
+	stream   string
+}
+
+// accPairCounter counts the streams from opened to to and the bytes each end
+// wrote on them.
+type accPairCounter struct {
+	streams         atomic.Int64
+	opener, handler atomic.Uint64 // bytes written by from (opener) and by to
+}
+
+func newAccNet(latency time.Duration, window int) *accNet {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &accNet{
 		latency: latency,
+		window:  window,
 		ctx:     ctx,
 		cancel:  cancel,
 		hosts:   make(map[string]*accHost),
 		conns:   make(map[[2]string]*accConn),
+		pairs:   make(map[accPairKey]*accPairCounter),
 	}
+}
+
+func (n *accNet) pair(from, to swarm.Address, stream string) *accPairCounter {
+	k := accPairKey{from: from.ByteString(), to: to.ByteString(), stream: stream}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	c, ok := n.pairs[k]
+	if !ok {
+		c = new(accPairCounter)
+		n.pairs[k] = c
+	}
+	return c
+}
+
+// pairStats returns the streams of stream ("protocol/stream") that a opened
+// to b and that b opened to a, and the bytes written on them in both
+// directions, over every connection of a and b.
+func (n *accNet) pairStats(a, b swarm.Address, stream string) (streams int64, bytes uint64) {
+	for _, c := range []*accPairCounter{n.pair(a, b, stream), n.pair(b, a, stream)} {
+		streams += c.streams.Load()
+		bytes += c.opener.Load() + c.handler.Load()
+	}
+	return streams, bytes
 }
 
 // newHost returns the host of overlay, whose topology is topo.
@@ -378,8 +423,18 @@ func (h *accHost) NewStream(ctx context.Context, addr swarm.Address, _ p2p.Heade
 	}
 
 	local, peer := h.counter(protocol, stream), remote.counter(protocol, stream)
-	toHandler := newAccPipe(h.net.latency, func(n int) { local.out.Add(uint64(n)); peer.in.Add(uint64(n)) })
-	toOpener := newAccPipe(h.net.latency, func(n int) { peer.out.Add(uint64(n)); local.in.Add(uint64(n)) })
+	pc := h.net.pair(h.overlay, addr, protocol+"/"+stream)
+	pc.streams.Add(1)
+	toHandler := newAccPipe(h.net.latency, h.net.window, func(n int) {
+		local.out.Add(uint64(n))
+		peer.in.Add(uint64(n))
+		pc.opener.Add(uint64(n))
+	})
+	toOpener := newAccPipe(h.net.latency, h.net.window, func(n int) {
+		peer.out.Add(uint64(n))
+		local.in.Add(uint64(n))
+		pc.handler.Add(uint64(n))
+	})
 	pair := &accStreamPair{conn: c}
 	pair.opener = &accStream{pair: pair, in: toOpener, out: toHandler, version: v}
 	pair.handler = &accStream{pair: pair, in: toHandler, out: toOpener, version: v}
@@ -533,17 +588,23 @@ func (s *accStream) ResponseHeaders() p2p.Headers { return p2p.Headers{} }
 func (s *accStream) Version() (*semver.Version, error) { return s.version, nil }
 
 // accPipe is one direction of a stream: an unbounded buffer, so that a writer
-// never waits for its reader. With a latency, what the writer does (its
-// bytes, the end of its writes, a reset) reaches the reader that much later,
-// in order.
+// never waits for its reader, or, with a window, a bounded one, as yamux's
+// stream receive window (go-yamux initialStreamWindow, 256 KiB): a write
+// sends at most window bytes that the reader has not read, and waits for the
+// reader to read more before it sends the rest. With a latency, what the
+// writer does (its bytes, the end of its writes, a reset) reaches the reader
+// that much later, in order, and so does the reader's window update reach
+// the writer: a stream carries at most window bytes per round trip.
 type accPipe struct {
 	latency time.Duration
+	window  int         // 0: unbounded
 	onWrite func(n int) // counts the bytes written
 
 	mu      sync.Mutex
 	cond    sync.Cond
 	buf     []byte       // arrived, unread
 	pending []accArrival // written, on the way (latency)
+	unacked int          // bytes written whose read has not reached the writer (window)
 	ended   bool         // the writer closed or reset (sent)
 	eof     bool         // arrived: the writer closed
 	reset   bool         // arrived: the writer reset the stream
@@ -558,24 +619,63 @@ type accArrival struct {
 	eof, reset bool
 }
 
-func newAccPipe(latency time.Duration, onWrite func(int)) *accPipe {
-	p := &accPipe{latency: latency, onWrite: onWrite}
+func newAccPipe(latency time.Duration, window int, onWrite func(int)) *accPipe {
+	p := &accPipe{latency: latency, window: window, onWrite: onWrite}
 	p.cond.L = &p.mu
 	return p
 }
 
+// write sends b, at most the window's free bytes at a time, waiting for the
+// reader to free more. It returns the bytes sent before an error: the
+// reader's end closed or reset, or this end's writes ended (Close, Reset).
 func (p *accPipe) write(b []byte) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.werr != nil {
-		return 0, p.werr
+	sent := 0
+	for {
+		if p.werr != nil {
+			return sent, p.werr
+		}
+		if p.ended {
+			return sent, errAccClosed
+		}
+		if len(b) == 0 {
+			return sent, nil
+		}
+		n := len(b)
+		if p.window > 0 {
+			free := p.window - p.unacked
+			if free <= 0 {
+				p.cond.Wait()
+				continue
+			}
+			n = min(n, free)
+			p.unacked += n
+		}
+		p.onWrite(n)
+		p.sendLocked(accArrival{data: slices.Clone(b[:n])})
+		sent += n
+		b = b[n:]
 	}
-	if p.ended {
-		return 0, errAccClosed
+}
+
+// readLocked frees n bytes of the window, once the window update reaches the
+// writer (latency). p.mu must be held.
+func (p *accPipe) readLocked(n int) {
+	if p.window == 0 || n == 0 {
+		return
 	}
-	p.onWrite(len(b))
-	p.sendLocked(accArrival{data: slices.Clone(b)})
-	return len(b), nil
+	if p.latency <= 0 {
+		p.unacked -= n
+		p.cond.Broadcast()
+		return
+	}
+	time.AfterFunc(p.latency, func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.unacked -= n
+		p.cond.Broadcast()
+	})
 }
 
 // closeWrite ends the writes: the reader reads io.EOF after the bytes
@@ -588,6 +688,7 @@ func (p *accPipe) closeWrite(reset bool) {
 	}
 	p.ended = true
 	p.sendLocked(accArrival{eof: !reset, reset: reset})
+	p.cond.Broadcast() // a write waiting for the window ends
 }
 
 func (p *accPipe) sendLocked(a accArrival) {
@@ -650,6 +751,7 @@ func (p *accPipe) read(b []byte) (int, error) {
 			if p.buf = p.buf[n:]; len(p.buf) == 0 {
 				p.buf = nil
 			}
+			p.readLocked(n)
 			return n, nil
 		case p.eof:
 			return 0, io.EOF
@@ -704,6 +806,7 @@ type accTopology struct {
 	mu     sync.Mutex
 	peers  []swarm.Address
 	radius uint8
+	radii  []accRadiusChange // every change of radius, in order
 
 	subsMu sync.Mutex
 	subs   []chan struct{}
@@ -879,11 +982,28 @@ func (t *accTopology) NeighborhoodDepth() uint8 {
 func (t *accTopology) SetStorageRadius(r uint8) {
 	t.mu.Lock()
 	changed := t.radius != r
+	if changed || len(t.radii) == 0 {
+		t.radii = append(t.radii, accRadiusChange{at: time.Now(), radius: r})
+	}
 	t.radius = r
 	t.mu.Unlock()
 	if changed {
 		t.trigger()
 	}
+}
+
+// accRadiusChange is a radius the reserve set, and when.
+type accRadiusChange struct {
+	at     time.Time
+	radius uint8
+}
+
+// radiusChanges returns the radii the reserve set, in order: the first is the
+// radius at the end of the warm-up.
+func (t *accTopology) radiusChanges() []accRadiusChange {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return slices.Clone(t.radii)
 }
 
 func (t *accTopology) IsReachable() bool                                   { return true }
@@ -902,7 +1022,7 @@ func (t *accTopology) Close() error                                        { ret
 func TestAcceptanceNet(t *testing.T) {
 	t.Parallel()
 
-	net := newAccNet(0)
+	net := newAccNet(0, 0)
 	a := net.newHost(swarm.RandAddress(t), nil)
 	b := net.newHost(swarm.RandAddress(t), nil)
 	a.topo, b.topo = newAccTopology(a.overlay), newAccTopology(b.overlay)
@@ -1032,5 +1152,96 @@ func TestAcceptanceNet(t *testing.T) {
 	}
 	if err := net.close(5 * time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAcceptanceNetWindow checks the bounded window of accNet's streams: a
+// writer sends at most the window's bytes ahead of its reader and waits until
+// the reader reads, with or without a latency (the window update takes the
+// latency to come back); a reset ends a write that waits; the pair counters
+// count the streams and bytes between the two hosts.
+func TestAcceptanceNetWindow(t *testing.T) {
+	t.Parallel()
+
+	for _, latency := range []time.Duration{0, 20 * time.Millisecond} {
+		t.Run(latency.String(), func(t *testing.T) {
+			t.Parallel()
+
+			const window, size = 1024, 16 * 1024
+			net := newAccNet(latency, window)
+			a := net.newHost(swarm.RandAddress(t), nil)
+			b := net.newHost(swarm.RandAddress(t), nil)
+			a.topo, b.topo = newAccTopology(a.overlay), newAccTopology(b.overlay)
+			written := make(chan error, 2)
+			b.AddProtocol(p2p.ProtocolSpec{
+				Name:    "test",
+				Version: "1.0.0",
+				StreamSpecs: []p2p.StreamSpec{
+					{Name: "bulk", Handler: func(_ context.Context, _ p2p.Peer, s p2p.Stream) error {
+						_, err := s.Write(make([]byte, size))
+						written <- err
+						if err != nil {
+							return err
+						}
+						return s.FullClose()
+					}},
+				},
+			})
+			if err := net.connect(a, b); err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+
+			s, err := a.NewStream(ctx, b.overlay, nil, "test", "1.0.0", "bulk")
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(100*time.Millisecond + 2*latency)
+			select {
+			case err := <-written:
+				t.Fatalf("the write of %d bytes ended (%v) before the reader read", size, err)
+			default:
+			}
+			if _, out := b.bytes(); out["test/bulk"] > window {
+				t.Fatalf("the writer sent %d bytes ahead of its reader, window %d", out["test/bulk"], window)
+			}
+			got, err := io.ReadAll(s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != size {
+				t.Fatalf("read %d bytes, want %d", len(got), size)
+			}
+			if err := <-written; err != nil {
+				t.Fatal(err)
+			}
+			if err := s.FullClose(); err != nil {
+				t.Fatal(err)
+			}
+			if streams, bytes := net.pairStats(b.overlay, a.overlay, "test/bulk"); streams != 1 || bytes != size {
+				t.Fatalf("pair counters: %d streams, %d bytes, want 1 and %d", streams, bytes, size)
+			}
+
+			// a reset ends a write that waits for the window
+			s, err = a.NewStream(ctx, b.overlay, nil, "test", "1.0.0", "bulk")
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(50*time.Millisecond + 2*latency)
+			if err := s.Reset(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-written:
+				if err == nil {
+					t.Fatal("the write ended without an error after the reader's reset")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the reader's reset did not end the write")
+			}
+			if err := net.close(5 * time.Second); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

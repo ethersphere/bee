@@ -29,13 +29,16 @@ import (
 // network size, then compared with Baseline.
 
 // accSizes returns the network sizes to run: RANGESYNC_ACCEPTANCE_SIZES (a
-// comma-separated list), 5 and 9 by default.
+// comma-separated list), 5 by default, so that the default run of the
+// package's integration tests, with the part-2 scenarios, stays within go
+// test's 10-minute timeout (make test-integration); N = 9 and 17, the sizes
+// AC-V1 names, run with RANGESYNC_ACCEPTANCE_SIZES=5,9,17.
 func accSizes(t *testing.T) []int {
 	t.Helper()
 
 	v := os.Getenv("RANGESYNC_ACCEPTANCE_SIZES")
 	if v == "" {
-		return []int{5, 9}
+		return []int{5}
 	}
 	var sizes []int
 	for _, f := range strings.Split(v, ",") {
@@ -87,11 +90,12 @@ func accMixedMode(i int) accMode {
 //     the start (AC-D1), and at most 1 % of its deliveries race the chunk's
 //     push (AC-D2's draft bound), each within accPushRaceWindow of it;
 //     every upload reaches every node within 2 × MinRoundInterval (AC-V1);
-//     no corrupt decode (AC-K3) and quiescence within 120 s of the last
-//     upload (AC-C2);
+//     no corrupt decode (AC-K3), quiescence within 120 s of the last upload
+//     (AC-C2), and every reconciler's sync rate stays 0 (AC-N1's steady
+//     state);
 //   - Mixed: every node converges (AC-C1); on every rangesync-only and dual
 //     node rangesync meets AC-D1 as above, and the pullsync-only nodes pull
-//     from it (AC-S3); AC-V1 and AC-K3.
+//     from it (AC-S3); AC-V1, AC-K3 and AC-N1's steady state.
 //
 // The upload rate is accRate(N), the reference load.
 func TestAcceptance(t *testing.T) {
@@ -192,6 +196,7 @@ func checkRangesyncOnly(t *testing.T, r *accResult) {
 	if r.rsFetched == 0 {
 		t.Error("rangesync fetched nothing")
 	}
+	checkSteadySyncRate(t, r)
 	checkConvergenceTime(t, r)
 	checkNoFaults(t, r)
 }
@@ -220,8 +225,20 @@ func checkMixed(t *testing.T, r *accResult) {
 	if r.decodeCorruption != 0 {
 		t.Errorf("decode_corruption_total %v, want 0", r.decodeCorruption)
 	}
+	checkSteadySyncRate(t, r)
 	checkConvergenceTime(t, r)
 	checkNoFaults(t, r)
+}
+
+// checkSteadySyncRate checks AC-N1's steady state (T6.1 part 2): no
+// reconciler's sync rate rose above 0 during the uploads, sessions at the
+// reference load resolving fewer than CatchUpMinDiff wants.
+func checkSteadySyncRate(t *testing.T, r *accResult) {
+	t.Helper()
+
+	if r.syncRateMax != 0 {
+		t.Errorf("AC-N1: a reconciler's sync rate read %v in steady state, want 0", r.syncRateMax)
+	}
 }
 
 // checkConvergenceTime checks AC-V1: every upload reached every node whose
@@ -262,6 +279,7 @@ type accResult struct {
 	latMedian, latP95, latMax   time.Duration
 	v1Within                    int     // uploads on every node within 2 × MinRoundInterval (AC-V1)
 	roundMin, roundMax          float64 // round interval range sampled in the window, s
+	syncRateMax                 float64 // the largest sync rate of a reconciler sampled in the window
 	quiet                       time.Duration
 	setup, run                  time.Duration
 	cpu                         float64 // process CPU seconds in the window
@@ -295,6 +313,7 @@ type accResult struct {
 	diffMedian, diffHalfMedian, diffHalfP99  float64
 	diffCount                                uint64
 	decodeCorruption, moreRequests           float64
+	exhausted                                float64 // streams_exhausted_total, every level
 	disconnects, blocklists                  int64
 	lastReason                               string
 	perNode                                  []accNodeResult
@@ -464,7 +483,7 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 	diff := make([]accHist, 0, len(h.nodes))
 	diffHalf := make([]accHist, 0, len(h.nodes))
 	for i, n := range h.nodes {
-		m := s1.nodes[i].since(s0.nodes[i])
+		m := s1.nodes[i].since(s0.node(i))
 		nr := accNodeResult{
 			mode:          n.mode,
 			psSent:        m.value("bee_pullsync_chunks_sent"),
@@ -485,6 +504,9 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 		r.crossMetric += nr.cross
 		r.decodeCorruption += m.value("bee_rangesync_decode_corruption_total")
 		r.moreRequests += m.value("bee_rangesync_more_requests_total")
+		for _, v := range m.byLabel("bee_rangesync_streams_exhausted_total") {
+			r.exhausted += v
+		}
 		for k, v := range m.byLabel("bee_rangesync_want_claims") {
 			r.wantClaims[k] += v
 		}
@@ -498,8 +520,8 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 		diff = append(diff, m.hists["bee_rangesync_pairwise_diff"])
 		diffHalf = append(diffHalf, m.hists["bee_rangesync_pairwise_diff_half"])
 		for k, v := range s1.wire[i] {
-			r.wire[strings.SplitN(k, "/", 2)[0]] += v - s0.wire[i][k]
-			r.wireStream[k] += v - s0.wire[i][k]
+			r.wire[strings.SplitN(k, "/", 2)[0]] += v - s0.wireOf(i)[k]
+			r.wireStream[k] += v - s0.wireOf(i)[k]
 		}
 		r.perNode = append(r.perNode, nr)
 	}
@@ -518,6 +540,7 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 	h.sampler.mu.Lock()
 	r.heapPeak = h.sampler.heapPeak
 	r.roundMin, r.roundMax = h.sampler.roundMin, h.sampler.roundMax
+	r.syncRateMax = h.sampler.rateMax
 	for i, p := range h.sampler.indexPeak {
 		r.indexPeakSum += p
 		r.indexPeakNode = max(r.indexPeakNode, p)
@@ -717,6 +740,7 @@ func logAccTable(t *testing.T, base, rs, mixed *accResult) {
 		return fmt.Sprintf("%.1f / %.1f", r.roundMin, r.roundMax)
 	})
 	row("AC-C2 last session after last upload", func(r *accResult) string { return r.quiet.Round(time.Millisecond).String() })
+	row("largest sync rate of a reconciler (AC-N1)", func(r *accResult) string { return fmt.Sprintf("%.2f", r.syncRateMax) })
 	row("metadata B/upload (AC def: rs in + offers*102)", func(r *accResult) string { return fmt.Sprintf("%.0f", metaAC(r)) })
 	ratio("metadata (AC def)", metaAC)
 	row("metadata B/upload (wire)", func(r *accResult) string { return fmt.Sprintf("%.0f", wireMeta(r)) })
