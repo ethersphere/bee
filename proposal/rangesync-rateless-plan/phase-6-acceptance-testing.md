@@ -1192,6 +1192,157 @@ _(sessions append here)_
   - `go vet ./pkg/node/...` with and without `-tags=integration`, `GOTOOLCHAIN=go1.26.1 make lint`,
     `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags integration ./pkg/node/...` and
     `go build ./...` are clean. Only the four acceptance files were formatted (gofumpt, gci).
+- **(T6.1 part 2 fix round 1) AC-B4 in both overlay orders (review M1).** With seed 200 the
+  Radius decreaser's overlay is the lowest of the six, so it initiates every session (§8.2) and
+  compares its old-half peers' digests over their root, which lies inside its own
+  (`compareDigests` with `RangeSummary`, `scheduler.go`): equal, no session, 0 B. In the opposite
+  order the old-half peers initiate, and they cannot compare (their root lies inside the
+  decreaser's, whose summary covers more: `known` false), so they start a session with it in
+  every round they run (the AC-V5 finding).
+  - `TestAcceptanceRadius` runs a third network, "rangesync decreaser highest"
+    (`radiusOverlay(true)`: the same seed, the decreaser's half made the upper one and the
+    decreaser the highest node of it; its new half is the other half, 4475 chunks). Both
+    rangesync networks check their order (`Fatalf` if the decreaser is not the lowest, or the
+    highest) and assert AC-B4 alike: the new half's chunks once, chunk bytes ≤ 1.01 × the new
+    half, and < 1 KB of reconcile bytes with each old-half peer from the release to the end of
+    the tail. The table also counts the reconcile streams per old-half peer.
+  - Measured (decreaser highest, 8 runs; lowest, 5 runs; see Runs): lowest 0 B and 0 sessions
+    per old-half peer, as before; highest **150–200 B in 3–4 sessions per old-half peer**, each one
+    fingerprint exchange (~50 B: the root Fingerprint of two equal sets). Chunk bytes 1.000 × the
+    new half and 0 repeats in both orders; decrease to the new half complete 10.4–13.7 s
+    (highest, the 5 runs with both networks), 11.6–13.9 s (lowest).
+  - **Verdict per order: AC-B4 passes in both** on the criterion's bytes (< 1 KB per peer), so no
+    known-fail path was needed and none was added. With the decreaser highest it is not "one
+    fingerprint exchange per peer" but one per round of each old-half peer, and it does not stop
+    with the decrease: ~50 B per old-half peer per round from then on (~100 B per minute at
+    `MaxRoundInterval`). That recurring part is AC-V5's idle cost (the nested-root finding,
+    "(T6.1 part 2 → T4/T6.3, Low) In-sync peers with nested roots keep running sessions"), not a
+    cost of the decrease.
+  - The cache probe (`checkCaches`) failed in the new order (3 of 6 nodes in one default run, 1
+    node in 2 of 3 isolated runs): it read the node's `parts_sent`, and a session the node had
+    under way with the decreaser when a probe attempt began (opened before the attempt, so the
+    stream count did not see it) added its Fingerprint part. The check now reads what the node
+    answered at the probe (`parts_received`), which counts the probe's own session only; root
+    iterations keep the retry. Passed in every run since (6).
+- **(T6.1 part 2 fix round 1) AC-B2's two parts asserted apart (review M2).** `checkBootstrap`
+  asserted `bytes_metadata{dir="in"}` ≤ 1.15 × count × 70 B + 1 MB: 1.36 MB for 4500 chunks against
+  0.32 MB measured, 4.3× room, where the verdict claimed each part against its own bound. It now
+  asserts AC-B2's two parts separately, at the rangesync joiners:
+  - the IDs, `bytes_metadata{dir="in"}` from the join to the union (the stripes' listings and the
+    Status exchanges) ≤ 1.15 × count × 70 B (0.362 MB);
+  - the verification, the same from the union to the end of the tail ≤ 1 MB. `VerifyStripes`
+    runs once `transferStripes` returns (`stripes_transfer.go`), so in a static network it starts
+    after the union; one that starts before the union's snapshot counts in the ID part, which only
+    tightens that check.
+
+  Measured: IDs 70.2 B per chunk (0.316 MB, 0.87 of the bound; nested root 70.3 B), verification
+  **147–196 B** for 4 stripes (nested root 392 B): 4 verification sessions of about one
+  fingerprint exchange each. The table shows both parts and their bounds.
+- **(T6.1 part 2 fix round 1) The default run and `RANGESYNC_ACCEPTANCE_FULL` (review M5).** This
+  supersedes the runtime numbers of "(T6.1 part 2) Default sizes and the 10-minute package
+  timeout" and of the Follow-up "(T6.1 part 2) `make test-integration` and the 10-min timeout,
+  updated".
+  - Per network, on the default run before this round (package 480 s): part 1 Baseline 38 s,
+    rangesync 55 s, Mixed 64 s; Bootstrap Baseline 21 s, rangesync 38 s, nested root 47 s; Radius
+    Baseline 31 s, rangesync 83 s (of which the mixed-radii upload phase ~30 s); Stale stamp
+    Baseline 7 s, rangesync 37 s; Churn 59 s. The new Radius network adds ~52 s.
+  - Without `RANGESYNC_ACCEPTANCE_FULL` (or `RANGESYNC_ACCEPTANCE_LONG`, which implies it,
+    `accFull`) the run skips: every Baseline network, part 1's included (they compare; of their
+    own they assert only convergence and the pullsync nodes' radius sequencing, today's code);
+    the nested-root Bootstrap (a variant of the rangesync Bootstrap, through session-root claims);
+    and the mixed-radii upload phase of both Radius networks (AC-V1, AC-D1 and AC-K3 with nested
+    roots). Without `FULL` the tables' ratios to the Baseline read "-".
+  - Default `go test -tags=integration ./pkg/node/`: package 352 s (the probe failure above) and
+    **364 s** (6m06s with the build), against 480–493 s; on the final code (a table-only change
+    later) it passed again inside `make test-integration`. The full set,
+    `RANGESYNC_ACCEPTANCE_FULL=1 go test -tags=integration -timeout 30m ./pkg/node/`: package
+    585 s (9m47s), all passed; it needs the `-timeout`, 15 s under the default 10 min. The `-race`
+    command of "(T6.1 part 2) Tests to run with -race on CI" should set
+    `RANGESYNC_ACCEPTANCE_FULL=1`, so that it runs what part 2 recorded.
+- **(T6.1 part 2 fix round 1) AC-V1 with mixed radii against its bound (review M5).** Correction:
+  the check compared each upload with 2 × the smallest round interval of the six nodes at the
+  upload; the record's "at least 20–30 s (at least 10 s in one run)" was the smallest such bound
+  over a phase. That falls to 2 × `MinRoundInterval` (10 s) as soon as any node's interval has, in
+  one of 8 runs, while the slowest upload took 9.94–9.97 s in 6 of 8 runs.
+  - The bound is now per upload, as AC-V1 sets it: the upload is on every node of its root once
+    the last of them has it, and each takes it in its own rounds at its own interval
+    (`round_interval_seconds` is per node), so 2 × `RoundInterval` is set by the slowest of them:
+    `accV1Bound` is 2 × the largest round interval at the upload among the nodes whose root holds
+    it. That bound is wide here, ≥ 60 s in every run: the decreaser, whose root holds every
+    upload, idled at `MaxRoundInterval` (30 s) before the phase.
+  - So the check also asserts `accStatusBound`, 2 × `StatusMinInterval` + `MinRoundInterval` =
+    15 s, the bound T4.6 part 1 fix round 1 derived for a lacker below every holder (Low 4): 1.5×
+    the slowest upload measured, and tighter than the old effective bound in 7 of 8 runs. The
+    count within 2 × `MinRoundInterval` and within the old bound stay in the table.
+  - FULL run: decreaser lowest, max 9.94 s (at the decreaser; median there 4.69 s), decreaser
+    highest, max 5.02 s; 150/150 within both bounds and within 10 s. A decreaser that initiates
+    with the holders waits a Status interval and a round (10 s), so AC-V1 at the minimum interval
+    stays a knife edge for it; that is T6.4's wording item ("(T4.6 part 1 fix round 1 → T6.4) AC-V1
+    against the 15 s bound").
+- **(T6.1 part 2 fix round 1) Corrections (review Lows 7 and 8, nits).**
+  - AC-N1 and AC-N3 in the Radius decrease are asserted around the reconciler's known lag, so
+    "asserted" overstated them. AC-N1's minimum is taken from the new half's first chunk
+    (`w.span(firstAt, …)`), not from the decrease, and the rate reads 0 before it (0.5–5.1 s);
+    the decreaser's reserve worker ticks every 10 s (`accRadiusWakeUp`), chosen to outlast that
+    lag, so the default AC-N3 check (one decrease in the run) cannot catch the double decrease a
+    1-s worker showed. AC-N3 to the letter (the second decrease only after the last positive rate
+    read) ran once, in the long run. Bootstrap's AC-N1 and AC-N2 (from the join, with a 1-s worker)
+    stand as asserted.
+  - AC-V5 is not "measured on the way" with mixed radii: it fails there (idle sessions every round
+    between in-sync nested-root peers), and the summary below lists it so.
+  - "(T6.1 part 2 → T4/T6.4) Stripe plans load peers unevenly…": "R ÷ B 0.88–1.76 at 3 peers"
+    reads 1.04–1.76, as in the Radius results (the 4 runs with both networks).
+  - AC-B2's nested-root number: the verdict table's "70.2–74.8 B" has no source in the Bootstrap
+    results (70.3 B); this round measured 70.3 B again. The corrected row below uses them.
+  - AC-V4 this round: no stripe was reassigned in the 10 rangesync Radius networks whose tables were
+    logged, and the decrease still took R ÷ B 1.20 (lowest) and 1.27 (highest) in the FULL run
+    (B 10.4 s): the round lag and 4 stripes on 3 peers, as recorded.
+- **(T6.1 part 2 fix round 1) Acceptance-criteria verdicts, corrected.** This supersedes the rows
+  of "(T6.1 part 2) Acceptance-criteria verdicts" listed here, and its summary; the other rows
+  stand.
+
+  | Row | Verdict | Numbers |
+  |---|---|---|
+  | AC-V1 2 × RoundInterval | **pass**, asserted (mixed radii: with `FULL`) | part 1 as recorded (bound 10 s); mixed radii max 4.95–9.97 s (this round 5.02 and 9.94 s, decreaser highest 5.02 s) against 2 × the largest round interval at the upload of the root's nodes (≥ 60 s) and the 15-s Status bound, both asserted; the slowest within 2 × `MinRoundInterval` (10 s) by 30–60 ms in 7 of 10 runs |
+  | AC-V4 new half ≤ pullsync | **fail in-process** (proxy); literal: tie; **needs testnet**, where the moved-root race (Medium, Follow-ups) makes it fail in the decreases the race hits | R 8.8–17.8 s vs B 9.4–10.1 s (1.04–1.76) in part 2; this round 10.4–13.9 s with no race, R ÷ B 1.20 and 1.27 (B 10.4 s) |
+  | AC-B2 bootstrap metadata | **pass**, asserted (its two parts apart) | IDs 70.2 B per chunk (nested root 70.3 B) against 1.15 × 70 = 80.5 B; verification 147–196 B (nested root 392 B) against 1 MB; B: 408 B per chunk at N = 5 (R ÷ B 0.17), 816 B at N = 9 (0.09) |
+  | AC-B4 radius decrease | **pass**, asserted in both overlay orders | decreaser lowest: chunk bytes 1.000 × the new half (B 1.75–1.88), old half 0 B per peer (no session); decreaser highest: 1.000, old half 150–200 B per peer (3–4 sessions of one fingerprint exchange); the latter recur once per round of each old-half peer after the decrease (AC-V5) |
+  | AC-N1 sync rate | **pass**, but for the window's wording; in Radius only from the new half's first chunk | Bootstrap > 0 from the join (min 1.0, asserted); Radius > 0 from the first chunk (asserted), 0 for 0.5–5.1 s after the decrease (lag, Follow-ups); steady state 0 (asserted); back at 0 ~16 min after the last catch-up chunk, as the puller |
+  | AC-N3 puller's sequencing | **pass to the letter in the long run only** (once); the default run asserts one decrease with a 10-s worker that outlasts the lag | long run: the second decrease 2.9 s (R) and 3.7 s (B) after the last positive rate read; a 1-s worker decreased twice, 1 s apart (lag, Follow-ups) |
+  | AC-V5 idle, no sessions (not a T6.1 row) | **fail with mixed radii**; holds with one radius | in-sync peers with nested roots run a session per round: idle 8.0 per minute (nested-root joiner, 4 peers) and 3.4 (decreaser, 5 peers) in the long run; 3–4 per old-half peer in the ~25 s after a decrease with the decreaser highest; same-root peers 0 |
+
+  Summary, corrected: of the rows T6.1 names, 17 pass (AC-N1 with its window wording to fix and,
+  in Radius, from the first chunk; AC-N3 to the letter in the long run only), 2 fail (AC-B1 at
+  N = 5 and 9, for T6.4's re-basing; AC-V4 in-process, which needs the testnet, where the moved-root
+  race makes it fail in the decreases it hits), 2 are reported only (AC-D3, AC-D5) and 2 are not
+  measurable here (AC-K2 as defined, AC-S6). Rows T6.1 does not name, measured on the way: AC-R1
+  and AC-R2 pass (index slab 21.0 MB per node, rebuild 42.0 MB = 2 × slab); **AC-V5 fails** with
+  mixed radii.
+- **(T6.1 part 2 fix round 1) Production code.** None changed. Test and record changes only:
+  `rangesync_acceptance_scenarios_test.go` (the Radius orientations, the AC-B2 split, the AC-V1
+  bounds, `accFull`), `rangesync_acceptance_test.go` (part 1's Baseline behind `accFull`) and
+  `rangesync_acceptance_harness_test.go` (the probe reads `parts_received`).
+- **(T6.1 part 2 fix round 1) Runs.** No `-race` (no C compiler). All on this 4-core host, one at a
+  time.
+  - Default `go test -tags=integration -count=1 ./pkg/node/` before the changes (the breakdown
+    above): 480 s, passed. After: 352 s (the probe failure in the new order), then 364 s, passed.
+  - `TestAcceptanceRadius` alone with the new order: once with both networks (passed), 3 runs of
+    the new order with a debug log of the probe (2 failed the probe, the diagnosis above), 3 runs
+    after the fix (passed).
+  - `RANGESYNC_ACCEPTANCE_FULL=1 go test -tags=integration -count=1 -timeout 30m ./pkg/node/`,
+    once: passed, package 585 s.
+  - `make test-integration` once, on the final code: 7m20s; `pkg/node` passed (393 s, alongside the
+    other packages). The target failed on two packages outside this plan, unchanged on this branch
+    (last touched by a74befda) and so failing on the base as well: `pkg/jsonhttp`
+    `TestPanicRespond` (it fails the same way in the default build with this host's go1.27.0: it
+    expects `json.UnsupportedTypeError`, the encoder returns `json.UnsupportedValueError`) and
+    `pkg/resolver/client/ens` (`ens_integration_test.go:82`: undefined `testutil`, a build
+    failure under the tag). Follow-ups.
+  - `go test ./pkg/node/... ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` (default build)
+    passes. `go vet ./pkg/node/...` with and without `-tags=integration`,
+    `GOTOOLCHAIN=go1.26.1 make lint`, `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags
+    integration ./pkg/node/...` and `go build ./...` are clean. Only the three edited files were
+    formatted (gofumpt, gci).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1475,3 +1626,54 @@ _(sessions append here)_
   tests running alongside; 30/30 isolated and the rerun of the set passed. The served check right
   after a start can meet the index still being built (Busy). Watch it on CI; if it recurs, retry
   the check on Busy.
+- **(T6.1 part 2 fix round 1 → before T6.3) Two findings rank Medium: fix them, or accept them
+  explicitly, before T6.3's testnet comparison runs.** This supersedes the Low rank of "(T6.1 part
+  2 → T4, Low) Stripe sessions race the moved-root Status" and gives "(T6.1 part 2 → T4/T6.4,
+  finding) Stripe verification scores honest deliverers when uploads land in their stripes" a
+  rank. Both are production changes in `pkg/rangesync/reconciler`; this round changed no code.
+  - **Stripe sessions race the moved-root Status (Medium).** When the race hits, the stripes of
+    the peers that did not yet have the decreaser's new root are reassigned, and one peer serves
+    3 of the 4 stripes at the holder's 250 chunks/s (`handleMaxChunksPerSecond`, `fetch.go`): 3/4
+    of the new half ÷ 250/s, against the puller's 3 peers × 250/s with its 1.8× duplicates (the
+    new half × 1.8 ÷ 750/s), ≈ 1.25× slower with 3 covering peers. Nothing in it shrinks with the
+    reserve: the Status debounce and the round are fixed times, unlike the round lag that 2^22
+    makes negligible. So AC-V4 fails on testnet in the decreases the race hits (3 of 8 here,
+    ~3/8), and T6.3's radius change would measure the race, not the protocol. Fix direction
+    (small): the stripe worker waits until the stripe peer's `reached` equals this node's current
+    root before it opens a stripe session, as `scheduleLocked` does for round sessions, and keeps
+    the peer instead of reassigning a stripe whose session the peer refused for a stale root.
+  - **Stripe verification scores honest deliverers under uploads (Medium).** It does not depend on
+    scale: the tolerance is 1 % of the stripe and the transfer takes the stripe ÷ the fetch rate,
+    so the uploads that land in a stripe during its transfer stay below the tolerance only while
+    the neighborhood takes fewer than ~1 % of the fetch rate, ~10 uploads/s (the finding's own
+    derivation, at any reserve size). T6.3 runs at the reference load (15 uploads/s per
+    neighborhood in the suite), so every bootstrap and striped catch-up there scores honest stripe
+    peers: `bee_rangesync_peer_failures_total`, which T6.3 is to watch to tell withholding from
+    honest service, fills with false positives, and honest peers' scores rise
+    (`ErrStripeVerification`, deprioritized above `ScoreThreshold`). Fix directions (from the
+    finding): count against the deliverer only the verifier's chunks whose stamps are older than
+    the stripe's listing, or scale the tolerance with the transfer's duration × the root's upload
+    rate.
+- **(T6.1 part 2 fix round 1 → T6.3 or a later harness run) A large session decode on the real
+  clock is not exercised (review Low 6).** `accLargeDiff` (128) stands for `LargeDiff` (65536) in
+  the bootstrap only: `IsBootstrap` ignores `LargeDiff`, and the ratios differ (128 is ~1/35 of a
+  4500-chunk reserve, 65536 is 1/64 of 2^22). Every catch-up between 128 and 65536 IDs, which the
+  node decodes in a session (a node back after minutes away, a peer that missed a burst), is
+  striped in the part-2 scenarios instead; Churn keeps its leaver below 128 (~75 missed) on
+  purpose. So no part-2 scenario runs a session that decodes thousands of IDs on the real clock
+  (`SessionSymbolBudget`, `More` requests, the root cache under a large difference, one session's
+  fetch of thousands of IDs at 250 chunks/s); T4.6 part 3 did it on a simulated clock only. T6.3
+  should time one (a node of a testnet cohort stopped for some minutes under the reference load),
+  or a later harness run should: Churn with `accOptions.LargeDiff` left at 0 (the node's 65536)
+  and a leaver away long enough to miss a few thousand uploads.
+- **(T6.1 part 2 fix round 1) `make test-integration` needs a `-timeout`.** It runs
+  `go test -tags=integration -v ./...` with `go test`'s default 10-min timeout per package binary.
+  `pkg/node`'s default run is ~6 min now (fix round 1), but `RANGESYNC_ACCEPTANCE_FULL`,
+  `RANGESYNC_ACCEPTANCE_SIZES=5,9,17`, `RANGESYNC_ACCEPTANCE_LONG` or `-race` take it past 10 min,
+  and a slower runner may too. The Makefile is outside this plan's files: add
+  `-timeout $(TEST_TIMEOUT)` (30m, as `test-race` uses) to `test-integration`. CI (`go.yml`) does
+  not run the integration tag, so nothing runs this suite automatically yet (see "Tests to run
+  with -race on CI"). The target also fails today on two packages outside this plan (Decisions
+  log, "(T6.1 part 2 fix round 1) Runs"): `pkg/jsonhttp` `TestPanicRespond` under go1.27 and the
+  `pkg/resolver/client/ens` integration test, which does not compile (undefined `testutil`); both
+  need an owner before `make test-integration` can gate anything.
