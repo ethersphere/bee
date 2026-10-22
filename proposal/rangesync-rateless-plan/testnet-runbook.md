@@ -22,7 +22,7 @@ Contents: 0 decisions before the runs · 1 build and inventory · 2 modes and fl
 |---|---|---|---|
 | G7-1 | The two production Mediums of T6.1 part 2 (§11, K1 and K2) | fix before the runs, or accept and run | If accepted: AC-V4 fails in the decreases the race hits (~3/8 in-process), and `bee_rangesync_peer_failures_total` fills with false positives whenever a neighborhood takes ≳ 10 uploads/s during a bootstrap or striped catch-up; run S10 at two loads (§8) to show it. If fixed: record the fix commits in G7-7. |
 | G7-2 | Fetch cap for dual cohorts on constrained hosts | (a) provision ≈ 70 Mbit/s inbound per dual node; (b) a test build with a lower `DefaultFetchRate` (`pkg/rangesync/constants.go`); (c) OS shaping (`tc`) | There is **no flag** for rangesync's fetch rate (**missing**, §2.4). (b) is a code change: record the commit, and run it on every node (all cohorts) so the build stays the same everywhere. But (b) also caps the `rangesync`-only cohort, so the gating AC-V3 and AC-V4 would compare a capped rangesync with an uncapped puller, a bias against rangesync: run Runs 3 and 4 with the default build on every node (a recorded build switch), or record AC-V3 and AC-V4 of a capped run as non-gating. (c) on the dual hosts only slows both protocols there and leaves R and P untouched. |
-| G7-3 | Topology | (a) one network, cohorts assigned per sibling pair of neighborhoods (§3); (b) one network per cohort (`--network-id`, same load and bootnode setup) | (a) needs one sibling pair per cohort, three in all: 2^(r−1) ≥ 3, so a storage radius r ≥ 3 (four pairs); (b) needs r ≥ 1 in each network. AC-N5 needs neighborhoods more than half full (§3 rule 8): seed 0.6 × 2²² chunks per neighborhood, ≈ 20M in all at r = 3 (§4.5). `--minimum-storage-radius` holds a radius (§4.9 Method B) only on a network where every full node uses it: salud marks a node unhealthy when its neighborhood's most common depth equals the network's and its own differs (`pkg/salud`), and an unhealthy node skips every redistribution round (and never logs `full sync done`). So (a) with Method B means a private network. |
+| G7-3 | Topology | (a) one network, cohorts assigned per sibling pair of neighborhoods (§3); (b) one network per cohort (`--network-id`, same load and bootnode setup) | (a) needs one sibling pair per cohort, three in all: 2^(r−1) ≥ 3, so a storage radius r ≥ 3 (four pairs); (b) needs r ≥ 1 in each network. AC-N5 needs neighborhoods more than half full (§3 rule 8): seed 0.6 × 2²² chunks per neighborhood (§4.5): ≈ 20.1M for (a) at r = 3; ≈ 5.0M per network for (b) at r = 1, ≈ 15.1M for its three networks. Both pin every node with `--minimum-storage-radius=r` (§3 rule 8), which works only where every full node of the network is pinned alike: salud marks a node unhealthy when its neighborhood's most common depth equals the network's and its own differs (`pkg/salud/salud.go` L247–250), and an unhealthy node skips every redistribution round (and never logs `full sync done`). So either option means a private network. |
 | G7-4 | Does AC-V1 gate on testnet? | gate, or informational | The propagation probe now exists (§5.3, T6.0 follow-up). |
 | G7-5 | Draft thresholds | confirm or replace AC-D2 1 %, AC-K2, AC-R4 5 %, AC-R7 1.0×, AC-R8 +64 MB, AC-N5 ±10 %, and the draft rules of §9 | acceptance-criteria.md §6 items 1 and 3. |
 | G7-6 | Phase 5 in scope? | yes or no | No `audit_mismatch` metric exists at this commit, so AC-S6 is not measurable. |
@@ -177,14 +177,29 @@ the puller's limit is also 1000/s (`maxChunksPerSecond`, `pkg/puller`).
    take it, decide G7-2 and record the cap with the results.
 7. **Redistribution.** For AC-N5, every full node of every cohort is staked the same way and has
    `--storage-incentives-enable=true` (the default).
-8. **Reserve fill.** A node is "fully synced" only with a reserve of at least half its capacity C
-   (`ReserveSize()`, every chunk it holds; 2²¹ at the default C = 2²²; `pkg/node/node.go`, both
-   `isFullySynced` functions), so AC-N5 and AC-V3's `t_synced` need neighborhoods that hold more
-   than C/2. The reserve worker lowers the radius whenever the count *within the radius* is below
-   C/2 (unless `--minimum-storage-radius` holds it, §4.9); the two counts differ only by chunks
-   below the radius. A neighborhood holding between C/2 and C sits at radius r on its own; seeding
-   exactly 2^(21+r) chunks would put it on the edge, so seed 0.6 C per neighborhood and load within
-   the budget of §4.5.
+8. **Reserve fill and the pin.** A node is "fully synced" only with a reserve of at least C/2
+   (`ReserveSize()`, every chunk it holds; C = 2²² at the default capacity; `pkg/node/node.go`
+   L1333–1335 and L1372–1375). The reserve evicts only its excess over C (`EvictionTarget`,
+   `pkg/storer/internal/reserve/reserve.go` L802–807; `unreserve`, `pkg/storer/reserve.go` L331ff),
+   so a radius raised by overflow leaves every node holding up to C minus its share of chunks
+   *below* its new radius: `bee_localstore_reserve_size` counts them and a joiner never gets them,
+   which breaks `t_union` (§4.8) and `T(t)` (§4.9). So:
+   - **Pin** every node, from its first start in Run S (and every joiner), with
+     `--minimum-storage-radius=r` (`cmd/bee/cmd/cmd.go` L394). Its radius then starts at r
+     (`waitNetworkRFunc`, `pkg/node/node.go` L1175–1176), and it stores only within it: pushsync
+     (`pkg/pushsync/pushsync.go` L298), pullsync's wants (`pkg/pullsync/pullsync.go` L305) and
+     rangesync's fetches (`pkg/rangesync/fetch.go` L369). Seed 0.6 C per neighborhood, inside
+     (C/2, C], so that neither the eviction nor the decrease fires, and load within the budget of
+     §4.5. Seeding exactly 2^(21+r) chunks would sit on the C/2 edge.
+   - **Check before Run 0**, in an upload pause and after a reserve-worker tick (≥ 15 min; the
+     within-radius count is refreshed at each tick, `pkg/storer/reserve.go` L116 and L167–170): on
+     every node `/status` `reserveSize` equals `reserveSizeWithinRadius` (`pkg/api/status.go`
+     L23–24), or `GET /debugstore` `.Reserve.TotalSize` equals `.Reserve.SizeWithinRadius` (a live
+     count, `pkg/storer/debug.go` L151–157, that iterates the whole store). Pushsync's
+     `ErrWantSelf` (a node that is the closest it knows of stores the chunk whatever its radius,
+     `pkg/pushsync/pushsync.go` L304) can leave a few: allow ≤ 0.1 % (draft, T6.3). A larger gap:
+     re-seed with the pin, or read `bee_localstore_reserve_size_within_radius` instead of the
+     reserve size in §4.8 and §4.9, at its 15-min resolution, and record it.
 
 Pre-flight check of rule 1 (`rs-coverage.sh`, §5.2):
 
@@ -257,11 +272,12 @@ until it is done, which holds the radius and `isFullySynced` meanwhile.
 Emergency: restart every node of the cohort at once with `--rangesync-enable=false
 --puller-enable=true`. Rule 1 holds again once all have restarted.
 
-AC-S4 passes when: the node runs pullsync-only (§2.2); `localstore/indexstore` bytes per reserve
-chunk, measured in an upload pause right before the disabled restart and again once the drop and
-the compaction are done (§4.4), are back to the node's per-chunk value before the upgrade (B0 ÷ n0
-of §4.2) within 10 % (draft, T6.3); and `isFullySynced` returns after the puller's catch-up.
-Compare per chunk: the reserve has grown since the upgrade.
+AC-S4 passes when: the node runs pullsync-only (§2.2); its `localstore/indexstore` bytes per
+reserve chunk, measured in an upload pause once the drop and the compaction are done (§4.4), are
+within 10 % (draft, T6.3) of a never-upgraded P node's, measured in the same pause (record the
+node's own B0 ÷ n0 of §4.2 too; its reserve has changed since); and `isFullySynced` returns after
+the puller's catch-up. The drill (Run 9, §10) runs on two dual nodes, D → P → D, so that rule 1
+holds throughout, right after Run 2 and before the drain.
 
 ### 4.4 Downgrade to a build without rangesync
 
@@ -306,43 +322,85 @@ inventory neighborhood (`runbook_uploads_total{neighborhood}`). Random addresses
 so **each neighborhood gets the total rate ÷ 2^r** (r = storage radius): 15/s per neighborhood at
 r = 3 takes 120/s in total; past ~100/s use several uploaders, each with its own `--name`.
 
-- **Reference load** (AC-B1, AC-K2, AC-V2): median `pairwise_diff` ≥ 20 per steady-state session.
-  Start at 15 uploads/s per neighborhood (N ≤ 9) or 30/s (N ≥ 17, T6.1's `accRate`), check panel
-  C5, raise by 5/s until it holds.
+- **Reference load** (AC-B1, AC-K2, AC-V2): median `pairwise_diff` ≥ 20 per steady-state session
+  (panel C5). In-process it took 15 uploads/s per neighborhood at N = 9 and 30/s at N = 17 (T6.1's
+  `accRate`). Within the budget below: up to 16/s around the clock, or one 8-h segment a day at up
+  to 30/s and 5/s for the other 16 h. Check C5; if it shows no reference load at those rates,
+  record AC-B1 at the median reached (T6.4 judges it) rather than exceed the budget.
 - **Low load** (AC-B1b): ≤ 1 upload/s per neighborhood (median `pairwise_diff` ≤ 1).
 
-**Reserve budget per neighborhood** (C = 2²² chunks). Without one, 15 uploads/s add 1.3M chunks a
-day per neighborhood: a reserve seeded just above C/2 overflows within about a day and a half,
-the radius rises network-wide, N halves (rule 5) and eviction starts.
+**Reserve budget per neighborhood** (C = 2²² = 4,194,304 chunks). The constraints, from the code:
 
-| Item | Rule | At 15 uploads/s per neighborhood (30/s) |
+- A batch is created only with more than `minimumValidityBlocks` blocks of balance
+  (`pkg/postage/postagecontract/contract.go` L326–337 and L357–362; the API answers
+  "insufficient amount for 24h minimum validity", `pkg/api/postage.go` L123–127).
+  `GET /chainstate` reports `minimumValidityBlocks` (`pkg/api/postage.go` L428); V_min = that ×
+  the block time, 24 h on the reference chain. A load batch therefore lives L ≥ V_min, and the
+  uploads of the last L stay in the reserve. Dilution is not used: bee checks only the new depth
+  (`contract.go` L455–466), and the contract's own conditions for it are not in this repository.
+- The reserve evicts only above C (rule 8) and lowers the radius only when the count within it is
+  below C/2 (`pkg/storer/reserve.go` L176); "fully synced" needs `ReserveSize()` ≥ C/2 (rule 8).
+
+| Item | Rule | Numbers (L = V_min + 1 h = 25 h) |
 |---|---|---|
-| Seed (Run S) | 0.6 C per neighborhood (rule 8): 0.3 C on batch `B_keep` (TTL past the campaign), 0.3 C on batch `B_drop` (TTL ending with the drain before Run 4) | 2.5M per neighborhood, × 2^r in all (20M at r = 3) |
-| Load | immutable load batches in rotation: a new one every 6 h, each with a TTL of ~12 h, so at most 12 h of uploads are live | ≤ 0.65M = 0.15 C (1.3M = 0.31 C) |
-| Peak | seed + live load ≤ 0.95 C | 0.75 C (0.91 C) |
-| Drain before Run 4 | 12 h at the low load (the load batches expire), then `B_drop` expires | ≈ 0.3 C < C/2; the merged pair holds ≈ 0.6 C after the decrease |
-| S1 (Run 6) | one mutable batch of depth 17: past its 2^(17−r) slots per neighborhood every upload overwrites | + 2^(17−r) per neighborhood |
+| Seed (Run S) | 0.6 C per neighborhood, every node pinned (rule 8): `B_keep` 0.3 C (TTL past the campaign), `B_drop` 0.3 C (kept short by top-ups, below) | 2,516,582 per neighborhood; × 2^r in all (20.1M at r = 3) |
+| Load | immutable load batches, a new one every 6 h, each created with V_min + 1 h of TTL: the uploads of any L-window are live at once | ≤ 0.35 C = 1,468,006 uploads per neighborhood in any L-window |
+| Rate | λ ≤ 0.35 C ÷ L | 16.3/s (17.0/s at L = 24 h). The daily 8-h segment at 30/s with 5/s otherwise puts ≤ 10 h of it in any 26-h window: ≤ 1,368,000 |
+| Peak | seed + live load ≤ 0.95 C | ≤ 3,984,589 |
+| Drain before Run 4 | the regular load stops; ≤ 1/s on a batch `D_low` that outlives Run 4; `B_drop`'s top-ups stop; wait until every load batch and `B_drop` have expired (≥ L after the last load batch's creation; `B_drop` ≤ ~36 h), then one reserve-worker tick (15 min) | ≈ 0.3 C + ≤ 0.03 C (`D_low`) ≈ 0.33 C < C/2; the merged pair then holds ≈ 0.66 C (≥ C/2, ≤ 0.95 C) |
+| S1 (Run 6; the regular load stops) | one mutable batch of depth 17: past its 2^(17−r) slots per neighborhood every upload overwrites; its own uploader `--name s1` | + 2^(17−r) per neighborhood (16,384 at r = 3) |
 
-- **Batches.** `POST /stamps/<amount>/<depth>` (response `batchID`); wait until `GET /stamps/<id>`
-  says `usable`, and read its `batchTTL`. Load batches are immutable (the API default): the node's
-  stamper never reuses a slot of an immutable batch (it answers "bucket full" instead), so the load
-  makes no overwrites. A bucket holds 2^(depth−16) chunks: give each load batch at least 3 × its
-  mean per bucket, 2^(depth−16) ≥ 3 × the batch's uploads ÷ 65536 (6 h at 120/s = 2.6M uploads:
-  depth 23). A mutable batch (header `Immutable: false`) is for S1 only.
-- **Rotation.** `--batch @batch.txt` re-reads the batch ID every 10 s: write each new load batch's
-  ID into the file every 6 h.
+- **`B_drop`'s expiry is scheduled, not forecast.** Create it with ~30 h of TTL; whenever its
+  `batchTTL` (`GET /stamps/<id>`) falls below 24 h, top it up by 12 h:
+  `PATCH /stamps/topup/<id>/<amount>` with amount = `currentPrice` × (43,200 s ÷ the block time).
+  Stopping the top-ups at the drain's start makes it expire within its remaining TTL (≤ ~36 h)
+  however the price moved meanwhile. Bee checks only the funds on a top-up (`contract.go`
+  L417–452); the contract's conditions are not in this repository, so try one top-up in Run S.
+- **Guards** (panel B9): every node's `bee_localstore_reserve_size` < 0.9 C (3,774,874); the uploads
+  per neighborhood in the last 25 h (S1's uploader excluded) ≤ 0.35 C; the `batchTTL` of `B_keep`
+  and `D_low` above the time left in the campaign. A price fall lengthens every TTL, and with it
+  the load batches' L: if the first guard trips, lower the rate.
+- **Batches.** Create them with `new_batch` below: it fails loudly and waits until `usable`. Load
+  batches are immutable (the API default): the node's stamper never reuses a slot of an immutable
+  batch (it answers "bucket full" instead), so the load makes no overwrites. A bucket holds
+  2^(depth−16) chunks: give each load batch at least 3 × its mean per bucket, 2^(depth−16) ≥ 3 ×
+  the batch's uploads ÷ 65536 (6 h at 16/s per neighborhood at r = 3 = 2.8M uploads: depth 23).
+  A mutable batch (`Immutable: false`) is for S1 only.
+- **Rotation.** `--batch @batch.txt` re-reads the batch ID every 10 s and refuses anything but a
+  64-hex-digit ID; the generator stops after `--max-errors` failed uploads in a row (default 50).
+  Write each new load batch's ID into the file every 6 h, only once it is usable.
 - **Denominators.** AC-B1, AC-D3 and AC-D5 divide by the uploads into the neighborhood
   (`runbook_uploads_total`; AC-B1's own "÷ chunks uploaded"), not by reserve growth, which expiries
-  and overwrites distort. Windows: ≤ 6 h, no radius change, and inside one load batch's active 6 h,
-  so that no batch that took uploads inside the window expires in it.
+  and overwrites distort. Windows: ≤ 6 h, no radius change, and inside one load batch's active 6 h
+  (that batch expires ≥ L later).
 - **Overwrite check** (every AC window, panel D0): a node's reserve growth plus its removals equals
   the uploads into its neighborhood within ~1 %. A shortfall means overwrites (a mutable batch, a
   reused stamp) or chunks the node never got; the Debug line `replacing chunk stamp index` (logger
   `node/storer/reserve`) names each overwrite.
 
 ```bash
-curl -s -XPOST "$UPLOADER/stamps/<amount>/<depth>" | jq -r .batchID > batch.txt    # every 6 h
-python3 rs_probe.py load --uploader $UPLOADER --batch @batch.txt --rate 120 --duration 86400 \
+# BLOCK_TIME: the chain's block time in seconds (--block-time)
+# amount <hours>: per-chunk amount for V_min + <hours> at the current price
+amount() {
+  curl -fsS "$UPLOADER/chainstate" | jq -er --argjson bt "$BLOCK_TIME" --argjson h "$1" \
+    '((.currentPrice | tonumber) * (.minimumValidityBlocks + ($h * 3600 / $bt | ceil)) + 1) | floor'
+}
+# new_batch <amount> <depth> [immutable: true|false]: prints the batch ID once usable, fails loudly
+new_batch() {
+  local id i
+  id=$(curl -fsS -XPOST -H "Immutable: ${3:-true}" "$UPLOADER/stamps/$1/$2" |
+    jq -er '.batchID | select(length > 0)') || { echo "new_batch: creation failed" >&2; return 1; }
+  for i in $(seq 120); do
+    [ "$(curl -fsS "$UPLOADER/stamps/$id" | jq -r .usable)" = true ] && { echo "$id"; return 0; }
+    sleep 10
+  done
+  echo "new_batch: $id not usable after 20 min" >&2
+  return 1
+}
+# every 6 h:
+a=$(amount 1) && id=$(new_batch "$a" 23) && echo "$id" > batch.txt.new && mv batch.txt.new batch.txt ||
+  echo "load batch rotation failed: the generator keeps the previous batch, which expires in about a day" >&2
+python3 rs_probe.py load --uploader $UPLOADER --batch @batch.txt --rate 128 --duration 86400 \
   --inventory inventory.csv --name gen1 --out load.csv \
   --textfile /var/lib/node_exporter/textfile/runbook_uploads_gen1.prom
 ```
@@ -370,7 +428,7 @@ and the API answers 500 on every node alike.
 anchor() { python3 -c 'import os,sys; p=sys.argv[1]; n=int.from_bytes(os.urandom(32),"big"); L=len(p); n=(n>>L|int(p,2)<<(256-L)) if L else n; print(format(n,"064x"))' "$1"; }
 A=$(anchor "$PREFIX")
 for api in $NBHD_APIS; do
-  h=$(curl -fsS "$api/rchash/$DEPTH/$A/$A" | jq -er .hash) || h=FAILED
+  h=$(curl -fsS "$api/rchash/$DEPTH/$A/$A" | jq -er '.hash | select(length > 0)') || h=FAILED
   echo "$api $h"
 done
 ```
@@ -396,59 +454,66 @@ out of the nodes' own sample phases.
 
 ### 4.9 Radius-decrease event (AC-V4, AC-R2, AC-N1)
 
-The reserve worker lowers the radius at its tick (every 15 min, `reserveWakeUpDuration`) when the
-chunks within the radius are below half the capacity, the combined `SyncRate` is 0 and the radius is
-above `--minimum-storage-radius` (`pkg/storer/reserve.go`).
+The reserve worker lowers the radius at its tick (every 15 min, `reserveWakeUpDuration`,
+`pkg/node/node.go` L228) when the count within the radius is below C/2, the combined `SyncRate` is
+0 and the radius is above `--minimum-storage-radius` (`pkg/storer/reserve.go` L167–182). The same
+goroutine runs the expiry evictions and the over-capacity evictions in turn (`reserveWorker`,
+L121–182), so a node lowers its radius only after its own expiry evictions are done.
 
-Both methods first bring the count within the radius below half the capacity: the drain of §4.5
-(12 h of low load, then `B_drop` expires; ≈ 0.3 C left, ≈ 0.6 C in the merged pair after the
-decrease). With uniform uploads the expiry empties every neighborhood alike. Do it after Runs 2
-and 3: from then on the neighborhoods below half are not "fully synced" (§3 rule 8).
+First the drain of §4.5: the regular load stops, the load batches and `B_drop` expire (≈ 0.33 C
+left, ≈ 0.66 C in the merged pair after the decrease). With uniform uploads the expiries empty
+every neighborhood alike. Run it after Runs 2, 9, 3, 5 and 6: from then on the neighborhoods hold
+less than C/2 and are not "fully synced" (rule 8).
 
-- **Method A (natural radius):** the reserve worker of every node of every neighborhood below half
-  lowers the radius at its next tick. Every pair decreases (within 15 min of each other), so pick
-  the measured pairs by cohort and record each node's `t_dec`.
-- **Method B (deterministic):** the whole network runs at `--minimum-storage-radius=r` from the start
-  (it only holds the radius; the neighborhoods come from the seed, §3 rule 8), so the drain
-  lowers no radius. For the event,
-  restart every node of one sibling pair per cohort, at the same time, with
-  `--minimum-storage-radius=r-1`. The stored radius stays r at start (`waitNetworkRFunc` keeps a local
-  radius above the minimum), and the first worker tick, ~15 min after the warm-up, lowers it to
-  r − 1. Try it on one node first. The restart adds the start-up guard (≤ 120 s) to both cohorts;
-  the decrease comes long after it. While a node sits at its minimum, the radius pushsync uses
-  follows the network's (`waitNetworkRFunc` returns max(network, minimum)), so live pushes of the
-  sibling half keep going to the sibling's nodes: the decreaser gets the new half by sync only,
-  which is what AC-V4 measures. After the event the merged pair's most common depth (r − 1)
-  differs from the network's (r), so salud keeps the decreasers healthy.
-- `t_dec` = Info `reserve radius decrease` per node. `t_union_half`: every node of the merged pair
-  decreases, so none is a complete reference (their reserve sizes stay within ~0.1 % of each other
-  throughout). Use an absolute target per node X of the pair of neighborhoods A and B, with T0 =
-  just before the pair's first `t_dec` (Unix seconds; the `@` modifier needs Prometheus ≥ 2.33; do
-  not restart the load generator between T0 and t):
+- **Method B (the one this runbook times).** Every node is pinned at `--minimum-storage-radius=r`
+  from Run S on (rule 8), so the drain lowers no radius. Start when `bee_localstore_expired_count`
+  has been flat for 30 min on every node of the chosen pairs and `GET /batches` (`batchTTL` of
+  each) shows no batch that expires before Run 4 ends (only `B_keep`, `D_low` and batches of other
+  owners that outlive it). Then restart every node of one sibling pair per cohort, at the same
+  time, with `--minimum-storage-radius=r-1`. The stored radius stays r at start (`waitNetworkRFunc`,
+  `pkg/node/node.go` L1175–1178, keeps a local radius above the minimum), and the first worker
+  tick, ~15 min after the warm-up, lowers it to r − 1. Try it on one node first. The restart adds
+  the start-up guard (≤ 120 s) to both cohorts; the decrease comes long after it. While a node sits
+  at its minimum, the radius pushsync uses follows the network's (`waitNetworkRFunc` returns
+  max(network, minimum)), so live pushes of the sibling half keep going to the sibling's nodes:
+  the decreaser gets the new half by sync only, which is what AC-V4 measures. After the event the
+  merged pair's most common depth (r − 1) differs from the network's (r), so salud keeps the
+  decreasers healthy (`pkg/salud/salud.go` L247–250).
+- **Method A (natural; not timed).** On a network that was not pinned, the drain's expiries lower
+  the radius of each node at its next tick, at different times within a pair, possibly while the
+  pair's other nodes are still evicting, and such a network may hold chunks below the radius (rule
+  8). Record it, but do not time AC-V4 from it.
+- `t_dec` = Info `reserve radius decrease` per node. `t_union_half`: after its decrease every node
+  of the merged pair lacks the other half, so none of them is a reference. Use an absolute target
+  per node X of the pair of neighborhoods A and B, with T0 = just before the pair's first `t_dec`
+  (Unix seconds; the `@` modifier needs Prometheus ≥ 2.33; do not restart the load generator
+  between T0 and t). With the pin, `bee_localstore_reserve_size` counts only chunks within the
+  radius (rule 8), and by the start rule above no batch expires in [T0, `t_union_half`]:
 
   ```promql
-  # T(t): both halves' medians at T0, plus the uploads into the pair since T0, minus X's expiries
+  # T(t): both halves' medians at T0, plus the uploads into the pair since T0 (D_low's)
     scalar(quantile(0.5, bee_localstore_reserve_size{neighborhood="A"} @ T0))
   + scalar(quantile(0.5, bee_localstore_reserve_size{neighborhood="B"} @ T0))
   + scalar(sum(runbook_uploads_total{neighborhood=~"A|B"}) - sum(runbook_uploads_total{neighborhood=~"A|B"} @ T0))
-  - (bee_localstore_expired_count{node="X"} - bee_localstore_expired_count{node="X"} @ T0)
   ```
 
-  `t_union_half` = the first time `bee_localstore_reserve_size{node="X"}` ≥ 0.999 × T(t). Confirm
-  it with a plateau (from then on `deriv(bee_localstore_reserve_size{node="X"}[5m])` stays below
-  1.5 × `sum(rate(runbook_uploads_total{neighborhood=~"A|B"}[5m]))`) and with §4.7 for the merged
-  pair. Observe ≥ 1 h, plus 20 min for the rate windows.
+  `t_union_half` = the first time `bee_localstore_reserve_size{node="X"}` ≥ 0.999 × T(t) (≈ 2800
+  chunks at 0.66 C). Void, and repeat with another pair, if
+  `bee_localstore_expired_count` rose on any node of the pair between T0 and then. Confirm it with
+  a plateau (from then on `deriv(bee_localstore_reserve_size{node="X"}[5m])` stays at or below 1.5 ×
+  `sum(rate(runbook_uploads_total{neighborhood=~"A|B"}[5m]))` + 1 chunk/s; the + 1 lets it pass at
+  zero load) and with §4.7 for the merged pair. Observe ≥ 1 h, plus 20 min for the rate windows.
 - Also record: `bee_rangesync_stripes_total{result="reassigned"}` and the Debug lines
   `radius decreased` / `stripe reassigned` (K1), the number of covering peers (K5).
 
 ### 4.10 Batch-expiry event (S6, S7)
 
-`B_drop`'s expiry at the end of the drain (§4.5) is this event. On its own: create a batch whose
-amount gives it ~1 h of TTL (`batchTTL` in `GET /stamps/<id>`), upload 10–20 % of a
-neighborhood's reserve into it at the reference rate (within the budget of §4.5), let it expire.
-Watch ±30 min around the expiry (`bee_localstore_expired_count` jumps): panels F1–F3 and D5. If
-the expiry takes the count within the radius below half the capacity, the reserve worker lowers
-the radius at its next tick: then it is also a §4.9 (Method A) event, and is recorded as one.
+Every load batch expires about L after its creation (§4.5), taking its ~6 h of uploads with it
+(≈ 350,000 per neighborhood at 16/s): each expiry is an event for S6 and S7. `B_drop`'s expiry in
+the drain (0.3 C per neighborhood) is the large one. No batch can be made to expire sooner than
+V_min after its creation (§4.5), and a separate one counts in the budget. Watch ±30 min around
+each (`bee_localstore_expired_count` jumps): panels F1–F3 and D5. On a pinned network an expiry
+lowers no radius (§4.9).
 
 ### 4.11 Node-away catch-up (S9)
 
@@ -577,7 +642,8 @@ probe: rs_probe.py probe --uploader URL --batch ID|@FILE --inventory FILE --coun
 
 inventory: CSV rows "node,api_url,cohort,neighborhood" (neighborhood = the
 binary prefix of the node's storage radius, e.g. 01). --batch @FILE re-reads
-the batch ID from FILE every 10 s (for rotating batches). With --inventory and
+the batch ID from FILE every 10 s (for rotating batches). Load mode exits with
+an error after --max-errors failed uploads in a row (default 50). With --inventory and
 --textfile, load mode writes runbook_uploads_total{uploader,neighborhood}
 (successful uploads per inventory prefix) to PATH every 10 s, in the
 node_exporter textfile format. Python 3 stdlib only.
@@ -589,6 +655,7 @@ import json
 import os
 import threading
 import struct
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -602,7 +669,10 @@ def batch_id(spec):
         return spec
     if time.time() - _batch['at'] > 10:
         with open(spec[1:]) as f:
-            _batch['id'], _batch['at'] = f.read().strip(), time.time()
+            b = f.read().strip()
+        if len(b) != 64:
+            raise ValueError(f'{spec[1:]}: not a batch ID: {b!r}')
+        _batch['id'], _batch['at'] = b, time.time()
     return _batch['id']
 
 
@@ -660,7 +730,7 @@ def write_textfile(path, name, counts):
 def cmd_load(a):
     prefixes = sorted({r['nbhd'] for r in read_inventory(a.inventory)}) if a.inventory else []
     counts, lock = {p: 0 for p in prefixes}, threading.Lock()
-    end, step, n, last = time.time() + a.duration, 1.0 / a.rate, 0, 0.0
+    end, step, n, last, errs = time.time() + a.duration, 1.0 / a.rate, 0, 0.0, 0
     with open(a.out, 'a', newline='') as f, cf.ThreadPoolExecutor(a.workers) as ex:
         w = csv.writer(f)
 
@@ -683,8 +753,12 @@ def cmd_load(a):
             n += 1
             done = [x for x in futs if x.done()]
             for x in done:
-                w.writerow(x.result())
+                row = x.result()
+                w.writerow(row)
                 futs.remove(x)
+                errs = errs + 1 if row[3] else 0
+                if errs >= a.max_errors:
+                    sys.exit(f'load: {errs} uploads failed in a row, stopping; last: {row[3]}')
             if a.textfile and time.time() - last > 10:
                 with lock:
                     write_textfile(a.textfile, a.name, counts)
@@ -737,6 +811,7 @@ p.add_argument('--timeout', type=float, default=120.0)
 p.add_argument('--poll', type=float, default=0.5)
 p.add_argument('--gap', type=float, default=5.0)
 p.add_argument('--textfile')
+p.add_argument('--max-errors', type=int, default=50)
 p.add_argument('--name', default=os.uname().nodename)
 args = p.parse_args()
 cmd_load(args) if args.mode == 'load' else cmd_probe(args)
@@ -758,7 +833,8 @@ for(x in n) printf "%s probes=%d within_bound=%d max_s=%.2f\n", x, n[x], ok[x], 
 **Choice:** a panel list with PromQL here, not a Grafana JSON (Decisions log, "(T6.3 docs)
 Dashboard as a PromQL panel list"). Each panel names the criterion it serves. Conventions:
 
-- Labels as in §1 (`node`, `cohort`, `neighborhood`, `group`). `runbook_*` series come from §5.1.
+- Labels as in §1 (`node`, `cohort`, `neighborhood`, `group`). `runbook_*` series are the
+  runbook's, not bee's: `runbook_uploads_total` from §5.3, the others from §5.1.
 - `$__range` = the segment being judged (Grafana's time range). Windows: `[5m]` for rates,
   `[10m]` where §9 reads "per 10-minute window", `[30m]` for slow ratios.
 - Counters keep their exported names: `bee_rangesync_parts_sent`, `bee_rangesync_bytes_metadata`,
@@ -800,6 +876,7 @@ bee_rangesync_peers{state=~"unsupported|striped|removed"}
 | B6 | Messages per session | median ≤ 2: `sum by (cohort) (rate(bee_rangesync_session_rounds_bucket{le="2"}[30m])) / sum by (cohort) (rate(bee_rangesync_session_rounds_count[30m]))` ≥ 0.5; ≤ 4: same with `le="4"` | AC-V2. Buckets 1, 2, 4, 8, …: "p95 ≤ 3" is not resolvable; the panel reads p95 ≤ 4 |
 | B7 | Stripes | `sum by (cohort, result) (increase(bee_rangesync_stripes_total[10m]))` (`result`: done, reassigned, timeout, dropped, idle); `sum by (cohort, le) (increase(bee_rangesync_verification_diff_bucket[10m]))` | AC-V3, AC-V4, K1, K2, S8 |
 | B8 | Puller workers | `bee_puller_worker`; `rate(bee_puller_worker_iterations[5m])`; `rate(bee_puller_worker_errors[5m])`; `increase(bee_puller_max_uint_errors[1h])` | comparison |
+| B9 | Budget guards (§4.5) | `max by (node) (bee_localstore_reserve_size)` < 3774874 (0.9 C); `sum by (neighborhood) (increase(runbook_uploads_total{uploader!="s1"}[25h]))` ≤ 1468006 (0.35 C) | §4.5, rule 8 |
 
 ### Row C: bandwidth
 
@@ -928,7 +1005,7 @@ and in Run 2, which removes host differences.
 | AC-V3 bootstrap | §4.8 | `t_union − t_start`, R vs P; also `t_synced`, `t_rate0` | R ÷ P ≤ 1.0 on `t_union` (margin: G7-5) | compare the time to the union, not to `sync_rate` 0: both rates read 0 10–20 min after their last chunk (K8) |
 | AC-V4 radius decrease | §4.9 | `t_union_half − t_dec`, R vs P; B7 `reassigned` | R ÷ P ≤ 1.0 | expected misses: the moved-root race (K1, ~1.25× with 3 covering peers) and uneven stripes (K5); record which applied |
 | AC-V5 idle | upload pause, after AC-C2 | B4; §9 Q8 | `increase(bee_rangesync_sessions_total{result="ok"}[10m])` = 0 on single-radius neighborhoods; ≈ 100 B per rangesync peer per minute (one Status per `StatusMaxInterval` to every connected peer that speaks rangesync, not only to neighbors), flag > 150 B (draft, T6.3) | fails with mixed radii (K3: ~3–8 sessions per minute on a node with nested-root peers) |
-| AC-B1 metadata ≤ 50 % | Run 2 at the reference load; Run 0 for the same neighborhood's P baseline | C3: CQ-R of the R neighborhood ÷ CQ-P of the same neighborhood in Run 0 (or of a P neighborhood of the same N) | ≤ 0.50 at N ≥ 17, R cohort | D (informational): its CQ-R and CQ-R + CQ-P, each ÷ P; a dual node pays both protocols, so its sum cannot meet 0.50. In-process: N = 17 0.35–0.40 pass; N = 5 and 9 0.57–0.73 miss (re-basing is T6.4's, K6). On testnet each node also sends Statuses to its ~100+ non-neighbors, included here (it was outside the in-process clique) |
+| AC-B1 metadata ≤ 50 % | Run 2 at the reference load within the budget (§4.5; if C5 shows no reference load there, record the median reached); Run 0 for the same neighborhood's P baseline | C3: CQ-R of the R neighborhood ÷ CQ-P of the same neighborhood in Run 0 (or of a P neighborhood of the same N) | ≤ 0.50 at N ≥ 17, R cohort | D (informational): its CQ-R and CQ-R + CQ-P, each ÷ P; a dual node pays both protocols, so its sum cannot meet 0.50. In-process: N = 17 0.35–0.40 pass; N = 5 and 9 0.57–0.73 miss (re-basing is T6.4's, K6). On testnet each node also sends Statuses to its ~100+ non-neighbors, included here (it was outside the in-process clique) |
 | AC-B1b low load | low-load segment | C3 | report | |
 | AC-B2 bootstrap metadata | §4.8 | joiner's `bee_rangesync_bytes_metadata{dir="in"}` at `t_union` (a new node starts at 0) minus the neighbors' mean `increase(…{dir="in"}[t_start, t_union])` | IDs ≤ 1.15 × 70 B × the joiner's `bee_localstore_reserve_size` at `t_union` | the 1 MB verification part cannot be separated under load (round sessions add ~7 KB/s per node at N = 9): report "not separable"; T6.1 measured 147–196 B |
 | AC-D2 | Run 2, R | D2 | ≤ 1 % (draft); `increase(bee_rangesync_want_claims{result="late"}[$__range])` = 0 (draft, T6.3) | the counter also catches pushsync racing a fetch (an upper bound) |
@@ -949,7 +1026,7 @@ and in Run 2, which removes host differences.
 | AC-N1 sync rate | §4.8, §4.9, Run 2 | B1 | > 0 from `t_start` to `t_union` (`min_over_time`); back to 0 within 20 min after `t_union` and no later than the puller's; `max_over_time(bee_rangesync_sync_rate[steady])` = 0 | window wording: `pkg/rate` reads 0 10–20 min after the last chunk (K8). After `t_dec` it reads 0 until the next round (0.5–5.1 s, K4). S1 pins it on purpose |
 | AC-N2 no early decrease | §4.8 | A3 on the joiner; Info `reserve radius decrease` | no decrease on the joiner before `t_union` | the worker ticks every 15 min, the guard lasts ≤ 120 s |
 | AC-N5 redistribution | Run 2, ≥ 10 selections per cohort | H1–H5; skipped-round log count | (a) R ≥ P; (b) R ≥ P; (c) R ≤ P; (d) 0 freezes; (e) R within ±10 % of P (draft) | the joiners of §4.8 add a per-node view; §4.7 runs separately |
-| AC-S4 rollback | §4.3, §4.4 drills, in an upload pause | §2.2; `du` and n per chunk; H1 | §4.3's pass line | per chunk, not absolute: the reserve has grown since the upgrade |
+| AC-S4 rollback | Run 9: §4.3 on two dual nodes (D → P → D) and §4.4, in an upload pause | §2.2; `du` and n per chunk against a P node in the same pause; H1 | §4.3's pass line | per chunk, not absolute: the reserve has changed since the upgrade |
 | AC-S6 audit | — | — | not measurable | no Phase 5 (G7-6) |
 
 Also readable on the way (not T6.3 rows): AC-N4 on D nodes (S17), AC-B3
@@ -1070,22 +1147,23 @@ Draft triggers above are T6.3's, for the team at G7-5.
 
 | Run | What | Duration | Covers |
 |---|---|---|---|
-| S | Seed per §4.5 (only where neighborhoods do not already hold 0.6 C): `B_keep` and `B_drop`, 0.3 C each per neighborhood, pullsync-only, several uploaders | ≈ 20M chunks at r = 3: ≈ 14 h at 400/s | the precondition of AC-N5 and `t_synced` (§3 rule 8) |
+| S | Seed per §4.5 (only where neighborhoods do not already hold 0.6 C), every node pinned at `--minimum-storage-radius=r` from its first start (rule 8): `B_keep` and `B_drop`, 0.3 C each per neighborhood, pullsync-only, several uploaders; one `B_drop` top-up as a test; then the rule-8 check | ≈ 20.1M chunks at r = 3: ≈ 14 h at 400/s | the precondition of AC-N5, `t_synced`, `t_union` and T(t) |
 | 0 | Every node pullsync-only (defaults), same build, the load of Run 2 | ≥ 24 h | the before/after baseline per node: AC-B1 (same neighborhood), AC-R4, AC-R7–R9, AC-N5 history |
 | 1 | Upgrade per §4.2 (P pairs stay as they are) | ~½ day | AC-R3, AC-R5, AC-R6 (fill times), S16, S18 |
-| 2 | Steady state at the reference load; one 30-min upload pause every 6 h (§4.6); one 2-h low-load segment; probe every 30 s; §4.7 once per day | ≥ max(24 h, the rounds for 10 selections per cohort: ~10 × 2^`committedDepth` rounds of 152 blocks) | AC-C2, AC-V1, AC-V2, AC-V5, AC-B1, AC-B1b, AC-D2, AC-D3, AC-D5, AC-K2–K5, AC-R1, AC-R4, AC-R7–R9, AC-N1, AC-N5; S2, S3, S12, S17, S19, §9 |
+| 2 | Steady state at the load of §4.5 (≤ 16/s, or the daily 8-h segment at up to 30/s); one 30-min upload pause every 6 h (§4.6); one 2-h low-load segment; probe every 30 s; §4.7 once per day | ≥ max(24 h, the rounds for 10 selections per cohort: ~10 × 2^`committedDepth` rounds of 152 blocks) | AC-C2, AC-V1, AC-V2, AC-V5, AC-B1, AC-B1b, AC-D2, AC-D3, AC-D5, AC-K2–K5, AC-R1, AC-R4, AC-R7–R9, AC-N1, AC-N5; S2, S3, S12, S17, S19, §9 |
 | 3 | Bootstrap (§4.8), one joiner per cohort at once | 3 h + 2 rounds; twice if S10 runs | AC-V3, AC-B2, AC-N1, AC-N2, AC-R7 (bootstrap); S4, S5, S10, S21 |
 | 4 | Radius decrease (§4.9), one sibling pair per cohort | ≥ 1.5 h after the restarts | AC-V4, AC-R2, AC-N1; S11, S20, S7 |
 | 5 | Node-away catch-up (§4.11): 5 min, then 15 min | 2 h | S9, S4 |
 | 6 | Sustained overwrite stream (S1) | 3 h (5 steps × 30 min + cool-down) | S1, S15 |
-| D, 7 | Drain (§4.5): 12 h at the low load; `B_drop` expires at its end, observed as §4.10 | 12 h + 2 h | S6, S7; the precondition of Run 4 |
+| D, 7 | Drain (§4.5): the regular load stops, ≤ 1/s on `D_low`, `B_drop`'s top-ups stop; until every load batch and `B_drop` have expired, plus a 15-min tick; the expiries observed as §4.10 | ≥ L after the last load batch's creation, ≤ ~36 h | S6, S7; the precondition of Run 4 |
 | 8 | Optional stall (S8) | during a Run 3 repeat | S8 |
-| 9 | Rollback and downgrade drills on 2 R nodes (§4.3, §4.4) | 2 h | AC-S4 |
+| 9 | Rollback drill on two dual nodes (D → P → D, §4.3) and a downgrade drill (§4.4, then back), right after Run 2 | 3 h | AC-S4 |
 
-Order: S, 0, 1, 2, 3, 5, 6, D/7, 4; 8 and 9 where they fit. About 5–7 days of wall clock with
-Runs 0 and 2 at 24 h, plus Run S. The load batches rotate throughout (§4.5). Runs 3 and 5 need the
-reference load running; Run 6 changes the load, so keep it apart from the AC windows. Run 4 needs
-the drain first and ends AC-N5 for the neighborhoods it leaves below half: run it last.
+Order: S, 0, 1, 2, 9, 3, 5, 6, D/7, 4; 8 where it fits. About 5–7 days of wall clock (Run S
+≈ 14 h, Runs 0 and 2 ≥ 24 h each, the drain 25–36 h). The load batches rotate throughout (§4.5).
+Runs 3 and 5 need the reference load running; Run 6 replaces the load, so keep it apart from the AC
+windows. Run 4 needs the drain first and ends AC-N5 for the neighborhoods it leaves below half:
+run it last.
 
 ### 10.2 Every run
 
