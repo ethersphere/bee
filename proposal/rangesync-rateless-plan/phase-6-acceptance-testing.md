@@ -357,6 +357,274 @@ _(sessions append here)_
   supersedes it. The pre-existing `ReserveRepairer` bug (also on the pre-rangesync code) is carried
   by the skipped `TestReserveRepairMissingChunk` in pkg/storer/migration and is outside this plan's
   scope (Follow-ups).
+- **(T6.1 part 1) Harness: where, and what was checked first.** Three test files in `pkg/node`
+  (`package node_test`, `//go:build integration`): `rangesync_acceptance_net_test.go` (transport and
+  topology), `rangesync_acceptance_harness_test.go` (nodes, uploads, instrumentation, metrics) and
+  `rangesync_acceptance_test.go` (scenarios, results, the comparison table). `pkg/node` because the
+  node's wiring helpers (`ResolveSyncWiring`, `RangesyncOptions`, `NewCombinedSyncer`,
+  `NewRangesyncCloser`) are exported only to its tests, and `NewBee` cannot be built in a test
+  (T6.2 "Node level without `NewBee`"). Existing infrastructure, and why each part was not reused:
+  - `pkg/p2p/streamtest`: the lagging-reader deadlock (a writer more than 16 writes ahead blocks
+    holding the record lock, T6.2 follow-up). One pullsync page (≤ 250 Deliveries) or one
+    rangesync fetch (≤ `MaxWantIDs` = 250 chunks) is enough to hit it. Its handlers also run on
+    `context.Background`, so a disconnect cannot end them (part 2's Churn), and it keeps every byte
+    of every stream for the whole test.
+  - Topology: real kademlia needs a `p2p.Service` that dials, an address book and discovery.
+    `pkg/topology/kademlia/mock` uses the list index as the bin and its `EachConnectedPeer` skips
+    the first peer; `pkg/topology/mock`'s `SubscribeTopologyChange` returns a nil channel.
+  - `pkg/storer/mock`: its `SubscribeBin` serves a fixed list, which is the T1.13 gap (P never
+    pulls from D).
+  - `pkg/puller` and `pkg/pullsync` tests use a mock pullsync or mock reserves over `streamtest`;
+    neither drives the puller loop over a live reserve.
+  - The rangesync neighborhood simulation (`neighborhood_sim_test.go`) runs on a fake clock and
+    wraps only rangesync. The puller and pullsync run on the real clock (5-min ticker, 250 ms page
+    timeout, rate limiters), so they cannot run on its clock, and `package rangesync_test` cannot
+    reach `pkg/node`'s wiring.
+
+  The harness therefore has its own parts, all test-only:
+  - **`accNet`**: libp2p's stream semantics (copied from the simulation's `simEnd`/`simPipe`) on
+    the real clock: an unbounded buffer per direction (no deadlock), `Close`, `FullClose` with the
+    remote-EOF wait (30 s, libp2p's `closeDeadline`), `Reset`, handlers on a per-connection
+    context that a disconnect cancels, the handler wrapper's `DisconnectError`/`BlockPeerError`
+    handling, `p2p.IncompatibleStreamError` for a protocol or version the peer did not add (so a
+    reconciler sees a pullsync-only peer as Unsupported), `ErrPeerNotFound` without a connection,
+    and byte counters per protocol/stream. `TestAcceptanceNet` checks these semantics.
+  - **`accTopology`**: the connected peers with their real proximity order, iterated by bin
+    (closest first, and reversed), topology-change signals on connect, disconnect and radius change
+    (kademlia's `SetStorageRadius` signals too), and `SetStorageRadius` as the reserve's
+    `RadiusSetter`.
+  - **A real storer per node**: `storer.New(ctx, "", …)` (in-memory leveldb and sharky, the same
+    reserve, address-index and observer code as on disk), as many storer tests do. On-disk storers
+    would only add I/O and per-node leveldb buffers.
+- **(T6.1 part 1) Node wiring.** Each node is built as `NewBee` builds the parts that the two flags
+  change: `ResolveSyncWiring(true, false, rs, puller)` → `storer.New` (`ReserveAddrIndex` from it,
+  `RadiusSetter` = the topology, the batch store, `ReserveCapacity` 65536 so nothing is evicted)
+  → `pullsync.New(host, store, …, pullsync.DefaultMaxPage)` → with rangesync `reconciler.New(overlay,
+  topology, nil, …, reconciler.Options{})`, `rangesync.New(host, store, …, RangesyncOptions(r))`,
+  `SetService`, `Start` → `AddProtocol` (pullsync always, rangesync if registered) → with the puller
+  `puller.New(overlay, state store, topology, db, pullsync, host, …, puller.Options{})` →
+  `NewCombinedSyncer` of the built drivers → `StartReserveWorker(ctx, syncer, radius, nil)`. Shutdown
+  follows `Shutdown`: puller, rangesync closer and pullsync closed concurrently, the node contexts
+  canceled, then the transport, then the storers and state stores. What differs from `NewBee`:
+  - no pushsync, retrieval, PSS or GSOC (uploads are put directly; `unwrap`/`gsocHandler` are no-ops
+    for both protocols), and no status protocol (`SetSync`);
+  - the radius function returns the configured radius (no salud);
+  - the warm-up stabilization is a switch the harness closes once all nodes are connected. In a
+    node, kademlia connects peers during the warm-up, so the syncers start with peers connected;
+    with `stabilmock.NewSubscriber(true)` they would start before any peer;
+  - the state store is `leveldb.NewInMemoryStateStore`.
+- **(T6.1 part 1) Uploads, load and network.** One neighborhood of radius 2 (overlays share their
+  first 2 bits). Every node starts with the same 4500 base chunks, a neighborhood in sync, so no node
+  starts far behind. 4500 is above `fingerprint.ScanLimit` (4096), so a session reads the root's
+  symbol stream from the root's cache, as on a full reserve; a range of at most `ScanLimit`
+  elements is scanned instead. The level-1 and bucket ranges stay below it here and are scanned
+  (their caches need more than 65536 elements per root). A first measurement set used 256 base
+  chunks, as the simulation's `Base`, and so scanned every range, the root too; see Results. Then
+  300 uploads at 15 per second (the simulation's `steadyOptions` rate). Each is put, as pushsync's
+  storer path does (`validStamp` then `ReservePutter().Put`), into the 3 nodes closest to its
+  address. Chunks are 4096 B with real stamps: a secp256k1 batch key and the real
+  `postage.ValidStamp`, on a batch store mock that holds the batch. The base chunks are validated
+  once. The overlays and chunk contents come from a seed (the network size), so the three scenarios
+  of one size see the same overlays and uploads. Mixed gives node i the flags P, R, D in turn
+  (N = 5: 2P+2R+1D; 9: 3+3+3; 17: 6+6+5). The reference load (median `pairwise_diff` ≥ 20) holds at
+  N = 9 and in 2 of 3 runs at N = 5: the median is in the bucket 32–63. At N = 17, and in the third
+  N = 5 run, it is in the bucket 16–31, which cannot tell 16–19 from 20–31. A lower load only adds
+  per-session overhead to rangesync, so N = 17's AC-B1 pass stands either way. `pairwise_diff_half`'s
+  p99 is in the bucket ≤ 64 (≤ 256 at the dual nodes of Mixed at N = 17), below `CatchUpMinDiff`
+  (256).
+- **(T6.1 part 1) What is measured, and how.** The window runs from the first upload until the
+  network is quiet; counters are window deltas summed over the nodes.
+  - Metadata (AC definition): Σ `bee_rangesync_bytes_metadata{dir="in"}` + Σ
+    `bee_pullsync_chunks_offered` × 102 B, per upload. Wire metadata: the transport's pullsync bytes
+    minus the pullsync Delivery bytes (each delivery's `pb.Delivery` size, counted in the harness),
+    plus `bytes_metadata{dir="out"}`. Rangesync's split by stream (status, reconcile, fetch minus
+    `bytes_chunks`) comes from the transport, whose rangesync total agrees with `bytes_metadata` +
+    `bytes_chunks` (to the 0.1 MB the suite logs, in every run).
+  - Chunk bytes: pullsync Delivery bytes + `bytes_chunks{dir="in"}`, per upload.
+  - Duplicates, exact: the `validStamp` each protocol gets counts the deliveries per node and chunk
+    ID before validating. A delivery of an ID the node already holds (put by the harness, or
+    delivered before) is a duplicate. Duplicates are split by cause (next entry).
+  - Convergence: the putter the protocols get records when each ID first reached each reserve.
+    The latency of an upload runs until it is on every node whose root holds it. "Convergence
+    after the last upload" depends on the phase: 300 uploads at 15/s take 20 s, 4 rounds of 5 s,
+    so the last round often lands right after the last upload. The latency distribution is the
+    meaningful number.
+  - Quiet (AC-C2): every rangesync node's connected rangesync peers hold its current Status, nodes
+    with the same root have equal digests, and the reconcilers' summed `sessions_total` does not
+    change for 10 s. It must happen within 120 s of the last upload. The reported time is the last
+    session start after the last upload (from a 10 Hz sample).
+  - CPU (AC-R7): `bee_process_cpu_seconds_total` from the Prometheus process collector (the metric
+    AC-R7 names) over the window, for the whole test process, per 1000 uploads. A `runtime.GC()`
+    before the window keeps the setup's garbage out of it. The harness work in the window is the
+    same in every scenario (stamp validation and puts of the uploads, the transport's copies), except
+    the sampler. The sampler reads three collectors per rangesync node at 10 Hz directly, not
+    through a registry `Gather`, to keep its cost negligible. Per-node goroutine CPU via pprof
+    labels was not used: handler goroutines run on the transport, and labels would need every
+    stream handler started under its node's labels.
+  - Index memory: `index_memory_bytes` per rangesync node, sampled at 10 Hz. The peak per node and
+    the sum of the peaks are taken over the window; the peak per node is also taken over the whole
+    run, which includes the start-up rebuild from radius 0 to 2. The live Go heap (`/gc/heap/live`)
+    is reported for information.
+- **(T6.1 part 1) Duplicates: a delivery racing a push is not a rangesync duplicate.** In 1 of
+  the 9 rangesync-only runs of the first measurement batch, rangesync delivered one chunk to a
+  node it was being pushed to: 601 claims granted for 600 needed fetches, no expired claim,
+  `cross_protocol_duplicates_total` 1. `claim` re-checks the reserve after the claim, and a claim
+  ends only after its Put, so two rangesync fetches of one ID cannot both pass. What remains is a
+  push that lands between the claim's check and the delivery. The harness puts an upload into its 3
+  holders one after another while sessions run, as pushsync does on a live network. T6.0's note
+  ("exact in in-process tests") assumed no such race; it is pushsync racing a fetch, which AC-D2
+  covers. The suite now reports four kinds of duplicate deliveries: deliveries of base chunks
+  (false differences, must be 0), the first delivery per protocol of a pushed chunk (racing its
+  push), a protocol's repeated deliveries, and cross-protocol ones. The rangesync-only test asserts
+  AC-D1 exactly: every ID delivered at most once per node by rangesync, and no base chunk. It
+  bounds the push races by AC-D2's draft 1 % of the chunks fetched.
+  Over all 29 rangesync-only measurement runs, 3 had one delivery racing a push (1 of 600 and 1 of
+  4200 fetches); the two after the change passed.
+- **(T6.1 part 1) Results.** Three runs per size at `GOMAXPROCS` 4 (`RANGESYNC_ACCEPTANCE_SIZES=5,9,17
+  -count=3`, 4500 base chunks), as min–max. B = Baseline (all pullsync-only), R = rangesync-only,
+  M = Mixed. "Per upload" is per uploaded chunk, summed over the network.
+
+  | | N = 5 | N = 9 | N = 17 |
+  |---|---|---|---|
+  | Metadata B per upload (AC definition) B / R / M | 2040 / 1182–1447 / 1587–1643 | 7344 / 4174–4330 / 6343–6413 | 27744 / 10843–11102 / 23583–24074 |
+  | R ÷ B (AC-B1) · M ÷ B | 0.58–0.71 · 0.78–0.81 | 0.57–0.59 · 0.86–0.87 | 0.39–0.40 · 0.85–0.87 |
+  | Wire metadata R ÷ B (B: Get, Offer, Want, cursors) | 0.54–0.66 (B 2200 B) | 0.53–0.55 (B 7892 B) | 0.36–0.37 (B 29759 B) |
+  | R metadata by stream: status / reconcile / fetch Want, B per upload | 16–18 / 1024–1290 / 140 | 59 / 3694–3850 / 421 | 222 / 9637–9897 / 983 |
+  | Chunk B per upload B / R / M | 18.2–19.0 K / 8.5 K / 13.8–14.1 K | 52.9–55.2 K / 25.5 K / 45.1–46.0 K | 145–147 K / 59.6 K / 115–116 K |
+  | Upload latency median / p95 / max, B | 0.25 / 0.52 / 0.92 s | 0.26 / 0.46 / 0.93 s | 0.26 / 0.39 / 0.67 s |
+  | same, R | 2.5 / 4.8 / 5.0 s | 2.6 / 4.8 / 5.1 s | 2.7 / 4.9 / 5.2 s |
+  | same, M | 2.2 / 4.7 / 5.0 s | 2.5 / 4.8 / 5.0 s | 2.6 / 4.8 / 5.2 s |
+  | Last session after the last upload R / M (AC-C2) | 0.1–10.0 s / 0.1–5.1 s | 0.2–5.1 s / 4.9–5.2 s | 5.1 s / 5.1–5.2 s |
+  | Duplicate deliveries B: pullsync repeats (needed deliveries) | 685–737 (600) | 1925–2088 (1800) | 6033–6131 (4200) |
+  | Duplicate deliveries R: rangesync repeats / racing a push | 0 / 0 | 0 / 0 | 0 / 0–1 |
+  | Duplicate deliveries M: pullsync repeats / cross-protocol / `cross_protocol_duplicates_total` | 371–395 / 0 / 0 | 1374–1438 / 0 / 0 | 3871–3973 / 0 / 0 |
+  | CPU s per 1000 uploads B / R / M | 5.1–7.5 / 3.5–4.2 / 5.1–5.6 | 11.6–12.9 / 6.5–8.0 / 10.3–11.2 | 28.5–33.3 / 11.6–14.0 / 22.4–25.1 |
+  | CPU R ÷ B (AC-R7) · M ÷ B | 0.47–0.73 · 0.74–0.99 | 0.54–0.62 · 0.85–0.89 | 0.38–0.48 · 0.73–0.86 |
+  | Peak Index memory per node; sum R / M | 21.0 MB; 105 / 63 MB | 21.0 MB; 189 / 126 MB | 21.0 MB; 357 / 231 MB |
+  | Peak live Go heap of the process B / R / M | 215–241 / 301–317 / 288–308 MB | 423–445 / 618–624 / 536–550 MB | 802–808 / 1160–1203 / 1062–1114 MB |
+  | `pairwise_diff` median bucket, R (sessions) | 16–63 (72–94) | 32–63 (288–316) | 16–31 (1090–1162) |
+  | IDs sessions found missing per upload, R (p(N − p)) | 4.6–5.9 (6) | 17.5–17.8 (18) | 42.8–45.0 (42) |
+  | Reconcile B per ID found missing, R | 218–222 | 207–217 | 217–231 |
+  | `symbols_per_difference` median / p95 bucket, R | ≤ 2–2.25 / ≤ 3.5–3.75, > 5 in 1 run | ≤ 2–2.25 / ≤ 3.25–3.75 | ≤ 2.25–2.5 / ≤ 3.5–3.75 |
+  | `symbols_per_difference` mean, R | 2.18–2.24; 9.69 in the > 5 run | 2.18–2.20 | 2.36–2.48 |
+
+  - At `GOMAXPROCS` 1 and 2 (`-cpu=1,2`, default sizes) the ratios are: metadata R ÷ B 0.51–0.57
+    (N = 5) and 0.61–0.65 (N = 9); CPU R ÷ B 0.57–0.76.
+  - CPU numbers vary by up to 1.5× between runs of the same scenario; the other rows are stable.
+    Process CPU-seconds depend on the host's load and clock (a shared desktop host here), and
+    CPU per upload grows with `GOMAXPROCS`. The ratio within a size is what AC-R7 needs, and it is
+    below 1 in every run.
+  - Rangesync delivered every chunk exactly once to each node that lacked it: chunk bytes are
+    (N − p) × 4258 B per upload, plus one delivery in a run with a push race. Pullsync delivered 2.1–2.5 times the needed chunks, because racing
+    offers from the p holders arrive within one 250 ms page of each other.
+  - Rangesync's sessions found p(N − p) missing IDs per upload, as §7.8 assumes (only (has, lacks)
+    pairs carry an upload). But each ID costs 207–231 reconcile bytes, against §7.8's 110–140 B
+    (1.35–1.72 symbols × 82 B). Three causes are visible:
+    - `symbols_per_difference` sits at a mean of 2.2–2.5, with medians of ≤ 2–2.5, above §7.8's
+      range;
+    - the decoding side lists the IDs only it holds as an Items part, which §7.8's table does not
+      count (`session.go`, `Handle`: "the IDs only this node holds are sent as Items without
+      Reply"; about one Items part per session);
+    - a Fingerprint per session.
+
+    Some runs also show a tail of streams with many more symbols than differences: the p95 bucket
+    is above 5 in 1 of the 9 rangesync-only runs and 1 of the 9 Mixed runs, with means of 9.7 and
+    10.4. The first batch is sized from max(|cL − cR|, hint(R), 1), so a large hint left by an
+    earlier session with the same peer would explain the tail. That is not confirmed: rangesync's
+    `DisableHints` is in its `export_test.go`, out of `pkg/node`'s reach (Follow-ups).
+  - Mixed: the dual nodes pull each upload through pullsync within ~0.25 s, so rangesync carries
+    little (6.2–7.5 IDs found missing per upload at N = 9), and Mixed's metadata stays at 0.78–0.87
+    of Baseline.
+  - The first measurement set, with 256 base chunks (every range scanned, the root too), had four
+    runs per size at `GOMAXPROCS` 4. Metadata R ÷ B was 0.58–0.62 (N = 5), 0.52–0.61 (N = 9) and
+    0.39–0.46 (N = 17); reconcile B per ID 171–187, 183–223 and 232–263; CPU R ÷ B 0.59–0.73,
+    0.51–0.61 and 0.25–0.44. At N = 17 Mixed it showed 1–8 cross-protocol duplicates per run.
+    `cross_protocol_duplicates_total` counted 9 of those 15. Pullsync puts a page's chunks only
+    after it has read every Delivery of the page, so a rangesync delivery of the same chunk in
+    between passes the reserve check and is stored first. The metric only counts a fetched chunk
+    already in the reserve. The second set had none at `GOMAXPROCS` 4, and 3 over the four runs at
+    1 and 2, of which the metric counted 2.
+  - Run times with the final code: see Runs.
+- **(T6.1 part 1) Acceptance-criteria rows measured by these three scenarios.** The verdicts are
+  from the second set, with the first set and `GOMAXPROCS` 1–2 where they differ.
+  - **AC-C1: pass.** Asserted in every scenario and run:
+    - every node's reserve inside its root equals the union of its connected peers' reserves inside
+      that root;
+    - every rangesync node's Index equals a brute force over its reserve: the root summary and
+      every range down to 4 bits below it (counts and LtHash digests, as in T6.2's check);
+    - the root symbol cache is checked through the protocol. A probe peer holds the node's reserve
+      minus 40 random IDs, on a connection the node's topology does not see. Both hold more than
+      `ScanLimit` elements, so the session decodes the node's root stream from its cache. It must
+      want exactly the 40 IDs, with no corrupt decode.
+
+    The level-1 and bucket caches are not exercised: their ranges stay below `ScanLimit` here.
+  - **AC-C2: pass** (asserted ≤ 120 s). The last session starts 0.1–10.0 s after the last upload.
+    Then the digests are equal and no session starts during the 10 s tail. "The last
+    `pairwise_diff` observations are 0" cannot be observed in-process: with equal digests no
+    session runs.
+  - **AC-V1: pass at N = 9 and 17** (also at N = 5 and in Mixed). Every upload reached every node
+    within 5.3 s. That is below 2 × `MinRoundInterval` (10 s), so it is below 2 × `RoundInterval`
+    whatever the adaptive value was (`round_interval_seconds` ranged 5–30 s). Reported, not asserted.
+  - **AC-B1: fails at N = 5 (0.58–0.71; 0.51–0.57 at `GOMAXPROCS` 1–2) and N = 9 (0.57–0.59;
+    0.61–0.65); passes at N = 17 (0.39–0.40).** The first set agrees (0.58–0.62, 0.52–0.61,
+    0.39–0.46). §7.8 predicts 33–40 % at N = 9 and 21–26 % at N = 17 with the `Want` IDs; the gap
+    and its causes are under Results. This is a performance result against a draft threshold, not
+    a correctness bug, so no production code was changed. It is for T6.4 and the team (Follow-ups).
+    Reported, not asserted.
+  - **AC-D1: pass** (asserted). In every rangesync-only run, rangesync delivered each ID at most
+    once per node and no base chunk; so did the rangesync-only and dual nodes of Mixed. Deliveries
+    racing a push: 3 in 29 rangesync-only runs, one each, within AC-D2's draft 1 %.
+  - **AC-D3: reported.** Mixed cross-protocol duplicate deliveries were 0 in the second set at
+    `GOMAXPROCS` 4, 0–2 per run at 1 and 2 (N = 5, 9), and 1–8 per run at N = 17 in the first set,
+    at most 0.51 % of the rangesync fetches. `cross_protocol_duplicates_total` can undercount them
+    (see the first set).
+  - **AC-D5: reported.** Baseline pullsync duplicates were 685–737 (N = 5), 1925–2088 (N = 9) and
+    6033–6131 (N = 17), for 600, 1800 and 4200 needed deliveries: 1.1–1.5 duplicates per needed
+    delivery. `bee_pullsync_chunks_delivered` was 1285–1337, 3725–3888 and 10233–10331. On testnet
+    that minus the unique chunks added gives the same number.
+  - **AC-K2: not measurable as defined; indicative only.** The criterion is over ranges with ≥ 20
+    differences. `symbols_per_difference` has no difference label, and the per-stream samples
+    (`SessionSample`) are reachable only from rangesync's own tests. Over all decoded streams the
+    median is ≤ 2.0 in 4 of the 6 rangesync-only runs at N = 5 and 9, and in the (2.0, 2.5] buckets
+    at N = 17. The p95 is ≤ 4.0 in 8 of 9 runs and in the bucket above 5 in the other.
+  - **AC-K3: pass** (asserted in rangesync-only and Mixed): `decode_corruption_total` is 0 in every
+    run.
+  - **AC-R7: pass.** The rangesync-only network used 0.38–0.73 of Baseline's process CPU per upload
+    at `GOMAXPROCS` 4, and 0.57–0.76 at 1 and 2. This is steady state only; bootstrap belongs to
+    part 2.
+  - **AC-S3: pass** (asserted). In Mixed, every rangesync-only node sent pullsync offers and chunks
+    to the pullsync-only and dual nodes (`chunks_sent_offered` and `chunks_sent` > 0) and pulled
+    nothing through pullsync. `go test ./pkg/pullsync/... ./pkg/puller/...` is unchanged and green.
+  - Index memory, for AC-R1 and AC-R2 (T6.3 rows): `index_memory_bytes` is 21.0 MB per node. The
+    slab is allocated in full at the default `LeafBits` 12, whatever the reserve size, so this is
+    the slab value AC-R1 bounds (≤ 22 MB). The start-up rebuild from radius 0 to 2 peaks at
+    42.0 MB, 2 × slab, which is AC-R2's bound.
+- **(T6.1 part 1) The split.** It holds as decided. The harness takes per-node radii
+  (`accOptions.NodeRadius`), nodes that start empty (`Empty`), the reserve capacity and wake-up
+  interval (radius decreases), and has `accNet.connect`/`disconnect` for join and leave; what part 2
+  still has to add is in the Follow-ups.
+- **(T6.1 part 1) Production code.** None changed. The suite is test-only (`-tags=integration`); no
+  test seam was added.
+- **(T6.1 part 1) Runs.** No `-race` (no C compiler).
+  - First set (256 base chunks): `RANGESYNC_ACCEPTANCE_SIZES=5,9,17 -count=3`. Every scenario passed
+    except one rangesync-only run, on the push race before the duplicate classification (see
+    above). After that, it passed with `-count=1 -cpu=1,2,4` at the default sizes and once more at
+    N = 17.
+  - Second set (4500 base chunks): `-count=3` at N = 5, 9 and 17, and `-count=1 -cpu=1,2` at the
+    default sizes; all passed. The final code (base chunks validated once) passed the default sizes
+    and N = 17 again. `TestAcceptanceNet` passed with `-count=5 -cpu=1,2,4`.
+  - Run times with the final code: the default sizes (5, 9) take 5.1 min with a peak RSS of 1.3 GB.
+    N = 17 takes 3.1 min with a peak RSS of 3.7 GB (`RANGESYNC_ACCEPTANCE_SIZES=5,9,17`,
+    `-timeout 20m`). Per scenario: Baseline 36–46 s (setup 6–14 s); rangesync-only 53–75 s (setup
+    11–24 s: the index build and its rebuild at the new radius, the Status exchange, the start-up
+    guard); Mixed 52–64 s. `RANGESYNC_ACCEPTANCE_SIZES` defaults to 5,9 so that
+    `make test-integration` (`go test` with its default 10-min timeout) stays within it.
+  - `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/... ./pkg/node/...` and
+    `go test ./pkg/rangesync/...` pass. The T6.2 flake watch (`TestSyncRateHonestChurn/radius_half`)
+    did not show up.
+  - `go build ./...` is clean. So are `go vet` and `golangci-lint` (go1.26.1) on `pkg/node/...`,
+    with and without `--build-tags integration` (0 issues). Only the three new files were
+    formatted (gofumpt, gci).
 
 ## Follow-ups
 _(sessions append here)_
@@ -454,3 +722,66 @@ _(sessions append here)_
   `go test ./pkg/storer/... ./pkg/node/... ./pkg/pullsync/... ./pkg/puller/... ./pkg/rangesync/...
   -count=1` run on this 4-core host; 30/30 isolated and a second full run passed. Watch it in T6.1's
   runs and on CI; if it recurs, widen the test's wait or move it onto the injected clock.
+- **(T6.1 part 1) Tests to run with -race on CI.** `TestAcceptanceNet` and `TestAcceptance`
+  (`pkg/node`, `-tags=integration`). `TestAcceptance` runs real storers, pullers, pullsync and
+  rangesync services, reconcilers, the reserve workers and the transport's handler goroutines at
+  once, and has never run under `-race` (no C compiler here). Suggested:
+  `RANGESYNC_ACCEPTANCE_SIZES=5 go test -race -tags=integration -run 'TestAcceptance' -timeout 60m
+  ./pkg/node/`. Without `-race`, the default sizes take ~5 min with a peak RSS of 1.3 GB.
+- **(T6.1 part 1) `make test-integration` and the 10-min timeout.** It runs `go test -tags=integration
+  -v ./...` with `go test`'s default 10-min timeout per package binary. `pkg/node`'s integration
+  tests now take ~5 min (the default sizes 5 and 9). That fits, but a slower runner or `-race`
+  will need a `-timeout` there or `RANGESYNC_ACCEPTANCE_SIZES=5`.
+- **(T6.1 part 1 → T6.4) AC-B1 misses at N = 5 and 9.** Rangesync-only metadata is 0.51–0.71 and
+  0.57–0.65 of Baseline's, against ≤ 0.50; N = 17 passes at 0.39–0.40. The first set (every range
+  scanned) agrees. The pair model of §7.8 holds: sessions find p(N − p) missing IDs per upload. But
+  each ID costs 207–231 reconcile bytes (171–263 in the first set), against §7.8's 110–140 B. For
+  the team, either:
+  - §7.8's table should count what it leaves out (the decoding side's Items listing of the IDs only
+    it holds, and a Fingerprint per session) and the measured symbols per difference (mean
+    2.2–2.5), and the threshold be re-based on that; or
+  - the protocol should be tuned. The first suspect is the first-batch size from hint(R): a tail of
+    streams with many times more symbols than differences, in 1 of 9 rangesync-only and 1 of 9
+    Mixed runs (2 of 12 and 7 of 12 in the first set).
+
+  Checking the hint takes a run with hints off. `DisableHints` is in rangesync's `export_test.go`,
+  out of `pkg/node`'s reach, so it needs either a test-only way to switch hints off in this harness,
+  or a neighborhood-simulation run at this load with `simOptions.NoHints`.
+- **(T6.1 part 1 → T6.3, T6.4) `cross_protocol_duplicates_total` undercounts on dual nodes.**
+  It counts a fetched chunk that the reserve already holds. Pullsync puts a page's chunks after
+  reading the whole page, so when rangesync stores a chunk first and pullsync's delivery of it is
+  still in that page, neither protocol counts the duplicate. At N = 17 in the first measurement set,
+  the metric counted 9 of 15.
+  Rangesync alone cannot see this case, and pullsync cannot change. On testnet, AC-D3's ratio from
+  the metric is therefore a lower bound. The dual cohort's exact number is
+  `bee_pullsync_chunks_delivered` + `bee_rangesync_fetch_delivered_total` minus the unique chunks
+  added.
+- **(T6.1 part 1 → T6.4) AC-K2 cannot be measured as defined from the metric.**
+  `symbols_per_difference` has no label for the difference size, so the "ranges with ≥ 20
+  differences" filter cannot be applied outside rangesync's own tests (`SessionSample`). T6.1
+  reports the unfiltered metric (indicative). An exact AC-K2 needs the observation restricted to
+  streams with ≥ 20 differences, or a size label (a rangesync metrics change).
+- **(T6.1 part 1 → part 2) Harness notes for Bootstrap, Radius decrease, Stale stamp and Churn.**
+  - Stale stamp: add a restamp helper, with the same batch and index, a newer timestamp and a new
+    signature (`newStamp` shows the signing). Push both stamps to different nodes.
+  - Bootstrap: `accOptions.Empty` starts a node with an empty reserve. The node wiring leaves
+    `rangesync.Options.LargeDiff` and `reconciler.Options.LargeDiff` at 65536. So an empty node next
+    to the 4500 base chunks syncs through ordinary sessions (RequestItems) and never stripes. There
+    are two ways to make it stripe, both with a cost:
+    - use more than 65536 chunks per node: ~280 MB of chunk data per node, and minutes of setup;
+    - set both options in the harness, and record that as a deviation from the node's wiring.
+  - AC-V3, AC-N1, AC-N3 (`SyncRate` back to 0): the puller's rate window
+    (`DefaultHistRateWindow`) and the reconciler's `SyncRateWindow` are both 10 minutes, so
+    "`sync_rate` back to 0" takes ≥ 10 min of real time per run, and so does the reserve worker's
+    next radius decrease. Measure the time to the union instead, or gate 10-min runs behind an
+    environment variable.
+  - A node joining after `start`: `addNode`, then `net.connect` to every node, then
+    `stab.stabilize()`. The sampler's node list is fixed at `start` (index memory, sessions, round
+    interval); extend it for late nodes.
+  - Radius decrease: `NodeRadius`, `ReserveCapacity` and `ReserveWakeUpDuration` exist. Mixed radii
+    in one neighborhood exercise T4.6's untested nested-root case (bucket cache, Follow-up
+    "(T4.6 part 3 → T6, a radius-aware harness)").
+  - Churn: `accNet.disconnect` runs the topology and protocol hooks and resets the open streams;
+    `accNet.connect` reconnects.
+  - All part-1 runs used `Latency` 0. A run with a one-way latency (`accOptions.Latency`) would show
+    how both protocols' upload latency and duplicates depend on it.
