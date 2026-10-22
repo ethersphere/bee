@@ -26,24 +26,27 @@ import (
 
 // pinService is a fakeService whose stripe sessions (those with an Open) are
 // set per peer: a staller's stripe sessions block until their context ends
-// (a liar whose stripe stalls); the others list lists IDs, one per batch, in
-// the first session over a range and none after (a holder: the transfer,
-// then an equal verification), or in every session (every); only over
-// ranges inside one of inside, if set (and only those answer Busy, busyN).
-// Its fetches report each chunk as they store it, as the Service's
-// FetchWithProgress does; those from a gated peer wait for the test
-// (calls).
+// (a liar whose stripe stalls), and so do a hung verifier's over a range
+// listed before (stallListed: it delivers its own stripe, then hangs in
+// the verification of another's); the others list lists IDs, one per batch,
+// in the first session over a range and none after (a holder: the
+// transfer, then an equal verification), or in every session (every); only
+// over ranges inside one of inside, if set (and only those answer Busy,
+// busyN, or stall). Its fetches report each chunk as they store it, as the
+// Service's FetchWithProgress does; those from a gated peer wait for the
+// test (calls).
 type pinService struct {
 	*fakeService
 
-	pmu    sync.Mutex
-	stall  map[string]bool
-	lists  map[string]int
-	every  map[string]bool
-	gated  map[string]bool
-	inside []fingerprint.Range
-	listed map[string]bool // ranges listed once
-	calls  chan gatedFetch
+	pmu         sync.Mutex
+	stall       map[string]bool
+	stallListed map[string]bool
+	lists       map[string]int
+	every       map[string]bool
+	gated       map[string]bool
+	inside      []fingerprint.Range
+	listed      map[string]bool // ranges listed once
+	calls       chan gatedFetch
 }
 
 // gatedFetch is a fetch of a gated peer waiting for the test: closing release
@@ -57,6 +60,7 @@ func newPinService(local rangesync.Status) *pinService {
 	return &pinService{
 		fakeService: newFakeService(local),
 		stall:       make(map[string]bool),
+		stallListed: make(map[string]bool),
 		lists:       make(map[string]int),
 		every:       make(map[string]bool),
 		gated:       make(map[string]bool),
@@ -84,8 +88,9 @@ func (s *pinService) ReconcileWith(ctx context.Context, peer swarm.Address, opts
 		return nil, rangesync.ErrPeerBusy
 	}
 	s.pmu.Lock()
-	stall, n := s.stall[k], 0
-	if rk := opts.Open[0].String(); !stall && in && s.lists[k] > 0 && (s.every[k] || !s.listed[rk]) {
+	rk := opts.Open[0].String()
+	stall, n := in && (s.stall[k] || s.stallListed[k] && s.listed[rk]), 0
+	if !stall && in && s.lists[k] > 0 && (s.every[k] || !s.listed[rk]) {
 		s.listed[rk], n = true, s.lists[k]
 	}
 	s.pmu.Unlock()
@@ -555,6 +560,190 @@ func TestSyncRateOwnJobGrace(t *testing.T) {
 	svc.pmu.Unlock()
 	h.clock.Add(reconciler.StripeTimeout) // the stalled attempts end
 	waitFor(t, "chunks stored", func() bool { return h.r.SyncRate() > 0 })
+}
+
+// lateInWindow moves the clock of h on to ten seconds before the end of the
+// current SyncRate window, so that the rate window holds a chunk stored then
+// for the least time: one window and ten seconds.
+func lateInWindow(h *harness) {
+	size := reconciler.SyncRateWindow.Milliseconds()
+	left := size - h.clock.Now().UnixMilli()%size
+	if left < 10_000 {
+		left += size
+	}
+	h.clock.Add(time.Duration(left)*time.Millisecond - 10*time.Second)
+}
+
+// heldUntil moves the clock of h on, half a minute at a time, until done
+// reports true, and checks that SyncRate reads at least StartupGuardRate
+// meanwhile; once done reports true the rate is not checked (a transfer
+// that ended holds the rate only through its chunks' window). The stall it
+// waits out must have started on the clock no later than heldUntil: past
+// StripeTimeout its timeout is due, and heldUntil waits for done without
+// moving the clock on.
+func heldUntil(t *testing.T, h *harness, what string, done func() bool) {
+	t.Helper()
+	const step = 30 * time.Second
+	for elapsed := time.Duration(0); ; {
+		got := h.r.SyncRate()
+		if done() {
+			return
+		}
+		if got < reconciler.StartupGuardRate {
+			t.Fatalf("%s: sync rate %v %v after the last chunk", what, got, elapsed)
+		}
+		if elapsed > reconciler.StripeTimeout {
+			waitFor(t, what, done)
+			continue
+		}
+		h.clock.Add(step)
+		elapsed += step
+		time.Sleep(5 * time.Millisecond) // the stripe clocks' goroutines see the time
+	}
+}
+
+// TestSyncRateOwnJobStall (T4.7 part 3 fix round 1, Medium 1): an own
+// transfer (a bootstrap) with one honest peer that stalls, a hung peer or a
+// connection that dies without a reset, keeps SyncRate above 0 until the
+// stripe machinery acts on the stall: a stripe peer's stall until its
+// inactivity timeout (StripeTimeout) reassigns the stripe and the next
+// peer stores it, and a verifier's stall until its inactivity timeout ends
+// the verification and the transfer. The chunks before the stall are stored
+// late in a SyncRate window, so that the window holds the rate for the
+// least time after them. Before, the own-job grace (10 minutes) and the
+// window ran out before StripeTimeout (15 minutes): SyncRate read 0 for up
+// to 5 minutes mid-transfer, and the reserve worker could lower the radius.
+// No peer is scored, nothing is ended for storing nothing.
+func TestSyncRateOwnJobStall(t *testing.T) {
+	t.Parallel()
+
+	const perStripe = 3
+	a, b := higher, addr(0xf1, 0)
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	// newStall returns the harness of a bootstrap from a and b, which list
+	// perStripe IDs per stripe and gate their fetches; set marks b's stall.
+	newStall := func(t *testing.T, set func(svc *pinService)) (*harness, *pinService) {
+		t.Helper()
+		svc := newPinService(status(0))
+		for _, p := range []swarm.Address{a, b} {
+			svc.remote[p.ByteString()] = status(1000)
+			svc.lists[p.ByteString()] = perStripe
+			svc.gated[p.ByteString()] = true
+		}
+		set(svc)
+		h := newPinHarness(t, svc, svc.fakeService, 100, a, b)
+		waitFor(t, "bootstrap in flight", func() bool {
+			_, own, ok := h.r.RunningStripe()
+			return ok && own && h.r.CatchUpFetches() > 0
+		})
+		waitFor(t, "guard released", h.r.GuardReleased)
+		return h, svc
+	}
+	// drip lets n chunks be stored, the last one late in a SyncRate window
+	drip := func(t *testing.T, h *harness, svc *pinService, n int) {
+		t.Helper()
+		for range n - 1 {
+			svc.drip(t)
+		}
+		lateInWindow(h)
+		svc.drip(t)
+	}
+	// caughtUp marks this node caught up before its transfer ends, so that
+	// no later round registers the bootstrap again
+	caughtUp := func(svc *pinService) { svc.set(func() { svc.local = status(1000) }) }
+	ended := func(t *testing.T, h *harness) {
+		t.Helper()
+		waitFor(t, "transfer ended", func() bool { return h.r.StripeRegistry() == 0 })
+		if n := h.r.StripesTotal("idle"); n != 0 {
+			t.Fatalf("%v transfers ended for storing nothing", n)
+		}
+		for _, p := range []swarm.Address{a, b} {
+			if n := h.r.Score(p); n != 0 {
+				t.Fatalf("%s scored %d", p, n)
+			}
+		}
+	}
+
+	t.Run("stripe peer", func(t *testing.T) {
+		t.Parallel()
+		h, svc := newStall(t, func(svc *pinService) { svc.stall[b.ByteString()] = true })
+		waitFor(t, "b's stripe stalled", func() bool { return stripeSessions(svc.fakeService, b, root) > 0 })
+		drip(t, h, svc, perStripe) // a's stripe
+		sessions := stripeSessions(svc.fakeService, a, root)
+		heldUntil(t, h, "stripe peer stalled", func() bool { return stripeSessions(svc.fakeService, a, root) > sessions })
+		if got := h.r.StripesTotal("reassigned"); got < 1 {
+			t.Fatal("stalled stripe not reassigned")
+		}
+		svc.pmu.Lock()
+		svc.stall[b.ByteString()] = false // b is back: it verifies
+		svc.pmu.Unlock()
+		caughtUp(svc)
+		storeSlowly(t, h, svc, perStripe, time.Minute) // a delivers b's stripe
+		ended(t, h)
+	})
+
+	t.Run("verifier", func(t *testing.T) {
+		t.Parallel()
+		h, svc := newStall(t, func(svc *pinService) { svc.stallListed[b.ByteString()] = true })
+		caughtUp(svc)
+		drip(t, h, svc, 2*perStripe) // both stripes
+		waitFor(t, "b hangs verifying a's stripe", func() bool { return stripeSessions(svc.fakeService, b, root) > 1 })
+		heldUntil(t, h, "verifier stalled", func() bool { return h.r.StripeRegistry() == 0 })
+		if got := h.r.StripesTotal("done"); got < 2 {
+			t.Fatalf("%v stripes done, want 2", got)
+		}
+		ended(t, h)
+	})
+}
+
+// TestSyncRateRadiusHalfGraceSpent (T4.7 part 3 fix round 1, Low 1): a
+// radius decrease's new half registered after an own transfer that stored
+// nothing spent the own-job grace (a stalled or Sybil-made bootstrap) holds
+// SyncRate above 0 within RadiusHold of the decrease, as it did while it
+// waited for its registration, and reads 0 past it while it stores nothing.
+// Before, registering the half ended that hold: it read 0 from its
+// registration until its first chunk.
+func TestSyncRateRadiusHalfGraceSpent(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{higher, addr(0xf1, 0)}
+	svc := newPinService(selfRoot(2, 5))
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = selfRoot(0, 10)
+		svc.stall[p.ByteString()] = true
+	}
+	svc.inside = []fingerprint.Range{sibling(2)} // only the half's stripes stall
+	h := newPinHarness(t, svc, svc.fakeService, 100, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+
+	// an own transfer that stored nothing spends the own-job grace
+	spent := fingerprint.NewRange(self, 3)
+	h.r.HoldStripe(spent)
+	h.clock.Add(reconciler.OwnJobGrace)
+	h.r.ReleaseStripe(spent)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v with the grace spent and nothing registered, want 0", got)
+	}
+
+	svc.set(func() { svc.local = selfRoot(1, 5) }) // the radius decreased
+	waitFor(t, "half in flight", func() bool {
+		return h.r.RadiusStriping() && countInside(svc.fakeService, sibling(2), peers...) > 0
+	})
+	h.clock.Add(reconciler.CatchUpGrace) // only the half's hold is left
+	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v with the half registered, want at least %v", got, reconciler.StartupGuardRate)
+	}
+	h.clock.Add(reconciler.RadiusHold - reconciler.CatchUpGrace - time.Second)
+	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v within RadiusHold of the decrease, want at least %v", got, reconciler.StartupGuardRate)
+	}
+	h.clock.Add(time.Second)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v past RadiusHold, nothing stored, want 0", got)
+	}
+	if !h.r.RadiusStriping() {
+		t.Fatal("the half's transfer ended")
+	}
 }
 
 // TestClaimStoringNotEnded is an honest claim over real services (T4.7 part

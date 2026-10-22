@@ -5,6 +5,7 @@
 package reconciler_test
 
 import (
+	"context"
 	"slices"
 	"testing"
 	"time"
@@ -504,6 +505,91 @@ func TestOwnJobTakesOverClaim(t *testing.T) {
 		if inFlight.Err() == nil {
 			t.Fatal("a radius increase does not end the half taken over")
 		}
+	})
+}
+
+// TestOwnJobSkipsEndedClaim (T4.7 part 3 fix round 1, Low 3): an own
+// transfer does not take over a claim in flight of its range that already
+// ended but whose transfer the worker has not wound up yet: one its idle
+// clock ended (endIdleClaim), and one an earlier own transfer ended and
+// dropped from the registry (preemptLocked). The own transfer is registered
+// as a job of its own, queued, and lowers the threshold over its range.
+// Before, it took the ended claim over: its transfer ended with the claim's
+// (a failed bootstrap, or a radius half's attempt spent), and a dropped
+// claim taken over was an own transfer that neither SyncRate nor
+// Transferring saw.
+func TestOwnJobSkipsEndedClaim(t *testing.T) {
+	t.Parallel()
+
+	// registered checks that the bootstrap of rg is queued behind queued
+	// own jobs and not run on the ended claim in flight
+	registered := func(t *testing.T, r *reconciler.Reconciler, rg fingerprint.Range, queued ...fingerprint.Range) {
+		t.Helper()
+		if !r.Bootstrapping() {
+			t.Fatal("not bootstrapping")
+		}
+		if got, own, ok := r.RunningStripe(); !ok || own || !got.Equal(rg) {
+			t.Fatalf("running %s (own %v, %v), want the ended claim of %s, not taken over", got, own, ok, rg)
+		}
+		want := slices.Concat(queued, []fingerprint.Range{rg})
+		if got := r.QueuedStripes(); !slices.EqualFunc(got, want, fingerprint.Range.Equal) {
+			t.Fatalf("queued %v, want %v", got, want)
+		}
+		if !r.Transferring(rg) {
+			t.Fatal("the bootstrap does not lower the threshold")
+		}
+		if n := r.PeerStripes(higher); n != 0 {
+			t.Fatalf("%d claims of the peer left", n)
+		}
+	}
+
+	t.Run("idle", func(t *testing.T) {
+		t.Parallel()
+		root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+		other := addr(0xf1, 0)
+		svc := newFakeService(status(1000))
+		svc.remote[higher.ByteString()] = status(1000)
+		svc.remote[other.ByteString()] = status(1000)
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		inFlight := r.HoldPeerStripe(root, higher)
+		r.EndIdleClaim() // it stored nothing for ClaimIdleTimeout
+		if !reconciler.IsClaimIdleCause(context.Cause(inFlight)) {
+			t.Fatalf("claim ended by %v, want its idle clock", context.Cause(inFlight))
+		}
+		if got := r.StripesTotal("idle"); got != 1 {
+			t.Fatalf("%v claims ended for storing nothing, want 1", got)
+		}
+		svc.set(func() { svc.local = status(0) }) // bootstrapping
+		r.Round()
+		registered(t, r, root)
+	})
+
+	t.Run("dropped", func(t *testing.T) {
+		t.Parallel()
+		// higher shares this node's root (the median of IsBootstrap); other
+		// covers both halves of its parent (the new half's transfer)
+		root, half := fingerprint.NewRange(self, 1), sibling(1)
+		other := addr(0xf1, 0)
+		svc := newFakeService(selfRoot(1, 1000))
+		svc.remote[higher.ByteString()] = selfRoot(1, 1000)
+		svc.remote[other.ByteString()] = selfRoot(0, 2000)
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		inFlight := r.HoldPeerStripe(root, higher)
+		svc.set(func() { svc.local = selfRoot(0, 1000) }) // the radius decreased
+		r.Round()
+		if !r.RadiusStriping() {
+			t.Fatal("the new half is not registered")
+		}
+		if inFlight.Err() == nil || r.PeerStripes(higher) != 0 {
+			t.Fatal("the new half did not end and drop the claim in flight")
+		}
+		// the radius increased back, and this node lacks its root: the
+		// half is ended (queued until the worker reaches it) and the
+		// bootstrap of the root is registered while the dropped claim of
+		// the root is still in flight
+		svc.set(func() { svc.local = selfRoot(1, 0) })
+		r.Round()
+		registered(t, r, root, half)
 	})
 }
 

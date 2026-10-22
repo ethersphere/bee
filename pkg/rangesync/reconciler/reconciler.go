@@ -35,8 +35,8 @@ const (
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
 	// StartupGuardRate is the least SyncRate reports while the start-up
-	// guard holds, while a radius decrease's new half waits for its
-	// transfer, while this node's own striped transfer is registered and
+	// guard holds, while a radius decrease's new half is pending (within
+	// radiusHold), while this node's own striped transfer is registered and
 	// the own-job grace holds, and while a catch-up fetch is in flight and
 	// a chunk a catch-up stored is in the window or the catch-up grace holds
 	// (SyncRate).
@@ -603,8 +603,9 @@ func (r *Reconciler) checkGuardLocked() {
 // differing digest that initiates has run a session with this node), or until
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
 // eligible neighbor the guard holds until the timeout. While a radius
-// decrease's new half waits for its transfer (at most radiusHold), it is at
-// least StartupGuardRate.
+// decrease's new half is pending, waiting for its transfer or in it, for at
+// most radiusHold from the decrease or the half's last failed transfer, it
+// is at least StartupGuardRate.
 //
 // A catch-up fetch in flight raises it to StartupGuardRate only while the
 // rate is above 0 (a catch-up stored a chunk within the window) or the

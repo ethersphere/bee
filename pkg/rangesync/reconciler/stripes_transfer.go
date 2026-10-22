@@ -96,9 +96,10 @@ const (
 	// its re-asks of IDs the want set held (maxPendingPasses of
 	// stripeRetryInterval) and a fetch timeout together, so that an honest
 	// claim's first chunk and its verification fit, and much shorter than
-	// StripeTimeout. This node's own transfers are never ended so. Ending a
-	// claim scores no peer; its peers offer it again in later sessions
-	// (T4.7 part 3).
+	// StripeTimeout. This node's own transfers are never ended so; their
+	// own-job grace (ownJobGrace) takes it as the bound on an honest
+	// attempt's first chunk. Ending a claim scores no peer; its peers offer
+	// it again in later sessions (T4.7 part 3).
 	claimIdleTimeout = 2 * time.Minute
 )
 
@@ -1021,10 +1022,13 @@ type stripeJob struct {
 	// store nothing for claimIdleTimeout (T4.7 part 3).
 	own  bool
 	peer swarm.Address
-	// cancel ends the transfer of a claim in flight, and idle is the
-	// claim's idle clock (claimIdleTimeout), which the chunks its job
-	// stores restart (jobStored); the stripe worker sets both.
+	// cancel ends the transfer of a claim in flight, run is the context it
+	// cancels (its cause tells that the claim ended: endIdleClaim,
+	// preemptLocked), and idle is the claim's idle clock
+	// (claimIdleTimeout), which the chunks its job stores restart
+	// (jobStored); the stripe worker sets all three.
 	cancel context.CancelFunc
+	run    context.Context
 	idle   *stripeClock
 }
 
@@ -1298,11 +1302,21 @@ func (r *Reconciler) addStripeLocked(job *stripeJob) {
 // reports whether it took the claim over; job itself is then not
 // registered, and its started is not called, since the transfer is under
 // way. An own job that overlaps job keeps it from taking over, as from
-// registering. r.mu must be held.
+// registering. A claim that already ended is not taken over (T4.7 part 3
+// fix round 1, Low 3): one whose context has a cause (its idle clock ended
+// it, endIdleClaim, or an own job made way for itself, preemptLocked), or
+// that is no longer registered (preemptLocked dropped it): its transfer is
+// ending and would end job's with it (a bootstrap that fails, a radius half
+// that spends one of its maxRadiusAttempts), and a dropped claim taken over
+// would be an own job that ownJobsLocked and Transferring do not see. The
+// caller then registers job as any own job. r.mu must be held.
 func (r *Reconciler) adoptLocked(job *stripeJob) bool {
 	running := r.stripeRunning
 	if running == nil || running.own || running.cancel == nil || !running.rg.Equal(job.rg) {
 		return false
+	}
+	if context.Cause(running.run) != nil || !slices.Contains(r.stripeRegistry, running) {
+		return false // the claim ended
 	}
 	if slices.ContainsFunc(r.stripeRegistry, func(o *stripeJob) bool {
 		return o.own && (o.rg.ContainsRange(job.rg) || job.rg.ContainsRange(o.rg))
@@ -1477,7 +1491,7 @@ func (r *Reconciler) stripeWorker() {
 			}
 			if !job.own {
 				ctx, cancel = context.WithCancelCause(ctx)
-				job.cancel = func() { cancel(nil) }
+				job.cancel, job.run = func() { cancel(nil) }, ctx
 				// no cap: only claimIdleTimeout without a chunk ends it
 				job.idle = newStripeClock(r.now, r.after, claimIdleTimeout, math.MaxInt64, func() { r.endIdleClaim(job, cancel) })
 			}

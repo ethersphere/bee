@@ -35,23 +35,30 @@ type radiusState struct {
 }
 
 const (
-	// radiusHold bounds how long a pending new half that is not registered
-	// for a transfer (no covering peer, overlap with another own transfer,
-	// a retry awaiting its round) keeps SyncRate above 0 (§8.4). Claims do
-	// not keep it from being registered (registerStripeLocked). A
-	// registered half holds SyncRate within the own-job grace (ownJobGrace,
-	// as long) while it stores nothing (T4.7 part 3).
+	// radiusHold bounds how long a pending new half, registered for a
+	// transfer or not (no covering peer, overlap with another own transfer,
+	// a retry awaiting its round), keeps SyncRate above 0 (§8.4) from the
+	// decrease or its last failed transfer. Claims do not keep it from
+	// being registered (registerStripeLocked). A registered half also holds
+	// SyncRate within the own-job grace (ownJobGrace) while it stores
+	// nothing (T4.7 part 3), which an earlier own transfer may have spent.
 	radiusHold = SyncRateWindow
 	// maxRadiusAttempts bounds the striped transfers of one new half.
 	maxRadiusAttempts = 3
 )
 
-// radiusHoldLocked reports whether a pending decrease whose half is not
-// registered holds SyncRate: it waits within radiusHold. A registered half
-// is an own job, which holds SyncRate within the own-job grace (SyncRate).
+// radiusHoldLocked reports whether a pending decrease holds SyncRate: its
+// half, registered or not, within radiusHold of the decrease or its last
+// failed transfer. Registering the half does not end the hold, so that a
+// half registered after a stalled own transfer (a Sybil-made bootstrap)
+// spent the own-job grace still holds SyncRate until its first chunk, within
+// radiusHold. Only this node's decrease and the half's failed transfers arm
+// it, at most maxRadiusAttempts times per decrease, so peers cannot pin it.
+// A registered half is also an own job, which holds SyncRate within the
+// own-job grace (SyncRate).
 func (r *Reconciler) radiusHoldLocked() bool {
 	s := r.radius
-	return s.pending && !s.striping && r.now().Sub(s.since) < radiusHold
+	return s.pending && r.now().Sub(s.since) < radiusHold
 }
 
 // isBusy reports whether err is a Busy answer: the peer's (ErrPeerBusy) or

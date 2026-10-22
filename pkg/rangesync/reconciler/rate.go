@@ -62,18 +62,28 @@ const catchUpGrace = 2 * time.Second
 
 // ownJobGrace is how long, in all, this node's own striped transfers (its
 // bootstrap and a radius decrease's new half, stripeJob.own) hold SyncRate at
-// StartupGuardRate while none of them stores a chunk: as long as a pending
-// half that is not registered yet (radiusHold), so that registering the
-// half does not shorten its hold, and longer than any honest pause of an
-// own transfer (a peer's Busy answers, at most maxStripeBusyRetries of
-// stripeRetryInterval per attempt; this node's index rebuild; a
-// verification round), yet shorter than the reserve worker's wake-up (15
-// minutes). It is one budget for the node (ownGrace): a peer cannot start an
-// own transfer at will, but a Sybil majority of the peers sharing this node's
-// root can make it bootstrap again and again (IsBootstrap), and a budget
-// that each bootstrap renewed would keep SyncRate above 0 most of the time
-// (T4.7 part 3).
-const ownJobGrace = radiusHold
+// StartupGuardRate while none of them stores a chunk. It covers the longest
+// no-store gap that one honest stall leaves before the stripe machinery acts
+// and the next peer stores: a stripe peer or a verifier that stalls (a hung
+// peer, a connection that dies without a reset) holds its attempt until the
+// inactivity timeout (StripeTimeout), after at most one attempt's Busy waits
+// off the stripe clock, and the peer the stripe is reassigned to stores its
+// first chunk after its own Busy waits, re-asks and a fetch timeout; each of
+// the two is within claimIdleTimeout, the honest first-chunk bound. So an own
+// transfer with one stalling peer does not read 0 while this node still
+// lacks the stripe, which would let the reserve worker lower the radius
+// mid-transfer. Stalls chained with no chunk stored in between (a stripe
+// reassigned to a further stalling peer, restarted with a peer that stored
+// and stalls again, a stalling verifier picked for several stripes) are not
+// covered: that takes the whole chain, up to (1 + maxStripeReassign)
+// StripeTimeouts and the verifications', and a grace that long would hold
+// SyncRate through each Sybil-made bootstrap cycle in which an honest stripe
+// stores a chunk. It is one budget for the node (ownGrace): a peer cannot
+// start an own transfer at will, but a Sybil majority of the peers sharing
+// this node's root can make it bootstrap again and again (IsBootstrap), and
+// a budget that each bootstrap renewed would keep SyncRate above 0 most of
+// the time (T4.7 part 3, fix round 1).
+const ownJobGrace = StripeTimeout + 2*claimIdleTimeout
 
 // graceBudget is what is left of a grace of size: catchUpGrace for the
 // catch-up fetches in flight, ownJobGrace for this node's own striped

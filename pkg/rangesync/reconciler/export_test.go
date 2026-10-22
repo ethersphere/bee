@@ -6,6 +6,7 @@ package reconciler
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -88,16 +89,33 @@ func (r *Reconciler) HoldClaims(ranges []fingerprint.Range) {
 }
 
 // HoldPeerStripe registers rg as peer's claim in flight without queuing it
-// for the worker, and returns the context an own job's preemption cancels.
+// for the worker, as the worker runs a claim (its cancel, its context and an
+// idle clock that is never started), and returns the context an own job's
+// preemption, or EndIdleClaim, cancels.
 func (r *Reconciler) HoldPeerStripe(rg fingerprint.Range, peer swarm.Address) context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	job := &stripeJob{rg: rg, peer: peer, cancel: cancel}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	job := &stripeJob{rg: rg, peer: peer, cancel: func() { cancel(nil) }, run: ctx}
+	job.idle = newStripeClock(r.now, r.after, claimIdleTimeout, claimIdleTimeout, func() { r.endIdleClaim(job, cancel) })
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.stripeRegistry = append(r.stripeRegistry, job)
 	r.stripeRunning = job
 	return ctx
 }
+
+// EndIdleClaim ends the claim in flight that HoldPeerStripe registered as its
+// idle clock does when it expires (endIdleClaim); the claim stays in the
+// registry and in flight, as until the worker sees its transfer end.
+func (r *Reconciler) EndIdleClaim() {
+	r.mu.Lock()
+	job := r.stripeRunning
+	r.mu.Unlock()
+	job.idle.expire()
+}
+
+// IsClaimIdleCause reports whether err is the cause of a claim ended for
+// storing nothing (endIdleClaim).
+func IsClaimIdleCause(err error) bool { return errors.Is(err, errClaimIdle) }
 
 // ReleaseStripe removes rg from the registry (a HoldStripe ended).
 func (r *Reconciler) ReleaseStripe(rg fingerprint.Range) {
