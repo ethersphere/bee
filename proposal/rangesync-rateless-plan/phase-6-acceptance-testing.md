@@ -1806,6 +1806,60 @@ _(sessions append here)_
   they use (`/status`, `/redistributionstate`, `/addresses`, `/status/peers`, `/metrics`,
   `POST /chunks`, `HEAD /chunks/{address}`), not against a live node; the runbook says to try them
   on one node first. The markdown tables were checked for consistent column counts.
+- **(T6.3 docs fix round 1) Review findings, all fixed in [testnet-runbook.md](testnet-runbook.md).**
+  The review found 3 High, 5 Medium and several Lows; the verifier added notes. Where this entry
+  differs from the "(T6.3 docs)" entries above, it supersedes them: in "Testnet stand-ins …", the
+  AC-C1 anchor, the radius decrease's `t_union` (the 0.1 % rule stays for the bootstrap only) and
+  the AC-D3/AC-D5 denominator; in "Radius decrease and AC-N5 …", the seed size and the radius; and
+  "Handed items" (counts below).
+  - **High 1, the reserve budget.** A reserve seeded to C/2 (C = 2²²) overflows within ~1.5 days at
+    15 uploads/s per neighborhood (Runs 0–2 add ≥ 3.2M): the radius would rise network-wide, N
+    halve and eviction start. A mutable batch sized below the free capacity instead turns the
+    load into overwrites, which no eviction or expiry counter sees, so a reserve-growth
+    denominator collapses. The runbook now has a budget per neighborhood (§4.5): seed 0.6 C on two
+    batches (`B_keep` 0.3 C, `B_drop` 0.3 C), load on immutable batches rotated every 6 h with a
+    ~12 h TTL (≤ 0.15 C live at 15/s, 0.31 C at 30/s; peak ≤ 0.91 C), and a 12-h drain before
+    the radius decrease. AC-B1, AC-D3 and AC-D5 now divide by the uploads per neighborhood, which
+    the load generator exports (`runbook_uploads_total{uploader,neighborhood}`, a textfile metric,
+    not a bee metric); panel D0 is an overwrite check (reserve growth + removals = uploads).
+  - **High 2, `t_union_half`.** Both halves of the merged pair decrease, so no node is a complete
+    reference. The target is now absolute: both halves' medians at T0 plus the uploads into the
+    pair since T0 minus the node's expiries, confirmed by a plateau and by §4.7.
+  - **High 3, the `/rchash` anchor.** `ReserveSample` skips chunks whose proximity to the anchor is
+    below the depth (`pkg/storer/sample.go`), so a random anchor fails (500) in 2^r − 1 of 2^r
+    neighborhoods, and the old `jq` line printed the same empty line on every node. The anchor
+    now starts with the neighborhood's prefix, and a node without a hash fails the probe.
+  - **Medium 4.** STEADY gets an `or … * 0` fallback (`stripes_total` has no series before a
+    node's first stripe, so every window dropped and Q1/Q3 passed by default); §6 states the rule
+    for every metric with labels.
+  - **Medium 5.** AC-B1 gates the `rangesync` cohort on rangesync's own bytes; a dual neighborhood
+    pays both protocols and is reported only (its rangesync part, and the sum).
+  - **Medium 6.** Three cohorts by sibling pair need r ≥ 3 (four pairs): ≈ 20M seeded chunks.
+  - **Medium 7.** AC-R5 and AC-S4 measure `du` right around the restarts, in an upload pause, per
+    reserve chunk (the other indexes grow by hundreds of MB in half a day under load).
+  - **Medium 8.** G7-2 (b) caps the rangesync-only cohort too and biases the gating AC-V3/AC-V4;
+    the runbook says so and gives the two ways out; (c) on the dual hosts only does not bias.
+  - **Lows.** Q2 ≤ 256 (the G6 wants max 35–82 reads 64 or 256); a rule for request-driven `More`
+    and hint(R) (Mores per upload ≤ 2 × the in-process 0.36 at N = 9 and 1.19–1.28 at N = 17,
+    draft); PromQL with `|` moved out of tables into code blocks; rule 8 now says `ReserveSize`
+    (fully synced) against the count within the radius (the worker), and §5.1 counts the three
+    "skipping round" lines apart; the minimum radius only holds a radius (the seed makes the
+    neighborhoods), and the seed is 0.6 C, off the C/2 edge; S8 says how to find a stripe peer
+    (every full peer whose root covers the joiner's gets ≥ 1 stripe; its outgoing chunk bytes rise),
+    and that no log names one before it fails.
+  - **Verifier notes.** "Handed items" double-counted one row: 38 = 32 placed + 3 partial + 3 not
+    runnable (the claimant with no credit is partial, and its flood part is one of the
+    not-runnable scenarios §8 lists). Drafts are now marked: AC-D2's `late` = 0, AC-V5's 150 B,
+    AC-S4's 10 %, the Mores rule. The G7 decisions are listed in the Follow-ups.
+- **(T6.3 docs fix round 1) Checks.** `rs_probe.py` gained `--inventory`, `--textfile`, `--name`
+  (per-neighborhood upload counters) and `--batch @file` (rotation); it was re-run against the API
+  mock (per-prefix counts sum to the uploads; the probe unchanged). `bash -n` passes on every bash
+  block of the runbook except the two templates with `<…>` placeholders; the Python block compiles
+  and equals the tested file. All 96 PromQL expressions of the runbook parse with the Prometheus
+  parser (`promql/parser` v0.301.0, in a scratch module outside the repository; the two failures
+  are label lists in prose). Every metric, log line and API field added was grepped back to the
+  code (`batchID`, `batchTTL`, `replacing chunk stamp index` under `node/storer/reserve`, the
+  three "skipping round" lines). Docs only.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2315,3 +2369,20 @@ _(sessions append here)_
   parameters…"), the excused/charged chain-state rejections ("(T4.7 part 4 fix round 1 → T6)") and
   `ErrOverwriteNewerChunk` per peer ("(T4.7 part 4 fix round 2 → T6)"): each has no metric, and the
   runbook reads Debug logs instead.
+- **(T6.3 docs fix round 1) The G7 decisions, for the user before the runs** (testnet-runbook.md
+  §0):
+  1. G7-1: fix the two production Mediums of T6.1 part 2 (the stripe worker racing the moved-root
+     Status; stripe verification scoring honest deliverers under uploads), or accept them and run
+     S10 at two loads.
+  2. G7-2: the fetch cap for dual cohorts on constrained hosts (provision, a lower
+     `DefaultFetchRate` build with the AC-V3/AC-V4 bias, or `tc` on the dual hosts), or a
+     `--rangesync-fetch-rate` flag first ("(T6.3 docs) No flag for rangesync's fetch rate").
+  3. G7-3: one network with cohorts per sibling pair (r ≥ 3, ≈ 20M seeded chunks; a private
+     network if Method B is used) or one network per cohort. The reserve capacity cannot be made
+     smaller (only `--reserve-capacity-doubling` ≥ 0), so the seed is what the budget costs.
+  4. G7-4: whether AC-V1 gates on testnet now that the probe exists.
+  5. G7-5: the draft thresholds: AC-D2 1 %, AC-K2, AC-R4 5 %, AC-R7 1.0×, AC-R8 +64 MB, AC-N5
+     ±10 %, and T6.3's own drafts (AC-D2 `late` = 0, AC-V5 150 B per peer per minute, AC-S4
+     10 %, the Mores rule, the two cache triggers of §9).
+  6. G7-6: whether Phase 5 is in scope (AC-S6 is not measurable without it).
+  7. G7-7: the build commit, the same on every node.
