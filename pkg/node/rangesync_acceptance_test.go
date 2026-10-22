@@ -58,8 +58,10 @@ func accMixedMode(i int) accMode {
 //   - Baseline (every node pullsync-only): every node ends with its
 //     neighborhood's union; its numbers are the reference;
 //   - rangesync only: every node ends with its neighborhood's union and its
-//     Index equals a brute force over its reserve (AC-C1), with zero
-//     duplicate deliveries (AC-D1), no corrupt decode (AC-K3) and quiescence
+//     Index equals a brute force over its reserve (AC-C1); rangesync
+//     delivers every ID at most once per node and no chunk the node held at
+//     the start (AC-D1), and at most 1 % of its deliveries race the chunk's
+//     push (AC-D2's draft bound); no corrupt decode (AC-K3) and quiescence
 //     within 120 s of the last upload (AC-C2);
 //   - Mixed: every node converges (AC-C1), and every rangesync-only node
 //     serves the pullsync peers that pull from it (AC-S3).
@@ -100,8 +102,15 @@ func checkBaseline(t *testing.T, r *accResult) {
 func checkRangesyncOnly(t *testing.T, r *accResult) {
 	t.Helper()
 
-	if r.dupTotal != 0 || r.crossMetric != 0 {
-		t.Errorf("duplicate deliveries %d (cross_protocol_duplicates_total %v), want 0", r.dupTotal, r.crossMetric)
+	// AC-D1: rangesync delivers every ID at most once per node, and no base
+	// chunk; a delivery that raced the chunk's push (pushsync racing a
+	// fetch, AC-D2) is reported, not a rangesync duplicate
+	if r.dupRS != 0 || r.dupBase != 0 {
+		t.Errorf("rangesync delivered %d IDs again and %d base chunks, want 0", r.dupRS, r.dupBase)
+	}
+	// AC-D2's draft bound on those races, 1 % of the chunks fetched
+	if limit := math.Ceil(0.01 * r.rsFetched); float64(r.dupPushRS) > limit {
+		t.Errorf("%d rangesync deliveries raced a push, more than %v", r.dupPushRS, limit)
 	}
 	if r.wire["pullsync"] != 0 || r.psDelivered != 0 {
 		t.Errorf("pullsync traffic without a puller: %d wire bytes, %v deliveries", r.wire["pullsync"], r.psDelivered)
@@ -175,18 +184,21 @@ type accResult struct {
 	wire                                         map[string]uint64 // bytes written, by protocol
 	wireStream                                   map[string]uint64 // bytes written, by protocol/stream
 	psDeliveryWire                               uint64
-	dupTotal, dupPS, dupRS, dupCross             int
-	crossMetric                                  float64
-	wantClaims, sessions, parts                  map[string]float64
-	wantsDecoded                                 float64 // Σ pairwise_diff_half: IDs sessions found missing
-	symMedian, symP95, symMean                   float64
-	symCount                                     uint64
-	diffMedian, diffHalfMedian, diffHalfP99      float64
-	diffCount                                    uint64
-	decodeCorruption, moreRequests               float64
-	disconnects, blocklists                      int64
-	lastReason                                   string
-	perNode                                      []accNodeResult
+	// duplicate deliveries: of base chunks (false differences), racing a
+	// push (by protocol), a protocol's repeats, cross-protocol
+	dupTotal, dupBase, dupPushPS, dupPushRS int
+	dupPS, dupRS, dupCross                  int
+	crossMetric                             float64
+	wantClaims, sessions, parts             map[string]float64
+	wantsDecoded                            float64 // Σ pairwise_diff_half: IDs sessions found missing
+	symMedian, symP95, symMean              float64
+	symCount                                uint64
+	diffMedian, diffHalfMedian, diffHalfP99 float64
+	diffCount                               uint64
+	decodeCorruption, moreRequests          float64
+	disconnects, blocklists                 int64
+	lastReason                              string
+	perNode                                 []accNodeResult
 }
 
 // accNodeResult is what one node measured.
@@ -194,7 +206,7 @@ type accNodeResult struct {
 	mode                               accMode
 	psSent, psSentOffered, psDelivered float64
 	rsFetched, cross                   float64
-	dups, dupRS                        int // duplicate deliveries, and rangesync's own
+	dups, dupRS                        int // duplicate deliveries, and rangesync's repeats
 }
 
 // runAccScenario builds the network of o, waits until it is ready, pushes
@@ -436,31 +448,39 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 		r.latMax = lat[len(lat)-1]
 	}
 
-	// duplicates: a delivery of an ID the node holds already, placed by
-	// the harness or delivered before. A protocol's own duplicates are its
-	// deliveries of a placed ID and its repeated deliveries; the rest are
-	// cross-protocol (the second protocol's delivery of an ID the first
-	// delivered).
+	// duplicates: a delivery of an ID the node holds or got already.
+	// Deliveries of a base chunk are false differences. The first delivery
+	// of a pushed chunk by a protocol raced the push: the node lacked the
+	// chunk when a session found it missing (or a pullsync offer came) and
+	// the push landed before the delivery; on a network that is pushsync
+	// racing a fetch (AC-D2). The others are a protocol's repeated
+	// deliveries, or the second protocol's delivery of an ID the first
+	// delivered (cross-protocol).
 	for i := range h.nodes {
 		for id, d := range h.deliveries[i] {
+			ps, rs := d[accViaPullsync], d[accViaRangesync]
 			held := 0
-			if h.placed[i][id] {
+			if h.placed[i][id] != 0 {
 				held = 1
 			}
-			own := func(n int) int {
-				if held == 1 {
-					return n
-				}
-				return max(0, n-1)
-			}
-			total := max(0, d[accViaPullsync]+d[accViaRangesync]+held-1)
-			ps, rs := own(d[accViaPullsync]), own(d[accViaRangesync])
+			total := max(0, ps+rs+held-1)
 			r.dupTotal += total
-			r.dupPS += ps
-			r.dupRS += rs
-			r.dupCross += total - ps - rs
 			r.perNode[i].dups += total
-			r.perNode[i].dupRS += rs
+			r.perNode[i].dupRS += max(0, rs-1)
+			switch h.placed[i][id] {
+			case accBase:
+				r.dupBase += ps + rs
+				continue
+			case accPush:
+				r.dupPushPS += min(ps, 1)
+				r.dupPushRS += min(rs, 1)
+			default:
+				if ps > 0 && rs > 0 {
+					r.dupCross++
+				}
+			}
+			r.dupPS += max(0, ps-1)
+			r.dupRS += max(0, rs-1)
 		}
 	}
 	return r
@@ -555,7 +575,11 @@ func logAccTable(t *testing.T, base, rs, mixed *accResult) {
 	row("duplicates total (pullsync/rangesync/cross)", func(r *accResult) string {
 		return fmt.Sprintf("%d (%d/%d/%d)", r.dupTotal, r.dupPS, r.dupRS, r.dupCross)
 	})
-	row("duplicates (rangesync's own) at P / R / D", func(r *accResult) string {
+	row("deliveries racing a push pullsync/rangesync", func(r *accResult) string {
+		return fmt.Sprintf("%d / %d", r.dupPushPS, r.dupPushRS)
+	})
+	row("deliveries of base chunks", func(r *accResult) string { return strconv.Itoa(r.dupBase) })
+	row("duplicates (rangesync repeats) at P / R / D", func(r *accResult) string {
 		var dups, own [3]int
 		for _, nr := range r.perNode {
 			k := slices.Index([]accMode{accPullsyncOnly, accRangesyncOnly, accDual}, nr.mode)

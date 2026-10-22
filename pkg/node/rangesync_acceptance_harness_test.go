@@ -284,7 +284,7 @@ type accHarness struct {
 	mu         sync.Mutex
 	arrivals   []map[fingerprint.ID]time.Time      // per node, first in the reserve
 	deliveries []map[fingerprint.ID]*accDeliveries // per node
-	placed     []map[fingerprint.ID]bool           // per node, put by the harness (base or push)
+	placed     []map[fingerprint.ID]accPlacement   // per node, put by the harness
 	uploads    []*accUpload
 
 	psDeliveryBytes atomic.Uint64 // wire bytes of the pullsync Deliveries received
@@ -455,7 +455,7 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 	h.mu.Lock()
 	h.arrivals = append(h.arrivals, make(map[fingerprint.ID]time.Time))
 	h.deliveries = append(h.deliveries, make(map[fingerprint.ID]*accDeliveries))
-	h.placed = append(h.placed, make(map[fingerprint.ID]bool))
+	h.placed = append(h.placed, make(map[fingerprint.ID]accPlacement))
 	h.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -478,7 +478,7 @@ func (h *accHarness) addNode(i int, overlay swarm.Address, mode accMode, radius 
 	}
 	n.store = &accStore{DB: n.db, h: h, i: i}
 	for _, ch := range base {
-		h.put(n, ch)
+		h.put(n, ch, accBase)
 	}
 
 	n.host = h.net.newHost(overlay, n.topo)
@@ -592,15 +592,23 @@ func (h *accHarness) arrived(i int, ch swarm.Chunk) {
 	}
 }
 
+// accPlacement is how the harness put a chunk into a reserve.
+type accPlacement int
+
+const (
+	accBase accPlacement = iota + 1 // before the start
+	accPush                         // pushed during the run
+)
+
 // put stores ch in node n's reserve as pushsync does: it validates the stamp,
 // then puts the chunk.
-func (h *accHarness) put(n *accNode, ch swarm.Chunk) {
+func (h *accHarness) put(n *accNode, ch swarm.Chunk, how accPlacement) {
 	id, err := chunkIDOf(ch)
 	if err != nil {
 		h.tb.Fatal(err)
 	}
 	h.mu.Lock()
-	h.placed[n.i][id] = true
+	h.placed[n.i][id] = how
 	h.mu.Unlock()
 	valid, err := h.validStamp(ch)
 	if err != nil {
@@ -635,7 +643,7 @@ func (h *accHarness) push(ch swarm.Chunk) {
 	h.uploads = append(h.uploads, u)
 	h.mu.Unlock()
 	for _, i := range u.holders {
-		h.put(h.nodes[i], ch)
+		h.put(h.nodes[i], ch, accPush)
 	}
 }
 
