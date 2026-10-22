@@ -4225,6 +4225,116 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     14 of 2610 KB (1411, 1410), 16 stripes done, none reassigned or timed out; 35 s.
     `TestG6BootstrapPeers` (production `LargeDiff`): 4908–4909 KB at Base 70000 and 7011 KB at
     100000 (4908–4909, 7011–7012); 758 s.
+- **(T4.7 part 3 fix round 1) Review Medium 1: the own-job grace covers one honest stall,
+  `ownJobGrace` = `StripeTimeout` + 2 × `claimIdleTimeout` (19 minutes).** rate.go. It was
+  `radiusHold` (10 minutes), shorter than `StripeTimeout` (15 minutes): in a bootstrap or a radius
+  half, one stripe peer that stalls (a Sybil, or an honest peer that hangs or whose connection dies
+  without a reset) and holds back its tail while the other stripes finish leaves nothing stored
+  until its inactivity timeout reassigns the stripe, and the grace and the window ran out first:
+  `SyncRate` 0 for up to 5 minutes while this node still lacked the stripe, and the reserve worker
+  could lower the radius mid-bootstrap (an extra half transfer, over-capacity churn). This
+  corrects the rationale of "(T4.7 part 3) The stripe-registry `SyncRate` pin, as built": "10
+  minutes stay below the reserve worker's 15-minute wake-up" protects nothing, since the worker
+  reads `SyncRate` at whatever point of the grace it wakes; what matters is that the grace covers
+  the gaps an honest own transfer leaves before the stripe machinery acts on a stall.
+  - *Choice: a grace that covers the gap, not a shorter inactivity timeout for own jobs.* A
+    stripe timeout of its own for own jobs would change the stripe machinery of the transfers
+    that matter most (an honest slow peer reassigned sooner, its listing repeated), and covers no
+    more: the grace drains across stalls that store nothing in between, whatever the timeout. The
+    grace is one constant.
+  - *Size, from the constants.* The longest no-store gap of one honest stall, until the machinery
+    acts and the next peer stores: the stalled attempt's waits off the stripe clock (at most
+    `maxStripeBusyRetries` × `stripeRetryInterval` ≈ 30 s of Busy retries, and the slots), then
+    `StripeTimeout` of inactivity, then the first chunk of the peer the stripe is reassigned to
+    (its Busy waits, re-asks of held IDs and a fetch timeout, ≈ 75 s). `claimIdleTimeout` (2
+    minutes) is the code's bound on an honest attempt's first chunk (its doc now says the grace
+    uses it), so the grace is `StripeTimeout` + 2 × `claimIdleTimeout` = 19 minutes. It covers a
+    verifier that stalls once too (`StripeTimeout` after the transfer's last chunk, then the job
+    ends) and a stall before the first chunk. `radiusHold` stays 10 minutes; registering a half no
+    longer ends it (Low 1, below), so the grace no longer has to equal it.
+  - *Chains are not covered.* A stripe reassigned to a further stalling peer (up to 1 +
+    `maxStripeReassign` = 4 in a row), restarted with a peer that stored and then stalls again
+    (progress restarts with the same peer), a stalled stripe whose verifier stalls too with no
+    chunk in between, and a stalling verifier picked for several stripes (`verifier` takes the
+    first candidate of one order for every stripe, so one peer verifies most of them, one after
+    another under its lock, "(T4.5 part 2a fix round 1, Low 1)": m × `StripeTimeout`) read 0 from
+    19 minutes after the last own-job chunk until the next. They take a Sybil or two independent
+    honest stalls in a row. Covering them would take a grace of the whole chain (≈ 4 × 15
+    minutes, plus m × 15 for the verifications), and then a Sybil-made bootstrap (re-review Low 4)
+    would read above 0 through each of its cycles in which an honest stripe stores a chunk (one
+    pushsync miss is enough): the T3.5 pin back. The verifier chains come after the transfer
+    completed, when this node holds what its deliverers delivered: 0 is wrong there only if a
+    deliverer withheld, which takes a second, colluding peer. Follow-ups.
+  - *The Sybil-made bootstrap with 19 minutes.* Still one budget for the node, refilled only by an
+    own job's chunks: with no chunk, above 0 for one `ownJobGrace` in all (19 minutes; was 10); with
+    an honest stripe storing in each cycle, above 0 for the grace (and the window) after the
+    cycle's last own-job chunk, then 0 through the Sybils' stall chain (≥ 4 × 15 minutes): about
+    19–20 of every ≥ 75 minutes (was 10–20).
+  - *Numbers of the part 3 entry that change.* An own job that stalls: above 0 for at most the
+    longer of `ownJobGrace` and the window of its last chunk after it (19–20 minutes; was "≥
+    `ownJobGrace`" with 10). Honest: an own job stays held through pauses of up to 19 minutes
+    before its first chunk and after each chunk (was 10, and the window after one).
+  - Test: `TestSyncRateOwnJobStall` (pin harness; "stripe peer": a bootstrap whose second peer
+    stalls its stripe until `StripeTimeout` reassigns it to the first, which stores it; "verifier":
+    a bootstrap whose second peer delivers its stripe, then hangs verifying the first's until
+    `StripeTimeout` ends the verification and the transfer; the chunks before the stall stored 10 s
+    before the end of a `SyncRate` window, so the window holds them the least; `SyncRate` read every
+    30 s on the clock: never below `StartupGuardRate` until the reassigned stripe stores or the
+    transfer ends; no score, nothing ended idle). Both fail with the old grace (0 at 10 m 30 s
+    after the last chunk). `pinService.stallListed` (a peer that hangs in a stripe session over a
+    range listed before: a verifier), and a stall now applies only inside `inside` when it is set.
+- **(T4.7 part 3 fix round 1) Review Low 1: a registered half keeps its `radiusHold`.**
+  `radiusHoldLocked` (radius.go) no longer requires the half to be unregistered: a pending half,
+  waiting for its transfer or in it, holds `SyncRate` within `radiusHold` of the decrease or its last
+  failed transfer, and registered it also holds within the own-job grace. Before, a half registered
+  after a stalled or Sybil-made bootstrap had spent the grace read 0 from its registration until its
+  first chunk, against the part 3 entry's "registering a radius half must not shorten the hold it
+  had while pending". Peers still cannot pin it, by the part 3 entry's own argument: only this
+  node's decrease and the half's failed transfers arm it, at most `maxRadiusAttempts` times per
+  decrease (a peer can make a transfer fail: at most 3 × `radiusHold` per decrease), and the
+  reserve worker decreases only with the reserve below its threshold and `SyncRate` at 0. Test:
+  `TestSyncRateRadiusHalfGraceSpent` (an own transfer that stored nothing spent the grace; the half,
+  registered, stalls: at least `StartupGuardRate` past the catch-up grace and a second before
+  `RadiusHold`, 0 at `RadiusHold`, the half still in flight); it fails on the old rule. `SyncRate`'s
+  and `StartupGuardRate`'s docs say so. The part 3 "Superseded" entry's "Its `radiusHold`,
+  `maxRadiusAttempts` and the pending half's hold stand" now reads: and the hold covers the half
+  registered too.
+- **(T4.7 part 3 fix round 1) Review Low 3: an own job takes over only a claim still running.**
+  `adoptLocked` refuses a claim in flight whose context has a cause (its idle clock ended it,
+  `endIdleClaim`, or an own job made way for itself, `preemptLocked`) or that is no longer registered
+  (`preemptLocked` dropped it), so the own job is registered as any own job (`preemptLocked`, queued
+  behind the own jobs before it). Before, it took the ended claim over: the transfer ended with the
+  claim's, so a bootstrap failed (two extra rounds) or a half spent one of its `maxRadiusAttempts`,
+  and a dropped claim taken over was an own job that `ownJobsLocked` and `Transferring` did not see.
+  `stripeJob.run` is the claim's context; the worker sets it with `cancel`. Both cases are races with
+  the worker winding the claim up, the dropped one reachable thus: a radius half preempts the claim
+  in flight of the old root, the radius increases back, and the bootstrap of that root (disjoint
+  from the canceled half, still queued) took the claim over. Test: `TestOwnJobSkipsEndedClaim`
+  ("idle" and "dropped", both fail without the check); export_test: `HoldPeerStripe` runs its claim
+  as the worker does (a cause cancel, `run`, an idle clock that is never started), `EndIdleClaim`,
+  `IsClaimIdleCause`.
+- **(T4.7 part 3 fix round 1) Review Lows 2 and 4: recorded, not built** (Follow-ups: the honest
+  claims' queue behind stalling claims, with a correction to "Claims' first-chunk window", and a
+  correction to the drip entry's per-victim figure).
+- **(T4.7 part 3 fix round 1) Scope and checks.** Code: rate.go (`ownJobGrace`), radius.go
+  (`radiusHold`'s doc, `radiusHoldLocked`), reconciler.go (docs of `SyncRate` and
+  `StartupGuardRate`), stripes_transfer.go (`claimIdleTimeout`'s doc, `stripeJob.run`, the worker,
+  `adoptLocked`). No pkg/pullsync, pkg/puller, pkg/node, pkg/storer, go.mod, proto or
+  `*_fuzz_test.go` change; README not ticked.
+  - Checks: `go build ./...`; `go vet` on pkg/rangesync/... (default and `-tags=sim`);
+    `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues; gofumpt and gci on the changed files only. `go test
+    ./pkg/rangesync/...` passes (pkg/rangesync 30 s, reconciler 6 s); pkg/node's
+    `TestCombinedSyncerBothDrivers`, `TestSyncWiring`, `TestRangesyncOptions` pass. No `-race`
+    here: `TestSyncRate*`, `TestClaim*`, `TestStripe*`, `TestRoundBootstrap*`, `TestRadius*`,
+    `TestStartupGuard*`, `TestDualMode*` and `TestOwnJob*` ran `-count=10 -cpu=1,2,4` (62 s), the
+    three new tests `-count=20 -cpu=1,2,4`, the reconciler package `-count=3 -cpu=1,2,4` (44 s): no
+    failure. The new tests fail on the old code (checked by restoring each old rule). Sim
+    (`-tags=sim`, one run, 636 s): `TestG6Bootstrap` (N = 17, Base 20000) 1410 and 1409 KB at
+    ranks 4 and 14 of 2610 KB, 16 stripes done, none reassigned or timed out, 0 duplicates;
+    `TestG6BootstrapTail` 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2,
+    4, caught up after 5334–5335 s, 0 wants, 9–12 stripe sessions, none timed out: as part 3.
+    The CI list is in Follow-ups.
 
 ## Follow-ups
 _(sessions append here)_
@@ -5761,3 +5871,58 @@ _(sessions append here)_
   stripe job takes that lock on its fetch goroutine (`jobStored`), and a round may turn the job in
   flight into an own job (`adoptLocked`) while the worker runs it, so re-run the whole reconciler
   package, and `TestNeighborhoodBootstrap*` (rangesync).
+- **(T4.7 part 3 fix round 1 → part 4) Honest claims wait behind stalling claims, `SyncRate` at 0
+  (review Low 2).** The stripe worker runs the claims FIFO. A Sybil holds up to `maxPeerStripes`
+  (2) claims, each ended only after `claimIdleTimeout` (2 minutes) of storing nothing and then
+  registered again behind the claims queued meanwhile. An honest claim (a responder-only lack, a
+  constraint-(d) session root) queued behind the claims of S Sybils waits ≈ 2 × 2 × S = 4·S
+  minutes for the worker, and all that time `SyncRate` reads 0 (a claim in flight that stores
+  nothing holds it only within the catch-up grace, a queued claim not at all) while this node lacks
+  more than `LargeDiff`: `isFullySynced` holds with a lacking reserve, or the reserve worker lowers
+  the radius. Before part 3 the registry held the rate there (as it held it for the Sybils' claims:
+  the pin part 3 removed). Directions: a per-overlay backoff after a claim ends idle (that
+  overlay's next claim waits a growing delay, or queues behind the claims of overlays without
+  one), keyed like part 4's per-peer fetch credit so that a reconnect does not reset it; or the
+  queued claims ordered by the chunks their overlays' claims delivered, claims that stored nothing
+  last. Not measured.
+- **(T4.7 part 3 fix round 1) Correction to "(T4.7 part 3 → T6.1/T6.3) Claims' first-chunk
+  window".** That entry, with the part 3 numbers it cites ("seconds on a working link"), has an
+  honest claim read 0 only from the end of the catch-up grace to its first stored chunk, as a
+  catch-up fetch does. That holds for a claim the worker runs at once. A claim queued behind
+  stalling claims first waits for the worker, up to `claimIdleTimeout` per stalling claim ahead of
+  it (≈ 4·S minutes with S Sybils, the entry above), with `SyncRate` 0 throughout. The testnet
+  measurement should record a claim's wait in the queue apart from its first-chunk latency.
+- **(T4.7 part 3 fix round 1) Correction to "(T4.7 part 3 → T6.3) A claimant that drips holds the
+  stripe worker" (review Low 4).** "About 720 stamped chunks a day per victim" is wrong. The
+  claimant's claims at its neighbors list the same chunk; delivered to each neighbor's claim in
+  flight, it is stored there and restarts that claim's idle clock, so one chunk every
+  `claimIdleTimeout` holds the stripe worker of every neighbor whose claim it serves: ≈ 720 chunks a
+  day per neighborhood, not per victim. The rest of the entry stands.
+- **(T4.7 part 3 fix round 1 → T6.3) Stall chains past the own-job grace.** `ownJobGrace` (19
+  minutes) covers one stall of an own job's stripe peer or verifier; a chain of stalls with no
+  chunk stored in between reads 0 from 19 minutes after the last own-job chunk (Decisions,
+  "(T4.7 part 3 fix round 1) Review Medium 1"): a stripe reassigned to further stalling peers (up
+  to 4 × `StripeTimeout`), a restart with a peer that stored and then stalls again, and above all
+  one stalling verifier picked for most stripes of a transfer, which verifies them one after
+  another under its lock ((stripes − 1) × `StripeTimeout`: ≈ 3.75 h at N = 17, 16 stripes) and
+  holds the stripe worker, the claims queued behind it and the transfer's threshold 0 that long.
+  Directions: spread the verifications across the candidates (rotate the order per stripe, so a
+  peer verifies at most ⌈stripes / candidates⌉), move a verifier's remaining verifications to the
+  next candidate once one of them timed out, and plan reassignments away from the peers that
+  stalled in the same job. Measure in G6 with a staller among the stripe peers and as the
+  verifier.
+- **(T4.7 part 3 fix round 1 → the proposal) §8.4: the holds, corrected.** In the text that "(T4.7
+  part 3 → the proposal) §8.4: the holds" proposes, read "within one node-wide grace of 19 minutes"
+  for "of 10 minutes", and "a radius decrease's new half, waiting for its transfer or in it, for at
+  most 10 minutes from the decrease or its last failed transfer" for "a radius decrease's new half
+  that waits for its transfer for at most 10 minutes". (Decisions, "(T4.7 part 3 fix round 1)
+  Review Medium 1" and "… Low 1".)
+- **(T4.7 part 3 fix round 1) Tests to run with `-race` on CI.** No C compiler here: they ran with
+  `-count=10 -cpu=1,2,4` (the reconciler package `-count=3 -cpu=1,2,4`). New:
+  `TestSyncRateOwnJobStall`, `TestSyncRateRadiusHalfGraceSpent`, `TestOwnJobSkipsEndedClaim`
+  (reconciler). Changed harness: `pinService` (`stallListed`, a stall only inside `inside`): every
+  `TestSyncRateClaim*`, `TestSyncRateHonestChurn`, `TestSyncRateOwnJobGrace`; `HoldPeerStripe` (a
+  cause cancel, the claim's context and an idle clock): `TestOwnJobTakesOverClaim`,
+  `TestOwnJobPreemptsClaims`, `TestClaimKeepsRounds`, `TestTransferring`. `adoptLocked` now reads
+  the claim in flight's context, which the worker sets under `r.mu` and its idle clock's goroutine
+  cancels, so re-run the whole reconciler package.
