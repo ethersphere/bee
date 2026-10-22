@@ -316,11 +316,11 @@ func (r *Reconciler) round() {
 	r.admitLocked(local, connected)
 	r.mu.Unlock()
 
-	bootstrap := r.planCatchUp(local, radiusPending)
+	bootstrap, isBootstrap := r.planCatchUp(local, radiusPending)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.scheduleLocked(local, connected, bootstrap)
+	r.scheduleLocked(local, connected, bootstrap, isBootstrap)
 }
 
 // track is the first step of a round: it follows the root and the topology
@@ -373,10 +373,12 @@ func (r *Reconciler) follow() (local rangesync.Status, connected []swarm.Address
 // eligible, has a differing digest, is Idle past its backoff, has no stripe
 // session waiting for it, holds this node's current root, and that this node
 // initiates with or takes over, unless a bootstrap transfer is in flight
-// (bootstrap). local is the round's Status. It then arms the start-up guard
-// when every neighbor has exchanged Statuses and no difference is left
-// unresolved, and adapts the round interval. r.mu must be held.
-func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Address, bootstrap bool) {
+// (bootstrap). local is the round's Status; isBootstrap reports that this
+// node is bootstrapping (IsBootstrap), so that the session-root check
+// registers no claim. It then arms the start-up guard when every neighbor
+// has exchanged Statuses and no difference is left unresolved, and adapts
+// the round interval. r.mu must be held.
+func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Address, bootstrap, isBootstrap bool) {
 	// A peer that accepts our Status but never sends its own keeps
 	// exchanged false; the guard then releases only at StartupGuardTimeout
 	// (the fallback path). Its eligibility is unknown without its Status.
@@ -468,10 +470,17 @@ func (r *Reconciler) scheduleLocked(local rangesync.Status, connected []swarm.Ad
 		// what it holds: the session root is striped instead, as the
 		// peer's claim (constraint (d) of AC-B2), and the sessions with
 		// this peer wait while the check holds. The opening of a radius
-		// decrease is the old half, which this node holds.
+		// decrease is the old half, which this node holds. While this node
+		// is bootstrapping (a bootstrap that failed, or that another own
+		// transfer kept out) no claim is registered: the next round's
+		// bootstrap of the root would end it and list again what it had
+		// listed (T4.7 part 1 re-review, Low 1), as the sessions this node
+		// serves register nothing then (ServedStriper).
 		if len(open) == 0 {
 			if sr, lacks := r.lacksSessionRootLocked(local, remote); lacks {
-				r.registerStripeLocked(&stripeJob{rg: sr, peer: p})
+				if !isBootstrap {
+					r.registerStripeLocked(&stripeJob{rg: sr, peer: p})
+				}
 				differs, unresolved = true, true
 				continue
 			}

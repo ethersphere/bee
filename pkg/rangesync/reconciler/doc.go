@@ -16,7 +16,9 @@
 // whatever the number of peers and bins. Work in flight adds goroutines that
 // end with their work: one per session this node opens (at most one per
 // peer, which also fetches the session's wants), three per stripe peer (its
-// transfers, their fetch and the stripe clock while it runs), at most
+// transfers, their fetch and the stripe clock while it runs), one for the
+// idle clock of a peer's claim while the stripe worker runs it
+// (claimIdleTimeout), at most
 // maxConcurrentProbes for Status sends, one per peer for the wants listed in
 // the sessions this node served (fetchServed, which queues the wants listed
 // meanwhile), and one per batch of retries. Retry batches are not bounded per

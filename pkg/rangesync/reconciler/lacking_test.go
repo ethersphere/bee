@@ -429,6 +429,126 @@ func TestOwnJobPreemptsClaims(t *testing.T) {
 	})
 }
 
+// TestOwnJobTakesOverClaim: this node's own transfer whose range is the
+// claim in flight takes the claim over instead of ending it (T4.7 part 1
+// re-review, Low 1): the claim's transfer goes on as the bootstrap or the
+// radius half, with the threshold 0 over it, and nothing new is queued, so
+// nothing is listed again. A radius increase ends a half taken over. A
+// claim in flight of another range is still ended (TestOwnJobPreemptsClaims).
+func TestOwnJobTakesOverClaim(t *testing.T) {
+	t.Parallel()
+
+	running := func(t *testing.T, r *reconciler.Reconciler, want fingerprint.Range) {
+		t.Helper()
+		rg, own, ok := r.RunningStripe()
+		if !ok || !own || !rg.Equal(want) {
+			t.Fatalf("running %s (own %v, %v), want the own transfer of %s", rg, own, ok, want)
+		}
+		if got := r.QueuedStripes(); len(got) != 0 {
+			t.Fatalf("queued %v, want nothing: the claim's transfer goes on", got)
+		}
+		if !r.Transferring(want) {
+			t.Fatal("the transfer taken over does not lower the threshold")
+		}
+		if n := r.PeerStripes(higher); n != 0 {
+			t.Fatalf("%d claims of the peer left", n)
+		}
+	}
+
+	t.Run("bootstrap", func(t *testing.T) {
+		t.Parallel()
+		root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+		other := addr(0xf1, 0)
+		svc := newFakeService(status(1000))
+		svc.remote[higher.ByteString()] = status(1000)
+		svc.remote[other.ByteString()] = status(1000)
+		r := admitted(t, svc, reconciler.Options{}, higher, other)
+		inFlight := r.HoldPeerStripe(root, higher)
+		svc.set(func() { svc.local = status(0) }) // bootstrapping
+		r.Round()
+		if inFlight.Err() != nil {
+			t.Fatal("the claim in flight was ended")
+		}
+		assertStripeRanges(t, r, root)
+		running(t, r, root)
+		if !r.Bootstrapping() {
+			t.Fatal("not bootstrapping")
+		}
+		r.Round() // registered once
+		assertStripeRanges(t, r, root)
+		if inFlight.Err() != nil {
+			t.Fatal("the transfer taken over was ended")
+		}
+	})
+
+	t.Run("radius half", func(t *testing.T) {
+		t.Parallel()
+		svc := newFakeService(selfRoot(1, 5))
+		for _, p := range []swarm.Address{higher, addr(0xf1, 0)} {
+			svc.remote[p.ByteString()] = selfRoot(0, 10)
+		}
+		r := admitted(t, svc, reconciler.Options{}, higher, addr(0xf1, 0))
+		half := sibling(1)
+		inFlight := r.HoldPeerStripe(half, higher)
+		svc.set(func() { svc.local = selfRoot(0, 5) }) // the radius decreased
+		r.Round()
+		if inFlight.Err() != nil {
+			t.Fatal("the claim in flight was ended")
+		}
+		if !r.RadiusStriping() {
+			t.Fatal("the new half is not striping")
+		}
+		running(t, r, half)
+		svc.set(func() { svc.local = selfRoot(1, 5) }) // the radius increased
+		r.Round()
+		if inFlight.Err() == nil {
+			t.Fatal("a radius increase does not end the half taken over")
+		}
+	})
+}
+
+// TestClaimCapDropsOnce (T4.7 part 1 re-review, Low 3): once a peer holds
+// MaxPeerStripes claims, the rest of a session's ranges is dropped at once,
+// counted once in stripes_total{dropped}, in the sessions this node opens
+// (enqueueStripes) and in those it serves (ServedStriper), not range by
+// range.
+func TestClaimCapDropsOnce(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	svc := newFakeService(status(1000))
+	svc.remote[higher.ByteString()] = status(1000)
+	r := admitted(t, svc, reconciler.Options{}, higher)
+	for i := range uint64(reconciler.MaxPeerStripes) {
+		if !r.EnqueuePeerStripes(higher, []fingerprint.Range{root.Child(4, i)}) {
+			t.Fatalf("claim %d not registered", i)
+		}
+	}
+	ranges := make([]fingerprint.Range, 16)
+	for i := range ranges {
+		ranges[i] = root.Child(8, 0x50+uint64(i)) // inside no registered claim
+	}
+	dropped := r.StripesTotal("dropped")
+	if r.EnqueuePeerStripes(higher, ranges) {
+		t.Fatal("a session past the peer's bound registered")
+	}
+	if got := r.StripesTotal("dropped") - dropped; got != 1 {
+		t.Fatalf("a session's drops counted %v times, want once", got)
+	}
+	s := r.ServedStriper(higher)
+	for _, rg := range ranges {
+		if !s.Stripe(rg, 0, rangesync.LargeDiff+1) {
+			t.Fatalf("range %s declined", rg)
+		}
+	}
+	if got := r.StripesTotal("dropped") - dropped; got != 2 {
+		t.Fatalf("a served session's drops counted %v times, want once", got-1)
+	}
+	if n := r.PeerStripes(higher); n != reconciler.MaxPeerStripes {
+		t.Fatalf("the peer holds %d claims, want %d", n, reconciler.MaxPeerStripes)
+	}
+}
+
 // TestClaimKeepsRounds is the lying peer of the review (T4.7 part 1 fix
 // round 1, Medium 1), over real services: a peer's claim of this node's
 // whole root, registered and in flight for as long as the test runs (a liar

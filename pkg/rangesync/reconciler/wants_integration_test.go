@@ -48,8 +48,10 @@ type roundNodeOptions struct {
 	roundInterval time.Duration
 	chunks        []swarm.Chunk
 	// now is the reconciler's clock (Options.Now) and svcNow the service's
-	// (rangesync.Options.Now); time.Now if nil.
+	// (rangesync.Options.Now); time.Now if nil. after is the reconciler's
+	// Options.After; time.After if nil.
 	now, svcNow func() time.Time
+	after       func(time.Duration) <-chan time.Time
 	// streamErr is the recorder's stream error (streamtest.WithStreamError);
 	// nil: none.
 	streamErr func(swarm.Address, string, string, string) error
@@ -80,7 +82,7 @@ func newRoundNode(t *testing.T, a swarm.Address, o roundNodeOptions, peers ...sw
 	if o.streamer != nil {
 		streamer = o.streamer(n.rec)
 	}
-	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval, Now: o.now, LargeDiff: o.largeDiff})
+	n.r = reconciler.New(a, &fakeTopology{peers: peers}, nil, log.Noop, reconciler.Options{RoundInterval: o.roundInterval, Now: o.now, After: o.after, LargeDiff: o.largeDiff})
 	so := rangesync.Options{
 		LeafBits:     8,
 		Scorer:       n.r,
@@ -613,6 +615,99 @@ func TestSyncRateCatchUpStoring(t *testing.T) {
 	if got := a.r.SyncRate(); got != 0 {
 		t.Fatalf("sync rate %v past the window, want 0", got)
 	}
+	if score := a.r.Score(b.addr); score != 0 {
+		t.Fatalf("peer scored %d", score)
+	}
+}
+
+// TestSyncRateCatchUpAfterGraceDrained closes a test gap of T4.5 part 2c
+// (round-2 review, Low 3): an honest catch-up that starts once a stalled one
+// drained the catch-up grace reads 0 until its first chunk is stored (the
+// honest window, which a drained grace no longer covers, as accepted there),
+// and at least StartupGuardRate from that chunk on, its fetch still in
+// flight: the real Service reports each chunk as it stores it
+// (FetchWithProgress), not when the fetch ends. The striped transfers count
+// their chunks the same way (T4.7 part 3).
+func TestSyncRateCatchUpAfterGraceDrained(t *testing.T) {
+	t.Parallel()
+
+	// a lists them all (a catch-up) and lacks only a few: streamtest
+	// deadlocks when its writer runs more than 16 deliveries ahead
+	const missing = 6
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	chs := chunktesting.GenerateTestRandomChunks(reconciler.CatchUpMinDiff)
+	var puts atomic.Int64
+	first, second := make(chan struct{}), make(chan struct{})
+	gate := &gatedFetchOpens{entered: make(chan struct{}), release: make(chan struct{})}
+	a := newRoundNode(t, addr(0x10, 0), roundNodeOptions{
+		now:           clock.Now,
+		roundInterval: time.Hour,
+		chunks:        chs[missing:],
+		putHook: func(swarm.Chunk) error {
+			switch puts.Add(1) {
+			case 1:
+				<-first
+			case 2:
+				<-second
+			}
+			return nil
+		},
+		streamer: func(s p2p.StreamerDisconnecter) p2p.StreamerDisconnecter {
+			gate.StreamerDisconnecter = s
+			return gate
+		},
+	})
+	var onceFirst, onceSecond, onceGate sync.Once
+	openFirst := func() { onceFirst.Do(func() { close(first) }) }
+	openSecond := func() { onceSecond.Do(func() { close(second) }) }
+	t.Cleanup(func() { // before the node's cleanup, which waits for the fetches
+		openFirst()
+		openSecond()
+		onceGate.Do(func() { close(gate.release) })
+	})
+	bAddr := addr(0xa0, 0)
+	b := newStripeNode(t, streamtest.New(streamtest.WithBaseAddr(bAddr)), bAddr, chs...)
+	a.routes[b.addr.String()] = b.svc.Protocol()
+	b.rec.SetProtocols(a.svc.Protocol())
+	exchangeStatus(t, a, b)
+	a.r.Start(context.Background())
+	clock.Add(reconciler.StartupGuardTimeout) // no neighbor: the guard ends at its timeout
+
+	// a catch-up whose fetch stream open stalls drains the grace
+	a.r.Wants(addr(0xb0, 0), distinctChunkIDs(reconciler.CatchUpMinDiff))
+	waitClosed(t, "the stalled open", gate.entered)
+	if got := a.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v within the grace", got)
+	}
+	clock.Add(reconciler.CatchUpGrace)
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v with the grace drained, want 0", got)
+	}
+
+	ids := make([]storer.ChunkID, len(chs))
+	for i, ch := range chs {
+		ids[i] = chunkIDOf(t, ch)
+	}
+	a.r.Wants(b.addr, ids) // a session a served listed them
+	waitFor(t, "the first chunk's put", func() bool { return puts.Load() == 1 })
+	if got := a.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v before the honest catch-up's first chunk, want 0", got)
+	}
+	openFirst()
+	waitFor(t, "the first chunk stored", func() bool { return puts.Load() == 2 })
+	clock.Add(10 * reconciler.CatchUpGrace)
+	if got := a.r.SyncRate(); got < reconciler.StartupGuardRate {
+		t.Fatalf("sync rate %v once the first chunk is stored, the fetch in flight, want at least %v", got, reconciler.StartupGuardRate)
+	}
+	openSecond()
+	waitFor(t, "the catch-up stored", func() bool {
+		for _, ch := range chs {
+			if !a.has(t, ch) {
+				return false
+			}
+		}
+		return true
+	})
 	if score := a.r.Score(b.addr); score != 0 {
 		t.Fatalf("peer scored %d", score)
 	}

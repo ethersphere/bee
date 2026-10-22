@@ -60,16 +60,39 @@ func (r *rateWindow) cleanupLocked(w int64) {
 // above 0 (graceBudget).
 const catchUpGrace = 2 * time.Second
 
-// graceBudget is what is left of catchUpGrace. It drains while any catch-up
-// fetch is in flight and is refilled, to catchUpGrace, only when a catch-up
-// stores a chunk: never with time, per peer or per fetch, so that no number
-// of peers, overlays, reconnects, stalled opens or held Wants renews it.
-// The zero value is spent; the Reconciler starts with a full one. The
-// Reconciler's mu guards it.
+// ownJobGrace is how long, in all, this node's own striped transfers (its
+// bootstrap and a radius decrease's new half, stripeJob.own) hold SyncRate at
+// StartupGuardRate while none of them stores a chunk: as long as a pending
+// half that is not registered yet (radiusHold), so that registering the
+// half does not shorten its hold, and longer than any honest pause of an
+// own transfer (a peer's Busy answers, at most maxStripeBusyRetries of
+// stripeRetryInterval per attempt; this node's index rebuild; a
+// verification round), yet shorter than the reserve worker's wake-up (15
+// minutes). It is one budget for the node (ownGrace): a peer cannot start an
+// own transfer at will, but a Sybil majority of the peers sharing this node's
+// root can make it bootstrap again and again (IsBootstrap), and a budget
+// that each bootstrap renewed would keep SyncRate above 0 most of the time
+// (T4.7 part 3).
+const ownJobGrace = radiusHold
+
+// graceBudget is what is left of a grace of size: catchUpGrace for the
+// catch-up fetches in flight, ownJobGrace for this node's own striped
+// transfers. It drains while what it covers is in flight (registered) and
+// is refilled, to size, only when that stores a chunk: never with time, per
+// peer or per fetch, so that no number of peers, overlays, reconnects,
+// stalled opens or held Wants renews it. The zero value is spent; the
+// Reconciler starts with full ones (newGraceBudget). The Reconciler's mu
+// guards it.
 type graceBudget struct {
+	size     time.Duration
 	left     time.Duration // at since
 	since    time.Time
 	draining bool
+}
+
+// newGraceBudget returns a full budget of size.
+func newGraceBudget(size time.Duration) graceBudget {
+	return graceBudget{size: size, left: size}
 }
 
 // leftAt returns what is left at now.
@@ -94,7 +117,7 @@ func (g *graceBudget) drain(now time.Time, draining bool) {
 
 // refill fills the budget at now.
 func (g *graceBudget) refill(now time.Time) {
-	g.left = catchUpGrace
+	g.left = g.size
 	if now.After(g.since) {
 		g.since = now
 	}

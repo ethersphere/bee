@@ -22,9 +22,11 @@ import (
 // chunk counted so far has left the rate.
 func pastWindow(h *harness) { h.clock.Add(2*reconciler.SyncRateWindow + 1) }
 
-// TestSyncRateBootstrap: a bootstrap keeps SyncRate above 0 until its stripes
-// and their verification have finished; then the stored chunks keep it up
-// within the window and it drops to 0 past the window.
+// TestSyncRateBootstrap: a bootstrap that stores nothing yet keeps SyncRate
+// above 0 within the own-job grace, and reads 0 past it (T4.7 part 3: before,
+// for as long as it was registered); once its stripes store, their chunks
+// keep it up through the verification and within the window after, and it
+// drops to 0 past the window.
 func TestSyncRateBootstrap(t *testing.T) {
 	t.Parallel()
 
@@ -40,11 +42,15 @@ func TestSyncRateBootstrap(t *testing.T) {
 	waitFor(t, "bootstrap registered", func() bool { return h.r.StripeRegistry() > 0 })
 	waitFor(t, "guard released", h.r.GuardReleased)
 	for range 3 {
-		pastWindow(h) // nothing stored yet: only the transfer holds the rate
+		h.clock.Add(reconciler.OwnJobGrace / 4) // nothing stored yet: only the grace holds the rate
 		if got := h.r.SyncRate(); got <= 0 {
-			t.Fatalf("sync rate %v during the bootstrap transfer", got)
+			t.Fatalf("sync rate %v during the bootstrap transfer, within the own-job grace", got)
 		}
 		settle()
+	}
+	h.clock.Add(reconciler.OwnJobGrace / 4)
+	if got := h.r.SyncRate(); got != 0 {
+		t.Fatalf("sync rate %v past the own-job grace with nothing stored, want 0", got)
 	}
 
 	open()
@@ -149,6 +155,8 @@ func reserveWorker(h *harness) bool {
 // TestSyncRateRadiusDecreaseSequencing: with the reserve below its threshold
 // the radius drops once, SyncRate rises during the new half's transfer, and
 // the next decrease waits for it (and for the window), as with the puller.
+// Before the half stores a chunk, the own-job grace holds the rate (T4.7
+// part 3: before, the registry did, for as long as the half was registered).
 func TestSyncRateRadiusDecreaseSequencing(t *testing.T) {
 	t.Parallel()
 
@@ -163,7 +171,7 @@ func TestSyncRateRadiusDecreaseSequencing(t *testing.T) {
 	}
 	waitFor(t, "new half in flight", func() bool { return countInside(svc, sibling(2), peers...) > 0 })
 	for range 3 {
-		pastWindow(h)
+		h.clock.Add(reconciler.OwnJobGrace / 4)
 		if reserveWorker(h) {
 			t.Fatal("radius decreased during the new half's transfer")
 		}
@@ -272,7 +280,9 @@ func TestSyncRateRadiusHalfOverlap(t *testing.T) {
 // top of it; its transfer alone holds SyncRate above 0 while it runs; it
 // transfers the half, and past the window the rate reads 0. Before T4.7
 // part 1 fix round 1 a full registry dropped the half, which waited under
-// RadiusHold (T3.5 review) until the registry had room.
+// RadiusHold (T3.5 review) until the registry had room. The half holds the
+// rate within the own-job grace while it stores nothing (T4.7 part 3), so
+// the test checks it within the grace, past the catch-up grace.
 func TestSyncRateRadiusHalfRegistryFull(t *testing.T) {
 	t.Parallel()
 
@@ -308,7 +318,9 @@ func TestSyncRateRadiusHalfRegistryFull(t *testing.T) {
 	if got := h.r.StripeRegistry(); got != 1 || !h.r.RadiusStriping() {
 		t.Fatalf("%d ranges registered once the claims ended, want the half only", got)
 	}
-	pastWindow(h) // nothing stored, no claim: only the half's transfer holds the rate
+	// nothing stored, no claim, the catch-up grace spent: only the half
+	// holds the rate
+	h.clock.Add(reconciler.CatchUpGrace + reconciler.OwnJobGrace/2)
 	if got := h.r.SyncRate(); got < reconciler.StartupGuardRate {
 		t.Fatalf("sync rate %v during the half's transfer, want >= %v", got, reconciler.StartupGuardRate)
 	}

@@ -428,7 +428,9 @@ func (p *pullerStandIn) SyncRate() float64 {
 // reaches 0 only once both have caught up. D bootstraps from the
 // rangesync-only peer R while it pulls from the pullsync-only peer P: with
 // the puller caught up and the bootstrap still running, and with rangesync
-// caught up and a pull still in the window, the sum is above 0.
+// caught up and a pull still in the window, the sum is above 0. The
+// bootstrap, whose fetch waits, holds the rate within the own-job grace
+// (T4.7 part 3), so the puller pulls first and its window passes during it.
 func TestDualModeSyncRate(t *testing.T) {
 	t.Parallel()
 
@@ -457,7 +459,12 @@ func TestDualModeSyncRate(t *testing.T) {
 		t.Fatalf("combined sync rate %v before the start", got)
 	}
 
-	// D's bootstrap fetch waits at R
+	// the puller pulls, then D's bootstrap fetch waits at R
+	puller.pull(t, 1)
+	if got := puller.SyncRate(); got <= 0 {
+		t.Fatalf("puller sync rate %v after a pull", got)
+	}
+	clock.Add(reconciler.SyncRateWindow / 2)
 	fetching, gate, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	t.Cleanup(func() { close(done) }) // before the nodes close
 	r.start(t, []*stripeNode{&d.stripeNode}, nil)
@@ -469,12 +476,9 @@ func TestDualModeSyncRate(t *testing.T) {
 		t.Fatal("no bootstrap transfer")
 	}
 
-	// the puller catches up while rangesync does not
-	puller.pull(t, 1)
-	if got := puller.SyncRate(); got <= 0 {
-		t.Fatalf("puller sync rate %v after a pull", got)
-	}
-	pastWindow()
+	// the puller catches up while rangesync does not: past the puller's
+	// window and the start-up guard's timeout, within the own-job grace
+	clock.Add(reconciler.SyncRateWindow / 2)
 	if got := puller.SyncRate(); got != 0 {
 		t.Fatalf("puller sync rate %v past the window", got)
 	}

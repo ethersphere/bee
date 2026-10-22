@@ -74,6 +74,7 @@ func (r *Reconciler) HoldStripe(rg fingerprint.Range) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.stripeRegistry = append(r.stripeRegistry, &stripeJob{rg: rg, own: true})
+	r.ownJobsChangedLocked()
 }
 
 // HoldClaims registers ranges as claims of no peer without queuing them for
@@ -106,6 +107,7 @@ func (r *Reconciler) ReleaseStripe(rg fingerprint.Range) {
 	if r.stripeRunning != nil && r.stripeRunning.rg.Equal(rg) {
 		r.stripeRunning = nil
 	}
+	r.ownJobsChangedLocked()
 }
 
 // PeerStripes returns the number of peer's claims in the registry.
@@ -154,11 +156,45 @@ func (r *Reconciler) CatchUpFetches() int {
 	return r.catchUpFetches
 }
 
-// MaxServedPending is maxServedPending; CatchUpGrace is catchUpGrace.
+// MaxServedPending is maxServedPending; CatchUpGrace is catchUpGrace;
+// OwnJobGrace is ownJobGrace; ClaimIdleTimeout is claimIdleTimeout.
 const (
 	MaxServedPending = maxServedPending
 	CatchUpGrace     = catchUpGrace
+	OwnJobGrace      = ownJobGrace
+	ClaimIdleTimeout = claimIdleTimeout
 )
+
+// RunningStripe returns the range of the job in flight in the stripe worker,
+// and whether it is this node's own (stripeJob.own); ok is false when none
+// is.
+func (r *Reconciler) RunningStripe() (rg fingerprint.Range, own, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stripeRunning == nil {
+		return rg, false, false
+	}
+	return r.stripeRunning.rg, r.stripeRunning.own, true
+}
+
+// FailBootstrap ends the bootstrap transfer, queued or in flight, as the
+// stripe worker does after one that did not complete.
+func (r *Reconciler) FailBootstrap() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	drop := func(j *stripeJob) bool { return j.bootstrap }
+	r.stripeRegistry = slices.DeleteFunc(r.stripeRegistry, drop)
+	r.stripeQueue = slices.DeleteFunc(r.stripeQueue, drop)
+	r.bootstrapping, r.bootstrapFailed = false, true
+	r.ownJobsChangedLocked()
+}
+
+// Bootstrapping reports whether a bootstrap transfer is queued or in flight.
+func (r *Reconciler) Bootstrapping() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.bootstrapping
+}
 
 // StripeRanges returns the registered stripe ranges, in order.
 func (r *Reconciler) StripeRanges() []fingerprint.Range {

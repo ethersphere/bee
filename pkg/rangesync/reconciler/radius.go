@@ -38,14 +38,17 @@ const (
 	// radiusHold bounds how long a pending new half that is not registered
 	// for a transfer (no covering peer, overlap with another own transfer,
 	// a retry awaiting its round) keeps SyncRate above 0 (§8.4). Claims do
-	// not keep it from being registered (registerStripeLocked).
+	// not keep it from being registered (registerStripeLocked). A
+	// registered half holds SyncRate within the own-job grace (ownJobGrace,
+	// as long) while it stores nothing (T4.7 part 3).
 	radiusHold = SyncRateWindow
 	// maxRadiusAttempts bounds the striped transfers of one new half.
 	maxRadiusAttempts = 3
 )
 
-// radiusHoldLocked reports whether a pending decrease holds SyncRate: its
-// half is registered (the registry counts it) or waits within radiusHold.
+// radiusHoldLocked reports whether a pending decrease whose half is not
+// registered holds SyncRate: it waits within radiusHold. A registered half
+// is an own job, which holds SyncRate within the own-job grace (SyncRate).
 func (r *Reconciler) radiusHoldLocked() bool {
 	s := r.radius
 	return s.pending && !s.striping && r.now().Sub(s.since) < radiusHold
@@ -88,7 +91,8 @@ func (r *Reconciler) trackRootLocked(root fingerprint.Range) {
 
 // enqueueRadiusHalf registers the pending new half for a striped transfer
 // once a peer whose root covers it has a Status (PlanStripes on the half
-// only, §7.5).
+// only, §7.5). A half that is the claim in flight takes the claim over
+// (adoptLocked) instead of ending it.
 func (r *Reconciler) enqueueRadiusHalf() {
 	r.mu.Lock()
 	s := r.radius
@@ -112,7 +116,8 @@ func (r *Reconciler) enqueueRadiusHalf() {
 		return
 	}
 	ctx, cancel := context.WithCancel(r.ctx)
-	if !r.registerStripeLocked(&stripeJob{rg: s.newHalf, radius: true, ctx: ctx, own: true}) {
+	job := &stripeJob{rg: s.newHalf, radius: true, ctx: ctx, own: true}
+	if !r.adoptLocked(job) && !r.registerStripeLocked(job) {
 		cancel() // overlaps another own transfer: retried next round
 		return
 	}

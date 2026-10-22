@@ -550,6 +550,96 @@ func TestRoundBootstrapFailedResumesSessions(t *testing.T) {
 	waitFor(t, "root session", func() bool { return rootSessions(svc, higher, other) })
 }
 
+// TestRoundBootstrapFailedPastLargeDiff covers what
+// TestRoundBootstrapFailedResumesSessions does not, a difference past
+// LargeDiff (T4.7 part 1 re-review, Low 1): the round after a bootstrap
+// that did not complete opens no round session with the peers this node
+// lacks far behind (the session-root check) and, while IsBootstrap holds,
+// registers no claim of the root; the next round registers the bootstrap
+// again. Before, that round registered the root as the peer's claim, whose
+// transfer the next round's bootstrap ended, so that what the claim had
+// listed was listed again.
+func TestRoundBootstrapFailedPastLargeDiff(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 2
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(0))
+	svc.remote[higher.ByteString()] = status(5)
+	svc.remote[other.ByteString()] = status(5)
+	r := admitted(t, svc, reconciler.Options{LargeDiff: largeDiff}, higher, other)
+	assertStripeRanges(t, r, root)
+	if !r.Bootstrapping() {
+		t.Fatal("no bootstrap")
+	}
+
+	r.FailBootstrap()
+	r.Round()
+	settle()
+	if got := r.StripeRanges(); len(got) != 0 {
+		t.Fatalf("registered %v in the round after a failed bootstrap", got)
+	}
+	for _, p := range []swarm.Address{higher, other} {
+		if n := roundSessions(svc, p); n != 0 {
+			t.Fatalf("%d round sessions with %s, which this node lacks far behind", n, p)
+		}
+	}
+
+	r.Round()
+	assertStripeRanges(t, r, root)
+	if !r.Bootstrapping() || !r.Transferring(root) {
+		t.Fatal("bootstrap not registered again")
+	}
+}
+
+// TestRoundBootstrapTakesOverStartupClaim is the start-up trigger of T4.7
+// part 1 re-review, Low 1, past LargeDiff: until a peer that shares this
+// node's root is admitted, IsBootstrap is false, and this node's empty root
+// is registered as the claim of a peer whose root contains it (an edge peer,
+// whose count spread over this node's root is more than LargeDiff above;
+// with no peer admitted at all the claim's plan has no stripe peer and it
+// ends at once), and its transfer runs. Once the same-root peer is admitted,
+// the round's bootstrap takes the claim over: the edge peer's stripe session
+// is neither ended nor opened again, so nothing is listed twice, and the
+// transfer completes as the bootstrap. Before, the bootstrap ended the claim
+// and transferred the root again.
+func TestRoundBootstrapTakesOverStartupClaim(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 100
+	local := selfRoot(1, 0)
+	edge, same := higher, addr(0xc0, 0)
+	svc := newPinService(local)
+	svc.remote[edge.ByteString()] = statusAt(fingerprint.NewRange(swarm.ZeroAddress, 0), 2000)
+	svc.lists[edge.ByteString()] = 3
+	svc.gated[edge.ByteString()] = true
+	h := newPinHarness(t, svc, svc.fakeService, largeDiff, edge, same)
+	waitFor(t, "the edge peer's claim in flight", func() bool {
+		rg, own, ok := h.r.RunningStripe()
+		return ok && !own && rg.Equal(local.Root) && countInside(svc.fakeService, local.Root, edge) == 1
+	})
+
+	// the same-root peer's Status arrives: this node is bootstrapping
+	svc.set(func() { svc.remote[same.ByteString()] = selfRoot(1, 1000) })
+	svc.statusChange()
+	waitFor(t, "bootstrap", h.r.Bootstrapping)
+	if rg, own, ok := h.r.RunningStripe(); !ok || !own || !rg.Equal(local.Root) {
+		t.Fatalf("running %s (own %v, %v), want the claim taken over", rg, own, ok)
+	}
+	svc.set(func() { svc.local = selfRoot(1, 1000) }) // caught up once the transfer is done
+	for range 3 {
+		svc.drip(t)
+	}
+	waitFor(t, "bootstrap done", func() bool { return !h.r.Bootstrapping() && h.r.StripeRegistry() == 0 })
+	if n := countInside(svc.fakeService, local.Root, edge); n != 1 {
+		t.Fatalf("%d stripe sessions with the edge peer, want 1: the root was listed again", n)
+	}
+	if got := h.r.StripesTotal("done"); got != 1 {
+		t.Fatalf("%v stripes done, want 1", got)
+	}
+}
+
 // TestRoundBootstrapNoStripePeer: a plan with no peer status yields a
 // failed stripe (ErrNoStripePeer), which marks a bootstrap failed.
 func TestRoundBootstrapNoStripePeer(t *testing.T) {

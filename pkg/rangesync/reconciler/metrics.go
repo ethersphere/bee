@@ -19,7 +19,9 @@ type metrics struct {
 	// Failures counts PeerScorer failures.
 	Failures prometheus.Counter
 	// Stripes counts stripe transfers by result: done, reassigned or
-	// timeout.
+	// timeout; dropped counts the ranges, or one session's ranges, not
+	// registered past a registry bound, and idle the peers' claims ended
+	// for storing nothing (claimIdleTimeout).
 	Stripes *prometheus.CounterVec
 	// VerificationDiff is the number of differences (chunks this node lacked
 	// and the verifier delivered; IDs only listed are not counted) the
@@ -62,7 +64,7 @@ func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmStat
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stripes_total",
-			Help:      "Striped transfers of a stripe, by result (done, reassigned, timeout).",
+			Help:      "Striped transfers of a stripe, by result (done, reassigned, timeout; dropped: ranges not registered; idle: claims ended for storing nothing).",
 		}, []string{"result"}),
 		VerificationDiff: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,

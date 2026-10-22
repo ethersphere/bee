@@ -35,10 +35,11 @@ const (
 	// StartupGuardTimeout bounds the start-up guard of SyncRate.
 	StartupGuardTimeout = rangesync.StartupGuardTimeout
 	// StartupGuardRate is the least SyncRate reports while the start-up
-	// guard holds, while a range is registered for a striped transfer or a
-	// radius decrease's new half waits for one, and while a catch-up fetch
-	// is in flight and a chunk a catch-up stored is in the window or the
-	// catch-up grace holds (SyncRate).
+	// guard holds, while a radius decrease's new half waits for its
+	// transfer, while this node's own striped transfer is registered and
+	// the own-job grace holds, and while a catch-up fetch is in flight and
+	// a chunk a catch-up stored is in the window or the catch-up grace holds
+	// (SyncRate).
 	StartupGuardRate = 1.0
 
 	// ScoreThreshold is the failure score above which a peer is
@@ -239,9 +240,12 @@ type Reconciler struct {
 	awaiting         map[string]bool
 	pendingReconcile int // sessions whose Reconcile has not returned
 	// catchUpFetches counts the catch-up fetches in flight (addCatchUpLocked);
-	// grace is what is left of their catch-up grace (graceBudget).
+	// grace is what is left of their catch-up grace (graceBudget), and
+	// ownGrace what is left of the own-job grace of this node's own striped
+	// transfers (ownJobGrace, ownJobsChangedLocked).
 	catchUpFetches int
 	grace          graceBudget
+	ownGrace       graceBudget
 	// servedFetches holds, per peer whose served sessions' fetcher runs
 	// (fetchServed), the wants queued for it.
 	servedFetches map[string]*servedQueue
@@ -338,7 +342,8 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		peers:         make(map[string]*peerState),
 		scores:        make(map[string]score),
 		awaiting:      make(map[string]bool),
-		grace:         graceBudget{left: catchUpGrace},
+		grace:         newGraceBudget(catchUpGrace),
+		ownGrace:      newGraceBudget(ownJobGrace),
 		servedFetches: make(map[string]*servedQueue),
 		stripeWake:    make(chan struct{}, 1),
 		gossipWake:    make(chan struct{}, 1),
@@ -597,10 +602,9 @@ func (r *Reconciler) checkGuardLocked() {
 // initiates have resolved their difference, and every eligible peer with a
 // differing digest that initiates has run a session with this node), or until
 // StartupGuardTimeout after Start, it returns StartupGuardRate. With no
-// eligible neighbor the guard holds until the timeout. While a range is
-// registered for a striped transfer (queued, transferring or being verified),
-// or a radius decrease's new half waits for its transfer (at most
-// radiusHold), it is at least StartupGuardRate.
+// eligible neighbor the guard holds until the timeout. While a radius
+// decrease's new half waits for its transfer (at most radiusHold), it is at
+// least StartupGuardRate.
 //
 // A catch-up fetch in flight raises it to StartupGuardRate only while the
 // rate is above 0 (a catch-up stored a chunk within the window) or the
@@ -608,6 +612,19 @@ func (r *Reconciler) checkGuardLocked() {
 // chunk, node-wide (graceBudget). So fetches that store nothing, a peer's
 // stalled opens or held Wants, cannot hold it above 0 past the grace,
 // however many peers start them.
+//
+// A registered striped transfer holds it only while it stores chunks, past
+// a grace (T4.7 part 3). A peer's claim (stripeJob.own false) holds nothing
+// of its own: its transfer and verification are catch-up fetches in flight,
+// so they hold it within the catch-up grace or while their chunks are in
+// the window, and a queued claim holds nothing. This node's own transfers
+// (its bootstrap, a radius decrease's new half), queued, transferring or
+// being verified, hold it at least at StartupGuardRate while the own-job
+// grace holds: ownJobGrace in all while none of them stores a chunk,
+// node-wide. So a stripe that stalls, a peer's claim or this node's own
+// transfer, holds SyncRate above 0 no longer than its chunks and the grace
+// do, and a peer that drips a chunk now and then holds it as an honest slow
+// peer would: while those chunks are in the window.
 func (r *Reconciler) SyncRate() float64 {
 	if !r.started.Load() {
 		return StartupGuardRate
@@ -615,7 +632,8 @@ func (r *Reconciler) SyncRate() float64 {
 	r.mu.Lock()
 	now := r.now()
 	catchUp := r.catchUpFetches > 0
-	hold := len(r.stripeRegistry) > 0 || r.radiusHoldLocked() || r.guardHoldsLocked(now) || catchUp && r.grace.holds(now)
+	own := r.ownJobsLocked() && r.ownGrace.holds(now)
+	hold := own || r.radiusHoldLocked() || r.guardHoldsLocked(now) || catchUp && r.grace.holds(now)
 	r.mu.Unlock()
 	rt := r.rate.Rate()
 	if (hold || catchUp && rt > 0) && rt < StartupGuardRate {
@@ -641,6 +659,19 @@ func (r *Reconciler) countCatchUp(n int) {
 	r.mu.Lock()
 	r.grace.refill(r.now())
 	r.mu.Unlock()
+}
+
+// ownJobsLocked reports whether one of this node's own striped transfers
+// (stripeJob.own) is registered. r.mu must be held.
+func (r *Reconciler) ownJobsLocked() bool {
+	return slices.ContainsFunc(r.stripeRegistry, func(j *stripeJob) bool { return j.own })
+}
+
+// ownJobsChangedLocked makes the own-job grace drain while an own striped
+// transfer is registered, and stop otherwise; it is called whenever the
+// registry may have gained or lost one. r.mu must be held.
+func (r *Reconciler) ownJobsChangedLocked() {
+	r.ownGrace.drain(r.now(), r.ownJobsLocked())
 }
 
 // Fail implements rangesync.PeerScorer: it raises the failure score of peer

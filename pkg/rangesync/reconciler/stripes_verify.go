@@ -81,6 +81,13 @@ type VerifyResult struct {
 // like a transfer: one session per peer at a time, peers in parallel; they
 // count as catch-up (SyncRate). The results are in the order of results.
 func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) []VerifyResult {
+	return r.verifyStripes(ctx, results, nil)
+}
+
+// verifyStripes is VerifyStripes; stored, if not nil, is called whenever a
+// verification's fetch stores chunks (the stripe worker's job progress,
+// jobStored).
+func (r *Reconciler) verifyStripes(ctx context.Context, results []StripeResult, stored func()) []VerifyResult {
 	r.mu.Lock()
 	r.addCatchUpLocked(1)
 	r.mu.Unlock()
@@ -111,7 +118,7 @@ func (r *Reconciler) VerifyStripes(ctx context.Context, results []StripeResult) 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = r.verifyStripe(ctx, res, verifier, locks)
+			out[i] = r.verifyStripe(ctx, res, verifier, locks, stored)
 		}()
 	}
 	wg.Wait()
@@ -137,11 +144,12 @@ func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (s
 	return swarm.ZeroAddress, false
 }
 
-// verifyStripe verifies res with verifier and scores the deliverer.
-func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks) VerifyResult {
+// verifyStripe verifies res with verifier and scores the deliverer; stored,
+// if not nil, is called whenever its fetch stores chunks.
+func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks, stored func()) VerifyResult {
 	v := VerifyResult{Range: res.Range, Deliverer: res.Peer, Verifier: verifier}
 	// one attempt, with a peer's whole budget on the stripe clock
-	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {}, stripePeerBudget*r.stripeTimeout)
+	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {}, stored, stripePeerBudget*r.stripeTimeout)
 	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered-t.outsideRoot, t.Err
 	if v.Err != nil {
 		// an incomplete verification says nothing about the deliverer
