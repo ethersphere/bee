@@ -231,15 +231,15 @@ func TestRoundIntervalBounds(t *testing.T) {
 }
 
 // TestRoundSessionCap: a round with more differing peers than the per-node
-// cap (InitiatedSessionCap: 19 peers, more than the node's session tokens,
-// so the cap is MinInitiatedSessions) runs at most that many sessions at
-// once; the others wait for a slot and run once one frees.
+// cap (InitiatedSessionCap: 24 peers, 8 past the node's session tokens, so
+// the cap is MinInitiatedSessions) runs at most that many sessions at once;
+// the others wait for a slot and run once one frees.
 func TestRoundSessionCap(t *testing.T) {
 	t.Parallel()
 
 	svc := newFakeService(status(1))
 	svc.reconcileGate = make(chan struct{})
-	peers := make([]swarm.Address, 2*reconciler.MinInitiatedSessions+3)
+	peers := make([]swarm.Address, 3*reconciler.MinInitiatedSessions)
 	for i := range peers {
 		peers[i] = addr(0xf0, byte(i))
 		svc.remote[peers[i].ByteString()] = status(2)
@@ -319,15 +319,19 @@ func TestRoundSessionCapSharedWithStripes(t *testing.T) {
 }
 
 // TestInitiatedSessionCap checks the per-node cap (InitiatedSessionCap) at
-// every rank of neighborhoods of N = 9, 17, 25 and 33 nodes, where the node
-// of rank k (by overlay) has k lower-overlay and N − 1 − k higher-overlay
-// eligible peers, and its invariants over a grid of peer counts: it lies in
-// [MinInitiatedSessions, MaxConcurrentSessions]; it leaves a token for the
-// session of each lower-overlay peer, for up to MaxConcurrentSessions −
-// MinInitiatedSessions of them; with up to MaxConcurrentSessions peers (N ≤
-// 17) it covers every higher-overlay peer (a round's sessions in one wave)
-// and, where the tokens allow, MaxStripeSessions stripe sessions besides;
-// with more it is MinInitiatedSessions.
+// every rank of neighborhoods of N = 9, 17, 18, 21, 24, 25 and 33 nodes,
+// where the node of rank k (by overlay) has k lower-overlay and N − 1 − k
+// higher-overlay eligible peers, and its invariants over a grid of peer
+// counts: it lies in [MinInitiatedSessions, MaxConcurrentSessions]; it leaves
+// a token for the session of each lower-overlay peer, for up to
+// MaxConcurrentSessions − MinInitiatedSessions of them; with up to
+// MaxConcurrentSessions peers (N ≤ 17) it covers every higher-overlay peer (a
+// round's sessions in one wave) and, where the tokens allow,
+// MaxStripeSessions stripe sessions besides; with more, each peer past the
+// tokens takes a slot off that room, down to MinInitiatedSessions, which it
+// is from MaxConcurrentSessions + MinInitiatedSessions peers on (N ≥ 25); and
+// one peer more moves it by at most 1 (a higher-overlay peer) or 2 (a
+// lower-overlay one), so that it has no step (T4.7 part 2 fix round 1).
 func TestInitiatedSessionCap(t *testing.T) {
 	t.Parallel()
 
@@ -339,7 +343,9 @@ func TestInitiatedSessionCap(t *testing.T) {
 	}{
 		{n: 9, want: []int{12, 11, 10, 9, 8, 8, 8, 8, 8}},
 		{n: 17, want: slices.Concat([]int{16, 15, 14, 13, 12, 11, 10, 9}, floor(9))},
-		{n: 18, want: floor(18)},
+		{n: 18, want: slices.Concat([]int{15, 14, 13, 12, 11, 10, 9}, floor(11))},
+		{n: 21, want: slices.Concat([]int{12, 11, 10, 9}, floor(17))},
+		{n: 24, want: slices.Concat([]int{9}, floor(23))},
 		{n: 25, want: floor(25)},
 		{n: 33, want: floor(33)},
 	} {
@@ -358,17 +364,26 @@ func TestInitiatedSessionCap(t *testing.T) {
 		for lower := range 41 {
 			got := reconciler.InitiatedSessionCap(higher, lower)
 			reserve := min(lower, tokens-reconciler.MinInitiatedSessions)
+			excess := higher + lower - tokens // peers past the tokens
 			switch {
 			case got < reconciler.MinInitiatedSessions || got > tokens:
 				t.Errorf("higher %d, lower %d: cap %d outside [%d, %d]", higher, lower, got, reconciler.MinInitiatedSessions, tokens)
 			case got+reserve > tokens:
 				t.Errorf("higher %d, lower %d: cap %d leaves %d tokens for the lower-overlay peers' sessions, want %d", higher, lower, got, tokens-got, reserve)
-			case higher+lower <= tokens && got < higher:
+			case excess <= 0 && got < higher:
 				t.Errorf("higher %d, lower %d: cap %d below the higher-overlay peers", higher, lower, got)
-			case higher+lower <= tokens && got < min(higher+reconciler.MaxStripeSessions, tokens-lower):
+			case excess <= 0 && got < min(higher+reconciler.MaxStripeSessions, tokens-lower):
 				t.Errorf("higher %d, lower %d: cap %d, below the room for the higher-overlay peers and the stripes", higher, lower, got)
-			case higher+lower > tokens && got != reconciler.MinInitiatedSessions:
-				t.Errorf("higher %d, lower %d: cap %d past the tokens, want %d", higher, lower, got, reconciler.MinInitiatedSessions)
+			case excess > 0 && got > max(reconciler.MinInitiatedSessions, tokens-lower-excess):
+				t.Errorf("higher %d, lower %d: cap %d, %d peers past the tokens: above the room less one slot per peer past them", higher, lower, got, excess)
+			case excess >= reconciler.MinInitiatedSessions && got != reconciler.MinInitiatedSessions:
+				t.Errorf("higher %d, lower %d: cap %d, %d peers past the tokens: want %d", higher, lower, got, excess, reconciler.MinInitiatedSessions)
+			}
+			if d := reconciler.InitiatedSessionCap(higher+1, lower) - got; d < -1 || d > 1 {
+				t.Errorf("higher %d, lower %d: cap %d moves by %d with one more higher-overlay peer", higher, lower, got, d)
+			}
+			if d := reconciler.InitiatedSessionCap(higher, lower+1) - got; d < -2 || d > 0 {
+				t.Errorf("higher %d, lower %d: cap %d moves by %d with one more lower-overlay peer", higher, lower, got, d)
 			}
 		}
 	}
@@ -377,7 +392,8 @@ func TestInitiatedSessionCap(t *testing.T) {
 // TestRoundSessionCapPerNode: a round sizes the cap from its eligible peers
 // (InitiatedSessionCap) before it starts its sessions, and runs that many at
 // once: at the ranks of N = 9 and 17 a session with every differing
-// higher-overlay peer in one wave, past N = 17 MinInitiatedSessions, so that
+// higher-overlay peer in one wave; past N = 17 one slot less per peer past
+// the node's session tokens, and from N = 25 on MinInitiatedSessions, so that
 // half of the tokens stay free for the lower-overlay peers' sessions. The
 // lower-overlay peers here have equal digests: eligible, but no session.
 func TestRoundSessionCapPerNode(t *testing.T) {
@@ -393,7 +409,8 @@ func TestRoundSessionCapPerNode(t *testing.T) {
 		{name: "N=17 rank 0", higher: 16, want: 16},
 		{name: "N=17 rank 4", lower: 4, higher: 12, want: 12},
 		{name: "N=17 rank 12", lower: 12, higher: 4, want: 4},
-		{name: "N=18 rank 0", higher: 17, want: 8},
+		{name: "N=18 rank 0", higher: 17, want: 15},
+		{name: "N=21 rank 2", lower: 2, higher: 18, want: 10},
 		{name: "N=25 rank 4", lower: 4, higher: 20, want: 8},
 		{name: "N=25 rank 12", lower: 12, higher: 12, want: 8},
 		{name: "N=33 rank 0", higher: 32, want: 8},

@@ -63,13 +63,13 @@ import (
 //   - Cap. The sessions this node opens, round sessions, takeovers, stripe
 //     transfers and verifications alike, take one of the per-node cap's
 //     slots first and wait for one, first come, first served. Each round
-//     sets the cap from its eligible peers (InitiatedSessionCap): while they
-//     fit the node's session tokens, room for every higher-overlay peer's
-//     session and the stripe sessions within the tokens the lower-overlay
-//     peers' sessions leave, else MinInitiatedSessions. Stripe transfers
-//     and verifications first take one of MaxStripeSessions stripe slots,
-//     so that round sessions always have the other slots, and free both
-//     while they wait to retry a Busy answer.
+//     sets the cap from its eligible peers (InitiatedSessionCap): room for
+//     every higher-overlay peer's session and the stripe sessions within the
+//     tokens the lower-overlay peers' sessions leave, one slot less per peer
+//     past the node's session tokens, and at least MinInitiatedSessions.
+//     Stripe transfers and verifications first take one of
+//     MaxStripeSessions stripe slots, so that round sessions always have the
+//     other slots, and free both while they wait to retry a Busy answer.
 const (
 	// MinRoundInterval is the shortest round interval, used while rounds
 	// keep finding differences.
@@ -171,17 +171,19 @@ func (r *Reconciler) takeoverDueLocked(st *peerState, now time.Time, sameRoot bo
 // wave, and no session finds the node's tokens taken. With more peers the
 // neighborhood's sessions do not fit the tokens of its higher-overlay nodes,
 // which answer the excess Busy, and more sessions at once from the lower
-// overlays only raise those answers (measured at N = 25 and 33, T4.7 part 2):
-// the cap is MinInitiatedSessions, which leaves the other half of the tokens
-// to the sessions it serves.
+// overlays only raise those answers (measured at N = 25 and 33, T4.7 part 2).
+// There each peer past the tokens (excess) takes one more slot off the room,
+// so that the cap slides down to MinInitiatedSessions, which leaves the other
+// half of the tokens to the sessions the node serves, and is that at every
+// rank from N = 25 on. One peer more or fewer moves the cap by at most 2,
+// with no step at N = 17/18 (T4.7 part 2 fix round 1, measured at N = 18
+// and 21: the Busy answers stay below N = 25's).
 //
-//	cap = max(MinInitiatedSessions, min(higher + MaxStripeSessions, MaxConcurrentSessions − lower))  if higher + lower ≤ MaxConcurrentSessions
-//	cap = MinInitiatedSessions                                                                      otherwise
+//	excess = max(0, higher + lower − MaxConcurrentSessions)
+//	cap    = max(MinInitiatedSessions, min(higher + MaxStripeSessions, MaxConcurrentSessions − lower − excess))
 func InitiatedSessionCap(higher, lower int) int {
-	if higher+lower > rangesync.MaxConcurrentSessions {
-		return MinInitiatedSessions
-	}
-	return max(MinInitiatedSessions, min(higher+MaxStripeSessions, rangesync.MaxConcurrentSessions-lower))
+	excess := max(0, higher+lower-rangesync.MaxConcurrentSessions)
+	return max(MinInitiatedSessions, min(higher+MaxStripeSessions, rangesync.MaxConcurrentSessions-lower-excess))
 }
 
 // acquireSlot takes one of the slots of the per-node cap for a session this

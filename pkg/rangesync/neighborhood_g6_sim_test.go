@@ -153,34 +153,48 @@ func TestG6Constants(t *testing.T) {
 }
 
 // TestG6InitiatedCap measures the per-node initiated-session cap
-// (reconciler.InitiatedSessionCap) past N = 17, where a node's sessions, one
-// per peer, no longer fit its MaxConcurrentSessions tokens: N = 17, 25 and
-// 33 at the steady load (~15 uploads per second), Delay 50 ms, 3 seeds, the
-// per-node cap against the constant cap of 8 before G6. Busy and
-// session-limit answers are the opening side's, Busy given the serving
-// side's; served min is the fewest completed sessions per lower-overlay peer
-// that a node served (0 would be a node whose served sessions starved), and
-// unpaired the pairs with no completed session (either side opening, which
-// then converge through the others), both from the first upload.
+// (reconciler.InitiatedSessionCap) around and past N = 17, where a node's
+// sessions, one per peer, no longer fit its MaxConcurrentSessions tokens:
+// N = 17, 18, 21 and 25 at Delay 50 and 200 ms, and 33 at 50 ms, at the
+// steady load (~15 uploads per second), 6 seeds, the per-node cap against
+// the constant cap of 8 before G6. Busy and session-limit answers are the
+// opening side's, Busy given the serving side's; served min is the fewest
+// completed sessions per lower-overlay peer that a node served (0 would be a
+// node whose served sessions starved), and unpaired the pairs with no
+// completed session (either side opening, which then converge through the
+// others), both from the first upload.
 func TestG6InitiatedCap(t *testing.T) {
-	const seeds = 3
-	tbl := &g6Table{header: []string{"N", "cap", "share %", "convergence mean, max s", "sessions/upload", "Busy, session limit, Busy given /upload", "stale /upload", "served min, unpaired pairs", "n_Δ p50, p99", "wants max", "wall"}}
-	for _, n := range []int{17, 25, 33} {
+	const seeds = 6
+	tbl := &g6Table{header: []string{"N", "Delay", "cap", "share %", "convergence mean, max s", "sessions/upload", "Busy, session limit, Busy given /upload", "stale /upload", "served min, unpaired pairs", "n_Δ p50, p99", "wants max", "wall"}}
+	for _, row := range []struct {
+		n     int
+		delay time.Duration
+	}{
+		{17, 50 * time.Millisecond},
+		{17, 200 * time.Millisecond},
+		{18, 50 * time.Millisecond},
+		{18, 200 * time.Millisecond},
+		{21, 50 * time.Millisecond},
+		{21, 200 * time.Millisecond},
+		{25, 50 * time.Millisecond},
+		{25, 200 * time.Millisecond},
+		{33, 50 * time.Millisecond},
+	} {
 		for _, slots := range []int{0, 8} {
 			capName := "per node"
 			if slots > 0 {
 				capName = fmt.Sprint(slots)
 			}
-			name := fmt.Sprintf("N=%d/cap=%s", n, capName)
+			name := fmt.Sprintf("N=%d/Delay=%v/cap=%s", row.n, row.delay, capName)
 			fs, wall := g6Runs(t, name, seeds, func(seed uint64) simOptions {
-				o := steadyOptions(n, seed)
-				o.Delay, o.InitiatedSessions = 50*time.Millisecond, slots
+				o := steadyOptions(row.n, seed)
+				o.Delay, o.InitiatedSessions = row.delay, slots
 				return o
 			})
 			if len(fs) == 0 {
 				continue
 			}
-			tbl.add(fmt.Sprint(n), capName, g6SpreadOf(fs, g6Share).format(100, 1),
+			tbl.add(fmt.Sprint(row.n), row.delay.String(), capName, g6SpreadOf(fs, g6Share).format(100, 1),
 				fmt.Sprintf("%.2f, %.2f", g6SpreadOf(fs, g6Conv).mean, g6SpreadOf(fs, g6MaxConv).hi),
 				g6SpreadOf(fs, g6Sessions).short(1, 2),
 				fmt.Sprintf("%.3f, %.3f, %.3f", g6SpreadOf(fs, g6Busy).mean, g6SpreadOf(fs, g6SessionLimit).mean, g6SpreadOf(fs, g6ServedBusy).mean),
@@ -196,7 +210,7 @@ func TestG6InitiatedCap(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%s; steady load, Delay 50 ms, %d seeds; mean ± sd (range), served min the smallest of the seeds, unpaired the most:%s", g6Label(), seeds, tbl)
+	t.Logf("%s; steady load, %d seeds; mean ± sd (range), served min the smallest of the seeds, unpaired the most:%s", g6Label(), seeds, tbl)
 }
 
 // TestG6Load measures the differences and the wants per session (Q9, Q2)
