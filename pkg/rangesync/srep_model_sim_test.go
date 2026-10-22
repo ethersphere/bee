@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
+	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 )
 
 // The heavy runs of the analytical model (srep_model_test.go), behind the
@@ -259,13 +260,36 @@ func (r srepRow) String() string {
 // n_Δ, the symbols and the differences between configurations: at a Delay.
 // At Delay 0 the harness's goroutines of one instant are not fully in step,
 // so a later session can read after a fetch of the same instant: at N = 17
-// its n_Δ was 7–11% above the model's with the constant cap of 8, and the
-// model's symbols per difference 2–11% above its own, which partly cancelled
-// in the share. With the per-node cap (up to 16 sessions of one instant,
-// T4.7 part 2) its n_Δ is ~27% above and its share not repeatable (47.3 and
-// 52.8% in two runs of the same seeds, against the model's 38%): at Delay 0
-// the compiled constants' figures and records are logged, not checked.
+// its n_Δ is 7–11% above the model's with the constant cap of 8, and the
+// model's symbols per difference 2–11% above its own, which partly cancels
+// in the share (checked where repeatable, srepConfig.repeatable).
 func (r srepRow) validated() bool { return r.delay > 0 }
+
+// repeatable reports whether the harness's share and records of row with c
+// repeat closely enough to be checked: at a Delay, and at Delay 0 where no
+// node opens more than MinInitiatedSessions sessions at one instant
+// (srepParams.wave), as with the constant cap of 8 before G6, whose Delay-0
+// records repeated within their tolerances. With more, as the per-node cap at
+// N = 17 (up to 16, T4.7 part 2), they do not (the same 6 seeds: 47.3, 52.8,
+// 48.8 and 49.1% in four runs, n_Δ 18–27% above the model's, whose share is
+// 38%): there the share and the records are logged, and the share is held
+// to srepDelay0ShareBound only. With the compiled constants that is N = 17
+// at Delay 0; N = 9 runs the same sessions as with the constant cap (no node
+// has more than 8 higher-overlay peers).
+func (c srepConfig) repeatable(row srepRow) bool {
+	return row.validated() || c.apply(srepParamsOf(row.options(1))).wave() <= reconciler.MinInitiatedSessions
+}
+
+// wave returns the most round sessions a node of p opens at one instant: at
+// rank i, its cap (srepParams.initiatedSessions) or its N − 1 − i
+// higher-overlay peers, whichever is fewer.
+func (p srepParams) wave() int {
+	w := 0
+	for i := range p.Nodes {
+		w = max(w, min(p.initiatedSessions(i), p.Nodes-1-i))
+	}
+	return w
+}
 
 // options returns the harness's options of the row for seed.
 func (r srepRow) options(seed uint64) simOptions {
@@ -415,23 +439,30 @@ const (
 	// the symbols' (relative).
 	srepRecordTol    = 0.015
 	srepRecordRelTol = 0.03
+	// srepDelay0ShareBound bounds the harness's share of AC-B1's pullsync
+	// (its mean over the seeds) on a row that is not repeatable
+	// (srepConfig.repeatable), where it is not compared with the model:
+	// a sanity bound, ~7 points above the highest mean measured (52.8%).
+	srepDelay0ShareBound = 0.60
 )
 
 // srepFigureNames are the figures a comparison reports, with their scale and
 // precision, and the tolerance of the checked ones (tol > 0): relative to the
 // harness's mean when rel is set, otherwise absolute in the figure's unit.
-// The share and its components (n_Δ and the symbols) are checked only at a
-// Delay (atDelay, srepRow.validated).
+// The share's components (n_Δ and the symbols) are checked only at a Delay
+// (atDelay, srepRow.validated), the share where the row is repeatable
+// (repeatable, srepConfig.repeatable).
 var srepFigureNames = []struct {
-	name    string
-	get     func(srepFigures) float64
-	scale   float64
-	prec    int
-	tol     float64
-	rel     bool
-	atDelay bool
+	name       string
+	get        func(srepFigures) float64
+	scale      float64
+	prec       int
+	tol        float64
+	rel        bool
+	atDelay    bool
+	repeatable bool
 }{
-	{name: "share of pullsync %", get: func(f srepFigures) float64 { return f.Share }, scale: 100, prec: 1, tol: srepShareTol, atDelay: true},
+	{name: "share of pullsync %", get: func(f srepFigures) float64 { return f.Share }, scale: 100, prec: 1, tol: srepShareTol, repeatable: true},
 	{name: "n_Δ per upload", get: func(f srepFigures) float64 { return f.DiffPerUpload }, scale: 1, prec: 1, tol: srepDiffTol, rel: true, atDelay: true},
 	{name: "symbols per difference", get: func(f srepFigures) float64 { return f.SymbolsPerDiff }, scale: 1, prec: 2, tol: srepSymbolsTol, rel: true, atDelay: true},
 	{name: "n_Δ p50 per session", get: func(f srepFigures) float64 { return f.DiffP50 }, scale: 1, prec: 0, tol: 0.15, rel: true, atDelay: true},
@@ -488,11 +519,14 @@ func srepCompare(t *testing.T, what string, m, h srepSpread, tol float64, rel bo
 // standard error, from the spread over the seeds of both sides: the harness
 // is not exactly repeatable (one seed's share moves by up to 3 points between
 // runs), and the bound widens by the spread the run measured. Checked:
-//   - the share of AC-B1's pullsync within 3 points, n_Δ per upload and the
-//     symbols per difference within 6% each, so that errors in the two
-//     cannot cancel in the share beyond that, and the median n_Δ per session
-//     within 15%: at a Delay only (srepRow.validated; at Delay 0 they are
-//     logged);
+//   - the share of AC-B1's pullsync within 3 points where the row is
+//     repeatable (srepConfig.repeatable: at a Delay, and at Delay 0 at N =
+//     9), otherwise logged and held to srepDelay0ShareBound (N = 17 at Delay
+//     0);
+//   - n_Δ per upload and the symbols per difference within 6% each, so that
+//     errors in the two cannot cancel in the share beyond that, and the
+//     median n_Δ per session within 15%: at a Delay only (srepRow.validated;
+//     at Delay 0 they are logged);
 //   - the mean and the longest convergence of a batch within 1 s;
 //   - no duplicate delivery on either side.
 //
@@ -504,10 +538,10 @@ func srepCompare(t *testing.T, what string, m, h srepSpread, tol float64, rel bo
 // in scratch copies with the constants changed: the model runs every
 // candidate, and its absolute figures, its differences from the compiled
 // constants and its hint(R) differences are checked against the records. The
-// live harness must match the record of the compiled constants at a Delay
-// (the share within 1.5 points, n_Δ and the symbols within 3%), so that a
-// record that no longer describes the code fails. The test logs the records
-// of the compiled constants.
+// live harness must match the record of the compiled constants where the row
+// is repeatable (the share within 1.5 points, n_Δ and the symbols within 3%),
+// so that a record that no longer describes the code fails. The test logs the
+// records of the compiled constants.
 func TestSREPModelVsHarness(t *testing.T) {
 	table := newSREPDecodeTable(srepSimDraws, 7)
 	share := func(f srepFigures) float64 { return f.Share }
@@ -553,8 +587,15 @@ func TestSREPModelVsHarness(t *testing.T) {
 				m, h := srepSpreadOf(ms, f.get), srepSpreadOf(hs, f.get)
 				fmt.Fprintf(&b, "\n  %s: %s | %s", f.name, m.formatSD(f.scale, f.prec), h.formatSD(f.scale, f.prec))
 				if f.tol > 0 {
-					fmt.Fprintf(&b, " | %s", srepCompare(t, fmt.Sprintf("%v: %s", row, f.name), m, h, f.tol, f.rel, f.scale, f.prec, !f.atDelay || row.validated()))
+					check := !f.atDelay || row.validated()
+					if f.repeatable {
+						check = srepConfigCompiled.repeatable(row)
+					}
+					fmt.Fprintf(&b, " | %s", srepCompare(t, fmt.Sprintf("%v: %s", row, f.name), m, h, f.tol, f.rel, f.scale, f.prec, check))
 				}
+			}
+			if h := srepSpreadOf(hs, share); !srepConfigCompiled.repeatable(row) && h.mean > srepDelay0ShareBound {
+				t.Errorf("%v: harness share of pullsync %.1f%%, want at most %.0f%% (not repeatable, sanity bound)", row, 100*h.mean, 100*srepDelay0ShareBound)
 			}
 			if m, h := srepSpreadOf(ms, func(f srepFigures) float64 { return f.Duplicates }), srepSpreadOf(hs, func(f srepFigures) float64 { return f.Duplicates }); m.hi != 0 || h.hi != 0 {
 				t.Errorf("%v: duplicate deliveries per upload, model up to %.2f, harness up to %.2f, want none", row, m.hi, h.hi)
@@ -595,9 +636,9 @@ func TestSREPModelVsHarness(t *testing.T) {
 				continue
 			}
 			fmt.Fprintf(&b, " // live − recorded: share %s, n_Δ %s, symbols %s",
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: share", row), live.spread(live.share, live.shareSD), rec.spread(rec.share, rec.shareSD), srepRecordTol, false, 100, 1, row.validated()),
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: n_Δ per upload", row), live.spread(live.diff, live.diffSD), rec.spread(rec.diff, rec.diffSD), srepRecordRelTol, true, 1, 1, row.validated()),
-				srepCompare(t, fmt.Sprintf("%v: live harness against its record: symbols per difference", row), live.spread(live.spd, live.spdSD), rec.spread(rec.spd, rec.spdSD), srepRecordRelTol, true, 1, 2, row.validated()))
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: share", row), live.spread(live.share, live.shareSD), rec.spread(rec.share, rec.shareSD), srepRecordTol, false, 100, 1, srepConfigCompiled.repeatable(row)),
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: n_Δ per upload", row), live.spread(live.diff, live.diffSD), rec.spread(rec.diff, rec.diffSD), srepRecordRelTol, true, 1, 1, srepConfigCompiled.repeatable(row)),
+				srepCompare(t, fmt.Sprintf("%v: live harness against its record: symbols per difference", row), live.spread(live.spd, live.spdSD), rec.spread(rec.spd, rec.spdSD), srepRecordRelTol, true, 1, 2, srepConfigCompiled.repeatable(row)))
 		}
 		t.Log(b.String())
 	})
@@ -624,7 +665,7 @@ func TestSREPModelVsHarness(t *testing.T) {
 				nd := srepSpreadOf(ms, func(f srepFigures) float64 { return f.DiffPerUpload })
 				spd := srepSpreadOf(ms, func(f srepFigures) float64 { return f.SymbolsPerDiff })
 				fmt.Fprintf(&b, "\n%s: %.1f | %.1f | %s; %.1f | %.1f | %s; %.2f | %.2f | %s", what,
-					100*m.mean, 100*rec.share, srepCompare(t, what+": share", m, rec.spread(rec.share, rec.shareSD), srepShareTol, false, 100, 1, true),
+					100*m.mean, 100*rec.share, srepCompare(t, what+": share", m, rec.spread(rec.share, rec.shareSD), srepShareTol, false, 100, 1, c.repeatable(row)),
 					nd.mean, rec.diff, srepCompare(t, what+": n_Δ per upload", nd, rec.spread(rec.diff, rec.diffSD), srepDiffTol, true, 1, 1, row.validated()),
 					spd.mean, rec.spd, srepCompare(t, what+": symbols per difference", spd, rec.spread(rec.spd, rec.spdSD), srepSymbolsTol, true, 1, 2, row.validated()))
 				md := srepPaired(now[row], ms, share)
