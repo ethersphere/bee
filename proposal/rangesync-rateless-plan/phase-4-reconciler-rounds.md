@@ -4892,6 +4892,19 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     - `TestG6BootstrapTail`: 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2
       and 4. Caught up after 5333.93–5335.13 s, with 0 wants and 9–12 stripe sessions, none timed
       out.
+- **(Orchestrator, T4.7 part 4 landing, 2026-10-22) Part 4 landed after two fix rounds; T4.7 done.**
+  Review 1: no High; Medium 1 (honest neighbors drained by §7.7 / chain-state rejections) and
+  Medium 2 (claims by credit could starve a claimant), plus three Lows, fixed in fix round 1. Its
+  focused re-review (the new `removalObserver` checked clean) found one Medium (the per-claim
+  overtake budget fell back to FIFO under a Sybil flood), fixed in fix round 2 by one worker-level
+  counter; that round verified clean (no re-review: no High). The per-peer fetch credit, a
+  pre-testnet blocker, is closed: residual junk ≈ 0.14–0.24 IDs/s per Sybil (from ≈ 38–100), and
+  reconnect cycling adds nothing. With parts 1–4, all three pre-testnet blockers of the G6 sheet
+  (AC-B2 bootstrap listing, the stripe-registry `SyncRate` pin, the per-peer fetch credit) are closed.
+  Open residuals for T6.3 / before mainnet are in the Follow-ups (the sustained-overwrite pin, stall
+  chains past the own-job grace, the dripping claimant, the one-chunk-then-reset pin at 2 IDs per
+  cycle, the uncapped older-version refund for batchless holders).
+
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
