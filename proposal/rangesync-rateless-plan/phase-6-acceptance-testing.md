@@ -1860,6 +1860,73 @@ _(sessions append here)_
   are label lists in prose). Every metric, log line and API field added was grepped back to the
   code (`batchID`, `batchTTL`, `replacing chunk stamp index` under `node/storer/reserve`, the
   three "skipping round" lines). Docs only.
+- **(T6.3 docs fix round 2) Re-review findings, fixed in [testnet-runbook.md](testnet-runbook.md).**
+  Two of round 1's High fixes did not hold; two Mediums, Lows and two verifier nits. This entry
+  supersedes, in "(T6.3 docs fix round 1) Review findings …", the budget numbers of High 1 (the
+  12-h load TTL, "≤ 0.15 C live at 15/s, 0.31 C at 30/s; peak ≤ 0.91 C", the 12-h drain) and the
+  `T(t)` of High 2 (its expiry term and its T0 rule); the rest of that entry stands. Every
+  constraint below is cited to the code at d6fe508a.
+  - **High 1, the budget at the minimum batch validity.** A batch cannot be created with less than
+    `minimumValidityBlocks` of balance: `getMinInitialBalance` = `lastPrice` ×
+    `minimumValidityBlocks` (`pkg/postage/postagecontract/contract.go` L326–337), `CreateBatch`
+    refuses an initial balance at or below it (L357–362), the API answers "insufficient amount for
+    24h minimum validity" (`pkg/api/postage.go` L123–127); `GET /chainstate` reports the value
+    (L428). So a load batch lives L ≥ V_min (24 h on the reference chain; the runbook creates them
+    with V_min + 1 h, L = 25 h), and the uploads of any L-window are in the reserve at once. With a
+    0.6 C seed and the peak kept at 0.95 C, uploads per neighborhood in any L-window ≤ 0.35 C =
+    1,468,006: λ ≤ 16.3/s at L = 25 h (17.0/s at 24 h, the re-review's estimate). The in-process
+    reference load needed 15/s at N = 9 and 30/s at N = 17: the first fits; for the second the
+    runbook allows one 8-h segment a day at up to 30/s with 5/s otherwise (≤ 1,368,000 in any 26-h
+    window), and if panel C5 still shows no reference load, AC-B1 is recorded at the median reached
+    rather than over budget. The drain waits until every load batch and `B_drop` have expired (≥ L
+    after the last load batch's creation; ≤ ~36 h for `B_drop`), on ≤ 1/s from a batch `D_low` that
+    outlives Run 4: ≈ 0.33 C left, ≈ 0.66 C in the merged pair. §4.10 no longer creates a short
+    batch: every load batch's expiry (≈ 350,000 per neighborhood at 16/s) and `B_drop`'s are the
+    events. Dilution is not used: bee checks only the new depth (`contract.go` L455–466), and the
+    contract's own conditions for it are not in this repository.
+  - **High 2, chunks below the radius.** The reserve evicts only its excess over C
+    (`EvictionTarget`, `pkg/storer/internal/reserve/reserve.go` L802–807; `unreserve`,
+    `pkg/storer/reserve.go` L331ff), so a seed that raises the radius by overflow leaves chunks
+    below the new radius on every node, counted by `bee_localstore_reserve_size` and never fetched
+    by a joiner. The runbook now pins every node from its first start in Run S with
+    `--minimum-storage-radius=r` (`cmd/bee/cmd/cmd.go` L394; the radius starts at r,
+    `pkg/node/node.go` L1175–1176; pushsync stores within the radius, `pkg/pushsync/pushsync.go`
+    L298, as do pullsync's wants, `pkg/pullsync/pullsync.go` L305, and rangesync's fetches,
+    `pkg/rangesync/fetch.go` L369), and checks before Run 0 that `/status` `reserveSize` equals
+    `reserveSizeWithinRadius` (`pkg/api/status.go` L23–24; refreshed at each reserve-worker tick,
+    `pkg/storer/reserve.go` L116, L167–170) or `/debugstore` `.Reserve.TotalSize` equals
+    `.Reserve.SizeWithinRadius` (live, `pkg/storer/debug.go` L151–157), within 0.1 % (draft; the
+    pushsync `ErrWantSelf` store, `pushsync.go` L304, can leave a few). Pinning works only where
+    every full node is pinned alike (salud, `pkg/salud/salud.go` L247–250), so both G7-3 options
+    need a private network. Method B is now the only timed radius decrease; Method A is recorded,
+    not timed.
+  - **Medium 3, `T(t)` and expiries.** Method B starts only when `expired_count` has been flat for
+    30 min on every node of the chosen pairs and `GET /batches` shows no batch expiring before Run 4
+    ends; `T(t)` drops its expiry term, and a measurement in which any node of the pair expired
+    chunks is void. A node lowers its radius only after its own expiry evictions (one goroutine,
+    `reserveWorker`, `pkg/storer/reserve.go` L121–182).
+  - **Medium 4, `B_drop`'s expiry.** Kept at 24–36 h of TTL by 12-h top-ups
+    (`PATCH /stamps/topup/<id>/<amount>`; bee checks only the funds, `contract.go` L417–452; one
+    top-up is tried in Run S); stopping them at the drain's start schedules the expiry.
+  - **Lows.** `new_batch` fails loudly and waits for `usable`, and the generator refuses a batch file
+    that is not a 64-hex-digit ID and stops after `--max-errors` failed uploads in a row; the
+    plateau rule is `deriv` ≤ 1.5 × the upload rate + 1 chunk/s (passes at zero load); the AC-S4
+    drill (Run 9) runs on two dual nodes (D → P → D) right after Run 2 and compares per chunk with a
+    never-upgraded P node in the same pause; G7-3 gives (b)'s seed (≈ 5.0M per network at r = 1,
+    ≈ 15.1M for three) next to (a)'s ≈ 20.1M.
+  - **Verifier nits.** §4.7 uses `jq -er '.hash | select(length > 0)'`; §6 says that
+    `runbook_uploads_total` comes from §5.3.
+- **(T6.3 docs fix round 2) Checks.** The arithmetic: C = 4,194,304; 0.6 C = 2,516,582 (× 8 =
+  20.1M); 0.35 C = 1,468,006, ÷ 90,000 s = 16.3/s, ÷ 86,400 s = 17.0/s; 30/s × 10 h + 5/s × 16 h
+  = 1,368,000; 0.95 C = 3,984,589; 0.9 C = 3,774,874; `D_low` ≤ 1/s × 36 h = 129,600 ≈ 0.03 C;
+  depth 23 for 6 h at 16/s per neighborhood at r = 3 (2.76M uploads, 42 per bucket, × 3 ≤ 128).
+  `amount` and `new_batch` were run against a mock of `/chainstate` and `/stamps` (an amount of
+  432,000,001 for a price of 24,000, 17,280 blocks and 5-s blocks; a refused creation fails with
+  status 1). `rs_probe.py` was re-run against the API mock (the per-prefix counters; a `null`
+  batch file stops it with status 1 after `--max-errors`). `bash -n` passes on every bash block
+  but the two `<…>` templates; the Python block equals the tested file; 98 PromQL expressions parse
+  with `promql/parser` v0.301.0 (the two failures are label lists in prose); table column counts
+  and metric names re-checked. Docs only.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2386,3 +2453,13 @@ _(sessions append here)_
      10 %, the Mores rule, the two cache triggers of §9).
   6. G7-6: whether Phase 5 is in scope (AC-S6 is not measurable without it).
   7. G7-7: the build commit, the same on every node.
+- **(T6.3 docs fix round 2) Additions to the G7 decisions** ("(T6.3 docs fix round 1) The G7
+  decisions …"):
+  - G7-3: both options need a private network (every node pinned with `--minimum-storage-radius`,
+    which salud tolerates only when all nodes are pinned alike); the seed is ≈ 20.1M chunks for
+    (a) at r = 3 and ≈ 15.1M for (b), three networks at r = 1.
+  - The load budget caps the rate at ~16 uploads/s per neighborhood around the clock (the minimum
+    batch validity keeps a day of uploads in the reserve), with one 8-h segment a day at up to
+    30/s. In-process, N = 17 needed 30/s for the reference load; if the testnet does not reach it,
+    AC-B1 at N ≥ 17 is recorded at the median reached, and T6.4 decides.
+  - New drafts (G7-5): the ≤ 0.1 % below-radius allowance of the rule-8 check.
