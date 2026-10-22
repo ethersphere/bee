@@ -4335,6 +4335,14 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     `TestG6BootstrapTail` 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2,
     4, caught up after 5334–5335 s, 0 wants, 9–12 stripe sessions, none timed out: as part 3.
     The CI list is in Follow-ups.
+- **(Orchestrator, T4.7 part 3 landing, 2026-10-21) Part 3 landed after one fix round.** Review: no
+  High; the Medium (`ownJobGrace` shorter than `StripeTimeout`) and Lows 1 and 3 were fixed in fix
+  round 1, which verified clean (no re-review: no High); Lows 2 and 4 are recorded. The
+  stripe-registry `SyncRate` pin, a pre-testnet blocker, is closed: a peer's claim holds `SyncRate`
+  only through the node-wide 2 s catch-up grace or the chunks it stores. Handed to part 4: the
+  per-overlay backoff after an idle claim end (Follow-ups, "(T4.7 part 3 fix round 1 → part 4)").
+  Residuals for T6.3: stall chains past the 19-minute own-job grace; a dripping claimant holding the
+  stripe worker (~720 chunks a day per neighborhood).
 
 ## Follow-ups
 _(sessions append here)_
