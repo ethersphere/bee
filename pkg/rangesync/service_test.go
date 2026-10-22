@@ -114,6 +114,10 @@ type nodeOpts struct {
 	// striper and largeDiff are Options.Striper and Options.LargeDiff.
 	striper   func(peer swarm.Address) rangesync.Striper
 	largeDiff uint64
+	// routes, if not nil, routes the node's streams to each peer to the
+	// peer's protocol in it (streamtest.WithPeerProtocols, see route), and
+	// those to other peers to the protocol connect0 set.
+	routes map[string]p2p.ProtocolSpec
 }
 
 // radiusStore is a mock reserve whose storage radius check is outside.
@@ -178,6 +182,9 @@ func newTestNodeOpts(tb testing.TB, o nodeOpts, chunks ...swarm.Chunk) *testNode
 	recOpts := []streamtest.Option{streamtest.WithBaseAddr(n.addr)}
 	if o.streamErr != nil {
 		recOpts = append(recOpts, streamtest.WithStreamError(o.streamErr))
+	}
+	if o.routes != nil {
+		recOpts = append(recOpts, streamtest.WithPeerProtocols(o.routes))
 	}
 	n.rec = streamtest.NewRecorderDisconnecter(streamtest.New(recOpts...))
 	var streamer p2p.StreamerDisconnecter = n.rec

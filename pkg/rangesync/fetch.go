@@ -71,6 +71,9 @@ const (
 	// reserve holds already. The want set's refusals use their own names
 	// (wantset.Result.String): an ID another fetch's claim holds is "held".
 	skippedInReserve = "in_reserve"
+	// skippedNoCredit is the fetch_skipped_total reason of an ID not
+	// requested because the peer's fetch credit is spent (ErrFetchCredit).
+	skippedNoCredit = "no_credit"
 )
 
 // ErrOpenBackoff fails a fetch from a peer whose fetch stream opens back off
@@ -93,7 +96,7 @@ var (
 // radius, in the reserve already (found before or right after the claim, or
 // at delivery: the cross protocol duplicates), not granted because the want
 // set is closed, or not requested because the fetch ended with an error (a
-// fetch stream that failed to open among them).
+// fetch stream that failed to open among them) other than ErrFetchCredit.
 type FetchResult struct {
 	// Stored is the number of chunks stored.
 	Stored int
@@ -127,6 +130,10 @@ type FetchResult struct {
 	// because they were rejected within RejectTTL. They are not requested
 	// again until then.
 	Rejected int
+	// NoCredit are the IDs not requested because the peer's fetch credit
+	// was spent (ErrFetchCredit, credit.go): those of the Want that found it
+	// spent and those not looked at yet. Request them from other peers.
+	NoCredit []storer.ChunkID
 }
 
 // Fetch is FetchWithResult, returning only the number of chunks stored.
@@ -147,11 +154,14 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // counted), so that they cost no fetch rate; when none remains no stream is
 // opened. Then it takes one of the fetch streams this node opens to peer (at
 // most maxFetchStreamsOut at once, half the peer's own limit, whatever runs
-// the fetches), opens the stream within Options.FetchTimeout, waits for the
-// node-wide fetch rate (Options.FetchRate) with the stream open, and claims
-// the IDs. It drops the IDs it is not granted and, once claimed, the IDs
-// another fetch stored meanwhile (during the fetch limiter wait); when none
-// remains it ends the stream without a Want. While a fetch holds the claim
+// the fetches), takes the peer's fetch credit for the IDs (credit.go: the
+// IDs it does not cover wait for the next Want, and with none left the fetch
+// requests nothing more and fails with ErrFetchCredit, its IDs in
+// FetchResult.NoCredit), opens the stream within Options.FetchTimeout, waits
+// for the node-wide fetch rate (Options.FetchRate) with the stream open, and
+// claims the IDs. It drops the IDs it is not granted and, once claimed, the
+// IDs another fetch stored meanwhile (during the fetch limiter wait); when
+// none remains it ends the stream without a Want. While a fetch holds the claim
 // on an ID no other fetch requests it, so a chunk is delivered twice only
 // after a claim expired. The claims of an ID end with Done when it was
 // stored, with Reject when it was rejected, and with Release otherwise, on
@@ -184,11 +194,13 @@ func (s *Service) Fetch(ctx context.Context, peer swarm.Address, ids []storer.Ch
 // root by its last Status is requested. A fetch stream that fails with IDs
 // undelivered (the peer reset it) is a violation past maxFetchResets, then
 // one per fetchResetInterval, per peer. A fetch stream that fails to open is
-// never charged: it took no fetch rate and holds no claim. It backs off the
-// peer's opens instead (openGate): until the backoff ends, the peer's fetch
-// calls fail at once, unscored and without a claim, and then one open probes
-// the peer. A call also fails at once while maxFetchWaiters others wait for
-// the peer's stream slots.
+// never charged: it took no fetch rate and holds no claim, and the peer's
+// credit for it goes back. It backs off the peer's opens instead (openGate):
+// until the backoff ends, the peer's fetch calls fail at once, unscored and
+// without a claim, and then one open probes the peer. A call also fails at
+// once while maxFetchWaiters others wait for the peer's stream slots. Apart
+// from all these, what the peer is asked for and does not deliver spends its
+// fetch credit (credit.go), which only the chunks it delivers refill.
 func (s *Service) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (FetchResult, error) {
 	return s.FetchWithProgress(ctx, peer, ids, nil)
 }
@@ -224,9 +236,17 @@ func (s *Service) FetchWithProgress(ctx context.Context, peer swarm.Address, ids
 		if len(cands) == 0 {
 			continue
 		}
-		if err := s.want(ctx, peer, cands, &res, &sf, stored); err != nil {
+		rest, err := s.want(ctx, peer, cands, &res, &sf, stored)
+		if errors.Is(err, ErrFetchCredit) {
+			res.NoCredit = append(chunkIDs(rest), ids...)
+			s.metrics.FetchSkipped.WithLabelValues(skippedNoCredit).Add(float64(len(res.NoCredit)))
 			return res, err
 		}
+		if err != nil {
+			return res, err
+		}
+		// the candidates the credit did not cover go first in the next Want
+		ids = append(chunkIDs(rest), ids...)
 		// a blatant shortfall ends the fetch now
 		if err := s.judgeShortfall(peer, &sf, false); err != nil {
 			return res, err
@@ -236,44 +256,60 @@ func (s *Service) FetchWithProgress(ctx context.Context, peer swarm.Address, ids
 }
 
 // want requests cands from peer in one Want: it takes one of the peer's
-// fetch stream slots (maxFetchStreamsOut), opens the stream, waits for the
-// fetch rate, claims cands and fetches the claimed IDs on the stream,
+// fetch stream slots (maxFetchStreamsOut), takes the peer's fetch credit for
+// cands (credit.go), opens the stream, waits for the fetch rate, claims the
+// candidates the credit covers and fetches the claimed IDs on the stream,
 // recording the peer's shortfall in sf and calling stored, if not nil, for
-// each chunk stored. The open comes before the fetch rate and the claims, so
-// that an open that fails or stalls spends neither and is not charged to the
-// peer; the waits come before the claims, so that they cannot outlast them.
-// The slot is held from the open to the stream's end. While the peer's opens
-// back off (openGate), it fails at once, before and after the wait for the
-// slot.
-func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall, stored func()) error {
+// each chunk stored. It returns the candidates the credit did not cover
+// (rest), which the caller requests in its next Want, once this one settled
+// the credit; with no credit left it requests nothing and fails with
+// ErrFetchCredit, rest holding every candidate. The credit is taken with the
+// slot, so that at most maxFetchStreamsOut Wants hold a peer's credit at
+// once, and before the open and the fetch rate, so that a peer with none
+// left costs neither. The credit of the candidates not requested in the end
+// (the open failed, the claims were not granted) goes back to the peer. The
+// open comes before the fetch rate and the claims, so that an open that
+// fails or stalls spends neither and is not charged to the peer; the waits
+// come before the claims, so that they cannot outlast them. The slot is
+// held from the open to the stream's end. While the peer's opens back off
+// (openGate), it fails at once, before and after the wait for the slot.
+func (s *Service) want(ctx context.Context, peer swarm.Address, cands []fingerprint.ID, res *FetchResult, sf *shortfall, stored func()) (rest []fingerprint.ID, err error) {
 	if !s.opens.allowed(peer, s.now) {
-		return ErrOpenBackoff
+		return nil, ErrOpenBackoff
 	}
 	release, err := s.fetchStreamsOut.acquire(ctx, peer)
 	if err != nil {
-		return fmt.Errorf("fetch stream slot: %w", err)
+		return nil, fmt.Errorf("fetch stream slot: %w", err)
 	}
 	defer release()
+	granted := s.credits.take(peer, len(cands), s.now())
+	if granted == 0 {
+		return cands, ErrFetchCredit
+	}
+	cands, rest = cands[:granted], cands[granted:]
+	unspent := granted // the credit of the candidates not requested
+	defer func() { s.credits.give(peer, unspent) }()
 	stream, err := s.openFetchStream(ctx, peer)
 	if err != nil {
-		return err
+		return rest, err
 	}
 	if _, err := s.fetchLimiter.Wait(ctx, fetchKey, len(cands)); err != nil {
 		_ = stream.Reset()
-		return fmt.Errorf("fetch limiter: %w", err)
+		return rest, fmt.Errorf("fetch limiter: %w", err)
 	}
 	claimed, err := s.claim(peer, cands, res)
 	if err != nil {
 		_ = stream.Reset()
-		return err
+		return rest, err
 	}
+	unspent -= len(claimed) // fetch settles the credit of the claimed IDs
 	if len(claimed) == 0 {
 		// nothing left to ask for: end the stream without a Want, which the
 		// peer's handler does not hold against this node
 		_ = stream.Reset()
-		return nil
+		return rest, nil
 	}
-	return s.fetch(ctx, peer, stream, claimed, res, sf, stored)
+	return rest, s.fetch(ctx, peer, stream, claimed, res, sf, stored)
 }
 
 // FetchOpensBackOff reports whether peer's fetch stream opens back off now
@@ -483,6 +519,15 @@ func chunkID(id fingerprint.ID) storer.ChunkID {
 	return storer.ChunkID{Address: id.Address(), StampHash: id.StampHash()}
 }
 
+// chunkIDs returns the storer.ChunkIDs of ids, without batch IDs.
+func chunkIDs(ids []fingerprint.ID) []storer.ChunkID {
+	out := make([]storer.ChunkID, len(ids))
+	for i, id := range ids {
+		out[i] = chunkID(id)
+	}
+	return out
+}
+
 // claimExpired reports whether the claim of peer on id, granted to this
 // fetch, has ended without this fetch ending it, and counts it as expired.
 // Only an expiry ends a granted claim before its fetch does, or, after one, a
@@ -513,10 +558,18 @@ func (s *Service) undelivered(peer swarm.Address, id fingerprint.ID, res *FetchR
 // (the rules judge no peer that disconnected). A stream that fails with
 // claimed IDs undelivered takes one of the peer's fetch resets
 // (chargeReset), past which it is a violation; this node ending the fetch
-// does not. Every claim in claimed is ended before it returns.
+// does not. Every claim in claimed is ended before it returns. It settles
+// the peer's fetch credit of the claimed IDs (credit.go): deliver gives back
+// what each delivery earns, and the IDs still undelivered get their credit
+// back only when this node ended the Want (its context, Close, a local
+// error).
 func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stream, claimed map[fingerprint.ID]struct{}, res *FetchResult, sf *shortfall, stored func()) (err error) {
+	parent := ctx
 	// claimed holds the IDs not delivered yet
 	defer func() {
+		if parent.Err() != nil || errors.Is(err, ErrLocal) {
+			s.credits.give(peer, len(claimed)) // not the peer's doing
+		}
 		for id := range claimed {
 			s.claimExpired(peer, id)
 			s.undelivered(peer, id, res)
@@ -524,7 +577,6 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stre
 	}()
 
 	// a holder that stalls must not keep the claims past ClaimDeadline
-	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
 	defer cancel()
 	stalled := func(err error) error {
@@ -604,6 +656,10 @@ func (s *Service) fetch(ctx context.Context, peer swarm.Address, stream p2p.Stre
 // the outcome in res, and a stamp invalid on every node in sf. A chunk it
 // stores is reported to stored, if not nil. A delivery whose claim had
 // expired is counted late (want_claims). A violation wraps ErrInvalidMessage.
+// It gives the peer the fetch credit the delivery earns (credit.go): a stored
+// chunk creditStoredRefund, a valid chunk the reserve holds already, a stamp
+// that could not be checked for a cause on this node and a local error one,
+// a rejected stamp or chunk nothing.
 func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[fingerprint.ID]struct{}, d *pb.Delivery, res *FetchResult, sf *shortfall, stored func()) error {
 	if len(d.Address) != swarm.HashSize {
 		return invalid("delivery address of %d bytes", len(d.Address))
@@ -644,6 +700,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		}
 		s.wantSet.Release(id, peer)
 		res.Unverified = append(res.Unverified, chunkID(id))
+		s.credits.give(peer, 1)
 		return nil
 	}
 
@@ -660,6 +717,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	has, err := s.store.ReserveHasID(addr, stampHash)
 	if err != nil {
 		s.undelivered(peer, id, res)
+		s.credits.give(peer, 1)
 		return fmt.Errorf("%w: reserve has id: %w", ErrLocal, err)
 	}
 	if has {
@@ -670,6 +728,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 		}
 		s.metrics.CrossProtocolDuplicates.Inc()
 		s.wantSet.Done(id)
+		s.credits.give(peer, 1)
 		return nil
 	}
 	err = s.store.ReservePutter().Put(ctx, chunk)
@@ -688,11 +747,13 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 			return nil
 		}
 		s.undelivered(peer, id, res)
+		s.credits.give(peer, 1)
 		return fmt.Errorf("%w: reserve put: %w", ErrLocal, err)
 	}
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()
 	res.Stored++
+	s.credits.give(peer, creditStoredRefund)
 	if stored != nil {
 		stored()
 	}

@@ -761,6 +761,10 @@ func TestFetchResetAfterOneDelivery(t *testing.T) {
 			return nil, fmt.Errorf("batchstore get: %w, %w", storage.ErrNotFound, postage.ErrNotFound)
 		},
 	})
+	// the fetch credit (credit.go) refuses this peer after its first Want
+	// (TestFetchCreditOneChunkThenReset): the reset budget is tested on its
+	// own here
+	a.svc.DisableFetchCredit()
 	chs := chunksInRange(rangesync.MaxFetchResets+1, whole)
 	b := newTestNode(t, chs...)
 	connect0(a, b)
@@ -936,6 +940,9 @@ func TestFetchShortfallAfterPeerViolation(t *testing.T) {
 
 	clock := newFakeClock()
 	a := clock.set(newTestNode(t))
+	// the fetch credit (credit.go) would refuse the junk after the first
+	// fetch: the shortfall rules are tested on their own here
+	a.svc.DisableFetchCredit()
 	b := newTestNode(t)
 	connect0(a, b)
 	sendRoot(t, b, a, whole)
@@ -1973,6 +1980,9 @@ func TestFetchForgetIfGone(t *testing.T) {
 		off.Store(true)
 		clock := newHookClock()
 		a = clock.set(newTestNodeOpts(t, nodeOpts{streamer: resetStreams(nil, &off)}))
+		// the fetch credit (credit.go) would refuse the fetches after the
+		// blatant one: the marks are tested on their own here
+		a.svc.DisableFetchCredit()
 		b = newTestNode(t)
 		connect0(a, b)
 		sendRoot(t, b, a, whole)
@@ -2047,6 +2057,9 @@ func TestViolationMarks(t *testing.T) {
 		t.Parallel()
 
 		a := newTestNode(t)
+		// the fetch credit (credit.go) would refuse the fetch after the
+		// blatant one: the marks are tested on their own here
+		a.svc.DisableFetchCredit()
 		b := newTestNode(t)
 		connect0(a, b)
 		sendRoot(t, b, a, whole)

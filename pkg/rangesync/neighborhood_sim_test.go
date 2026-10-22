@@ -187,6 +187,9 @@ type simOptions struct {
 	// share of it before they are requested, as the service's fetch limiter
 	// does on the real clock (simService.fetchOnClock).
 	FetchClockRate int
+	// NoFetchCredit runs every service without the per-peer fetch credit
+	// (DisableFetchCredit), as before T4.7 part 4.
+	NoFetchCredit bool
 }
 
 // steadyOptions returns the options of a steady-state run of nodes nodes
@@ -690,6 +693,9 @@ func (nb *simNeighborhood) newNode(i int, a swarm.Address, all []swarm.Address, 
 	n.svc.DisablePeerRateLimits()
 	if o.NoHints {
 		n.svc.DisableHints()
+	}
+	if o.NoFetchCredit {
+		n.svc.DisableFetchCredit()
 	}
 	n.svc.OnSession(func(ss rangesync.SessionSample) { nb.sample(n, ss) })
 	n.r.SetService(&simService{Service: n.svc, n: n})
@@ -1480,6 +1486,12 @@ func (s *simService) fetchOnClock(ctx context.Context, ids []storer.ChunkID, fet
 		res.Deferred = append(res.Deferred, r.Deferred...)
 		res.Unverified = append(res.Unverified, r.Unverified...)
 		res.Rejected += r.Rejected
+		res.NoCredit = append(res.NoCredit, r.NoCredit...)
+		if errors.Is(err, rangesync.ErrFetchCredit) {
+			// the service reports every ID it did not request for the
+			// credit: so does the merge, the batches not passed included
+			res.NoCredit = append(res.NoCredit, ids...)
+		}
 		if err != nil {
 			return res, err
 		}

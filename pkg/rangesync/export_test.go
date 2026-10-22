@@ -342,3 +342,61 @@ func (s *Service) OnSession(f func(SessionSample)) {
 		})
 	}
 }
+
+// The per-peer fetch credit (credit.go).
+const (
+	CreditInitial       = creditInitial
+	CreditMax           = creditMax
+	CreditStoredRefund  = creditStoredRefund
+	CreditPoolBurst     = creditPoolBurst
+	CreditPoolInterval  = creditPoolInterval
+	CreditProbeInterval = creditProbeInterval
+	MaxCreditPeers      = maxCreditPeers
+)
+
+// CreditBook exposes the book of the fetch credit.
+type CreditBook struct{ b *creditBook }
+
+// NewCreditBook returns a book of at most capacity overlays whose pool is
+// full at now.
+func NewCreditBook(capacity int, now time.Time) CreditBook {
+	b := newCreditBook(capacity)
+	b.pool.AllowN(now, 0)
+	return CreditBook{b}
+}
+
+func (b CreditBook) Take(peer swarm.Address, n int, now time.Time) int { return b.b.take(peer, n, now) }
+func (b CreditBook) Give(peer swarm.Address, n int)                    { b.b.give(peer, n) }
+func (b CreditBook) Credit(peer swarm.Address) (int, bool)             { return b.b.credit(peer) }
+func (b CreditBook) Len() (peers, debts int)                           { return b.b.size() }
+
+// DisableFetchCredit lifts the per-peer fetch credit: every request is
+// granted, as before T4.7 part 4. It must be called before the service is
+// used.
+func (s *Service) DisableFetchCredit() { s.credits = nil }
+
+// SetFetchCreditCapacity makes the service's credit book keep at most
+// capacity overlays. It must be called before the service is used.
+func (s *Service) SetFetchCreditCapacity(capacity int) { s.credits = newCreditBook(capacity) }
+
+// FetchCreditKnown reports whether the service's credit book keeps peer.
+func (s *Service) FetchCreditKnown(peer swarm.Address) bool {
+	_, ok := s.credits.credit(peer)
+	return ok
+}
+
+// DrainFetchCreditPool takes all of the credit pool has for new overlays
+// now, as the new overlays of an attacker would.
+func (s *Service) DrainFetchCreditPool() {
+	now := s.now()
+	s.credits.mu.Lock()
+	defer s.credits.mu.Unlock()
+	s.credits.pool.AllowN(now, int(s.credits.pool.TokensAt(now)))
+}
+
+// DisableDeliveryLimit lifts the per-peer rate of the chunks the fetch
+// handler delivers (handleMaxChunksPerSecond), which runs on the real clock.
+// It must be called before the service is used.
+func (s *Service) DisableDeliveryLimit() {
+	s.deliveryLimiter = ratelimit.New(time.Nanosecond, math.MaxInt32)
+}

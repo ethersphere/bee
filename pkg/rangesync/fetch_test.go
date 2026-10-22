@@ -136,6 +136,9 @@ func TestFetchManyWants(t *testing.T) {
 	held := []swarm.Chunk{validChunks(1)[0], validChunks(1)[0]}
 	chs[0], chs[len(chs)-1] = held[0], held[1]
 	a := newTestNode(t)
+	// b holds 2 of the 260 IDs: its fetch credit (credit.go) would cut the
+	// second Want short, and this test is about the split into Wants
+	a.svc.DisableFetchCredit()
 	b := newTestNode(t, held...)
 	connect0(a, b)
 

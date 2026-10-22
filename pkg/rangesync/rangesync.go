@@ -186,6 +186,7 @@ type Service struct {
 	statusDrops     *ratelimit.Limiter // per peer, statuses over the rate
 	fetchResets     *peerBudget        // per peer, fetch streams failed with ids undelivered
 	shortfalls      *shortfallBook     // per peer, the fetch shortfall's memory
+	credits         *creditBook        // per overlay, the fetch credit (kept across disconnects)
 	now             func() time.Time
 
 	index   *fingerprint.Index
@@ -280,6 +281,7 @@ func New(
 		statusDrops:      ratelimit.New(PeerStatusDropInterval, PeerStatusDropBurst),
 		fetchResets:      newPeerBudget(fetchResetInterval, maxFetchResets),
 		shortfalls:       newShortfallBook(),
+		credits:          newCreditBook(maxCreditPeers),
 		now:              o.Now,
 		index:            index,
 		indexer:          NewIndexer(index, store, overlay, logger, o.Indexer),
@@ -343,7 +345,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 // disconnected forgets the peer's status, stream slots, delivery, session
 // and status limits, its dropped statuses, its failed fetch streams, the
 // missing IDs and offenses of its fetch shortfall and the backoff of its
-// fetch stream opens.
+// fetch stream opens. It keeps the peer's fetch credit (credit.go) and its
+// last excused root move, so that a reconnect renews neither.
 func (s *Service) disconnected(peer p2p.Peer) error {
 	s.statusMu.Lock()
 	delete(s.statuses, peer.Address.ByteString())

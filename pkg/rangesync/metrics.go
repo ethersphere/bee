@@ -28,8 +28,9 @@ type metrics struct {
 	// sent them over its rate.
 	StatusRateLimited prometheus.Counter
 	// FetchSkipped counts IDs Fetch did not request, by reason:
-	// out_of_radius, in_reserve, outside_peer_root, or the want set's
-	// refusal (held by another claim, rejected, full, peer_full, closed).
+	// out_of_radius, in_reserve, outside_peer_root, no_credit (the peer's
+	// fetch credit is spent), or the want set's refusal (held by another
+	// claim, rejected, full, peer_full, closed).
 	FetchSkipped *prometheus.CounterVec
 	// Delivered counts fetched chunks that were stored.
 	Delivered prometheus.Counter
