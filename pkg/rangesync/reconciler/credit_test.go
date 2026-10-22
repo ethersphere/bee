@@ -7,6 +7,7 @@ package reconciler_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -258,89 +259,220 @@ func TestClaimOrderByCredit(t *testing.T) {
 // (the pool's 250 on their first fetch, or the cap from self-minted
 // overwrites) that claim again each time their claims end ran first every
 // time, and the honest claim, of a peer this node never fetched from, waited
-// for ever. A claim now waits for the claims queued before it and at most
-// MaxClaimOvertakes claims queued after it: the honest claim runs once
-// MaxClaimOvertakes liar claims queued after it ran, each ended idle. Nobody
-// is scored.
+// for ever. The first queued claim now runs once MaxClaimOvertakes claims in
+// a row ran before it (the worker's count, fix round 2), so a claim runs
+// within (MaxClaimOvertakes+1) × its place in the order queued. Behind a
+// liar's claim in flight, two claimants of no credit queue a claim each,
+// then the honest claimant, of no credit too, then the other liar. The
+// liars, at the cap credit, claim again at each idle end. Each claim of no
+// credit runs, in the order queued, after at most MaxClaimOvertakes liar
+// claims since the one before it (the first after exactly that many: the
+// liars' credit still orders the claims), so the honest claim runs within
+// 3 × (MaxClaimOvertakes+1) claims. Nobody is scored.
 func TestClaimOrderBounded(t *testing.T) {
 	t.Parallel()
 
 	const largeDiff = 100
-	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
 	liars := []swarm.Address{higher, higher2}
 	honest := addr(0xf1, 0)
-	honests := root.Child(4, 15)
+	poor := []swarm.Address{addr(0xd0, 0), addr(0xd1, 0)} // claimants of no credit
+	peers := append(append([]swarm.Address{honest}, poor...), liars...)
 	svc := newPinService(status(1000))
-	credit := map[string]int{honest.ByteString(): 0}
-	for _, p := range append([]swarm.Address{honest}, liars...) {
+	credit := make(map[string]int)
+	for _, p := range peers {
 		svc.remote[p.ByteString()] = status(1000)
 		svc.stall[p.ByteString()] = true // no claim stores anything
 	}
 	for _, l := range liars {
 		credit[l.ByteString()] = 1000 // the cap
 	}
-	peers := append([]swarm.Address{honest}, liars...)
 	h := newPinHarness(t, &creditPinService{pinService: svc, credit: credit}, svc.fakeService, largeDiff, peers...)
 	waitFor(t, "guard released", h.r.GuardReleased)
-	// inFlight waits for the claim of rg in flight, its stripes stalled
-	inFlight := func(rg fingerprint.Range) {
-		t.Helper()
-		waitFor(t, "the stripes of "+rg.String(), func() bool {
-			n := 0
-			for _, p := range peers {
-				n += stripeSessions(svc.fakeService, p, rg)
-			}
-			return n > 0
-		})
-	}
+	c := newClaimRunner(t, h, svc, peers)
 
-	owner := make(map[string]swarm.Address) // the liar of each claimed range
-	next := uint64(0)
-	claim := func(liar swarm.Address) {
-		t.Helper()
-		rg := root.Child(4, next)
-		next++
-		if !h.r.EnqueuePeerStripes(liar, []fingerprint.Range{rg}) {
-			t.Fatalf("claim %s of %s not registered", rg, liar)
-		}
-		owner[rg.String()] = liar
+	// a liar's claim in flight, the claims of no credit queued behind it,
+	// the honest one last, and the other liar's claim queued after them
+	c.claim(liars[0])
+	c.waitRunning()
+	var low []fingerprint.Range
+	for _, p := range append(slices.Clone(poor), honest) {
+		low = append(low, c.claim(p))
 	}
-	// a liar's claim in flight, the honest claim queued behind it, and the
-	// other liar's claim queued after that
-	claim(liars[0])
-	inFlight(root.Child(4, 0))
-	if !h.r.EnqueuePeerStripes(honest, []fingerprint.Range{honests}) {
-		t.Fatal("honest claim not registered")
-	}
-	claim(liars[1])
+	c.claim(liars[1])
 
-	for ran := 1; ; ran++ {
-		if ran > reconciler.MaxClaimOvertakes+1 {
-			t.Fatalf("the honest claim did not run after %d liar claims queued after it", ran-1)
+	bound, first := (reconciler.MaxClaimOvertakes+1)*len(low), true
+	for ran, since := 1, 0; len(low) > 0; ran++ {
+		if ran > bound {
+			t.Fatalf("the honest claim did not run within %d claims", bound)
 		}
-		running, _, _ := h.r.RunningStripe()
-		inFlight(running)
-		h.clock.Add(reconciler.ClaimIdleTimeout)
-		waitFor(t, "claim ended", func() bool { return h.r.StripesTotal("idle") >= float64(ran) })
-		var rg fingerprint.Range
-		waitFor(t, "the next claim runs", func() bool {
-			r, _, ok := h.r.RunningStripe()
-			rg = r
-			return ok && !r.Equal(running)
-		})
-		if rg.Equal(honests) {
-			if overtakes := ran - 1; overtakes != reconciler.MaxClaimOvertakes {
-				t.Fatalf("the honest claim ran after %d liar claims queued after it, want %d", overtakes, reconciler.MaxClaimOvertakes)
-			}
-			break
+		ended, rg := c.endRunning()
+		if slices.ContainsFunc(liars, ended.Equal) {
+			// the liar whose claim ended claims again, as its next session
+			// would
+			c.claim(ended)
 		}
-		// the liar whose claim ended claims again, as its next session
-		// would
-		claim(owner[running.String()])
+		if !slices.ContainsFunc(low, rg.Equal) {
+			since++ // a liar's claim
+			continue
+		}
+		if !rg.Equal(low[0]) {
+			t.Fatalf("claim %s of no credit ran before %s, queued before it", rg, low[0])
+		}
+		// the first after exactly MaxClaimOvertakes: the liars' credit
+		// still orders the claims
+		if since > reconciler.MaxClaimOvertakes || first && since != reconciler.MaxClaimOvertakes {
+			t.Fatalf("claim %s of no credit ran after %d liar claims, want %d", rg, since, reconciler.MaxClaimOvertakes)
+		}
+		low, since, first = low[1:], 0, false
 	}
 	for _, p := range peers {
 		if n := h.r.Score(p); n != 0 {
 			t.Fatalf("%s scored %d", p, n)
 		}
 	}
+}
+
+// TestClaimOrderFlood is the review Medium of T4.7 part 4 fix round 2. Fix
+// round 1 counted overtakes per claim: each claim the worker ran for its
+// credit counted one more for every claim queued before it. After
+// MaxClaimOvertakes of them every claim of a flood of Sybil claims queued
+// before was due, and they ran one after the other in the order queued, the
+// Sybils claiming again at each idle end, while the honest claims of more
+// credit waited behind all of them, as in the order queued. The count is now
+// the worker's, so while a claim of more credit waits, a Sybil claim of no
+// credit runs only after MaxClaimOvertakes claims in a row ran before it.
+// Twice, a burst of MaxClaimOvertakes+1 honest claims at the cap credit
+// queues behind the claims of 16 Sybils of no credit, which store nothing
+// and claim again at each idle end: each honest claim runs after the claim
+// in flight and at most one Sybil claim. Nobody is scored.
+func TestClaimOrderFlood(t *testing.T) {
+	t.Parallel()
+
+	const (
+		largeDiff = 100
+		sybils    = 16
+		bursts    = 2
+	)
+	svc := newPinService(status(1000))
+	credit := make(map[string]int)
+	sybs := make([]swarm.Address, sybils)
+	for i := range sybs {
+		sybs[i] = addr(0xa0, byte(i))
+	}
+	honests := make([]swarm.Address, reconciler.MaxClaimOvertakes+1) // a burst
+	for i := range honests {
+		honests[i] = addr(0xc0, byte(i))
+		credit[honests[i].ByteString()] = 1000 // the cap
+	}
+	peers := append(slices.Clone(sybs), honests...)
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = status(1000)
+		svc.stall[p.ByteString()] = true // no claim stores anything
+	}
+	h := newPinHarness(t, &creditPinService{pinService: svc, credit: credit}, svc.fakeService, largeDiff, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+	c := newClaimRunner(t, h, svc, peers)
+
+	for _, p := range sybs {
+		c.claim(p)
+	}
+	c.waitRunning()
+	for range bursts {
+		// waited counts, per honest claim queued, the Sybil claims run since
+		waited := make(map[string]int)
+		for _, p := range honests {
+			waited[c.claim(p).String()] = 0
+		}
+		for len(waited) > 0 {
+			ended, rg := c.endRunning()
+			if slices.ContainsFunc(sybs, ended.Equal) {
+				// the Sybil claims again, as its next session would
+				c.claim(ended)
+			}
+			if n, ok := waited[rg.String()]; ok {
+				if n > 1 {
+					t.Fatalf("honest claim %s ran after %d Sybil claims, want at most 1", rg, n)
+				}
+				delete(waited, rg.String())
+				continue
+			}
+			for k := range waited {
+				waited[k]++
+			}
+		}
+	}
+	for _, p := range peers {
+		if n := h.r.Score(p); n != 0 {
+			t.Fatalf("%s scored %d", p, n)
+		}
+	}
+}
+
+// claimRunner drives the stripe worker of a pin harness whose peers stall
+// every stripe, one claim at a time (TestClaimOrderBounded,
+// TestClaimOrderFlood).
+type claimRunner struct {
+	t     *testing.T
+	h     *harness
+	svc   *pinService
+	peers []swarm.Address
+	next  uint64
+	owner map[string]swarm.Address // the peer of each claimed range
+	ended int
+}
+
+func newClaimRunner(t *testing.T, h *harness, svc *pinService, peers []swarm.Address) *claimRunner {
+	t.Helper()
+	return &claimRunner{t: t, h: h, svc: svc, peers: peers, owner: make(map[string]swarm.Address)}
+}
+
+// claim registers a claim of peer over a range of its own, and returns the
+// range.
+func (c *claimRunner) claim(peer swarm.Address) fingerprint.Range {
+	c.t.Helper()
+	rg := fingerprint.NewRange(swarm.ZeroAddress, 0).Child(8, c.next)
+	c.next++
+	if !c.h.r.EnqueuePeerStripes(peer, []fingerprint.Range{rg}) {
+		c.t.Fatalf("claim %s of %s not registered", rg, peer)
+	}
+	c.owner[rg.String()] = peer
+	return rg
+}
+
+// waitRunning waits for a claim in flight, its stripes stalled, and returns
+// its range.
+func (c *claimRunner) waitRunning() fingerprint.Range {
+	c.t.Helper()
+	var rg fingerprint.Range
+	waitFor(c.t, "a claim in flight", func() bool {
+		r, _, ok := c.h.r.RunningStripe()
+		rg = r
+		return ok
+	})
+	waitFor(c.t, "the stripes of "+rg.String(), func() bool {
+		n := 0
+		for _, p := range c.peers {
+			n += stripeSessions(c.svc.fakeService, p, rg)
+		}
+		return n > 0
+	})
+	return rg
+}
+
+// endRunning ends the claim in flight, once it stored nothing for
+// ClaimIdleTimeout, and returns its peer and the range of the claim the
+// worker runs next.
+func (c *claimRunner) endRunning() (swarm.Address, fingerprint.Range) {
+	c.t.Helper()
+	running := c.waitRunning()
+	c.h.clock.Add(reconciler.ClaimIdleTimeout)
+	c.ended++
+	waitFor(c.t, "claim ended", func() bool { return c.h.r.StripesTotal("idle") >= float64(c.ended) })
+	var next fingerprint.Range
+	waitFor(c.t, "the next claim runs", func() bool {
+		r, _, ok := c.h.r.RunningStripe()
+		next = r
+		return ok && !r.Equal(running)
+	})
+	return c.owner[running.String()], next
 }

@@ -253,10 +253,14 @@ type Reconciler struct {
 	// stripeRegistry holds the jobs queued for or in a striped transfer;
 	// stripeQueue the queued ones, in order, for the stripe worker that
 	// stripeWake wakes, and stripeRunning the one in flight.
+	// claimOvertakes counts the claims the worker ran in a row before the
+	// first queued claim, for their peers' greater fetch credit
+	// (nextJobLocked, maxClaimOvertakes).
 	stripeRegistry []*stripeJob
 	stripeQueue    []*stripeJob
 	stripeRunning  *stripeJob
 	stripeWake     chan struct{}
+	claimOvertakes int
 	// gossipWake makes the gossip loop recompute when the next Status is
 	// due.
 	gossipWake chan struct{}
