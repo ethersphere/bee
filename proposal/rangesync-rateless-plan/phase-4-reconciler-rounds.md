@@ -4343,7 +4343,221 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
   per-overlay backoff after an idle claim end (Follow-ups, "(T4.7 part 3 fix round 1 → part 4)").
   Residuals for T6.3: stall chains past the 19-minute own-job grace; a dripping claimant holding the
   stripe worker (~720 chunks a day per neighborhood).
+- **(T4.7 part 4) The per-peer fetch credit, as built (pkg/rangesync credit.go, fetch.go).** The
+  second PRE-TESTNET BLOCKER (T4.5 part 2b fix round 3, "Per-peer fetch credit (before testnet)", and
+  its round-3 review entry "The per-peer fetch credit must survive reconnects"). A peer's share of the
+  fetch rate refills only with the chunks it delivered:
+  - *Cost and gate.* Asking a peer for an ID costs one unit of its credit. `want` takes it after the
+    peer's stream slot (`maxFetchStreamsOut`) and before the open, the node-wide fetch limiter and the
+    claims, so a Want now runs: open-backoff check → slot → credit → open → fetch rate → claims → Want.
+    At most two Wants per peer hold credit at once, so a peer with at least 500 units is never cut
+    short. With less credit than candidates the Want asks for what the credit covers, and the rest goes
+    first into the call's next Want, by when this one has settled (a call's Wants run one after the
+    other, so a peer's credit doubles from Want to Want while it delivers: probe 1, then 2, 4, 8 …).
+    With none left the fetch requests nothing more, opens no stream, takes no fetch rate or claim, and
+    fails at once with the new sentinel `ErrFetchCredit`. Every ID it did not request (that Want's
+    candidates and those not looked at yet) is in the new `FetchResult.NoCredit`, and is counted as
+    `fetch_skipped_total{reason="no_credit"}`. The peer is not scored.
+  - *Refill (what each outcome gives back).* A stored chunk gives back 2 units (`creditStoredRefund`:
+    its own and one more), up to `creditMax` = 2 × `maxFetchStreamsOut` × `MaxWantIDs` = 1000. Some
+    outcomes give back just the unit: a valid delivery of a chunk already in the reserve when it
+    arrived (the cross-protocol duplicate); a delivery whose stamp check failed for a cause on this
+    node (`Unverified`); a candidate not requested after all (another claim, in the reserve after the
+    claim, want-set refusal); an ID of a Want that did not start (failed open, limiter wait ended);
+    an ID of a Want that this node ended (its context, Close, `ErrLocal`). Some give back nothing: IDs
+    missing at EOF, IDs of a Want the peer reset or stalled past `FetchTimeout`, rejected deliveries
+    (`stampRejected` or no recovery, so unknown or expired batches too, and `ErrOverwriteNewerChunk`),
+    and violations. *Decision: "valid and already held" gives the unit back but earns nothing.* It is
+    honest work (the peer delivered what it listed, and lost a race with pushsync or pullsync, which is
+    common in dual mode), so it must not drain an honest peer. But it gave this node nothing it lacked.
+    An uploader that lists a chunk while pushing it here could farm credit if held deliveries earned.
+    A peer's credit therefore grows only while it delivers more than half of what it is asked for. The
+    junk it can have this node request stays below the chunks it stored, plus its initial credit and
+    its probes.
+  - *Key and memory.* The book is keyed by overlay and kept across disconnects (`disconnected` clears
+    the reset budget, the shortfall memory and the open backoff, not the credit, which is like the
+    root-move excuse). It keeps the 4096 overlays asked most recently (`maxCreditPeers`, LRU on every
+    take). When it forgets one in debt (below the initial credit), it remembers that balance in a
+    second LRU of 4096. An overlay asked again resumes its remembered debt instead of drawing from the
+    pool, and its probe clock starts over. An overlay forgotten with at least the initial credit is
+    not remembered: when it comes back it gets at most the initial credit, which is no more than it
+    had. About 150 B per record, ≈ 1.2 MB at most.
+  - *Initial credit and the pool.* A new overlay starts with `creditInitial` = `MaxWantIDs` = 250 (one
+    full Want), drawn from a node-wide pool: `creditPoolBurst` = 32 newcomers (8000 IDs) at once, which
+    covers the neighborhood at start-up, and then 250 per `creditPoolInterval` (1 minute, ≈ 4.2 IDs/s).
+    Once the pool is empty a newcomer starts at 0.
+  - *Probe.* A peer with no credit is asked for one ID once per `creditProbeInterval` (10 s), the first
+    one a probe interval after it was first asked. This keeps an honest peer that ran out (a newcomer
+    the pool had nothing for, a peer that lost Wants) live. A delivered probe gives 2, and doubling
+    follows within the same call (`TestFetchCreditNewPeer`: Wants of 1, 2, 4, 8).
+  - *What a new overlay buys an attacker.* A new overlay costs about 2^depth hashes and a handshake.
+    It buys at most 250 junk IDs, drawn from the node-wide pool, so all new overlays together get at
+    most 8000 + 250 per minute (≈ 4.2 IDs/s node-wide, however many overlays or IPs). After that it
+    gets one probe per 10 s while it stays connected. Before, each new overlay or reconnect renewed
+    the shortfall memory and the reset budget (≥ 100 IDs/s per cycling Sybil).
+  - *Evicting and returning is no cheaper than staying.* A debtor that is evicted resumes its debt and
+    waits a new probe interval (`TestCreditBook/evicted`, `TestFetchCreditReconnect`). The debt is
+    lost only after 4096 other overlays were asked and 4096 more were forgotten in debt. The overlay
+    is then a new one, and a fresh overlay gets that much anyway.
+- **(T4.7 part 4) Catch-up fetches and honest churn: the credit does not slow an honest peer.** An
+  honest peer delivers nearly all it is asked for, so its credit only grows, up to 1000. That covers
+  its two Wants at once even after two lost Wants, for example a reset and a radius increase. A
+  bootstrap or stripe from 2 to 4 honest peers starts at 250 = one full Want per peer, the size the
+  fetch would use anyway. It reaches 500 after that Want, before the second stream needs it. Measured
+  (`TestFetchCreditBootstrapNotSlowed`, scaled bootstrap Base 8000, N = 3 and 5, at 10 × the
+  harness's node-wide fetch rate so that the peers' deliveries count, not only the node-wide
+  rate): the node caught up after 14.12 s with the credit and 14.12 s without it (2 peers), and after
+  14.02 s with and 14.02 s without (4 peers). At the harness's own rate: 123.01 s in all cases. The
+  stripes completed, none timed out, and no chunk was delivered twice. Honest churn
+  (`TestFetchCreditHonestChurn`: 100 fetches of 12 IDs, one evicted every 4th fetch, half gone every
+  25th, a reset after half the deliveries every 10th): with the credit and without it alike, 100
+  Wants, 1098 chunks stored, 0 refused, 0 scores, and the credit ends at the cap. *One honest corner
+  is accepted.* While a newcomer's first Want holds its 250, a second call to it at the same time,
+  on its other stream slot, is refused (`ErrFetchCredit`). Its IDs are retried from other sources or
+  listed again next round, and a stripe goes to another peer. This lasts until that first Want
+  settles (≈ 1 s at the handler's 250 chunks/s), once per new honest peer (Follow-ups).
+- **(T4.7 part 4) How the credit fits with the existing machinery.**
+  - *Node-wide fetch limiter.* The credit takes no fetch rate and never waits. A refused call returns
+    before the limiter, and the only wait before the credit is the peer's own stream slot. So a
+    starved peer cannot queue on the limiter ahead of honest peers, and there is no cycle (credit
+    holders never wait for credit). `TestFetchCreditLimiterStress`: honest fetches queued on a
+    50 IDs/s limiter, with 16 refused calls from two starved peers at the same time; every honest chunk
+    was stored, and every refusal took < 400 ms (it did not wait for the limiter).
+  - *Claims and the want set.* The credit is taken before the claims, so refused IDs are never
+    claimed, and other peers' fetches of the same round claim them as usual. The reconciler's
+    `fetchFrom` passes `NoCredit` to `retry` together with `Undelivered`. They go to the next peer
+    known to hold them (`wantSources`), or the next round lists them again (`TestWantSetRetryNoCredit`:
+    x goes from B1, which stalls, to B2, whose credit is spent, to B3).
+  - *Stripes and the inactivity clock.* `runStripe` reassigns an attempt that ended with
+    `ErrFetchCredit` at once, whatever it stored (progress no longer restarts it with the same peer),
+    and blames nobody: it is not `ErrStripeWithheld` (`TestStripeNoCreditReassigned`). A peer that
+    lists junk does not hold a stripe for `StripeTimeout`, nor for restarts. A verifier whose credit is
+    spent ends its verification with the error and is not judged, as with any verification error
+    (Follow-ups).
+  - *SyncRate.* A refused catch-up fetch returns at once, so no catch-up fetch stays in flight. It
+    spends an instant of the node-wide catch-up grace and refills nothing (`TestSyncRateNoCredit`:
+    after the grace, `SyncRate` stays 0 over five refused catch-ups of `CatchUpMinDiff` IDs, and no
+    stream opens).
+  - *Shortfall scoring.* All the heuristics are kept. The credit also counts what they exclude:
+    excused root moves, rejections that depend on the chain state, and the IDs of failed Wants. The
+    heuristics it makes redundant for bounding the junk are listed in Follow-ups.
+- **(T4.7 part 4) Item 4: the junk residual, measured.** `TestFetchCreditJunkResidual` (skipped
+  with `-short`) runs one peer per path for 30 minutes on a fake clock, without the credit (as
+  before) and with it, staying connected and reconnecting after every fetch. Each attack is the
+  cheapest unscored strategy of the T4.5 part 2b fix round 3 table. *Small fresh junk*: 63 fresh junk
+  IDs per fetch, at a served session per 2.5 s plus a round session per 5 s. *Resets*: Wants of 250
+  reset within the peer's view of its reset budget (refreshed on a reconnect). *Unknown batch*:
+  12 delivered chunks per fetch, with recovering signatures of a batch this node does not know; 12 is
+  the most streamtest carries per Want. *Root moves*: 250 junk IDs per 10 minutes, excused by a
+  one-bit move during the Want. No run was scored. Junk IDs requested per second, averaged over
+  30 minutes:
 
+  | Path | Before | Before, reconnects | After | After, reconnects |
+  |---|---|---|---|---|
+  | Small fresh junk | 37.84 | 37.84 | 0.22 | 0.22 |
+  | Resets | 4.58 | 100.00 | 0.15 | 0.24 |
+  | Unknown-batch junk (12 per fetch) | 7.21 | 7.21 | 0.22 | 0.22 |
+  | Root moves (250 per 10 min) | 0.42 | 0.42 | 0.14 | 0.14 |
+  | Failed opens (`TestFetchCreditJunk`) | 0 | 0 | 0 | 0 |
+
+  The "before" figures of the last two rows scale with what the attacker lists: 250-ID unknown-batch
+  fetches at the same rate would be about 150 IDs/s, and a `LargeDiff` root-move call is about
+  27 IDs/s per round 3. The "after" figures do not. With the credit, each run is 250 initial IDs plus
+  one probe per 10 s; the test asserts ≤ 431 IDs in 30 minutes. Reconnects add nothing (the resets
+  run differs only because a reconnect refreshes the reset budget, so every probe can be reset).
+  *Bound, as the credit's parameters give it.* Per peer: at most `creditInitial` once (250, from the
+  node-wide pool), plus one ID per `creditProbeInterval` (0.1 IDs/s in the long run), plus one junk
+  ID per chunk the peer stored here (`creditStoredRefund` − 1). Across all new overlays: the pool,
+  8000 + 250 per minute (≈ 4.2 IDs/s). Before: ≈ 70 IDs/s per connected Sybil, the round-3 total
+  (small junk 37.8 and resets 4.6 measured here, root moves ≈ 27 per round 3), with unknown-batch
+  junk on top, and 100 IDs/s measured for resets with reconnects.
+- **(T4.7 part 4) Item 2: the one-chunk-then-reset pin. The credit bounds its cost, not the pin; the
+  optional fix is not built.** `TestFetchCreditOneChunkThenReset`: once per `SyncRateWindow` the peer
+  lists `CatchUpMinDiff` IDs, delivers one chunk this node lacks and resets the stream. It stays
+  within its reset budget and is unscored. The first cycle requests 250 IDs. Every later cycle
+  requests 2 (one stored, one not delivered), the credit stays at 2 (the stored chunk gives back both
+  units), and the peer is not scored. Before the credit, every cycle requested a full Want (249 junk
+  IDs). The stored chunk still keeps the catch-up rate above 0. That costs the attacker one real,
+  stamped chunk that this node lacks and accepts, per window, which is the drip part 3 accepts as an
+  honest slow peer's. *Why not the optional fix* (`rate.Add(-n)` for a Want that ends with at least
+  half its claims undelivered): with the credit, the attacker's cheapest cycle is already a Want of
+  2. Under the fix it would take a probe (one ID, delivered in full, so counted) plus one refused or
+  reset Want of 2 that brings the credit back to 0. That is still one real chunk per window, because
+  a Want of the IDs the credit covers, all delivered, is what an honest peer sends. The fix would
+  also stop counting the chunks of honest Wants that a peer resets midway. The pin stays with the
+  drip and the sustained-overwrite pin for T6.3 (Follow-ups). This closes "(T4.7 part 3) The
+  one-chunk-then-reset pin … was not done" and the T4.5 part 2c round-2 Low 2: the credit bounds what
+  the pin costs this node, from a Want of 250 per cycle down to 2.
+- **(T4.7 part 4) Item 3: the stripe worker runs the claims of the peers with the most fetch credit
+  first (part 3's hand-over).** The hand-over is "(T4.7 part 3 fix round 1 → part 4) Honest claims
+  wait behind stalling claims". `stripeWorker` picks the next job with `nextJobLocked`. The first
+  queued job runs if it is an own job (own jobs are still queued ahead of the claims). Otherwise the
+  claim of the peer with the most `FetchCredit` runs, the first queued among equals. The credit is
+  read through the optional `creditReader` (`*rangesync.Service.FetchCredit`); without it the order
+  stays FIFO. It is the same per-overlay record as the fetches' and is kept across reconnects. Of the
+  two directions the hand-over names, this is the second one: claims ordered by their overlays'
+  delivered chunks. A neighbor that delivered to this node has earned credit (up to 1000). New
+  overlays have at most the initial 250, a peer that listed junk has spent its credit, and a peer
+  this node never fetched from has none. So an honest neighbor's claim runs right after the claim in
+  flight, ahead of the Sybils' claims queued before it (`TestClaimOrderByCredit`: with the credit the
+  honest claim runs next, without it the first queued Sybil claim). The per-overlay backoff after an
+  idle end was not built. It would need a second record in the reconciler, and fresh overlays would
+  bypass it. Residual: an honest claimant this node never fetched from ranks with the Sybils
+  (Follow-ups). `nextJobLocked` reads the credit under `r.mu`. The book's lock is a leaf (it never
+  calls out), so the lock order is `r.mu` → book.
+- **(T4.7 part 4) Superseded.**
+  - T4.5 part 2b fix round 3, "Junk a peer can still have fetched unscored, per Sybil" (≈ 70 IDs/s),
+    and the round-3 review entry "The per-peer fetch credit must survive reconnects": replaced by
+    the measured table above.
+  - T4.5 part 2c item 1, "A Want now runs: stream slot → open → fetch rate → claims → Want": it is now
+    open-backoff check → stream slot → credit → open → fetch rate → claims → Want.
+  - `FetchResult`'s "the IDs in none were not requested … because the fetch ended with an error":
+    except `ErrFetchCredit`, whose IDs are in `NoCredit`.
+  - `runStripe` (T4.3/T4.5 2a/T4.7 part 1): "restarted with the same peer while an attempt that failed
+    stored chunks (progress)": except `ErrFetchCredit`, which reassigns at once.
+  - The stripe worker's FIFO among claims (part 1 fix round 1, part 3's "FIFO among claims" in
+    "A peer's claim that stores nothing leaves the stripe worker"): with a `creditReader`, claims run
+    by their peer's fetch credit, FIFO among equals.
+  - Tests changed by design. `TestFetchManyWants`, `TestFetchShortfallAfterPeerViolation`,
+    `TestFetchResetAfterOneDelivery`, `TestViolationMarks` ("one score per violation") and
+    `TestFetchForgetIfGone` ("violation mark") now lift the credit (`DisableFetchCredit`), so that
+    the shortfall rules, the reset budget, the marks and the split into Wants are still tested on
+    their own. The credit would refuse their junk-listing peers after the first Want, which
+    `TestFetchCreditJunk` and `TestFetchCreditOneChunkThenReset` cover. Their assertions are
+    unchanged.
+
+- **(T4.7 part 4) Tests, scope and checks.** Commits 91df028c (pkg/rangesync: credit.go, fetch.go,
+  rangesync.go, metrics.go, tests) and 3d39ed3b (reconciler: wants.go, stripes_transfer.go, tests).
+  New exports: `ErrFetchCredit`, `FetchResult.NoCredit`, `(*Service).FetchCredit`; metric reason
+  `fetch_skipped_total{reason="no_credit"}`. Test-only: `DisableFetchCredit`,
+  `SetFetchCreditCapacity`, `DrainFetchCreditPool`, `DisableDeliveryLimit`, `CreditBook`;
+  `nodeOpts.routes` (one requester, several peers); the harness's `simOptions.NoFetchCredit`, and its
+  merge of `NoCredit`. No pkg/pullsync, pkg/puller, pkg/node, pkg/storer, go.mod, proto or
+  `*_fuzz_test.go` change; README not ticked.
+  - Checks: `go build ./...`; `go vet` on pkg/rangesync/... (default and `-tags=sim`);
+    `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues; gofumpt and gci on the changed files only. `go test
+    ./pkg/rangesync/...` passes (pkg/rangesync 56 s, reconciler 5 s). pkg/node's
+    `TestCombinedSyncerBothDrivers`, `TestSyncWiring` and `TestRangesyncOptions` pass (not
+    touched).
+  - No `-race` here, so these ran instead, with no failure: the new pkg/rangesync tests
+    `-count=10 -cpu=1,2,4` (204 s); the five changed ones `-count=20 -cpu=1,2,4`;
+    `TestFetchCreditBootstrapNotSlowed` and `TestFetchCreditJunkResidual` `-count=2 -cpu=1,4`;
+    `TestFetch*`, `TestStatus*`, `TestReconcile*` and `TestNeighborhoodBootstrap*` `-count=3
+    -cpu=1,2,4` (455 s); the four new reconciler tests `-count=20 -cpu=1,2,4`; and the whole
+    reconciler package `-count=3 -cpu=1,2,4` (`TestWants*`, `TestWantSet*`, `TestSREP*`,
+    `TestStripe*`, `TestTransferStripes*`, `TestVerifyStripes*`, `TestSyncRate*`, `TestClaim*`
+    among them).
+  - The new reconciler tests fail on the old code, checked by restoring each old rule:
+    `TestStripeNoCreditReassigned` gets "2 fetches … restarted", `TestWantSetRetryNoCredit` is never
+    delivered, and `TestClaimOrderByCredit` runs the first queued claim. The pkg/rangesync ones fail
+    with the credit lifted (the "before" rows of the residual table).
+  - Sim (`-tags=sim`, one run, 635 s). `TestG6Bootstrap` (N = 17, Base 20000): 1410 and 1409 KB of
+    2610 KB at ranks 4 and 14; 16 stripes done, none reassigned or timed out; 0 duplicates; fetches
+    skipped only `held` and `in_reserve` (no `no_credit`). `TestG6BootstrapTail`: 1232 / 1263 /
+    1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2 and 4; caught up after 5333.93–5335.13
+    s; 0 wants; 9–13 stripe sessions, none timed out. Identical to part 3: AC-B2 within bound. The CI
+    list is in Follow-ups.
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -5934,3 +6148,68 @@ _(sessions append here)_
   `TestOwnJobPreemptsClaims`, `TestClaimKeepsRounds`, `TestTransferring`. `adoptLocked` now reads
   the claim in flight's context, which the worker sets under `r.mu` and its idle clock's goroutine
   cancels, so re-run the whole reconciler package.
+- **(T4.7 part 4) Shortfall heuristics the fetch credit makes redundant for bounding junk (removal
+  is a later decision; all are kept).** The credit bounds the junk of every path, so these rules no
+  longer bound volume. They only score or disconnect, which is a peer-quality signal, and dropping
+  them would simplify fetch.go and shortfall.go:
+  - the reset budget (`maxFetchResets`, `fetchResetInterval`, `chargeReset`): a reset Want now
+    spends its credit;
+  - the relisted rule and its memory (`shortfallBook.relisted`, `maxMissingPerPeer`), and
+    offenses and repeats (`ErrFetchShortfall` scoring);
+  - the root-move excuse (`rootExcuseInterval`, `plausibleStep`, `excuse`), which exists only so that
+    the two rules above do not score an honest radius increase;
+  - the violation marks' grace and `forgetIfGone` bookkeeping, as far as they serve those rules.
+
+  Keep in any case: the blatant rule (it disconnects a junk-only peer at its first Want, before its
+  probes), the invalid-stamp count (the stamp is invalid on every node), the stall violation, the
+  open backoff (no credit is spent on opens), `MaxRejectedPerPeer` (memory) and the catch-up grace.
+- **(T4.7 part 4 → T6) Credit parameters to read off testnet.** `creditInitial` 250, `creditMax`
+  1000, `creditStoredRefund` 2, pool 8000 + 250/min, `creditProbeInterval` 10 s, 4096 + 4096
+  records. To read: `fetch_skipped_total{reason="no_credit"}` per node (honest neighbors should show
+  none), and how often honest peers hit 0. That needs a gauge or a Debug log of refusals by peer,
+  which was not added. Also how often the newcomer corner happens (below).
+- **(T4.7 part 4) A newcomer's second concurrent fetch is refused.** A newcomer's 250 initial units
+  cover one Want. A second call at the same time, on the peer's other stream slot (a round fetch
+  and a served-session fetch together), is refused until the first Want settles (≈ 1 s). Its IDs are
+  retried or listed again, and a stripe goes to another peer. Fix if testnet shows it: a newcomer
+  credit of `maxFetchStreamsOut` Wants (500; the pool would then serve 16 newcomers at once), or a
+  wait for the peer's Wants in flight instead of a refusal.
+- **(T4.7 part 4) Junk up to the chunks a peer stores.** With `creditStoredRefund` 2, a peer that
+  delivers real chunks this node lacks earns one junk ID per chunk ("fresh junk under half of each
+  larger fetch", T4.5 part 2b round 3). That row is unchanged, but now bounded on every path and
+  across reconnects. A refund below 2 (for example 3/2) tightens it to junk ≤ half the stored
+  chunks, at the price of a slower climb back from the probe and a 2/3 delivery floor for honest
+  peers. Decide on testnet data.
+- **(T4.7 part 4) The pool can be drained.** An attacker's new overlays can empty the node-wide pool
+  of initial credit, after which it refills at ≈ 4.2 IDs/s. Honest newcomers, and an honest neighbor
+  the book forgot with full credit, then start from a probe (first after 10 s, then doubling).
+  Tested (`TestFetchCreditNewPeer`). Measure on testnet how long honest newcomers wait.
+- **(T4.7 part 4) Stripe planning and verifier choice ignore the credit.** A stripe planned to a
+  peer with no credit costs one session before the refused fetch reassigns it. A verifier with no
+  credit ends its verification with `ErrFetchCredit`: it is not judged, and the deliverer it should
+  verify goes unjudged too, as with any verification error. `planStripes`, `nextStripePeer` and
+  `verifier` could rank peers by `FetchCredit`, as the stripe worker now ranks claims.
+- **(T4.7 part 4 → T6.3) Claims of an honest claimant this node never fetched from.** That claimant
+  has no credit, so its claims rank with the Sybils' (FIFO among them). Behind S Sybil claims that
+  store nothing it waits up to `claimIdleTimeout` per claim, as before part 4. A neighbor that has
+  delivered chunks to this node (in steady state, most of them) ranks ahead. Measure in T6.3 with
+  the claims' queue wait, as "(T4.7 part 3 fix round 1) Correction to … Claims' first-chunk window"
+  asks.
+- **(T4.7 part 4 → T6.3) The one-chunk-then-reset pin stays as a drip.** One real, accepted chunk
+  per `SyncRateWindow` keeps the catch-up rate above 0, as an honest slow peer would. The credit
+  cuts what each cycle costs this node to 2 IDs (Decisions log, item 2). This goes with "A
+  claimant that drips holds the stripe worker" and the sustained-overwrite pin.
+- **(T4.7 part 4) No new peer-input decoder:** no followup-fuzzing.md line. `FetchResult.NoCredit`
+  and the book read only this node's own state.
+- **(T4.7 part 4) Tests to run with `-race` on CI.** There is no C compiler here, so they ran with
+  `-count=N -cpu=1,2,4` instead (see the Decisions log, checks).
+  - `pkg/rangesync`, new: `TestCreditBook`, `TestFetchCreditJunk`, `TestFetchCreditReconnect`,
+    `TestFetchCreditOneChunkThenReset`, `TestFetchCreditNewPeer`, `TestFetchCreditHonestChurn`,
+    `TestFetchCreditLimiterStress`, `TestFetchCreditBootstrapNotSlowed`,
+    `TestFetchCreditJunkResidual` (long; skipped with `-short`). Changed (the credit lifted):
+    `TestFetchManyWants`, `TestFetchShortfallAfterPeerViolation`, `TestFetchResetAfterOneDelivery`,
+    `TestViolationMarks`, `TestFetchForgetIfGone`. Re-run, because `want`, `fetch` and `deliver`
+    changed: `TestFetch*`, `TestStatus*`, `TestReconcile*`, `TestNeighborhoodBootstrap*`.
+  - `pkg/rangesync/reconciler`, new: `TestWantSetRetryNoCredit`, `TestStripeNoCreditReassigned`,
+    `TestSyncRateNoCredit`, `TestClaimOrderByCredit`. The stripe worker's pick (`nextJobLocked`)
+    reads the service's credit under `r.mu`, so re-run the whole reconciler package.
