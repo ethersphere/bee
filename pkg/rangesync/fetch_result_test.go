@@ -127,6 +127,106 @@ func TestFetchWithProgress(t *testing.T) {
 	assertNotScored(t, a, b.addr)
 }
 
+// TestFetchWithProgressNotStored (T4.7 part 3; T4.5 part 2c round-2 review,
+// Low 3: the test gap) checks that FetchWithProgress reports no chunk it does
+// not store: an ID the reserve holds already is skipped before the Want, a
+// delivery the reserve got meanwhile (another protocol stored it) is a cross
+// protocol duplicate, and a delivery whose stamp is older than the one the
+// reserve holds (ErrOverwriteNewerChunk) is rejected. Only the other chunk
+// of each fetch is reported, once.
+func TestFetchWithProgressNotStored(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		// node returns the fetching node for chs; holder sets up the
+		// peer that holds them
+		node   func(t *testing.T, chs []swarm.Chunk) *testNode
+		holder func(t *testing.T, a *testNode, chs []swarm.Chunk) *testNode
+		check  func(t *testing.T, a *testNode, res rangesync.FetchResult)
+	}{
+		{
+			name: "in reserve",
+			node: func(t *testing.T, chs []swarm.Chunk) *testNode {
+				t.Helper()
+				return newTestNode(t, chs[0])
+			},
+			check: func(t *testing.T, a *testNode, _ rangesync.FetchResult) {
+				t.Helper()
+				assertFetchSkipped(t, a, map[string]float64{"in_reserve": 1, "held": 0})
+			},
+		},
+		{
+			name: "cross protocol duplicate",
+			node: func(t *testing.T, _ []swarm.Chunk) *testNode {
+				t.Helper()
+				return newTestNode(t)
+			},
+			holder: func(t *testing.T, a *testNode, chs []swarm.Chunk) *testNode {
+				t.Helper()
+				b := newTestNode(t)
+				fakeHolder(a, b, func(_ *pb.Want, w protobuf.Writer) {
+					// pullsync stores the first chunk while the fetch runs
+					if err := a.store.ReservePutter().Put(context.Background(), chs[0]); err != nil {
+						t.Error(err)
+					}
+					for _, ch := range chs {
+						_ = w.WriteMsg(delivery(t, ch))
+					}
+				})
+				return b
+			},
+			check: func(t *testing.T, a *testNode, _ rangesync.FetchResult) {
+				t.Helper()
+				if d := a.svc.CrossProtocolDuplicates(); d != 1 {
+					t.Fatalf("cross protocol duplicates %v, want 1", d)
+				}
+			},
+		},
+		{
+			name: "overwrite newer chunk",
+			node: func(t *testing.T, chs []swarm.Chunk) *testNode {
+				t.Helper()
+				return newTestNodeOpts(t, nodeOpts{putHook: func(ch swarm.Chunk) error {
+					if ch.Address().Equal(chs[0].Address()) {
+						return storage.ErrOverwriteNewerChunk
+					}
+					return nil
+				}})
+			},
+			check: func(t *testing.T, _ *testNode, res rangesync.FetchResult) {
+				t.Helper()
+				if res.Rejected != 1 {
+					t.Fatalf("rejected %d, want 1", res.Rejected)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			chs := validChunks(2)
+			a := tc.node(t, chs)
+			var b *testNode
+			if tc.holder != nil {
+				b = tc.holder(t, a, chs)
+			} else {
+				b = newTestNode(t, chs...)
+				connect0(a, b)
+			}
+			var reported atomic.Int64
+			res, err := a.svc.FetchWithProgress(context.Background(), b.addr, idsOf(t, chs...), func() { reported.Add(1) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Stored != 1 || reported.Load() != 1 {
+				t.Fatalf("stored %d, reported %d, want 1, 1", res.Stored, reported.Load())
+			}
+			tc.check(t, a, res)
+			assertNotScored(t, a, b.addr)
+		})
+	}
+}
+
 // TestFetchWithResultFailed checks that the IDs of a Want that failed are
 // Undelivered: a holder that stalls past the fetch timeout, and a holder that
 // delivers an invalid chunk, which is Undelivered too.
