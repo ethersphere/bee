@@ -60,6 +60,11 @@ type wantService struct {
 	unverified map[fingerprint.ID]bool
 	// claimed, by peer, is closed when a fetch from the peer first claims.
 	claimed map[string]chan struct{}
+	// creditLeft, by peer, if set, is the peer's fetch credit: the IDs it
+	// may still be asked for, the rest of a fetch refused as by
+	// rangesync's credit (FetchResult.NoCredit, ErrFetchCredit). It does
+	// not grow.
+	creditLeft map[string]int
 	// stored holds the IDs stored; deliveries the peers that delivered
 	// each ID; calls the IDs of each fetch, by peer.
 	stored     map[fingerprint.ID]bool
@@ -77,6 +82,7 @@ func newWantService(local rangesync.Status) *wantService {
 		pause:       make(map[string]chan struct{}),
 		unverified:  make(map[fingerprint.ID]bool),
 		claimed:     make(map[string]chan struct{}),
+		creditLeft:  make(map[string]int),
 		stored:      make(map[fingerprint.ID]bool),
 		deliveries:  make(map[fingerprint.ID][]swarm.Address),
 		calls:       make(map[string][][]storer.ChunkID),
@@ -166,6 +172,15 @@ func (s *wantService) fetchWithResult(ctx context.Context, peer swarm.Address, i
 			res.Rejected++
 		}
 	}
+	var refused []storer.ChunkID
+	if left, ok := s.creditLeft[k]; ok {
+		n := min(left, len(granted))
+		s.creditLeft[k] = left - n
+		granted, refused = granted[:n], granted[n:]
+		for _, c := range refused {
+			s.ws.Release(fpID(c), peer) // the service does not claim them
+		}
+	}
 	stall, pause, sig := s.stall[k], s.pause[k], s.claimed[k]
 	if sig != nil && len(granted) > 0 {
 		close(sig)
@@ -209,6 +224,10 @@ func (s *wantService) fetchWithResult(ctx context.Context, peer swarm.Address, i
 		s.deliveries[id] = append(s.deliveries[id], peer)
 		s.ws.Done(id)
 		res.Stored++
+	}
+	if len(refused) > 0 {
+		res.NoCredit = refused
+		return res, rangesync.ErrFetchCredit
 	}
 	return res, nil
 }

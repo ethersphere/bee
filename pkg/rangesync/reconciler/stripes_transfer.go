@@ -342,7 +342,11 @@ func (l *peerLocks) acquire(ctx context.Context, peer swarm.Address) (func(), er
 // found the peer's fetch stream opens backing off (rangesync.ErrOpenBackoff)
 // is restarted with the same peer too (maxStripeRestarts): the next attempt
 // waits for the backoff as for a Busy answer (transferStripe), and is
-// reassigned once those waits run out.
+// reassigned once those waits run out. An attempt whose fetch found the
+// peer's fetch credit spent (rangesync.ErrFetchCredit) is reassigned at once,
+// whatever it stored, and nobody is blamed: the IDs it was not asked for are
+// retried from other sources (fetchFrom), and the next peer's session lists
+// the rest.
 //
 // The attempts with one peer share one budget on the stripe clock,
 // stripePeerBudget × StripeTimeout: each attempt's clock is capped at what
@@ -398,13 +402,17 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		backoff := !progress && res.ran && errors.Is(res.Err, rangesync.ErrOpenBackoff)
 		// the peer's budget on the stripe clock is spent: reassign
 		spent := res.capped || used >= budget
+		// the peer's fetch credit is spent (it did not deliver what it was
+		// asked for before): reassign at once, whatever it stored, so that
+		// a peer that lists junk does not hold the stripe (T4.7 part 4)
+		noCredit := errors.Is(res.Err, rangesync.ErrFetchCredit)
 		switch {
 		case total.Err == nil:
 			r.metrics.Stripes.WithLabelValues(stripeDone).Inc()
 			return total
 		case ctx.Err() != nil:
 			return total
-		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && restarts < maxStripeRestarts && !spent &&
+		case res.Err != nil && !errors.Is(total.Err, ErrStripeWithheld) && !noCredit && restarts < maxStripeRestarts && !spent &&
 			(progress || backoff || local && localRestarts < maxStripeRestarts):
 			restarts++
 			if local {
@@ -1449,7 +1457,9 @@ func (r *Reconciler) planCatchUp(local rangesync.Status, radiusPending bool) (bo
 }
 
 // stripeWorker plans and transfers the queued ranges, one at a time, across
-// the peers with a Status, until Close. A claim runs under a context of its
+// the peers with a Status, until Close, in the order nextJobLocked picks:
+// the own jobs first, then the claims of the peers with the most fetch
+// credit. A claim runs under a context of its
 // own (stripeJob.cancel), which an own job that preempts it ends, and on an
 // idle clock (stripeJob.idle), which ends it once its job stored no chunk
 // for claimIdleTimeout (endIdleClaim). The chunks a job stores, in its
@@ -1483,8 +1493,7 @@ func (r *Reconciler) stripeWorker() {
 				r.mu.Unlock()
 				break
 			}
-			job := r.stripeQueue[0]
-			r.stripeQueue = r.stripeQueue[1:]
+			job := r.nextJobLocked()
 			ctx, cancel := r.ctx, context.CancelCauseFunc(func(error) {})
 			if job.ctx != nil {
 				ctx = job.ctx
@@ -1534,6 +1543,43 @@ func (r *Reconciler) stripeWorker() {
 			r.mu.Unlock()
 		}
 	}
+}
+
+// creditReader is implemented by a Service that keeps a fetch credit per
+// peer (*rangesync.Service, rangesync's credit.go).
+type creditReader interface {
+	FetchCredit(peer swarm.Address) int
+}
+
+var _ creditReader = (*rangesync.Service)(nil)
+
+// nextJobLocked removes the job the stripe worker runs next from the queue
+// and returns it: the first one if it is an own job (own jobs are queued
+// ahead of the claims), else, with a creditReader, the claim of the peer
+// with the most fetch credit, the first queued among equals (T4.7 part 4,
+// part 3's hand-over). A peer's credit grows with the chunks it delivered
+// to this node and shrinks with what it was asked for and did not deliver,
+// and a peer this node never fetched from has none, so the claims of the
+// neighbors this node syncs with run before those of new overlays and of
+// peers that listed junk, which, when their claims store nothing, would
+// hold the worker for claimIdleTimeout each, the honest claims queued
+// behind them waiting with SyncRate at 0. The credit is the same per-overlay
+// record as the fetches', kept across reconnects. Without a creditReader
+// the claims run in the order queued. The service's credit book takes its
+// own lock, which never calls back: r.mu must be held.
+func (r *Reconciler) nextJobLocked() *stripeJob {
+	i := 0
+	if cr, ok := r.svc.(creditReader); ok && !r.stripeQueue[0].own {
+		best := -1
+		for k, j := range r.stripeQueue {
+			if c := cr.FetchCredit(j.peer); c > best {
+				i, best = k, c
+			}
+		}
+	}
+	job := r.stripeQueue[i]
+	r.stripeQueue = slices.Delete(r.stripeQueue, i, i+1)
+	return job
 }
 
 // jobStored records that job, in flight, stored chunks in its transfer or

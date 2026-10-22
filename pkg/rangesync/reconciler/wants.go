@@ -73,7 +73,9 @@ type fetchOutcome struct {
 
 // fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
 // source of the IDs another fetch's claim held (the want set denied them),
-// and retries the IDs peer did not deliver from their other sources (retry).
+// and retries the IDs peer did not deliver, and those it was not asked for
+// because its fetch credit was spent (FetchResult.NoCredit), from their
+// other sources (retry).
 // The retries of a catch-up fetch are catch-up fetches. The fetch is
 // registered as running while it lasts, so that the sources recorded while
 // it holds its claims are kept until its result arrives (wantSources). The
@@ -110,19 +112,21 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 		stored(res.Stored)
 	}
 	r.sources.add(r.now(), peer, res.Held)
-	r.retry(peer, res.Undelivered, catchUp)
+	r.retry(peer, append(slices.Clip(res.Undelivered), res.NoCredit...), catchUp)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
 	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified), outsideRoot: res.OutsideRoot}, err
 }
 
 // retry fetches ids, which failed did not deliver (or delivered invalid, or
-// whose fetch failed), from other peers known to hold them: the peers the
-// want set denied them while failed's claim held them (wantSources). Each ID goes to the first such peer that is still
-// connected, other than failed, and is dropped from its sources. The IDs of
-// one peer are fetched in a goroutine of their own, one retry fetch per peer
-// at a time, so that retries add at most one fetch stream per peer. A retry's
-// own undelivered IDs go to the next source. IDs with no other source are
-// left to the next round, which lists them again.
+// whose fetch failed, or was not asked for because its fetch credit was
+// spent), from other peers known to hold them: the peers the want set
+// denied them while a claim held them (wantSources). Each ID goes to the
+// first such peer that is still connected, other than failed, and is
+// dropped from its sources. The IDs of one peer are fetched in a goroutine
+// of their own, one retry fetch per peer at a time, so that retries add at
+// most one fetch stream per peer. A retry's own undelivered IDs go to the
+// next source. IDs with no other source are left to the next round, which
+// lists them again.
 func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	if len(ids) == 0 {
 		return
