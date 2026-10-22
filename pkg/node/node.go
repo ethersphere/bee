@@ -560,7 +560,6 @@ func NewBee(
 
 		b.apiServer = apiServer
 		b.apiCloser = apiServer
-		b.apiServiceCloser = apiService
 	}
 
 	if chainEnabled {
@@ -1443,6 +1442,9 @@ func NewBee(
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 		}, extraOpts, chainID, erc20Service)
+		// Close needs what Configure sets up, so the service is only closed
+		// on shutdown once it has been configured.
+		b.apiServiceCloser = apiService
 
 		apiService.EnableFullAPI()
 
