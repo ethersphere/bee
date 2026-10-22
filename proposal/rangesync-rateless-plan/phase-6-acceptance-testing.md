@@ -811,6 +811,387 @@ _(sessions append here)_
   metadata 0.35, CPU 0.49; AC-V1 max 5.38 s. The spread between runs (a few points) is run-to-run
   variance; no verdict changes. AC-B1 fails at N = 5 and 9 and passes at N = 17 (T6.4 decides the
   per-N re-basing, as the G6 sheet proposed). T6.1 is ticked after part 2.
+- **(T6.1 part 2) Harness additions.** Tests only, in `pkg/node` (`//go:build integration`): the
+  part-2 scenarios are in a new file, `rangesync_acceptance_scenarios_test.go`; the harness and the
+  transport gained what they need, and part 1's scenarios are unchanged by it except where noted.
+  - **Bounded stream window** (`accOptions.Window`, `accPipe`): a writer sends at most the window's
+    bytes that its reader has not read, then waits; the reader's window update reaches the writer
+    after the latency, so a stream moves at most a window per round trip. 256 KiB
+    (`accWindow`, go-yamux's `initialStreamWindow`; go-yamux grows it up to 16 MiB with its
+    auto-tuning, which accNet does not model, so the bound is conservative). A reset, a close of
+    either end or a disconnect ends a write that waits. `TestAcceptanceNetWindow` checks it, with
+    and without a latency.
+  - **Per-pair counters** (`accNet.pairStats`): the streams one host opened to another and the
+    bytes both wrote on them, per protocol stream, across reconnects. AC-C4 (sessions between
+    disjoint roots), AC-B4 (old-half cost per peer) and Churn (the peer delivering a stripe) read
+    them.
+  - **Late join, leave, rejoin** (`accHarness.join`, `leave`, `rejoin`): `join` builds the node
+    then (`addNode` takes an `accNodeSpec` now), adds it to the sampler (which grows), connects it
+    to every online node and stabilizes it, as a node starting next to a running neighborhood.
+    `leave` disconnects a node from every peer (the transport's teardown: topology and protocol
+    hooks, handler contexts canceled, streams reset) and marks it offline: `push` then skips it, as
+    pushsync would. Snapshots and results take nodes that joined after a snapshot.
+  - **Per-node reserve options**: `WakeUp` (the reserve worker's interval) and `Hold`. A held
+    node's reserve worker reads its syncer through `accSyncGate`, which reports a non-zero rate
+    until the scenario calls `release`. It stands for the moment the reserve falls below its
+    threshold, which the scenario picks; the drivers themselves are untouched (the gate is only
+    what the reserve worker reads; `isFullySynced` is not wired in the harness).
+  - **Overlays and base per root**: `Overlay` places node i (Radius decrease: two halves);
+    every node holds the base chunks inside its own root (in part 1 that is every base chunk, as
+    before: same overlays, same chunks).
+  - **Checks**: `checkUnion` also fails a node whose reserve holds a chunk outside its root (no
+    scenario raises a radius), which is AC-C4's "syncs only the overlapping range" for every node;
+    `checkUnionNoProbe` skips the probe sessions. `accTopology` records every radius the reserve
+    set (`radiusChanges`).
+  - **Helpers**: `restamp` (same batch and index, newer timestamp, new signature), `uploadPhase`,
+    `watchRate` (a node's sync rate at 10 Hz), `sampleEqual` (AC-N5), the stale peer of Stale stamp.
+  - `pullerLiveWorkers` replaces part 1's worker count in `waitReady`: a peer up to 2 bins below
+    the radius has one live worker (the Radius decrease halves are at PO 1). Same value in part 1.
+  - Part 1's code changed only where part 2 needed it: `checkCaches` runs its probe session again
+    (up to 3 times) when another peer ran a session with the node meanwhile, since the node's
+    `parts_sent` and root iterations count every session it serves (a nested-root network keeps
+    running such sessions, Follow-ups; it failed the probe in 1 of 3 nested runs before the
+    change); the sampler also reads every reconciler's `sync_rate`, and `checkRangesyncOnly` and
+    `checkMixed` assert that it stays 0 (AC-N1's steady state, `checkSteadySyncRate`); the result
+    counts `streams_exhausted_total`; and the default sizes (next entry).
+- **(T6.1 part 2) Deviations from the node's wiring.** Each is a harness setting, recorded here
+  as T4.7 part 1 recorded its scaled tests:
+  - `LargeDiff` 128 (`accLargeDiff`) instead of 65536, on every rangesync node of every part-2
+    scenario (`rangesync.Options.LargeDiff` and `reconciler.Options.LargeDiff`): ~1/35 of the
+    4500-chunk reserves, against 1/64 of 2^22 in the node, and above a session's steady-state
+    difference at the reference load (~40), so that only a catch-up stripes. Base/64 (70) was
+    too close to two rounds' worth of uploads.
+  - The bounded window (above) in every part-2 scenario and in the latency run.
+  - Reserve-worker intervals: 1 s for the rangesync Bootstrap joiner (AC-N2: any tick that reads
+    a sync rate of 0 lowers its radius), 10 s for the Radius decreaser (see the Radius entry),
+    15 min in the node (`reserveWakeUpDuration`; the harness's other nodes keep the storer's 30
+    min, so they never tick).
+  - Reserve capacity 2 × 4500 in Bootstrap, so that the joiner's final count is the threshold:
+    below it all through the bootstrap.
+- **(T6.1 part 2) Scenario designs.** Each runs on rangesync-only nodes and, where a criterion
+  compares the protocols, on pullsync-only nodes with the same seed (same overlays and chunks;
+  stamps differ per run), as part 1 compares Baseline with rangesync-only.
+  - **Bootstrap** (`TestAcceptanceBootstrap`, N = 5 by default,
+    `RANGESYNC_ACCEPTANCE_SCENARIO_SIZES`): N − 1 nodes hold 4500 base chunks, then an empty node
+    joins (`join`). Three networks: Baseline (pullsync-only holders and joiner), rangesync
+    (rangesync-only holders and joiner), and "rangesync nested root": the same with a joiner one
+    bit shallower (radius 1), whose root contains the holders' and that no neighbor shares, T4.7
+    part 1's constraint (d), which syncs through claims of the session roots instead of
+    `IsBootstrap`. "AC-V3 vs a pullsync-only node bootstrapping on the same network" is read as
+    acceptance-criteria.md words it ("the same neighborhood, same reserve size and neighbor
+    count"): two networks with the same overlays and chunks. One network with both joiners at once
+    was not used: they would load the same holders, the pullsync joiner would also pull from the
+    rangesync one, and AC-R7's CPU cannot be split per joiner in one process. The pullsync joiner
+    keeps the default reserve-worker interval, so that AC-V3 compares the two as a node runs them.
+  - **Radius decrease** (`TestAcceptanceRadius`): a radius-1 neighborhood in two halves of 3
+    nodes at radius 2 (`Overlay`), each half holding its ~4500 base chunks. Node 0 (the decreaser,
+    `Hold`, reserve-worker interval 10 s) is released once the network is ready; its count is
+    below the threshold (capacity 65536), so it lowers its radius to 1 at its next tick, and its
+    new half is the other half's root. Its count stays below the threshold after that, so the
+    next decrease waits only for its sync rate (AC-N3). The mixed radii then get a phase of
+    uploads (10 s at 15/s into the whole radius-1 neighborhood): the decreaser's sessions with the
+    other half run on their root, nested in its own (§7.6, AC-C4, the bucket-cache case of T4.6
+    part 3).
+  - **Stale stamp** (`TestAcceptanceStaleStamp`): 4 nodes; a chunk is pushed with a stamp to node
+    0 and with a newer stamp of the same batch and index (`restamp`) to node 1. On rangesync a
+    stale peer (a rangesync service on a mock reserve holding the base and the older stamp, with
+    no reconciler: it serves sessions and fetches and never fetches) connects to every node with
+    the highest overlay, so every node initiates a session with it in every round and meets the
+    older stamp again and again. The Baseline (pullsync-only, no stale peer) shows what pullsync
+    does with the two pushes.
+  - **Churn** (`TestAcceptanceChurn`, N = 5): N − 1 rangesync-only nodes with the base; uploads
+    at the reference load for 20 s while node N − 2 leaves at 3 s and rejoins at 8 s (it misses
+    ~75 pushes, below `accLargeDiff`, so its catch-up is a session). Then an empty node joins and
+    bootstraps striped; when it holds 25 % of its root, the holder whose fetch stream to it moved
+    bytes last leaves (it is delivering a stripe), and rejoins 5 s later. A sub-case with the
+    joiner joining during the uploads is skipped by default (a finding, Follow-ups;
+    `RANGESYNC_ACCEPTANCE_REPRO`).
+  - **Latency** (`TestAcceptanceLatency`, skipped unless `RANGESYNC_ACCEPTANCE_LATENCY` is set):
+    part 1's Baseline and rangesync-only scenarios, with their checks, a one-way latency on every
+    stream and the 256 KiB window.
+  - **Long runs** (`RANGESYNC_ACCEPTANCE_LONG`): Bootstrap waits for each joiner's sync rate back at
+    0; Radius waits for the decreaser's, then for the second decrease, and checks that it came
+    after the last positive rate read; Stale stamp watches the rounds for `RejectTTL` + 1 min. The
+    networks of a scenario then run in parallel (only the times to 0 are compared).
+- **(T6.1 part 2) Default sizes and the 10-minute package timeout.** This supersedes part 1's
+  "`RANGESYNC_ACCEPTANCE_SIZES` defaults to 5,9". With the part-2 scenarios at their default
+  sizes, part 1 at 5 and 9 took the package past 10 minutes (part 2 alone is ~5–6 min on this
+  host). Part 1 now defaults to N = 5; N = 9 and 17, the sizes AC-V1 names, run with
+  `RANGESYNC_ACCEPTANCE_SIZES=5,9,17` (part 1's recorded results came from such runs). The
+  part-2 scenarios use a 5-s quiet tail (`accTail`, one `MinRoundInterval` with equal digests and
+  no session started) instead of part 1's 10 s, and the pullsync network of Radius decrease skips
+  the mixed-radii upload phase (its one development run: 975 B of metadata per upload, latency max
+  0.45 s). The default run of `go test -tags=integration ./pkg/node/` costs 8m15s on this host
+  (package 493 s: part 1 at N = 5 156 s, Bootstrap 108 s, Radius decrease 118 s, Stale stamp 49 s,
+  Churn 62 s), against 5.9–6.8 min before part 2.
+- **(T6.1 part 2) The bounded window does not change part 1.** Part 1 ran once with the 256 KiB
+  window (a temporary build, not committed) at N = 5 and 9, against runs without it on the same
+  code: metadata R ÷ B 0.65 and 0.58 (without: 0.66–0.68 and 0.57), wire metadata 0.61 and 0.54
+  (0.61–0.63, 0.53), chunk bytes and duplicates unchanged (rangesync 0 repeats; pullsync 703 and
+  1971 against 703–715 and 2037), upload latencies within 10 ms, rangesync fetch latency p99
+  30–77 ms (24–82 ms), CPU R ÷ B 0.76 and 0.56 (0.65–0.73, 0.63). Steady-state pages and Wants stay
+  below 256 KiB of unread data, so part 1 keeps the unbounded window and its numbers stay
+  comparable with part 1's record. The part-2 scenarios and the latency run use it.
+- **(T6.1 part 2) Bootstrap results** (N = 5: 4 holders + the joiner, 4500 chunks; min–max over
+  the runs listed under Runs, outside the long run, whose networks ran in parallel).
+
+  | | Baseline (P) | rangesync (R) | R, nested root |
+  |---|---|---|---|
+  | Join to first chunk | 0.09–0.10 s | 5.0 s | 5.0–10.0 s |
+  | Join to union (AC-V3 proxy) | 9.5–9.9 s | 9.3–9.5 s (R ÷ B 0.97–1.00) | 9.4–14.9 s |
+  | Fetch-limiter bound (4500 at 1000/s) | 4.5 s | 4.5 s | 4.5 s |
+  | Metadata in, AC definition (B: offers × 102 B) | 1.84 MB, 408 B per chunk | 0.32 MB, 70.2 B per chunk | 0.32 MB, 70.3 B per chunk |
+  | AC-B2 bound (1.15 × 4500 × 70 B + 1 MB) | – | 1.36 MB | 1.36 MB |
+  | Of which after the union (verification) | – | < 0.01 MB | < 0.01 MB |
+  | Chunk bytes ÷ (chunks × 4258 B) | 2.36–2.43 | 1.000 | 1.000 |
+  | Deliveries (repeats) | 10605–10943 (6105–6443) | 4500 (0) | 4500 (0) |
+  | Stripes; verified (chunks the verifications delivered) | – | done 4; 4 (0) | done 4; 4 (0) |
+  | Joiner's round sessions in the window | – | 0 | 0 |
+  | Sync rate from the join to the tail's end (min / max) | 0 / 17.7–18.2 | 1.0 / 7.5 | 1.0 / 7.5 |
+  | Radius changes of the joiner | none (30-min interval) | none (1-s interval) | none (1-s interval) |
+  | CPU s per 1000 chunks (R ÷ B) | 1.10–1.20 | 0.56–0.68 (0.53–0.60) | 0.67–1.11 |
+  | Joiner's index memory, peak | – | 21.0 MB | 21.0 MB |
+  | Reserve sample = a holder's (AC-N5) | yes | yes | yes |
+
+  - The rangesync joiner listed each ID once (70.2 B per chunk, 0.17 of the pullsync joiner's
+    metadata) and fetched each chunk once; the verification of its 4 stripes found nothing. The
+    transfer took 4.3–4.5 s from the first chunk: the node-wide fetch limiter (1000/s) set it, with
+    4 stripe peers at 250 chunks/s each. The other 5.0 s are the wait for the joiner's first round
+    (the guard holds the sync rate meanwhile, so AC-N2 is not at stake): the time to union ties
+    with pullsync at this size (0.97–1.00), where pullsync's duplicates (2.4×, also paced by the
+    puller's 1000/s limiter) cost it the same.
+  - The nested-root joiner (T4.7 part 1's constraint (d), `IsBootstrap` false: no peer shares its
+    root) took the holders' root through session-root claims: the same 70.3 B per chunk, 4 stripes,
+    no tail through round sessions (the network is static, so the claim listed everything). In 2
+    of its 4 runs it waited one round more (first chunk at 10 s).
+  - N = 9 (8 holders, 8 stripes; once): join to union R 9.28 s, nested 9.30 s, B 12.03 s (R ÷ B
+    0.77); metadata 70.2 B per chunk against 816 B (0.09); pullsync's chunk bytes 2.91× the chunks
+    (8615 repeats for 4500); CPU R ÷ B 0.66; 7 of the 8 stripes verified, 0 chunks found. More
+    holders cost pullsync more racing offers and duplicates, while rangesync's transfer stays at the
+    fetch limiter.
+  - "Join to union" is the AC-V3 proxy: the sync rates themselves read 0 only 10–20 minutes later
+    (long runs below).
+- **(T6.1 part 2) Radius decrease results** (3 + 3 nodes, a new half of 4525 chunks; min–max over
+  the runs listed under Runs: 8 of the rangesync network and 4 of the Baseline's).
+
+  | | Baseline (P) | rangesync (R) |
+  |---|---|---|
+  | Decrease to first chunk | 0.07–0.11 s | 0.5–5.1 s |
+  | Decrease to the new half complete (AC-V4 proxy) | 9.4–10.1 s | 8.8–17.8 s (R ÷ B 1.04–1.76 in the 4 runs with both) |
+  | Of which the transfer (first to last chunk) | 9.3–10.0 s | 8.3–12.7 s |
+  | Metadata in, AC definition | 1.38 MB, 306 B per chunk | 0.32 MB, 70.1 B per chunk (0.23 of B) |
+  | Chunk bytes ÷ (new half × 4258 B) | 1.75–1.83 | 1.000 |
+  | Old-half sessions with each old-half peer after the decrease (AC-B4) | – | 0 B (digests equal: no session) |
+  | Stripes | – | done 4; reassigned 1–2 in 3 of 8 runs |
+  | Sync rate from the transfer's first chunk to the end of the run (min) | 0–0.42 | 1.0 |
+  | First positive sync rate after the decrease | 0.15–0.27 s | 0.5–5.1 s |
+  | Radii in the default run | 2 > 1 | 2 > 1 |
+  | Sessions across disjoint roots once ready; at start-up | 0; 0 | 0; 0–6 |
+  | CPU s, decrease phase, outside the long run (R ÷ B) | 3.7–4.6 | 3.4–5.0 (0.74–1.24) |
+
+  Upload phase with the mixed radii (rangesync only, 150 uploads at 15/s; the decreaser at radius 1,
+  the others at 2): every upload on every node of its root, latency median 0.36–1.9 s, max
+  4.95–9.97 s; at the decreaser (nested root) median 2.0–5.7 s, max 4.95–9.97 s, against 2 ×
+  the round interval at the upload of at least 20–30 s (at least 10 s in one run). Metadata
+  373–560 B per upload (the Baseline's one development run: 975 B). No streams exhausted, 3–27
+  More requests; `symbols_per_difference` mean 2.3–3.6 (p95 bucket ≤ 4–4.75, > 5 in two runs).
+  No duplicate, no corrupt decode. The interval bound matters: the slowest upload took 9.94–9.97 s
+  in 6 of 8 runs, under 2 × `MinRoundInterval` (10 s) by 30–60 ms, after the decreaser's interval
+  had grown to 30 s while its neighborhood was quiet.
+
+  - **AC-V4 fails at this size.** Its causes:
+    - in every run, the round lag: until the round that tracks the new root the reconciler does
+      nothing (first chunk 0.5–5.1 s after the decrease, against 0.1 s for the puller's first
+      page);
+    - in every run, the stripe plan: 3 covering peers get 4 stripes (2^s ≥ k), so one serves
+      two at the holder's 250 chunks/s, and the transfer takes half the new half ÷ 250/s,
+      against the puller's three peers at once (with 1.8× duplicates);
+    - and, in 3 of 8 runs, a stripe reassigned on the moved-root race (Follow-ups), which gives
+      one peer three of the four stripes (13.6–17.8 s against 8.8–13.3 s without).
+
+    At 2^22 chunks the round lag is negligible; the per-peer imbalance and the race remain.
+    Without them the transfer is limited by the stripe peers (k × 250/s) or the node's fetch
+    limiter (1000/s), the puller by its 1000/s limiter with its duplicates included: the fastest
+    rangesync run (8.8 s) beat every Baseline run. T6.3 measures it at scale.
+  - **AC-B4 passes**: chunk bytes are exactly the new half (each chunk once, 1.000), and the old
+    half cost nothing: the decreaser's digests over its old-half peers' root were equal, so no
+    session ran (0 B, against "one fingerprint exchange per peer, < 1 KB").
+  - **AC-N1 passes from the transfer's first chunk**; between the decrease and the round that
+    tracks the new root the reconciler's rate reads 0 (0.5–5.1 s; Follow-ups). The puller's reads
+    0 too, until its first page (0.15–0.27 s).
+  - **AC-N3 passes in the default run** (one decrease, none while the rate is above 0, ≥ 10
+    minutes) and in the long run (below).
+  - **AC-C4 passes**: no session between the radius-2 nodes of the two halves once ready (their
+    roots are disjoint), and no reserve holds a chunk outside its root: the other half's nodes
+    synced with the decreaser (whose root contains theirs) only their own root. At start-up, up to
+    6 sessions ran across the halves: a harness node's index is built at radius 0 (the storer has
+    no persisted radius; the base chunks are put before the warm-up) until the warm-up's rebuild,
+    so its first Status carries the radius-0 root. In those, stripe plans of the other half's root
+    listed nothing and some openings were refused as outside the scope; no chunk moved, nobody was
+    scored. A node restores its persisted radius, so a restart builds its index at it.
+- **(T6.1 part 2) Stale stamp results.** In every run every node ended with the newer stamp only,
+  0.05–4.95 s (rangesync: at once when the stale peer's connection and the pushes trigger a round,
+  otherwise at the next one) and 0.25–0.42 s (pullsync) after the pushes.
+  - Rangesync: each node got the older stamp at most twice: stored once when it held neither
+    (nodes 2 and 3 in some runs, then replaced by the newer), and rejected once when it held the
+    newer (every node, the first fetch Q7 calls unavoidable). After that, every round's session
+    with the stale peer (3–6 per node in 20 s) listed it again and none fetched it:
+    `want_claims{rejected}` counted 11–20 skips, `rejected_cache_size` stayed at 1 per node.
+    AC-C1 holds among the nodes, the Index included.
+  - Pullsync (Baseline, the two pushes only): the nodes also end with the newer stamp. Node 0
+    pulls it through live sync, since node 1's `Put` of the newer stamp takes a new bin ID, and the
+    older one reaches node 1 once and is rejected by its `Put`. §7.7's "today A never learns about
+    s2" does not hold for this case, two live pushes (proposal wording, Follow-ups).
+- **(T6.1 part 2) Churn results** (N = 5: 4 nodes, 300 uploads at 15/s, then the joiner; N = 9
+  once).
+  - Every node converged (AC-C1); the joiner's base arrived 12.6–13.3 s after it joined (N = 9:
+    11.1 s), with its active stripe peer gone at 25–26 % of its root: `stripes_total` done 4
+    (N = 9: 8), reassigned 1.
+  - The node that was away 5 s got the last upload it missed 12.0 s after it rejoined (N = 9:
+    16.9 s; the round, the Status exchange and the initiator rule after a reconnect); upload
+    latency over the window median 2.3–3.3 s, max 7.99–9.8 s.
+  - AC-D1 with faults: 0 rangesync repeats, 0 deliveries of a held chunk, 0 races; no claim
+    expired, so the bound (repeats ≤ expired claims) held at 0 ≤ 0. `want_claims{denied}`
+    313–512 (N = 9: 2384): the want set kept the joiner's stripes and the rounds from fetching an
+    ID twice.
+  - No honest peer scored: `peer_failures_total` 0, no protocol disconnect or blocklist.
+  - The rangesync fetch latency reached 0.93–1.0 s (p99, max) in the stripe phase: a Want of
+    250 IDs at the holder's 250 chunks/s takes a second. No push ran then; with uploads during a
+    striped transfer, a push racing a stripe fetch could land past `accPushRaceWindow` and count as
+    a repeat (Follow-ups).
+- **(T6.1 part 2) Latency run** (`RANGESYNC_ACCEPTANCE_SIZES=9 RANGESYNC_ACCEPTANCE_LATENCY=50ms`,
+  one-way 50 ms on every stream, 256 KiB window, once). Both scenarios passed with part 1's checks.
+
+  | N = 9, 50 ms | Baseline | rangesync | at latency 0 (part 1, fix round) |
+  |---|---|---|---|
+  | Upload latency median / p95 / max | 0.41 / 0.67 / 1.08 s | 3.0 / 5.3 / 5.9 s | B 0.26 / 0.47–0.52 / 0.93 s; R 2.6 / 4.8–5.0 / 5.1–5.3 s |
+  | AC-V1 (within 10 s) | – | 300 / 300 | 300 / 300 |
+  | Metadata per upload, AC definition (R ÷ B) | 7344 B | 4419 B (0.60) | 0.57 |
+  | Wire metadata R ÷ B | – | 0.56 | 0.53 |
+  | Pullsync repeats (needed deliveries) | 2502 (1800), 1.39 per needed | – | 1948–1996, 1.08–1.11 per needed |
+  | Rangesync fetch latency median / p99 / max | – | 58 / 128 / 145 ms | 26–89 / 73–259 / 82–276 ms |
+  | More requests; reconcile B per ID found missing | – | 132; 221 | –; 207–208 |
+  | CPU R ÷ B | – | 0.57 | 0.57–0.58 |
+
+  - A round trip of 100 ms adds ~0.15 s to pullsync's median upload latency and ~0.4 s to
+    rangesync's; AC-V1 keeps a 1.7× margin (5.9 s against 10 s).
+  - Pullsync's racing offers grow from 1.1 to 1.4 duplicates per needed delivery; rangesync stays
+    at 0. AC-B1 at N = 9 moves from 0.57 to 0.60 (still a fail): 221 reconcile bytes per ID
+    found missing against 207–208, with 132 `More` requests.
+  - **`accPushRaceWindow` (1 s) re-checked:** the largest rangesync fetch latency was 145 ms at
+    50 ms, 6.9× below the window; no delivery raced a push. The window stays 1 s. In striped
+    transfers the fetch latency reaches ~1 s (Churn), so the window does not fit pushes during a
+    stripe (Follow-ups).
+- **(T6.1 part 2) Long runs** (`RANGESYNC_ACCEPTANCE_LONG=1`, once; Bootstrap, Radius decrease and
+  Stale stamp in three processes at once, their networks in parallel: only the times to 0 and
+  the second decrease are read from them).
+  - Bootstrap: the sync rate of each joiner read 0 16m02s (rangesync), 16m08s (nested root) and
+    16m12s (pullsync) after its join, 15.8–16.0 min after its last chunk: all three at the same
+    10-minute boundary of Unix time. AC-V3 to the letter: R ÷ B 0.99, a tie at the window's
+    resolution. No joiner's radius changed after it.
+  - Radius decrease: the decreaser's rate read 0 15m58s (rangesync) and 16m06s (pullsync) after
+    the decrease, and the second decrease (radius 1 → 0; its count was still below the threshold)
+    came 2.9 s and 3.7 s after the last positive rate read, within one 10-s reserve-worker tick:
+    AC-N3 holds for both.
+  - Stale stamp: in the RejectTTL + 1 min after the convergence each node fetched the older stamp
+    once more (the rejected cache entry expired after 10 minutes, and the next session's want
+    went through and was rejected again): one fetch per stale ID per node per `RejectTTL`, as Q7
+    says.
+  - Idle sessions: while waiting, the rangesync joiner ran 0 sessions per minute with its
+    same-root peers, the nested-root joiner 8.0 and the radius-1 decreaser 3.4 (Follow-ups).
+- **(T6.1 part 2) Items earlier tasks handed to T6.1, measured where the harness can.**
+  - **(T4.7 part 1 fix round 1 → T6.1, AC-B2) The tails of the two claimed transfers.** The
+    bootstrapping node whose root no neighbor shares (Bootstrap, nested root) synced through
+    claims of the session root at 70.3 B per chunk, with no round session after the claim: in a
+    static network the claim lists everything, so there is no tail. The responder-only lacking
+    node did not arise: the joiners' own transfers (the bootstrap, or the nested joiner's claims)
+    ran before a holder's session could leave them a claim to answer. The tail needs uploads
+    during the transfer (Churn's skipped sub-case, where the verification also scored honest
+    peers), and its 2^22 geometry stays for T6.3.
+  - **(T4.7 part 3 → T6.1/T6.3) Claims' first-chunk window.** The nested joiner's sync rate never
+    read 0 before its first chunk (5.0–10.0 s after the join): at start-up the guard covers the
+    window. After start-up the window was not reached (no scenario makes a running node claim a
+    session root); T6.3.
+  - **(T4.6 part 3 → T6) Nested session roots and the bucket cache.** In the upload phase with the
+    mixed radii the decreaser's sessions with the other half run on their root, nested in its own:
+    no stream exhausted, 3–27 More requests per phase, `symbols_per_difference` mean 2.3–3.6. The
+    per-session difference stayed small (~20–40), below where `BucketSymbols` (32) would exhaust.
+  - **(T4.6 part 3 → T6) Measurements the simulation could not make.** Bootstrap time against the
+    real-clock fetch limiter: 4500 chunks took 4.3–4.5 s from the first chunk, the limiter's
+    1000/s (with 4 stripe peers at 250/s each); with 3 peers on 4 stripes a peer's 250/s set it
+    (Radius). First-chunk latency of a catch-up: 5.0 s after a join (the first round), 0.5–5.1 s
+    after a radius decrease. Re-ask waits: `want_claims{denied}` 313–512 in Churn, all resolved
+    without a duplicate; their waits are not separately visible in-process. Trimmed stripe parts:
+    not reached (no radius increase during a stripe). Q7 under expired-batch skew and unknown-batch
+    junk: not in scope here (no batch expiry in the suite).
+- **(T6.1 part 2) Production code.** None changed; no test seam added (`node.RangesyncOptions`
+  and `reconciler.Options.LargeDiff` were enough). Four findings, each with the way to reproduce
+  it in the suite, are in the Follow-ups: the verification scoring honest stripe peers under
+  uploads (skipped sub-case), the reconciler's rate lagging a radius decrease (latent at the
+  node's interval), the stripe path's moved-root race and the in-sync nested-root sessions.
+- **(T6.1 part 2) Acceptance-criteria verdicts.** Every row of acceptance-criteria.md whose
+  "Measured by" names T6.1, across parts 1 and 2. "Asserted" means the suite fails on it; part 1's
+  numbers are its fix-round results (N = 5 and 9 twice, N = 17 once at 30/s), part 2's are this
+  round's (Runs). B = Baseline (pullsync-only), R = rangesync-only, M = Mixed.
+
+  | Row | Verdict | Numbers (against Baseline where it has one) |
+  |---|---|---|
+  | AC-C1 union + Index | **pass**, asserted in every scenario | every node's reserve = its root's union, Index = brute force (summary + 4 levels), root cache probed; part 2 adds: no chunk outside a node's root |
+  | AC-C2 quiescence ≤ 120 s | **pass**, asserted (part 1) | last session 0.1–5.2 s after the last upload; part-2 scenarios reach equal digests with a 5-s quiet tail. "The last `pairwise_diff` are 0" cannot be observed: equal digests start no session |
+  | AC-C3 stale stamp | **pass**, asserted | all nodes end with the newer stamp in 0.05–4.95 s; the older fetched once per node into the rejected cache (stored once before where a node held neither), then skipped in 3–6 later rounds (`want_claims{rejected}` 11–20); `rejected_cache_size` 1; one refetch per `RejectTTL` (long run). Pullsync also converges here |
+  | AC-C4 edge peers | **pass**, asserted | 0 sessions between disjoint roots once ready; nested peers sync only the overlapping range (no reserve holds a chunk outside its root, Radius and nested Bootstrap). Notes: up to 6 start-up sessions across disjoint halves (harness index at radius 0 before the warm-up rebuild); in-sync nested peers keep running sessions (finding, idle cost) |
+  | AC-V1 2 × RoundInterval | **pass**, asserted | part 1: max 5.0–5.5 s at N = 9 and 17 (bound 10 s); mixed radii: max 4.95–9.97 s against 2 × the round interval at the upload (≥ 10–30 s); latency run (50 ms, N = 9): max 5.9 s |
+  | AC-V3 bootstrap ≤ pullsync | **pass** (proxy; literal: a tie at the window's resolution) | join to union R 9.3–9.5 s vs B 9.5–9.9 s (0.97–1.00); N = 9: 9.3 s vs 12.0 s (0.77); nested root 9.3–14.9 s. Literal (long run): R 16m02s, B 16m12s after the join (0.99), both at the same 10-minute window boundary, so the comparison has 10-minute resolution (Follow-ups) |
+  | AC-V4 new half ≤ pullsync | **fail in-process** (proxy); literal: tie; **needs testnet** | decrease to new half complete R 8.8–17.8 s vs B 9.4–10.1 s (1.04–1.76 in runs with both): the round lag (0.5–5.1 s), 4 stripes on 3 peers, a reassignment on the moved-root race in 3 of 8 runs. Literal: R 15m58s, B 16m06s after the decrease (0.99, same boundary). At 2^22 the round lag vanishes; T6.3 |
+  | AC-B1 metadata ≤ 50 % | **fail at N = 5 and 9, pass at N = 17** (part 1, reported) | R ÷ B 0.65–0.73, 0.57, 0.35 (0.65–0.69 at N = 5 this round); with 50 ms latency at N = 9: 0.60; mixed radii 373–560 B per upload (B 975 B, one run) |
+  | AC-B2 bootstrap metadata | **pass**, asserted | 70.2 B per chunk (nested root 70.2–74.8 B) against 1.15 × 70 = 80.5 B, verification < 5 KB against 1 MB; B: 408 B per chunk at N = 5 (R ÷ B 0.17), 816 B at N = 9 (0.09) |
+  | AC-B3 bootstrap chunks once | **pass**, asserted | 1.000 × the chunks (B 2.36–2.43 at N = 5, 2.91 at N = 9) |
+  | AC-B4 radius decrease | **pass**, asserted | chunk bytes 1.000 × the new half (B 1.75–1.83); old half 0 B per peer (digests equal, no session) |
+  | AC-D1 zero duplicates | **pass**, asserted | 0 repeats in rangesync-only, Mixed (R and D nodes), Bootstrap, Radius, Stale stamp; push races 0–2 per run within 1 s; with faults (Churn) 0 repeats ≤ 0 expired claims |
+  | AC-D3 dual cross-protocol (informational) | reported (part 1) | 0 at N = 5, 9; 13 at N = 17 (metric counted 4; it undercounts, Follow-ups) |
+  | AC-D5 pullsync duplicates (informational) | reported | part 1: 1.1–1.2 repeats per needed delivery (1.4 with 50 ms latency); Bootstrap B 6105–6443 repeats for 4500 chunks at N = 5 (1.4), 8615 at N = 9 (1.9); Radius B 3402–3765 for 4525 (0.8) |
+  | AC-K2 symbols per difference | **not measurable as defined** | no difference label on `symbols_per_difference` (part 1); unfiltered medians ≤ 2–3, p95 ≤ 3–4.75, a tail > 5 in some runs (mixed radii mean 2.3–3.6) |
+  | AC-K3 no corrupt decode | **pass**, asserted | 0 in every run |
+  | AC-R7 CPU ≤ pullsync | **pass** (steady state and bootstrap) | steady R ÷ B 0.52–0.74 (0.65–0.76 at N = 5 this round, 0.57 with 50 ms latency at N = 9); bootstrap 0.53–0.60 at N = 5, 0.66 at N = 9; radius-decrease phase 0.74–1.24 (not an AC-R7 case) |
+  | AC-N1 sync rate | **pass**, but for the window's wording | > 0 throughout a bootstrap (min 1.0) and from a new half's first chunk; 0 at every reconciler in steady state (asserted); after a decrease the reconciler reads 0 until its next round (0.5–5.1 s, Follow-ups); back at 0 ~15.8 min after the last catch-up chunk, at the same instant as the puller's: "within the 10-min window" holds for neither (`pkg/rate` reads 0 10–20 min after, Follow-ups) |
+  | AC-N2 no early decrease | **pass**, asserted | a joiner with a 1-s reserve worker and a reserve below its threshold kept its radius; its sync rate never read 0 (guard, then the bootstrap) |
+  | AC-N3 puller's sequencing | **pass**, asserted | one decrease; none while the rate was > 0 (≥ 10 minutes); long run: the second decrease 2.9 s (R) and 3.7 s (B) after the last positive rate read, within one 10-s worker tick |
+  | AC-N5 sample equality (T6.1 part) | **pass**, asserted | the reserve sample of every bootstrap joiner (R, nested R, P) equals a holder's |
+  | AC-S3 serves pullsync | **pass**, asserted (part 1) | R and D nodes served offers and chunks to P nodes; `go test ./pkg/pullsync/... ./pkg/puller/...` green |
+  | AC-S6 audit | **not measurable** | Phase 5 not done |
+
+  Summary: 17 rows pass (AC-N1 with its window wording to fix), 2 fail (AC-B1 at N = 5 and 9, for
+  T6.4's re-basing; AC-V4 in-process, which needs the testnet at 2^22), 2 are reported only (AC-D3,
+  AC-D5) and 2 are not measurable here (AC-K2 as defined, AC-S6). Rows T6.1 does not name but
+  measured on the way: AC-R1 (index slab 21.0 MB per node), AC-R2 (rebuild 42.0 MB = 2 × slab),
+  AC-V5 (in-sync nested peers keep running sessions, Follow-ups).
+- **(T6.1 part 2) Runs.** No `-race` (no C compiler). All on this 4-core host, one at a time
+  unless said.
+  - Default `go test -tags=integration -count=1 ./pkg/node/` twice, the second on the final code:
+    both passed, 8m16s and 8m15s.
+  - Bootstrap at N = 5: 6 rangesync, 3 Baseline and 4 nested-root runs (development, a
+    `-count=3` diagnostic with debug logs, the two default runs), one probe failure in a nested
+    run before `checkCaches` retried overlapping sessions; N = 9 once
+    (`RANGESYNC_ACCEPTANCE_SCENARIO_SIZES=9`).
+  - Radius decrease: 8 rangesync and 4 Baseline runs (one each in the long run, under load), plus
+    a first run with a 1-s reserve-worker interval that showed the double decrease (Follow-ups) and
+    failed AC-N1 and AC-N3 as it should.
+  - Stale stamp: 5 runs of each network, after the first two versions of the check failed (an
+    address-index method on pullsync nodes; a rule that counted the unavoidable first fetch).
+  - Churn: 3 runs at N = 5 and 1 at N = 9; the sub-case "bootstrap during uploads"
+    (`RANGESYNC_ACCEPTANCE_REPRO=1`) once, failing on 2 honest peers scored; the first two versions
+    of the scenario, with the joiner during the uploads in the main case, scored 3 the same way.
+  - Part 1 with the window (temporary build) at N = 5 and 9, and without at N = 9, once each.
+  - Latency: `RANGESYNC_ACCEPTANCE_SIZES=9 RANGESYNC_ACCEPTANCE_LATENCY=50ms`, once, passed.
+  - Long: `RANGESYNC_ACCEPTANCE_LONG=1`, Bootstrap, Radius decrease and Stale stamp in three
+    processes at once (RSS 1.8, 1.5 and 1.1 GB while idle), once; all passed, in 16.5, 16.6 and
+    12 min.
+  - `go test ./pkg/node/... ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` (default build)
+    passes. Once, alongside the storer tests, `TestRangesyncToggle` (T6.2) failed with "rangesync:
+    peer busy"; 30/30 isolated and the rerun of the whole set passed (Follow-ups).
+  - `go vet ./pkg/node/...` with and without `-tags=integration`, `GOTOOLCHAIN=go1.26.1 make lint`,
+    `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags integration ./pkg/node/...` and
+    `go build ./...` are clean. Only the four acceptance files were formatted (gofumpt, gci).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1005,3 +1386,92 @@ _(sessions append here)_
     re-check `accPushRaceWindow` against the fetch latency it reports.
 - **(T6.1 part 1 fix round 1) Tests to run with -race on CI.** No change to the "(T6.1 part 1)" list:
   the new `TestAccDuplicateClassification` checks a pure function.
+- **(T6.1 part 2 → T4/T6.4, finding) Stripe verification scores honest deliverers when uploads
+  land in their stripes.** `verifyStripes` judges a deliverer on the chunks the verifier delivered
+  in its stripe, with a tolerance of max(`verifyMinDiff` 4, `PeerStored`/100). Chunks uploaded
+  into the stripe after the deliverer listed it count against it. With a bootstrap during the
+  reference load (`TestAcceptanceChurn/N=5/bootstrap_during_uploads`,
+  `RANGESYNC_ACCEPTANCE_REPRO=1`: 15 uploads/s, an empty node joins at 5 s) the verifications
+  found 15–44 chunks per ~1125-chunk stripe and scored 2–3 honest holders
+  (`ErrStripeVerification`, "stripe incomplete at verification"); without the uploads (the
+  default Churn case, with a stripe peer leaving mid-transfer) none. That the difference is the
+  uploads is inferred: it comes only with them, and 15–44 per stripe matches 15/s over 4 stripes
+  for the 4–12 s between a stripe's listing and its verification. At the node's scale the
+  tolerance holds while uploads into the root during the bootstrap stay below ~1 % of the
+  reserve: a 2^22 bootstrap at 1000 chunks/s takes ~70 min, so the bound is ~10 uploads/s into
+  the neighborhood. A fail raises the score (deprioritized above `ScoreThreshold` 3, decays one
+  per 10 min), it does not disconnect. Possible directions (production change, not done here):
+  count only the verifier's chunks whose stamps are older than the stripe's listing, or scale the
+  tolerance with the transfer's duration and the root's upload rate. T6.3 should watch
+  `bee_rangesync_peer_failures_total` on bootstrapping nodes.
+- **(T6.1 part 2 → T4, latent) The reconciler's sync rate lags a radius decrease.** Between the
+  reserve's `SetRadius` and the round that tracks the new root (`trackRootLocked`: the index
+  rebuild, then a round at most `MinRoundInterval` after the last) the radius hold is not armed and
+  `SyncRate` reads 0 (0.5–5.1 s in the suite). A reserve worker that ticks faster lowered the radius a
+  second time 1.0 s after the first (`TestAcceptanceRadius` with `accRadiusWakeUp` = 1 s: radii
+  2 > 1 > 0). Unreachable at the node's 15-minute `reserveWakeUpDuration`; the puller's rate rises
+  with its first page (~0.1 s). A fix would arm the hold when the reserve's radius drops (the
+  `ReserveObserver` already sees `RadiusChanged`), not at the next round.
+- **(T6.1 part 2 → T4, Low) Stripe sessions race the moved-root Status.** After a radius
+  decrease the round registers the new half at once, and its stripe sessions can open before the
+  stripe peer has this node's Status with the new root. The peer then cannot build a scope
+  (`NewScope` of a disjoint stale root) and resets the stream, unscored by design; the attempt has
+  no progress and the stripe is reassigned. Round sessions wait for `reached` (scheduler.go); the
+  stripe path does not check it. Seen in 3 of 8 Radius runs (1–2 reassignments, debug log
+  "stripe reassigned … reconcile: read: … stream reset" right after "radius decreased"); one peer
+  then serves 3 of the 4 stripes and the new half takes 13.6–17.8 s against 8.8–13.3 s without. A
+  fix would make the stripe worker wait for `reached` as rounds do.
+- **(T6.1 part 2 → T4/T6.3, Low) In-sync peers with nested roots keep running sessions.**
+  `compareDigests` cannot compare a Status whose root contains this node's root (the peer's
+  summary covers more than the session root), so the deeper node counts the digests as different
+  and runs a session with the shallower peer every round it initiates, or at the takeover cadence
+  otherwise. Idle long runs measured 8.0 sessions per minute for a radius-1 node with 4 radius-2
+  peers (Bootstrap, nested root) and 3.4 per minute for the Radius decreaser with 5 peers, each
+  finding nothing, while same-root peers ran none. AC-V5 ("no sessions" when idle) does not hold
+  with mixed radii; T6.3 should report `sessions_total` per cohort with mixed radii. A direction:
+  the shallower peer's Status (or a reply) carrying the summary of the deeper root.
+- **(T6.1 part 2 → T4/T6.4) Stripe plans load peers unevenly when their number is not a power
+  of 2.** `PlanStripes` makes 2^s ≥ k stripes and gives stripe i to peer i mod k: 3 covering
+  peers get 4 stripes, one serving two at the holder's 250 chunks/s, so the new half takes half
+  of it ÷ 250/s instead of a third. With 9–15 peers (16 stripes) the slowest peer has 2/16
+  against an even 1/k (1.1–1.9×). Together with the round lag this made AC-V4 fail in-process
+  (R ÷ B 0.88–1.76 at 3 peers). At 2^22 with ≥ 4 peers the node's 1000/s fetch limit binds
+  first, so T6.3 decides whether it matters.
+- **(T6.1 part 2 → T6.4) Criteria wording.**
+  - AC-N1 "returns to 0 within the 10-min window": `pkg/rate` (and the reconciler's copy) sums
+    the current and the interpolated previous 10-minute bucket, aligned to multiples of 10 minutes
+    of Unix time, so a rate reads 0 from 10 to 20 minutes after its last chunk. Both protocols
+    took ~16 minutes in the long runs. Suggested: "within 2 × the window", or "no later than the
+    puller's".
+  - AC-V3 and AC-V4 compare the times to `sync_rate == 0`: two nodes that finish in the same
+    10-minute bucket read 0 at the same instant (the long runs: R 16m02s, P 16m12s, nested 16m08s
+    after the join; Radius R 15m58s, P 16m06s after the decrease). Compare the time to the union
+    (the last catch-up chunk stored), as the suite does, and keep `sync_rate` as the testnet
+    signal.
+- **(T6.1 part 2 → proposal §7.7) Pullsync does learn the newer stamp in the two-push case.**
+  "Today A never learns about s2" did not reproduce: B's `Put` of the newer stamp gets a new bin
+  ID, so A's live sync is offered it and replaces the older one. Both protocols converge there;
+  what rangesync needs on top is the rejected cache, so that its rounds do not refetch an older
+  stamp that a peer still lists (AC-C3).
+- **(T6.1 part 2) `accPushRaceWindow` and stripe fetches.** A Want of 250 IDs at the holder's
+  250 chunks/s takes a second, so the fetch latency in a striped transfer reaches 0.9–1.0 s
+  (Churn). No scenario pushes during a striped transfer (Churn's sub-case that does is skipped);
+  one that does needs the window above the stripe fetch latency, or races per fetch.
+- **(T6.1 part 2) Tests to run with -race on CI.** Append to the "(T6.1 part 1)" list:
+  `TestAcceptanceNetWindow`, `TestAcceptanceBootstrap`, `TestAcceptanceRadius`,
+  `TestAcceptanceStaleStamp` and `TestAcceptanceChurn` (`pkg/node`, `-tags=integration`). They run
+  late joins, leaves and rejoins (connections torn down under running sessions, fetches and stripe
+  workers), the bounded window's waits, the stale peer's service and the reserve workers' radius
+  decreases, none of it ever under `-race` here (no C compiler). Suggested:
+  `go test -race -tags=integration -run 'TestAcceptance' -timeout 60m ./pkg/node/` (default
+  sizes; part 2 adds ~5 min without `-race`).
+- **(T6.1 part 2) `make test-integration` and the 10-min timeout, updated.** The default
+  `go test -tags=integration ./pkg/node/` now runs part 1 at N = 5 and the part-2 scenarios at
+  their default sizes: 8m15s on this host (package 493 s: part 1 at N = 5 156 s, Bootstrap 108 s, Radius decrease 118 s, Stale stamp 49 s, Churn 62 s), against 5.9–6.8 min before part 2. `RANGESYNC_ACCEPTANCE_SIZES=5,9` (part 1's former default) adds
+  ~3.5 min and needs a `-timeout`.
+- **(T6.1 part 2) A load-induced flake in `TestRangesyncToggle`** (T6.2, `pkg/node`, default
+  build): "rangesync: peer busy" at `rangesync_toggle_test.go:475` once, in
+  `go test ./pkg/node/... ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` with the storer
+  tests running alongside; 30/30 isolated and the rerun of the set passed. The served check right
+  after a start can meet the index still being built (Busy). Watch it on CI; if it recurs, retry
+  the check on Busy.
