@@ -47,6 +47,13 @@ import (
 // the letter, the second decrease of AC-N3) wait out the 10-minute rate
 // windows of the puller and the reconciler: they run only with
 // RANGESYNC_ACCEPTANCE_LONG set (accLong).
+//
+// The Baseline networks (here and in part 1's TestAcceptance), the
+// Bootstrap of a nested-root joiner and the Radius decrease networks' upload
+// phase with the mixed radii run only with RANGESYNC_ACCEPTANCE_FULL or
+// RANGESYNC_ACCEPTANCE_LONG set (accFull), so that the package's default run
+// stays well within go test's 10-minute timeout: the Baselines compare and
+// report, and the other two are variants of what the default run checks.
 
 const (
 	// accWindow is the window of a stream (go-yamux initialStreamWindow).
@@ -71,6 +78,10 @@ const (
 // accLong reports whether the 10-minute waits run
 // (RANGESYNC_ACCEPTANCE_LONG set).
 func accLong() bool { return os.Getenv("RANGESYNC_ACCEPTANCE_LONG") != "" }
+
+// accFull reports whether the networks and phases that the default run
+// leaves out run (RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set).
+func accFull() bool { return os.Getenv("RANGESYNC_ACCEPTANCE_FULL") != "" || accLong() }
 
 // accScenarioSizes returns the network sizes of the part-2 scenarios that
 // take one: RANGESYNC_ACCEPTANCE_SCENARIO_SIZES (a comma-separated list), 5
@@ -380,12 +391,15 @@ type accBootResult struct {
 // TestAcceptanceBootstrap runs the Bootstrap scenario for each size of
 // accScenarioSizes: N − 1 nodes hold the neighborhood's base chunks, then an
 // empty node joins and syncs. It runs on rangesync-only nodes with a
-// rangesync-only joiner, and on pullsync-only nodes with a pullsync-only
-// joiner (the Baseline, for AC-V3), with the same overlays and chunks. On
-// the rangesync joiner it checks:
+// rangesync-only joiner (and, with accFull, a nested-root one, see
+// runBootstrap), and on pullsync-only nodes with a pullsync-only joiner (the
+// Baseline, for AC-V3; accFull), with the same overlays and chunks. On the
+// rangesync joiners it checks:
 //   - AC-D1, AC-B3: each chunk delivered once, chunk bytes ≤ 1.01 × the
 //     chunks stored;
-//   - AC-B2: bytes_metadata{dir="in"} ≤ 1.15 × final count × 70 B + 1 MB;
+//   - AC-B2: bytes_metadata{dir="in"} by the union (the IDs the stripes
+//     listed) ≤ 1.15 × final count × 70 B, and after it (the verification
+//     of the stripes, which runs once every stripe is done) ≤ 1 MB;
 //   - AC-N1, AC-N2: its sync rate stays above 0 from the join to the end of
 //     the quiet tail, and its radius does not drop, although its reserve is
 //     below the threshold all along and its reserve worker checks every
@@ -420,6 +434,9 @@ func TestAcceptanceBootstrap(t *testing.T) {
 				{"rangesync nested root", accRangesyncOnly, true},
 			} {
 				t.Run(c.name, func(t *testing.T) {
+					if (!c.mode.Rangesync || c.nested) && !accFull() {
+						t.Skip("runs with RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set")
+					}
 					if accLong() {
 						t.Parallel()
 					}
@@ -560,9 +577,15 @@ func checkBootstrap(t *testing.T, r *accBootResult) {
 	if limit := 1.01 * float64(r.chunks) * accChunkWire; r.chunksIn > limit {
 		t.Errorf("AC-B3: %.0f chunk bytes in for %d chunks, more than %.0f", r.chunksIn, r.chunks, limit)
 	}
-	// AC-B2
-	if limit := 1.15*float64(r.chunks)*70 + 1e6; r.metaIn > limit {
-		t.Errorf("AC-B2: %.0f metadata bytes in for %d chunks, more than %.0f", r.metaIn, r.chunks, limit)
+	// AC-B2, its two parts apart: the IDs by the union, the verification
+	// after it. The verification starts once every stripe is done, so in a
+	// static network after the union; one that starts before the union's
+	// snapshot counts in the ID part, which only tightens that check.
+	if limit := 1.15 * float64(r.chunks) * 70; r.metaInUnion > limit {
+		t.Errorf("AC-B2: %.0f metadata bytes in by the union for %d chunks, more than %.0f", r.metaInUnion, r.chunks, limit)
+	}
+	if v := r.metaIn - r.metaInUnion; v > 1e6 {
+		t.Errorf("AC-B2: %.0f metadata bytes in after the union (the verification), more than 1 MB", v)
 	}
 	// AC-N1, AC-N2: above 0 throughout, so no reserve-worker tick lowered
 	// the radius
@@ -627,12 +650,21 @@ func logBootTable(t *testing.T, rs []*accBootResult) {
 	})...)
 	tb.row("radius changes", val(func(r *accBootResult) string { return fmt.Sprint(len(r.radii)) })...)
 	tb.row("metadata in (AC: rs in + offers*102)", val(func(r *accBootResult) string { return mbytes(r.metaIn + 102*r.offeredIn) })...)
-	tb.row("  per chunk; AC-B2 bound", val(func(r *accBootResult) string {
-		return fmt.Sprintf("%.1f B; %s", (r.metaIn+102*r.offeredIn)/float64(r.chunks), mbytes(1.15*float64(r.chunks)*70+1e6))
+	tb.row("  per chunk", val(func(r *accBootResult) string {
+		return fmt.Sprintf("%.1f B", (r.metaIn+102*r.offeredIn)/float64(r.chunks))
 	})...)
 	tb.row("  / baseline", ratio(func(r *accBootResult) float64 { return r.metaIn + 102*r.offeredIn })...)
-	tb.row("rs metadata in by union / after (verification)", val(func(r *accBootResult) string {
-		return mbytes(r.metaInUnion) + " / " + mbytes(r.metaIn-r.metaInUnion)
+	tb.row("rs metadata in by union (AC-B2 IDs), per chunk", val(func(r *accBootResult) string {
+		if !r.mode.Rangesync {
+			return "-"
+		}
+		return fmt.Sprintf("%s, %.1f B (bound %s, 80.5 B)", mbytes(r.metaInUnion), r.metaInUnion/float64(r.chunks), mbytes(1.15*float64(r.chunks)*70))
+	})...)
+	tb.row("rs metadata in after (AC-B2 verification)", val(func(r *accBootResult) string {
+		if !r.mode.Rangesync {
+			return "-"
+		}
+		return fmt.Sprintf("%.0f B (bound 1 MB)", r.metaIn-r.metaInUnion)
 	})...)
 	tb.row("rs metadata out (Wants)", val(func(r *accBootResult) string { return mbytes(r.metaOut) })...)
 	tb.row("wire in: status/reconcile/fetch; pullsync", val(func(r *accBootResult) string {
@@ -711,10 +743,11 @@ const (
 // to the end of the quiet tail after its new half arrived, then over a phase
 // of uploads with the mixed radii.
 type accRadiusResult struct {
-	name  string
-	mode  accMode
-	setup time.Duration
-	half  int // chunks in the new half
+	name    string
+	mode    accMode
+	highest bool // the decreaser's overlay is the highest of the network, not the lowest
+	setup   time.Duration
+	half    int // chunks in the new half
 
 	decrease    time.Duration // release to the radius decrease
 	first, done time.Duration // decrease to the new half's first and last chunk
@@ -730,6 +763,7 @@ type accRadiusResult struct {
 	chunksIn        float64 // bytes of the chunk deliveries to it
 	deliveries      accDeliveryCount
 	oldHalf         []uint64      // reconcile bytes with each peer of its old half after the release
+	oldHalfSessions []int64       // reconcile streams with each peer of its old half after the release
 	newHalfPeers    []uint64      // reconcile + fetch bytes with each peer of the new half
 	disjoint        int64         // reconcile streams between the two halves' other nodes once ready
 	startup         int64         // reconcile streams between the two halves before ready
@@ -743,23 +777,61 @@ type accRadiusResult struct {
 	// the latency of the uploads of the phase that the decreaser lacked
 	// (not pushed to it): median, p95, max
 	nestedLat [3]time.Duration
-	// the uploads of the phase within AC-V1's bound, 2 × the round interval
-	// at the upload (the smallest of the nodes'), and the smallest bound
-	v1Within int
-	v1Bound  time.Duration
+	// the uploads of the phase within AC-V1's bound (accV1Bound), and the
+	// smallest bound; the same within 2 × the smallest round interval of the
+	// network at the upload (the bound asserted before fix round 1 of T6.1
+	// part 2, logged); and the uploads within accStatusBound (asserted)
+	v1Within, v1WithinLeast, v1WithinStatus int
+	v1Bound, v1BoundLeast                   time.Duration
+}
+
+// radiusOverlay returns the overlays of the Radius decrease network: node i
+// at radius 2 in one half of the radius-1 neighborhood, the decreaser (node
+// 0) and the next accRadiusSide − 1 nodes in one half (bit 1), the others in
+// the other. Without highest the seed sets the order (with seed 200 the
+// decreaser has the lowest overlay, so it initiates every session with its
+// peers, §8.2). With highest the decreaser's half is the upper one and the
+// decreaser the highest node of it, so that its peers initiate every session
+// with it.
+func radiusOverlay(highest bool) func(i int, random, prefix swarm.Address) swarm.Address {
+	return func(i int, random, prefix swarm.Address) swarm.Address {
+		a := withPrefix(random, prefix, 2)
+		if i >= accRadiusSide {
+			a = flipBit(a, 1)
+		}
+		if !highest {
+			return a
+		}
+		// the decreaser's half has bit 1 set
+		if prefix.Bytes()[0]&0x40 == 0 {
+			a = flipBit(a, 1)
+		}
+		if i == 0 {
+			b := slices.Clone(a.Bytes())
+			b[0] |= 0x3f
+			b[1] = 0xff
+			a = swarm.NewAddress(b)
+		}
+		return a
+	}
 }
 
 // TestAcceptanceRadius runs the Radius decrease scenario: two halves of a
 // radius-1 neighborhood, accRadiusSide nodes each at radius 2, each half
 // holding its base chunks (~4500). The harness then lets node 0's reserve
 // worker lower its radius (its reserve is below the threshold, and it checks
-// every second): its root widens to radius 1, whose new half the other half
-// holds. Then uploads into the whole neighborhood run with the mixed radii.
-// It runs on rangesync-only nodes and on pullsync-only nodes (the Baseline,
-// for AC-V4). On rangesync it checks:
+// every accRadiusWakeUp): its root widens to radius 1, whose new half the
+// other half holds. Then uploads into the whole neighborhood run with the
+// mixed radii. It runs on rangesync-only nodes in two orientations, the
+// decreaser's overlay the lowest of the network and the highest
+// (radiusOverlay), and on pullsync-only nodes (the Baseline, for AC-V4;
+// accFull). On rangesync it checks:
 //   - AC-B4: the decreaser's chunk bytes ≤ 1.01 × the new half, each chunk
 //     once (AC-D1); the old half costs < 1 KB of sessions with each of its
-//     peers;
+//     peers (the decreaser lowest: it compares their digests over their
+//     root and starts none; highest: they cannot compare the decreaser's
+//     digest and start one in each of their rounds, a fingerprint exchange
+//     that finds the sets equal);
 //   - AC-N1: its sync rate is above 0 from the decrease to the end of the
 //     tail; AC-N3: no second decrease meanwhile, although its count is still
 //     below the threshold (with accLong: the second decrease comes only once
@@ -768,20 +840,13 @@ type accRadiusResult struct {
 //     roots), none between the decreaser and the other half before the
 //     decrease, and no reserve holds a chunk outside its root (the other
 //     half's nodes sync only their own root with the decreaser);
-//   - AC-C1, AC-K3; and, in the upload phase with the mixed radii, AC-V1 and
-//     AC-D1.
+//   - AC-C1, AC-K3; and, in the upload phase with the mixed radii (accFull),
+//     AC-V1 and AC-D1.
 func TestAcceptanceRadius(t *testing.T) {
 	o := accOptions{
 		Nodes: 2 * accRadiusSide, Seed: 200, Radius: 1, Base: 9000,
 		NodeRadius: func(int) uint8 { return 2 },
-		Overlay: func(i int, random, prefix swarm.Address) swarm.Address {
-			a := withPrefix(random, prefix, 2)
-			if i >= accRadiusSide {
-				a = flipBit(a, 1)
-			}
-			return a
-		},
-		Hold: func(i int) bool { return i == 0 },
+		Hold:       func(i int) bool { return i == 0 },
 		WakeUp: func(i int) time.Duration {
 			if i == 0 {
 				return accRadiusWakeUp
@@ -790,32 +855,48 @@ func TestAcceptanceRadius(t *testing.T) {
 		},
 		Window: accWindow, LargeDiff: accLargeDiff, Tail: accTail,
 	}
-	var results [2]*accRadiusResult
+	var results [3]*accRadiusResult
 	// after the subtests, which run in parallel in long runs
 	t.Cleanup(func() { logRadiusTable(t, results[:]) })
-	for k, m := range []accMode{accPullsyncOnly, accRangesyncOnly} {
-		name := map[accMode]string{accPullsyncOnly: "baseline", accRangesyncOnly: "rangesync"}[m]
-		t.Run(name, func(t *testing.T) {
+	for k, c := range []struct {
+		name    string
+		mode    accMode
+		highest bool
+	}{
+		{"baseline", accPullsyncOnly, false},
+		{"rangesync", accRangesyncOnly, false},
+		{"rangesync decreaser highest", accRangesyncOnly, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if !c.mode.Rangesync && !accFull() {
+				t.Skip("the Baseline runs with RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set")
+			}
 			if accLong() {
 				t.Parallel()
 			}
 			ro := o
-			ro.Mode = func(int) accMode { return m }
-			results[k] = runRadius(t, name, ro, m)
+			ro.Mode = func(int) accMode { return c.mode }
+			ro.Overlay = radiusOverlay(c.highest)
+			results[k] = runRadius(t, c.name, ro, c.mode, c.highest)
 		})
 	}
 }
 
-func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadiusResult {
+func runRadius(t *testing.T, name string, o accOptions, mode accMode, highest bool) *accRadiusResult {
 	t.Helper()
 
 	begin := time.Now()
 	h := newAccHarness(t, o)
 	defer h.close()
 	h.start()
-	r := &accRadiusResult{name: name, mode: mode, setup: time.Since(begin)}
+	r := &accRadiusResult{name: name, mode: mode, highest: highest, setup: time.Since(begin)}
 
 	d := h.nodes[0]
+	for _, p := range h.nodes[1:] {
+		if above := d.overlay.Compare(p.overlay) > 0; above != highest {
+			t.Fatalf("the decreaser's overlay %s is not the %s of the network (node %d: %s)", d.overlay, map[bool]string{false: "lowest", true: "highest"}[highest], p.i, p.overlay)
+		}
+	}
 	oldPeers, newPeers := h.nodes[1:accRadiusSide], h.nodes[accRadiusSide:]
 	newHalf := fingerprint.NewRange(flipBit(d.overlay, 1), 2)
 	want := idsIn(t, h.base, newHalf)
@@ -828,6 +909,13 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadius
 				_, b := h.net.pairStats(a.overlay, p.overlay, s)
 				out[k] += b
 			}
+		}
+		return out
+	}
+	pairStreams := func(a *accNode, peers []*accNode, stream string) []int64 {
+		out := make([]int64, len(peers))
+		for k, p := range peers {
+			out[k], _ = h.net.pairStats(a.overlay, p.overlay, stream)
 		}
 		return out
 	}
@@ -851,6 +939,7 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadius
 	h.sampler.resetPeaks()
 	s0 := h.snapshot()
 	old0, new0 := pairBytes(d, oldPeers, reconcile), pairBytes(d, newPeers, reconcile, fetch)
+	oldSessions0 := pairStreams(d, oldPeers, reconcile)
 	w := watchRate(d)
 	defer w.stop()
 	releaseAt := time.Now()
@@ -893,6 +982,9 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadius
 	for k, b := range pairBytes(d, oldPeers, reconcile) {
 		r.oldHalf = append(r.oldHalf, b-old0[k])
 	}
+	for k, n := range pairStreams(d, oldPeers, reconcile) {
+		r.oldHalfSessions = append(r.oldHalfSessions, n-oldSessions0[k])
+	}
 	for k, b := range pairBytes(d, newPeers, reconcile, fetch) {
 		r.newHalfPeers = append(r.newHalfPeers, b-new0[k])
 	}
@@ -901,7 +993,7 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadius
 	}
 	r.disconnects = h.net.disconnects.Load() + h.net.blocklists.Load()
 	r.cpu = s1.process.value("bee_process_cpu_seconds_total") - s0.process.value("bee_process_cpu_seconds_total")
-	if mode.Rangesync {
+	if mode.Rangesync && accFull() {
 		h.checkUnionNoProbe() // the probes run once, at the end
 		radiusUploadPhase(t, h, r, d)
 	}
@@ -943,8 +1035,8 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode) *accRadius
 
 // radiusUploadPhase runs the upload phase with the mixed radii on a
 // rangesync network: the decreaser d at radius 1, the others at 2 (nested
-// roots, §7.6). The pullsync network skips it to keep the default run within
-// its timeout (its numbers are in the Decisions log).
+// roots, §7.6). It runs with accFull; the pullsync network skips it (its
+// numbers are in the Decisions log).
 func radiusUploadPhase(t *testing.T, h *accHarness, r *accRadiusResult, d *accNode) {
 	t.Helper()
 
@@ -955,12 +1047,11 @@ func radiusUploadPhase(t *testing.T, h *accHarness, r *accRadiusResult, d *accNo
 	h.uploads = nil // the phase's uploads only
 	h.mu.Unlock()
 	rate := accRate(len(h.nodes))
-	// AC-V1's bound per upload: 2 × the round interval at the upload, the
-	// smallest of the nodes' (at least MinRoundInterval)
-	var bounds []time.Duration
+	// every node's round interval at each upload, for AC-V1's bound
+	var intervals [][]time.Duration
 	rounds := h.roundIntervals()
 	lastUpload := h.uploadPhase(int(rate*accRadiusUploadPhase.Seconds()), rate, func(int, time.Duration) {
-		bounds = append(bounds, 2*rounds())
+		intervals = append(intervals, rounds())
 	})
 	accWait(t, "every node to hold its root's union", h.o.Limit, func() (bool, string) {
 		missing, _ := h.pending()
@@ -971,7 +1062,11 @@ func radiusUploadPhase(t *testing.T, h *accHarness, r *accRadiusResult, d *accNo
 	u1 := h.snapshot()
 	r.upload = h.result(r.name+" uploads", u0, u1, lastUpload, convergedAt, quietAt)
 	r.nestedLat = h.latencyAt(d.i)
-	r.v1Within, r.v1Bound = h.uploadsWithin(bounds)
+	r.v1Within, r.v1Bound = h.uploadsWithin(intervals, accV1Bound)
+	r.v1WithinLeast, r.v1BoundLeast = h.uploadsWithin(intervals, func(_ *accUpload, iv []time.Duration) time.Duration {
+		return 2 * slices.Min(iv)
+	})
+	r.v1WithinStatus, _ = h.uploadsWithin(intervals, func(*accUpload, []time.Duration) time.Duration { return accStatusBound })
 }
 
 // latencyAt returns the median, p95 and largest time from an upload to its
@@ -996,40 +1091,64 @@ func (h *accHarness) latencyAt(i int) [3]time.Duration {
 	return [3]time.Duration{lat[len(lat)/2], lat[min(len(lat)-1, int(math.Ceil(0.95*float64(len(lat))))-1)], lat[len(lat)-1]}
 }
 
-// roundIntervals returns a function that reads the smallest round interval
-// of the rangesync nodes, at least MinRoundInterval (MinRoundInterval
-// without rangesync nodes).
-func (h *accHarness) roundIntervals() func() time.Duration {
-	var gauges []prometheus.Collector
-	for _, n := range h.nodes {
+// roundIntervals returns a function that reads every node's round interval
+// (round_interval_seconds), by node index, at least MinRoundInterval
+// (MinRoundInterval for a node without a reconciler).
+func (h *accHarness) roundIntervals() func() []time.Duration {
+	gauges := make([]prometheus.Collector, len(h.nodes))
+	for i, n := range h.nodes {
 		if n.rec != nil {
-			gauges = append(gauges, findCollector(h.tb, "bee_rangesync_round_interval_seconds", n.rec.Metrics()...))
+			gauges[i] = findCollector(h.tb, "bee_rangesync_round_interval_seconds", n.rec.Metrics()...)
 		}
 	}
-	return func() time.Duration {
-		if len(gauges) == 0 {
-			return reconciler.MinRoundInterval
+	return func() []time.Duration {
+		out := make([]time.Duration, len(gauges))
+		for i, g := range gauges {
+			out[i] = reconciler.MinRoundInterval
+			if g != nil {
+				out[i] = max(out[i], time.Duration(collectSum(g)*float64(time.Second)))
+			}
 		}
-		least := reconciler.MaxRoundInterval
-		for _, g := range gauges {
-			least = min(least, time.Duration(collectSum(g)*float64(time.Second)))
-		}
-		return max(least, reconciler.MinRoundInterval)
+		return out
 	}
 }
 
+// accStatusBound bounds an upload's spread whatever the round intervals:
+// a lacker below every holder gets their Status within 2 ×
+// StatusMinInterval when they sent it a change just before, and its round
+// may then wait MinRoundInterval (T4.6 part 1 fix round 1, Low 4: 15 s). It
+// keeps the mixed-radii check tight where AC-V1's bound (accV1Bound) is wide
+// because a node's interval grew while its neighborhood was quiet.
+const accStatusBound = 2*rangesync.StatusMinInterval + reconciler.MinRoundInterval
+
+// accV1Bound is AC-V1's bound for upload u, from every node's round interval
+// at the upload (iv, by node index): 2 × the round interval of the nodes
+// whose root holds it, the largest of theirs. The upload is on all of them
+// once the last has it, and each takes it in its own rounds, which come at
+// its own interval (a node's interval adapts, round_interval_seconds): the
+// neighborhood's 2 × RoundInterval is set by its slowest node.
+func accV1Bound(u *accUpload, iv []time.Duration) time.Duration {
+	var bound time.Duration
+	for _, i := range u.want {
+		bound = max(bound, 2*iv[i])
+	}
+	return bound
+}
+
 // uploadsWithin returns the number of uploads (h.uploads, in order) that
-// reached every node whose root holds them within their bound, and the
-// smallest bound.
-func (h *accHarness) uploadsWithin(bounds []time.Duration) (int, time.Duration) {
+// reached every node whose root holds them within their bound, from every
+// node's round interval at the upload (intervals, one per upload, by node
+// index), and the smallest bound.
+func (h *accHarness) uploadsWithin(intervals [][]time.Duration, bound func(u *accUpload, iv []time.Duration) time.Duration) (int, time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	n, least := 0, time.Duration(math.MaxInt64)
 	for k, u := range h.uploads {
-		least = min(least, bounds[k])
+		b := bound(u, intervals[k])
+		least = min(least, b)
 		ok := true
 		for _, i := range u.want {
-			if at, arrived := h.arrivals[i][u.id]; !arrived || at.Sub(u.at) > bounds[k] {
+			if at, arrived := h.arrivals[i][u.id]; !arrived || at.Sub(u.at) > b {
 				ok = false
 				break
 			}
@@ -1072,7 +1191,7 @@ func checkRadius(t *testing.T, r *accRadiusResult) {
 	}
 	for k, b := range r.oldHalf {
 		if b >= 1000 {
-			t.Errorf("AC-B4: %d reconcile bytes with old-half peer %d after the decrease, want < 1 KB", b, k+1)
+			t.Errorf("AC-B4: %d reconcile bytes (%d sessions) with old-half peer %d after the decrease, want < 1 KB", b, r.oldHalfSessions[k], k+1)
 		}
 	}
 	if r.rateMin <= 0 {
@@ -1091,12 +1210,19 @@ func checkRadius(t *testing.T, r *accRadiusResult) {
 	if u.decodeCorruption != 0 {
 		t.Errorf("AC-K3: decode_corruption_total %v", u.decodeCorruption)
 	}
-	// AC-V1 against the round interval at each upload (the smallest of the
-	// nodes'): the decreaser's interval grew to MaxRoundInterval while its
-	// neighborhood was quiet (T4.6 part 3: AC-V1 at a quiet network), so
-	// 2 × MinRoundInterval is tighter than the criterion there
+	// AC-V1 against the round intervals at each upload (accV1Bound): the
+	// decreaser's interval grew to MaxRoundInterval while its neighborhood
+	// was quiet (T4.6 part 3: AC-V1 at a quiet network), so 2 ×
+	// MinRoundInterval, and 2 × the smallest interval of the network, are
+	// tighter than the criterion there. A decreaser that initiates with the
+	// holders (lowest) has its latency bound by a Status interval and a
+	// round's (10 s), right at 2 × MinRoundInterval. accStatusBound keeps the
+	// check tight where AC-V1's bound is wide.
 	if r.v1Within != u.uploads {
-		t.Errorf("AC-V1 (mixed radii): %d of %d uploads reached every node within 2 × the round interval at the upload (at least %v; the slowest took %v)", r.v1Within, u.uploads, r.v1Bound, u.latMax)
+		t.Errorf("AC-V1 (mixed radii): %d of %d uploads reached every node within 2 × the largest round interval at the upload of the nodes whose root holds it (at least %v; the slowest took %v)", r.v1Within, u.uploads, r.v1Bound, u.latMax)
+	}
+	if r.v1WithinStatus != u.uploads {
+		t.Errorf("mixed radii: %d of %d uploads reached every node within %v, 2 × StatusMinInterval + MinRoundInterval (the slowest took %v)", r.v1WithinStatus, u.uploads, accStatusBound, u.latMax)
 	}
 }
 
@@ -1125,6 +1251,9 @@ func logRadiusTable(t *testing.T, rs []*accRadiusResult) {
 	}
 	tb.row("scenario", val(func(r *accRadiusResult) string {
 		return fmt.Sprintf("%s (%d+%d nodes, %s)", r.name, accRadiusSide, accRadiusSide, r.mode)
+	})...)
+	tb.row("the decreaser's overlay", val(func(r *accRadiusResult) string {
+		return map[bool]string{false: "lowest", true: "highest"}[r.highest]
 	})...)
 	tb.row("chunks in the new half", val(func(r *accRadiusResult) string { return strconv.Itoa(r.half) })...)
 	tb.row("setup", val(func(r *accRadiusResult) string { return ms(r.setup) })...)
@@ -1165,6 +1294,7 @@ func logRadiusTable(t *testing.T, rs []*accRadiusResult) {
 		return fmt.Sprintf("%d/%d; %d", r.deliveries.ps, r.deliveries.rs, r.deliveries.repeats)
 	})...)
 	tb.row("old-half sessions, B per peer (AC-B4)", val(func(r *accRadiusResult) string { return fmt.Sprint(r.oldHalf) })...)
+	tb.row("  reconcile streams per old-half peer", val(func(r *accRadiusResult) string { return fmt.Sprint(r.oldHalfSessions) })...)
 	tb.row("new-half reconcile+fetch, MB per peer", val(func(r *accRadiusResult) string {
 		parts := make([]string, 0, len(r.newHalfPeers))
 		for _, b := range r.newHalfPeers {
@@ -1201,8 +1331,11 @@ func logRadiusTable(t *testing.T, rs []*accRadiusResult) {
 		}
 		return fmt.Sprintf("%.1f / %.1f", r.upload.roundMin, r.upload.roundMax)
 	})...)
-	tb.row("  within 2xMinRoundInterval; 2xRoundInterval", uval(func(r *accRadiusResult) string {
-		return fmt.Sprintf("%d/%d; %d/%d (%v)", r.upload.v1Within, r.upload.uploads, r.v1Within, r.upload.uploads, r.v1Bound)
+	tb.row("  within 2xMinRoundInterval; 2x network's least", uval(func(r *accRadiusResult) string {
+		return fmt.Sprintf("%d/%d; %d/%d (bound >= %v)", r.upload.v1Within, r.upload.uploads, r.v1WithinLeast, r.upload.uploads, r.v1BoundLeast)
+	})...)
+	tb.row("  within AC-V1 (2x root's largest); 15 s", uval(func(r *accRadiusResult) string {
+		return fmt.Sprintf("%d/%d (bound >= %v); %d/%d", r.v1Within, r.upload.uploads, r.v1Bound, r.v1WithinStatus, r.upload.uploads)
 	})...)
 	tb.row("  metadata B/upload (AC def)", uval(func(r *accRadiusResult) string {
 		u := r.upload
@@ -1257,8 +1390,8 @@ type accStaleResult struct {
 // the older; every node got the older stamp at most once, and not at all
 // after the convergence although every round lists it (the rejected cache);
 // rejected_cache_size stays at most the one stale ID. AC-C1 holds among the
-// nodes. On pullsync-only nodes (the Baseline, without the stale peer) it
-// logs whether the nodes end with the newer stamp. With accLong it also
+// nodes. On pullsync-only nodes (the Baseline, without the stale peer;
+// accFull) it logs whether the nodes end with the newer stamp. With accLong it also
 // watches the rounds past RejectTTL: an ID leaves the rejected cache after
 // it, and is fetched (and rejected) once more.
 func TestAcceptanceStaleStamp(t *testing.T) {
@@ -1269,6 +1402,9 @@ func TestAcceptanceStaleStamp(t *testing.T) {
 	for k, m := range []accMode{accPullsyncOnly, accRangesyncOnly} {
 		name := map[accMode]string{accPullsyncOnly: "baseline", accRangesyncOnly: "rangesync"}[m]
 		t.Run(name, func(t *testing.T) {
+			if !m.Rangesync && !accFull() {
+				t.Skip("the Baseline runs with RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set")
+			}
 			if accLong() {
 				t.Parallel()
 			}

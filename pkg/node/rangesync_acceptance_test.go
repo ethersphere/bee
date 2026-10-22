@@ -82,8 +82,9 @@ func accMixedMode(i int) accMode {
 
 // TestAcceptance runs the Baseline, rangesync-only and Mixed scenarios for
 // each network size (accSizes) and logs their metrics side by side:
-//   - Baseline (every node pullsync-only): every node ends with its
-//     neighborhood's union; its numbers are the reference;
+//   - Baseline (every node pullsync-only; accFull, see the part-2 file):
+//     every node ends with its neighborhood's union; its numbers are the
+//     reference;
 //   - rangesync only: every node ends with its neighborhood's union and its
 //     Index equals a brute force over its reserve (AC-C1); rangesync
 //     delivers every ID at most once per node and no chunk the node held at
@@ -106,6 +107,9 @@ func TestAcceptance(t *testing.T) {
 			o := accOptions{Nodes: n, Seed: seed, Radius: 2, Rate: rate, Uploads: int(math.Round(rate * accUploadPhase.Seconds()))}
 			var baseline, rangesyncOnly, mixed *accResult
 			t.Run("baseline", func(t *testing.T) {
+				if !accFull() {
+					t.Skip("the Baseline runs with RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set")
+				}
 				baseline = runAccScenario(t, "baseline", o)
 				checkBaseline(t, baseline)
 			})

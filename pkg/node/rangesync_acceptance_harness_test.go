@@ -1563,10 +1563,13 @@ func (h *accHarness) checkCaches(n *accNode) {
 		return ok, ""
 	})
 	probeReg := prometheusRegistry(tb, probe.Metrics()...)
-	// the node's metrics and root iterations count every session it serves:
-	// a session another peer runs with it meanwhile (an edge peer with
-	// another root, which a round cannot tell is in sync, T6.1 part 2)
-	// would count in, so the probe runs again after one
+	// the node's root iterations count every session it serves: a session
+	// another peer runs with it meanwhile (an edge peer with another root,
+	// which a round cannot tell is in sync, T6.1 part 2) would count in, so
+	// the probe runs again after one. What the node answered is read at the
+	// probe (its parts_received): a session of the node's that was under way
+	// when the attempt began is not seen by the stream count, and its parts
+	// would count in the node's parts_sent (T6.1 part 2 fix round 1)
 	others := func() int64 {
 		var sum int64
 		for _, p := range h.nodes {
@@ -1578,12 +1581,12 @@ func (h *accHarness) checkCaches(n *accNode) {
 		return sum
 	}
 	for attempt := 1; ; attempt++ {
-		probe0, node0, iters0, others0 := gatherAcc(tb, probeReg), gatherAcc(tb, n.reg), n.store.rootIters.Load(), others()
+		probe0, iters0, others0 := gatherAcc(tb, probeReg), n.store.rootIters.Load(), others()
 		wants, err := probe.Reconcile(ctx, n.overlay)
 		if err != nil {
 			tb.Fatalf("node %d: probe session: %v", n.i, err)
 		}
-		pm, nm := gatherAcc(tb, probeReg).since(probe0), gatherAcc(tb, n.reg).since(node0)
+		pm := gatherAcc(tb, probeReg).since(probe0)
 		iters := n.store.rootIters.Load() - iters0
 		if others() != others0 && attempt < 3 {
 			continue
@@ -1597,7 +1600,7 @@ func (h *accHarness) checkCaches(n *accNode) {
 		// the cache path: the node answered the probe's root Fingerprint
 		// with symbols (no split), the probe decoded them before the stream
 		// ran out, and the node neither scanned nor listed its root
-		sent := nm.byLabel("bee_rangesync_parts_sent")
+		sent := pm.byLabel("bee_rangesync_parts_received")
 		exhausted := 0.0
 		for _, v := range pm.byLabel("bee_rangesync_streams_exhausted_total") {
 			exhausted += v
