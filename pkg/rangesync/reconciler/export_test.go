@@ -343,6 +343,15 @@ func (r *Reconciler) RoundIntervalGauge() float64 {
 	return m.GetGauge().GetValue()
 }
 
+// InitiatedSessionCapGauge returns the initiated_session_cap gauge.
+func (r *Reconciler) InitiatedSessionCapGauge() float64 {
+	m := new(dto.Metric)
+	if err := r.metrics.InitiatedSessionCap.Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetGauge().GetValue()
+}
+
 // PlanStripesFor returns the plan the stripe worker would transfer rg with.
 func (r *Reconciler) PlanStripesFor(rg fingerprint.Range) []Stripe { return r.planStripes(rg) }
 

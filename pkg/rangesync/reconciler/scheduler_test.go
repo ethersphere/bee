@@ -460,8 +460,9 @@ func TestRoundSessionCapPerNode(t *testing.T) {
 }
 
 // TestRoundSessionCapFollowsPeers: the cap follows the eligible peers from
-// round to round. A smaller cap takes no slot from a running session: the
-// next session starts only once the sessions are below it.
+// round to round, and so does the initiated_session_cap gauge. A smaller cap
+// takes no slot from a running session: the next session starts only once
+// the sessions are below it.
 func TestRoundSessionCapFollowsPeers(t *testing.T) {
 	t.Parallel()
 
@@ -486,6 +487,9 @@ func TestRoundSessionCapFollowsPeers(t *testing.T) {
 	h := newGossipHarness(t, svc, higher...)
 	h.r.Round()
 	waitFor(t, "sessions", func() bool { return svc.running() == len(higher) })
+	if got := h.r.InitiatedSessionCapGauge(); got != float64(len(higher)) {
+		t.Fatalf("initiated_session_cap %v, want %d", got, len(higher))
+	}
 
 	// 8 lower-overlay peers with equal digests and one more higher-overlay
 	// peer join: past the node's tokens, the cap drops to
@@ -503,6 +507,9 @@ func TestRoundSessionCapFollowsPeers(t *testing.T) {
 	want := reconciler.InitiatedSessionCap(len(higher)+1, len(lowerPeers))
 	if size, used := h.r.SessionSlots(); size != want || used != len(higher) {
 		t.Fatalf("cap %d, %d slots taken; want %d, %d", size, used, want, len(higher))
+	}
+	if got := h.r.InitiatedSessionCapGauge(); got != float64(want) {
+		t.Fatalf("initiated_session_cap %v, want %d", got, want)
 	}
 	for i := range len(higher) - want {
 		close(gates[i])

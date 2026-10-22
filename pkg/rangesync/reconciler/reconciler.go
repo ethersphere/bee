@@ -346,7 +346,10 @@ func New(overlay swarm.Address, topo Topology, svc Service, logger log.Logger, o
 		cancel:        cancel,
 	}
 	r.interval.Store(int64(minInterval))
-	r.metrics = newMetrics(r.SyncRate, func() float64 { return r.currentInterval().Seconds() }, r.peerStates)
+	r.metrics = newMetrics(r.SyncRate, func() float64 { return r.currentInterval().Seconds() }, r.peerStates, func() float64 {
+		size, _ := r.slots.state()
+		return float64(size)
+	})
 	return r
 }
 

@@ -30,9 +30,13 @@ type metrics struct {
 	// Peers is the number of connected peers the reconciler follows, by the
 	// state of their machine (§8.1), read when collected.
 	Peers peersCollector
+	// InitiatedSessionCap is the current per-node cap on the sessions this
+	// node opens at once (InitiatedSessionCap, set by each round from its
+	// eligible peers).
+	InitiatedSessionCap prometheus.GaugeFunc
 }
 
-func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmState]int) metrics {
+func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmState]int, initiatedSessionCap func() float64) metrics {
 	const subsystem = "rangesync"
 
 	return metrics{
@@ -81,11 +85,17 @@ func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmStat
 			),
 			count: peers,
 		},
+		InitiatedSessionCap: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "initiated_session_cap",
+			Help:      "Current cap on the sessions this node opens at once, set by each round from its eligible peers.",
+		}, initiatedSessionCap),
 	}
 }
 
 func (m metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff, m.RoundInterval, m.Peers}
+	return []prometheus.Collector{m.SyncRate, m.Sessions, m.Failures, m.Stripes, m.VerificationDiff, m.RoundInterval, m.Peers, m.InitiatedSessionCap}
 }
 
 // peersCollector is the peers{state} gauge: count returns the number of
