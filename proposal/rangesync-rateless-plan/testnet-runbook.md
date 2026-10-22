@@ -641,6 +641,115 @@ for(x in n) printf "%s probes=%d within_bound=%d max_s=%.2f\n", x, n[x], ok[x], 
 
 ---
 
+## 6. Dashboard: panels and PromQL
+
+**Choice:** a panel list with PromQL here, not a Grafana JSON (Decisions log, "(T6.3 docs)
+Dashboard as a PromQL panel list"). Each panel names the criterion it serves. Conventions:
+
+- Labels as in §1 (`node`, `cohort`, `neighborhood`, `group`). `runbook_*` series come from §5.1.
+- `$__range` = the segment being judged (Grafana's time range). Windows: `[5m]` for rates,
+  `[10m]` where §9 reads "per 10-minute window", `[30m]` for slow ratios.
+- Counters keep their exported names: `bee_rangesync_parts_sent`, `bee_rangesync_bytes_metadata`,
+  `bee_rangesync_want_claims` and every `bee_pullsync_*` counter have no `_total` suffix.
+- Histogram bucket edges limit what a quantile can resolve; where a threshold sits inside a bucket,
+  the panel reads the bucket fraction instead (noted per panel).
+
+### Row A: inventory and mode
+
+| # | Panel | PromQL | Expect |
+|---|---|---|---|
+| A1 | Build | `count by (cohort, version) (bee_info)` | one version |
+| A2 | Mode | `count by (cohort) (bee_puller_pullsync_rate)` and `count by (cohort) (bee_rangesync_sync_rate)` | §2.2 |
+| A3 | Radius, depth, mixed radii | `bee_localstore_storage_radius`; `runbook_status_committed_depth`; `max by (neighborhood) (bee_localstore_storage_radius) - min by (neighborhood) (bee_localstore_storage_radius)` | > 0 = mixed radii (K3, S3) |
+| A4 | Neighborhood size | `runbook_status_neighborhood_size`; `runbook_status_connected_peers` | rule 5 |
+| A5 | Reconciler peers by state | `sum by (cohort, state) (bee_rangesync_peers)`; table `bee_rangesync_peers{state=~"unsupported\|striped\|removed"}` | `state`: probing, unsupported, idle, reconciling, fetching, striped, removed |
+| A6 | Initiated-session cap | `bee_rangesync_initiated_session_cap` | 8–16; S3 |
+
+### Row B: sync progress and convergence
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| B1 | Catch-up rates | `bee_rangesync_sync_rate`; `bee_puller_pullsync_rate`; `runbook_status_pullsync_rate` (combined, `/status`) | AC-N1, AC-V3, AC-V4, S17 |
+| B2 | Reserve size and spread | `bee_localstore_reserve_size`; `max by (neighborhood) (bee_localstore_reserve_size) - min by (neighborhood) (bee_localstore_reserve_size)` | `t_union` (§4.8, §4.9) |
+| B3 | Chunk inflow by path (chunks/s) | `rate(bee_rangesync_fetch_delivered_total[1m])`; `rate(bee_pullsync_chunks_delivered[1m])`; `sum by (node, type) (rate(bee_puller_synced_chunks[1m]))`; `rate(bee_pushsync_storer[1m])` | AC-V3, AC-V4 |
+| B4 | Sessions by result | `sum by (cohort, result) (rate(bee_rangesync_sessions_total[5m]))` (`result`: ok, busy, session_limit, stale, error; initiated round sessions); served Busy `sum by (cohort) (rate(bee_rangesync_session_busy_total[5m]))` | AC-C2, AC-V5, S3 |
+| B5 | Round interval | `bee_rangesync_round_interval_seconds`; `min by (neighborhood) (…)`, `max by (neighborhood) (…)` | AC-V1, §9 |
+| B6 | Messages per session | median ≤ 2: `sum by (cohort) (rate(bee_rangesync_session_rounds_bucket{le="2"}[30m])) / sum by (cohort) (rate(bee_rangesync_session_rounds_count[30m]))` ≥ 0.5; ≤ 4: same with `le="4"` | AC-V2. Buckets 1, 2, 4, 8, …: "p95 ≤ 3" is not resolvable; the panel reads p95 ≤ 4 |
+| B7 | Stripes | `sum by (cohort, result) (increase(bee_rangesync_stripes_total[10m]))` (`result`: done, reassigned, timeout, dropped, idle); `sum by (cohort, le) (increase(bee_rangesync_verification_diff_bucket[10m]))` | AC-V3, AC-V4, K1, K2, S8 |
+| B8 | Puller workers | `bee_puller_worker`; `rate(bee_puller_worker_iterations[5m])`; `rate(bee_puller_worker_errors[5m])`; `increase(bee_puller_max_uint_errors[1h])` | comparison |
+
+### Row C: bandwidth
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| C1 | rangesync bytes | `sum by (cohort, dir) (rate(bee_rangesync_bytes_metadata[5m]))`; `sum by (cohort, dir) (rate(bee_rangesync_bytes_chunks[5m]))` | AC-B1, AC-B2, AC-V5 |
+| C2 | pullsync metadata (baseline) | `102 * sum by (cohort) (rate(bee_pullsync_chunks_offered[5m]))`; responder side `rate(bee_pullsync_chunks_sent_offered[5m])`, `rate(bee_pullsync_chunks_sent_wanted[5m])`, `rate(bee_pullsync_chunks_sent[5m])`; `rate(bee_pullsync_chunks_wanted[5m])` | AC-B1 (102 B per offer, AC table §1), AC-S3 |
+| C3 | Metadata per new neighborhood chunk | rangesync: `sum by (cohort, neighborhood) (rate(bee_rangesync_bytes_metadata{dir="in"}[30m])) / avg by (cohort, neighborhood) (deriv(bee_localstore_reserve_size[30m]))`; pullsync: `102 * sum by (cohort, neighborhood) (rate(bee_pullsync_chunks_offered[30m])) / avg by (cohort, neighborhood) (deriv(bee_localstore_reserve_size[30m]))`; dual: the sum of both numerators | AC-B1, AC-B1b. Valid only in windows with no eviction, expiry or radius change (D0 below) |
+| C4 | Parts and Mores | `sum by (cohort, type) (rate(bee_rangesync_parts_sent[5m]))`; `sum by (cohort, type) (rate(bee_rangesync_parts_received[5m]))` (`type`: fingerprint, items, symbols, more); `sum by (cohort) (rate(bee_rangesync_more_requests_total[5m]))` | AC-K5, §9 |
+| C5 | Reference load | `histogram_quantile(0.5, sum by (cohort, neighborhood, le) (rate(bee_rangesync_pairwise_diff_bucket[30m])))`; bucket check: `sum by (cohort, neighborhood) (rate(bee_rangesync_pairwise_diff_bucket{le="15"}[30m])) / sum by (cohort, neighborhood) (rate(bee_rangesync_pairwise_diff_count[30m]))` < 0.5 → median ≥ 16; with `le="31"` < 0.5 → median ≥ 32 | §4.5. Buckets 0, 1, 3, 7, 15, 31, …: "≥ 20" lies inside 16–31; a median in that bucket reads "at or near the reference load" (as in T6.1) |
+
+### Row D: duplicates
+
+D0, the window check for D3, D4 and C3:
+`sum by (neighborhood) (increase(bee_localstore_evicted_count[$__range]) + increase(bee_localstore_expired_count[$__range]))` = 0.
+
+U = chunks the two sync protocols added to a node's reserve over the window ≈
+`delta(bee_localstore_reserve_size[$__range]) - increase(bee_pushsync_storer[$__range])` (pushsync
+stores counted out; a push that finds the chunk already stored makes U a slight underestimate).
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| D1 | rangesync deliveries | stored `rate(bee_rangesync_fetch_delivered_total[5m])`; already held `rate(bee_rangesync_cross_protocol_duplicates_total[5m])`; stamp failed `rate(bee_rangesync_fetch_rejected_total[5m])` | AC-D2, AC-D3 |
+| D2 | AC-D2 (rangesync-only) | `sum by (cohort) (increase(bee_rangesync_cross_protocol_duplicates_total[$__range])) / (sum by (cohort) (increase(bee_rangesync_fetch_delivered_total[$__range])) + sum by (cohort) (increase(bee_rangesync_cross_protocol_duplicates_total[$__range])))` | ≤ 0.01 (draft). `chunks_fetched_total` was never added; stored + already held stands in for it |
+| D3 | AC-D3 (dual), exact | per node: `increase(bee_pullsync_chunks_delivered[$__range]) + increase(bee_rangesync_fetch_delivered_total[$__range]) + increase(bee_rangesync_cross_protocol_duplicates_total[$__range]) - (delta(bee_localstore_reserve_size[$__range]) - increase(bee_pushsync_storer[$__range]))`, ÷ U for the ratio | the corrected T6.1 formula ("(T6.1 part 1 fix round 1 → T6.3, T6.4)"); rejected stamps are in neither term. Report next to D1's metric-only value, a lower bound (it misses rangesync-first, pullsync-in-the-same-page) |
+| D4 | AC-D5 (pullsync), approx. | per node: `increase(bee_pullsync_chunks_delivered[$__range]) - (delta(bee_localstore_reserve_size[$__range]) - increase(bee_pushsync_storer[$__range]))`, ÷ U | informational |
+| D5 | Want set | `sum by (cohort, result) (rate(bee_rangesync_want_claims[5m]))` (`result`: granted, denied, peer_full, full, rejected, closed, expired, late ⊂ expired); `bee_rangesync_rejected_cache_size`; `sum by (cohort, reason) (rate(bee_rangesync_fetch_skipped_total[5m]))` (`reason`: out_of_radius, in_reserve, outside_peer_root, no_credit, held, rejected, full, peer_full, closed) | AC-D2 (`late` 0), AC-C3, S5, S6 |
+
+### Row E: decoding
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| E1 | Symbols per difference | `histogram_quantile(0.5, sum by (cohort, le) (rate(bee_rangesync_symbols_per_difference_bucket[30m])))`, same at 0.95 | AC-K2 (buckets 1.0–5.0 by 0.25: resolvable) |
+| E2 | Corruption, mapping | `sum by (cohort, node) (increase(bee_rangesync_decode_corruption_total[$__range]))`; `sum by (cohort, node) (increase(bee_rangesync_mapping_mismatch_total[$__range]))` | AC-K3, AC-K4: 0 |
+| E3 | Exhausted streams | `sum by (cohort, neighborhood, level) (increase(bee_rangesync_streams_exhausted_total[1h]))` (`level`: root, level1, bucket, deep) | AC-K5, §9 |
+| E4 | Pairwise differences | heatmaps `sum by (le) (increase(bee_rangesync_pairwise_diff_bucket[10m]))` and `…pairwise_diff_half_bucket…`; max per 10-min window and crossings: §9 Q1, Q2 | AC-C2, AC-K5, §9 |
+
+### Row F: peer quality and protection
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| F1 | Peer failures | `sum by (cohort, node) (increase(bee_rangesync_peer_failures_total[10m]))` (no reason label: the reason is in the Debug `peer failed` line, **missing** as a label) | S7, S10, K2 |
+| F2 | Disconnects and drops | `increase(bee_rangesync_invalid_message_total[10m])`; `increase(bee_rangesync_stream_limit_exceeded_total[10m])`; `increase(bee_rangesync_status_rate_limited_total[10m])` | S7 |
+| F3 | Fetch credit | `sum by (cohort, node) (increase(bee_rangesync_fetch_skipped_total{reason="no_credit"}[10m]))` | S5: honest neighbors 0 |
+| F4 | Outside the root | `increase(bee_rangesync_index_outside_root_total[1h])` | edge peers, radius changes |
+| F5 | Busy breakdown | §8, S3 | S3 |
+
+### Row G: resources
+
+| # | Panel | PromQL | Serves |
+|---|---|---|---|
+| G1 | Index memory | `bee_rangesync_index_memory_bytes`; `max_over_time(bee_rangesync_index_memory_bytes[$__range])` | AC-R1, AC-R2 |
+| G2 | Index rebuild | per rebuild: `increase(bee_rangesync_index_rebuild_seconds_sum[$__range]) / increase(bee_rangesync_index_rebuild_seconds_count[$__range])` (exact when one rebuild falls in the range) | AC-R3 (buckets 20 and 40 bracket 30 s: use the mean) |
+| G3 | Index apply | `histogram_quantile(0.99, sum by (cohort, le) (rate(bee_rangesync_index_apply_seconds_bucket[30m])))` | AC-R4 (report) |
+| G4 | Reserve `Put` latency, mean | `sum by (cohort, node) (rate(bee_localstore_method_calls_duration_sum{component="reserve",method="Put"}[30m])) / sum by (cohort, node) (rate(bee_localstore_method_calls_duration_count{component="reserve",method="Put"}[30m]))` | AC-R4. Default buckets (first edge 5 ms) cannot resolve a median: compare means |
+| G5 | CPU | `avg by (cohort) (rate(bee_process_cpu_seconds_total[30m]))`; per node | AC-R7 |
+| G6 | Memory | `avg by (cohort) (bee_process_resident_memory_bytes)`; `avg by (cohort) (go_memstats_heap_inuse_bytes)` | AC-R8 |
+| G7 | Goroutines | `avg by (cohort) (go_goroutines)` | AC-R9 |
+| G8 | Address-index disk | `runbook_indexstore_bytes`; per chunk `runbook_indexstore_bytes / on(node) bee_localstore_reserve_size` | AC-R5 |
+
+### Row H: redistribution
+
+| # | Panel | PromQL / source | Serves |
+|---|---|---|---|
+| H1 | Fully synced | `avg by (cohort) (avg_over_time(runbook_is_fully_synced[$__range]))`; per node | AC-N5 (a), AC-V3 |
+| H2 | Played ÷ selected | `sum by (cohort) (increase(bee_storageincentives_commit_phases[$__range])) / sum by (cohort) (increase(bee_storageincentives_neighborhood_selected[$__range]))` | AC-N5 (b) |
+| H3 | Commit, reveal, claim | commits `increase(bee_storageincentives_commit_phases[$__range])` − `increase(bee_storageincentives_commit_phase_errors[$__range])`; reveals `…reveal_phases…` − `…reveal_phase_errors…`; `…claim_phases…`, `…winner…`, `…claim_phase_errors…`, `…is_playing_errors…`, `…insufficient_funds_to_play…` | AC-N5 (c) |
+| H4 | Frozen | `max by (cohort, node) (max_over_time(runbook_is_frozen[$__range]))`; `changes(runbook_last_frozen_round[$__range])` | AC-N5 (d): 0 |
+| H5 | Sample duration | `bee_storageincentives_reserve_sample_duration` (last sample, s); `runbook_last_sample_duration_seconds`; mean `sum by (cohort) (rate(bee_localstore_reserve_sample_duration_seconds_sum{status="success"}[6h])) / sum by (cohort) (rate(bee_localstore_reserve_sample_duration_seconds_count{status="success"}[6h]))` | AC-N5 (e) |
+| H6 | Phase, round | `bee_storageincentives_current_phase`; `bee_storageincentives_round`; skipped-round log count (§5.1) | context |
+
+---
+
 ## 7. What to watch, per criterion
 
 Every row of acceptance-criteria.md whose "Measured by" names T6.3. Segments: §10. R = `rangesync`
