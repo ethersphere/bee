@@ -132,7 +132,14 @@ section; do not pad it.
 After writing the files, return **only** one line per PR, tab-separated:
 
 ```
-RESULT	<N>	<High|Medium|Low>	<comma-separated areas>	<comma-separated beekeeper check types or ->	<one-line headline of what to test>
+RESULT	<N>	<High|Medium|Low>	<comma-separated areas>	<comma-separated beekeeper check types or ->	<local|cluster|chain>	<plan summary>
 ```
+
+- Env is the most demanding env of any scenario: `chain` (sends transactions),
+  then `cluster` (beekeeper or several nodes), then `local` (go test or one
+  local node).
+- The plan summary has at most 2 sentences and fewer than 300 characters. It
+  says what to run and what proves a pass. The operator approves from this
+  line, so it must stand alone.
 
 Return no other text. The orchestrator parses these lines.

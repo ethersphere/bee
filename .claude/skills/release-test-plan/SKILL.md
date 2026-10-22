@@ -1,22 +1,32 @@
 ---
 name: release-test-plan
-description: Builds a QA test plan for an upcoming Bee release. It takes every PR merged to master since the last release tag, sends sub-agents to analyze each PR's diff and description, and writes a per-PR rundown of what to test (beekeeper checks, API calls, gaps CI misses with proposed new tests, upgrade and compatibility risks) plus a release-level summary. Use when asked what to test for the next release, for a release test plan or regression checklist, or for a QA rundown of the changes since vX.Y.Z.
+description: Builds and runs a QA test plan for an upcoming Bee release. It takes every PR merged to master since the last release tag, sends sub-agents to analyze each PR, shows the operator a short per-PR plan in the terminal for approval, then runs the approved tests with one sub-agent per PR and reports results, issues by severity, and suggested fixes. Use when asked what to test for the next release, for a release test plan or regression checklist, to run release QA, or for a QA rundown of the changes since vX.Y.Z.
 ---
 
 # Release test plan
 
-Produce a test plan covering every PR merged to master since the last release
-tag. You orchestrate. Sub-agents read the diffs, and you keep only their
-one-line results, so your context stays small even when the range holds many
-PRs.
+Build a test plan for every PR merged to master since the last release tag,
+get the operator's approval, run the approved tests, and report the results.
+You orchestrate. Sub-agents read the diffs and run the tests. You keep only
+their one-line results, so your context stays small even when the range holds
+many PRs.
 
-Everything here is read-only. Do not comment on, label, or edit PRs or issues,
-and do not commit. The only output is files under `dist/`, which is gitignored.
+The flow has three phases. Phase 2 is a hard gate:
+
+1. **Plan** (steps 1–4). Read-only. The output is files under `dist/`.
+2. **Approval** (step 5). Show the plan inline in the terminal. Stop. Run
+   nothing until the operator approves.
+3. **Run and report** (steps 6–7). One sub-agent per approved PR runs that
+   PR's tests. You report results, issues, severity, and suggested fixes.
+
+In every phase: do not comment on, label, or edit PRs or issues. Do not
+commit, push, stash, or switch branches in the main working tree. All output
+goes under `dist/`, which is gitignored.
 
 ## Writing style (ASD-STE100 principles)
 
-Write every plan file (`prs/*.md`, `synthesis.md`, `TEST-PLAN.md`) and every
-user-facing report in **ASD-STE100 principles** (Simplified Technical English).
+Write every plan and result file (`prs/*.md`, `synthesis.md`, `TEST-PLAN.md`,
+`approval.md`, `results/*.md`) and every user-facing report in **ASD-STE100 principles** (Simplified Technical English).
 
 **Why.** QA text is an instruction radio, not a blog. Short, same-word,
 one-idea sentences cut misreads when someone else runs the steps days later.
@@ -132,7 +142,8 @@ Write `TEST-PLAN.md` in the output directory:
 
 1. Header: base, head sha, merge-base, date, PR count by triage bucket.
 2. **Summary table**, built from the `RESULT` lines and sorted by risk (High,
-   then Medium, then Low): PR, title, risk, areas, beekeeper check types.
+   then Medium, then Low): PR, title, risk, env, areas, beekeeper check types,
+   plan summary.
 3. The release-level items from step 3.
 4. The contents of `synthesis.md`.
 5. One section per analyzed PR: concatenate `prs/*.md` in merge order (the TSV
@@ -148,12 +159,113 @@ Before you report, verify:
   (an endpoint, flag, or function) against the code. If it is wrong, fix the
   section and say so in your report.
 
-## Report
+## Step 5: approval gate
 
-Tell the user the path to `TEST-PLAN.md`, the PR count per bucket, the High-risk
-PRs with one line each, and any release-level items (protocol, migration, API,
-or flag changes). Offer to publish the plan as an Artifact page if they want to
-share it with the team.
+Do not run any test before the operator approves. Print the plan **inline in
+the terminal**, built only from the `RESULT` lines. Do not paste
+`TEST-PLAN.md`; give its path.
+
+    Test plan v2.8.2..c6a3eba0 · 14 PRs to run (3 High, 6 Medium, 5 Low)
+    Full plan: dist/test-plans/v2.8.2..c6a3eba0/TEST-PLAN.md
+    Environment: kube context <ctx> · namespace <ns> · beekeeper cluster <name>
+
+    Release-level
+      - <proto> changed: mixed BASE/HEAD cluster, push and retrieve both ways.
+
+    High
+      #<N> <title> [chain]
+        <What you run.> <What proves a pass.>
+    Medium
+      ...
+    Low
+      ...
+    Not run: 9 (deps/CI 4, docs/test-only 3, in BASE 1, reverted 1)
+
+Each PR gets at most two sentences: what you run, and what proves a pass. Tag
+each PR with its env: `local` (go test or one local node), `cluster`
+(beekeeper or several nodes), or `chain` (sends transactions).
+
+Then ask with AskUserQuestion:
+
+- **Approve all**: run every listed PR.
+- **Approve local only**: run `local` PRs. Skip `cluster` and `chain` PRs.
+- **Edit**: the operator writes changes as free text, for example
+  "drop #5583; #5571 skip the restart; add a light node to #5630".
+
+On Edit, update the affected `prs/<N>.md` sections. Print only the changed PRs
+again, and ask again. Write the final approved set and every operator edit to
+`approval.md`. Approval covers only the scenarios in that file.
+
+If the environment line is not confirmed and any `cluster` or `chain` PR is
+approved, ask for the kube context before step 6. The default kube context can
+be a shared cluster.
+
+## Step 6: run the approved tests
+
+Read [references/pr-tester.md](references/pr-tester.md) once. Fill in its
+placeholders and launch **one sub-agent per approved PR** (`subagent_type:
+general-purpose`). One agent runs every scenario of its PR. Never split a PR
+into one agent per test case. Never put two PRs in one tester, because a
+failure in one PR can hide a failure in the other.
+
+Schedule by env:
+
+1. If the synthesis has a consolidated beekeeper run and any `cluster` PR is
+   approved, start that run yourself first with Bash `run_in_background`.
+   Save its log to `results/cluster-baseline.log`. Testers read this log and
+   do not run those checks again.
+2. `local` PRs: launch in waves of up to 8 Agent calls in a single message.
+   They can run while the baseline runs.
+3. `cluster` and `chain` PRs: launch one at a time, after the baseline ends.
+   They share one cluster and one chain, so parallel runs corrupt each other's
+   state (balances, reserve, radius).
+
+Each tester writes `results/<N>.md` and returns only `TESTED` and `ISSUE`
+lines. Keep those lines. If an agent errors or returns no `TESTED` line,
+relaunch it once. If it fails again, record the PR as "not run" with the
+reason. Never silently drop a PR.
+
+When all testers are done, run `git status --porcelain` and check that no
+`zz_qa_*` file is left in the tree. If one is left, move it to
+`results/tests/<N>/`.
+
+## Step 7: verify and report
+
+Before you report:
+
+- Check that every approved PR has exactly one `TESTED` line or a "not run"
+  entry.
+- For each Critical or High issue, read its evidence in `results/<N>.md`. If
+  the repro takes less than 5 minutes, run it once yourself. Downgrade or drop
+  an issue you cannot reproduce, and say so in the report.
+- Merge issues from different PRs that have the same root cause.
+
+Write `results/REPORT.md` with the rundown, the issue list, and links to each
+`results/<N>.md`. Then print this in the terminal:
+
+    Results v2.8.2..c6a3eba0 · 14 run: 10 pass, 2 fail, 1 partial, 1 blocked
+    Verdict: NO-GO (1 Critical regression)
+
+    Rundown
+      PR     Verdict   Passed  Note
+      #<N>   FAIL      3/5     <one line>
+      #<N>   PASS      4/4
+      ...
+
+    Issues (most severe first)
+      [Critical] #<N> regression · <finding>
+        Fix: <suggested fix> (<file:line>)
+        Evidence: results/<N>.md#s2
+      [Medium] #<N> pre-existing · <finding>
+        Fix: ...
+    Not run: #<N> (blocked: <reason>), ...
+
+Verdict rule: **NO-GO** if any Critical issue exists, or any High issue is a
+regression in this range. Otherwise **GO**, with the open issues listed.
+Pre-existing issues never block a release alone. List them separately.
+
+Offer to publish `REPORT.md` as an Artifact page and to draft issue text for
+each Critical and High issue. Do not file issues yourself.
 
 ## Reference
 
@@ -161,3 +273,5 @@ share it with the team.
   brief and output format.
 - [references/test-areas.md](references/test-areas.md): a map from Bee packages
   to what to exercise and which beekeeper checks cover them.
+- [references/pr-tester.md](references/pr-tester.md): the per-PR test runner
+  brief, the severity rubric, and the result format.
