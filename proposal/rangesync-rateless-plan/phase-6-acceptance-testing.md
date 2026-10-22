@@ -350,6 +350,13 @@ _(sessions append here)_
   - `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/... ./pkg/node/...` passes.
   - `go vet`, `GOTOOLCHAIN=go1.26.1 make lint` and `go build ./...` are clean.
   - There is still no production change.
+- **(Orchestrator, T6.2 landing, 2026-10-22) T6.2 landed after one fix round.** Tests only; no
+  production change. Review: no High; Medium 1 (the node-level stale check could not fail) and
+  Medium 2 (the T6.3 runbook paragraph), plus four Lows, fixed in fix round 1, which verified clean
+  (no re-review: no High). Where an entry above was corrected, the "(T6.2 fix round 1)" entry
+  supersedes it. The pre-existing `ReserveRepairer` bug (also on the pre-rangesync code) is carried
+  by the skipped `TestReserveRepairMissingChunk` in pkg/storer/migration and is outside this plan's
+  scope (Follow-ups).
 
 ## Follow-ups
 _(sessions append here)_
@@ -442,3 +449,8 @@ _(sessions append here)_
 - **(T6.2 fix round 1) CI -race list:** no change. `TestReserveRepairMissingChunk` is skipped. The
   new `TestReserveAddrIndexRepair/older build` runs its steps one after another.
   `TestRangesyncToggle` is already on the list.
+- **(Orchestrator, T6.2 verification) A load-induced flake in `TestSyncRateHonestChurn/radius_half`**
+  (pkg/rangesync/reconciler, T4.7 part 3): "timed out waiting for a gated fetch" once in a full
+  `go test ./pkg/storer/... ./pkg/node/... ./pkg/pullsync/... ./pkg/puller/... ./pkg/rangesync/...
+  -count=1` run on this 4-core host; 30/30 isolated and a second full run passed. Watch it in T6.1's
+  runs and on CI; if it recurs, widen the test's wait or move it onto the injected clock.
