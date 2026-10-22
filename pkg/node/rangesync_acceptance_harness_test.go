@@ -340,7 +340,11 @@ func newAccHarness(t *testing.T, o accOptions) *accHarness {
 	h.prefix = swarm.NewAddress(h.randBytes(swarm.HashSize))
 	base := make([]swarm.Chunk, o.Base)
 	for i := range base {
-		base[i] = h.newChunk()
+		valid, err := h.validStamp(h.newChunk())
+		if err != nil {
+			t.Fatal(err)
+		}
+		base[i] = valid
 	}
 	for i := range o.Nodes {
 		radius, chunks := o.Radius, base
@@ -603,8 +607,10 @@ const (
 	accPush                         // pushed during the run
 )
 
-// put stores ch in node n's reserve as pushsync does: it validates the stamp,
-// then puts the chunk.
+// put stores ch in node n's reserve. A pushed chunk is stored as pushsync
+// stores it: its stamp is validated, then the chunk is put. A base chunk was
+// validated once when it was made (newAccHarness): it stands for a reserve
+// synced before the start.
 func (h *accHarness) put(n *accNode, ch swarm.Chunk, how accPlacement) {
 	id, err := chunkIDOf(ch)
 	if err != nil {
@@ -613,11 +619,12 @@ func (h *accHarness) put(n *accNode, ch swarm.Chunk, how accPlacement) {
 	h.mu.Lock()
 	h.placed[n.i][id] = how
 	h.mu.Unlock()
-	valid, err := h.validStamp(ch)
-	if err != nil {
-		h.tb.Fatalf("node %d: stamp: %v", n.i, err)
+	if how == accPush {
+		if ch, err = h.validStamp(ch); err != nil {
+			h.tb.Fatalf("node %d: stamp: %v", n.i, err)
+		}
 	}
-	if err := n.store.ReservePutter().Put(context.Background(), valid); err != nil {
+	if err := n.store.ReservePutter().Put(context.Background(), ch); err != nil {
 		h.tb.Fatalf("node %d: reserve put: %v", n.i, err)
 	}
 }
