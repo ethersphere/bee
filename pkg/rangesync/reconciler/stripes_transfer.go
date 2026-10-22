@@ -101,6 +101,17 @@ const (
 	// attempt's first chunk. Ending a claim scores no peer; its peers offer
 	// it again in later sessions (T4.7 part 3).
 	claimIdleTimeout = 2 * time.Minute
+
+	// maxClaimOvertakes bounds how many claims queued after a claim the
+	// stripe worker runs before it, for their peers' greater fetch credit
+	// (nextJobLocked): a claim waits for the claims queued before it, as in
+	// the order queued, and for at most this many more, so that the claims
+	// of a peer with less credit than others (one this node never fetched
+	// from, after a restart, or forgotten by the credit book) are not
+	// starved by peers with more that claim again each time their claims
+	// end. Each of those holds the worker for claimIdleTimeout at most when
+	// it stores nothing: 8 minutes in all.
+	maxClaimOvertakes = 4
 )
 
 // Stripe transfer results, the values of the stripes_total result label.
@@ -1038,6 +1049,9 @@ type stripeJob struct {
 	cancel context.CancelFunc
 	run    context.Context
 	idle   *stripeClock
+	// overtaken counts the claims queued after this claim that the stripe
+	// worker ran before it (nextJobLocked, maxClaimOvertakes).
+	overtaken int
 }
 
 // enqueueStripes registers the ranges the Striper of a session this node
@@ -1459,13 +1473,14 @@ func (r *Reconciler) planCatchUp(local rangesync.Status, radiusPending bool) (bo
 // stripeWorker plans and transfers the queued ranges, one at a time, across
 // the peers with a Status, until Close, in the order nextJobLocked picks:
 // the own jobs first, then the claims of the peers with the most fetch
-// credit. A claim runs under a context of its
-// own (stripeJob.cancel), which an own job that preempts it ends, and on an
-// idle clock (stripeJob.idle), which ends it once its job stored no chunk
-// for claimIdleTimeout (endIdleClaim). The chunks a job stores, in its
-// transfer and its verification, restart a claim's idle clock and refill an
-// own job's grace (jobStored). On Close it calls started of the jobs still
-// queued, so that no pending reconcile is left counted.
+// credit, none overtaken more than maxClaimOvertakes times. A claim runs
+// under a context of its own (stripeJob.cancel), which an own job that
+// preempts it ends, and on an idle clock (stripeJob.idle), which ends it
+// once its job stored no chunk for claimIdleTimeout (endIdleClaim). The
+// chunks a job stores, in its transfer and its verification, restart a
+// claim's idle clock and refill an own job's grace (jobStored). On Close it
+// calls started of the jobs still queued, so that no pending reconcile is
+// left counted.
 func (r *Reconciler) stripeWorker() {
 	defer func() {
 		r.mu.Lock()
@@ -1557,24 +1572,35 @@ var _ creditReader = (*rangesync.Service)(nil)
 // and returns it: the first one if it is an own job (own jobs are queued
 // ahead of the claims), else, with a creditReader, the claim of the peer
 // with the most fetch credit, the first queued among equals (T4.7 part 4,
-// part 3's hand-over). A peer's credit grows with the chunks it delivered
-// to this node and shrinks with what it was asked for and did not deliver,
-// and a peer this node never fetched from has none, so the claims of the
-// neighbors this node syncs with run before those of new overlays and of
-// peers that listed junk, which, when their claims store nothing, would
-// hold the worker for claimIdleTimeout each, the honest claims queued
-// behind them waiting with SyncRate at 0. The credit is the same per-overlay
+// part 3's hand-over), unless the first queued claim was overtaken
+// maxClaimOvertakes times already, which then runs. A peer's credit grows
+// with the chunks it delivered to this node and shrinks with what it was
+// asked for and did not deliver, and a peer this node never fetched from
+// has none, so the claims of the neighbors this node syncs with run before
+// those of new overlays and of peers that listed junk, which, when their
+// claims store nothing, would hold the worker for claimIdleTimeout each, the
+// honest claims queued behind them waiting with SyncRate at 0. The credit
+// measures fetches, not claims, and a claim that ends idle costs its peer
+// nothing, so peers with more credit than a claimant could claim again each
+// time their claims end and always run first: the bound on overtakes keeps
+// every claim's wait within that of the order queued plus
+// maxClaimOvertakes claims (T4.7 part 4 fix round 1). The claims queued
+// before the one picked count one more overtake; they were queued in order,
+// so the first queued has the most. The credit is the same per-overlay
 // record as the fetches', kept across reconnects. Without a creditReader
 // the claims run in the order queued. The service's credit book takes its
 // own lock, which never calls back: r.mu must be held.
 func (r *Reconciler) nextJobLocked() *stripeJob {
 	i := 0
-	if cr, ok := r.svc.(creditReader); ok && !r.stripeQueue[0].own {
+	if cr, ok := r.svc.(creditReader); ok && !r.stripeQueue[0].own && r.stripeQueue[0].overtaken < maxClaimOvertakes {
 		best := -1
 		for k, j := range r.stripeQueue {
 			if c := cr.FetchCredit(j.peer); c > best {
 				i, best = k, c
 			}
+		}
+		for _, j := range r.stripeQueue[:i] {
+			j.overtaken++
 		}
 	}
 	job := r.stripeQueue[i]

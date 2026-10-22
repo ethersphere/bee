@@ -47,6 +47,7 @@ const (
 	MaxStripeReassign = maxStripeReassign
 	MaxStripeRestarts = maxStripeRestarts
 	MaxStripeRegistry = maxStripeRegistry
+	MaxClaimOvertakes = maxClaimOvertakes
 )
 
 // EnqueueStripes registers ranges for the stripe worker, as claims of no

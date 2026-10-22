@@ -251,3 +251,96 @@ func TestClaimOrderByCredit(t *testing.T) {
 		t.Fatalf("without a credit, %s ran next, want the first queued %s", got, liars)
 	}
 }
+
+// TestClaimOrderBounded is review Medium 2 of T4.7 part 4: the stripe worker
+// ran the claims by their peers' fetch credit, and a claim that ends idle
+// costs its peer nothing, so peers with more credit than an honest claimant
+// (the pool's 250 on their first fetch, or the cap from self-minted
+// overwrites) that claim again each time their claims end ran first every
+// time, and the honest claim, of a peer this node never fetched from, waited
+// for ever. A claim now waits for the claims queued before it and at most
+// MaxClaimOvertakes claims queued after it: the honest claim runs once
+// MaxClaimOvertakes liar claims queued after it ran, each ended idle. Nobody
+// is scored.
+func TestClaimOrderBounded(t *testing.T) {
+	t.Parallel()
+
+	const largeDiff = 100
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	liars := []swarm.Address{higher, higher2}
+	honest := addr(0xf1, 0)
+	honests := root.Child(4, 15)
+	svc := newPinService(status(1000))
+	credit := map[string]int{honest.ByteString(): 0}
+	for _, p := range append([]swarm.Address{honest}, liars...) {
+		svc.remote[p.ByteString()] = status(1000)
+		svc.stall[p.ByteString()] = true // no claim stores anything
+	}
+	for _, l := range liars {
+		credit[l.ByteString()] = 1000 // the cap
+	}
+	peers := append([]swarm.Address{honest}, liars...)
+	h := newPinHarness(t, &creditPinService{pinService: svc, credit: credit}, svc.fakeService, largeDiff, peers...)
+	waitFor(t, "guard released", h.r.GuardReleased)
+	// inFlight waits for the claim of rg in flight, its stripes stalled
+	inFlight := func(rg fingerprint.Range) {
+		t.Helper()
+		waitFor(t, "the stripes of "+rg.String(), func() bool {
+			n := 0
+			for _, p := range peers {
+				n += stripeSessions(svc.fakeService, p, rg)
+			}
+			return n > 0
+		})
+	}
+
+	owner := make(map[string]swarm.Address) // the liar of each claimed range
+	next := uint64(0)
+	claim := func(liar swarm.Address) {
+		t.Helper()
+		rg := root.Child(4, next)
+		next++
+		if !h.r.EnqueuePeerStripes(liar, []fingerprint.Range{rg}) {
+			t.Fatalf("claim %s of %s not registered", rg, liar)
+		}
+		owner[rg.String()] = liar
+	}
+	// a liar's claim in flight, the honest claim queued behind it, and the
+	// other liar's claim queued after that
+	claim(liars[0])
+	inFlight(root.Child(4, 0))
+	if !h.r.EnqueuePeerStripes(honest, []fingerprint.Range{honests}) {
+		t.Fatal("honest claim not registered")
+	}
+	claim(liars[1])
+
+	for ran := 1; ; ran++ {
+		if ran > reconciler.MaxClaimOvertakes+1 {
+			t.Fatalf("the honest claim did not run after %d liar claims queued after it", ran-1)
+		}
+		running, _, _ := h.r.RunningStripe()
+		inFlight(running)
+		h.clock.Add(reconciler.ClaimIdleTimeout)
+		waitFor(t, "claim ended", func() bool { return h.r.StripesTotal("idle") >= float64(ran) })
+		var rg fingerprint.Range
+		waitFor(t, "the next claim runs", func() bool {
+			r, _, ok := h.r.RunningStripe()
+			rg = r
+			return ok && !r.Equal(running)
+		})
+		if rg.Equal(honests) {
+			if overtakes := ran - 1; overtakes != reconciler.MaxClaimOvertakes {
+				t.Fatalf("the honest claim ran after %d liar claims queued after it, want %d", overtakes, reconciler.MaxClaimOvertakes)
+			}
+			break
+		}
+		// the liar whose claim ended claims again, as its next session
+		// would
+		claim(owner[running.String()])
+	}
+	for _, p := range peers {
+		if n := h.r.Score(p); n != 0 {
+			t.Fatalf("%s scored %d", p, n)
+		}
+	}
+}
