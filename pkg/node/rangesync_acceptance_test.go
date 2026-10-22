@@ -583,10 +583,11 @@ func (h *accHarness) result(name string, s0, s1 accSnapshot, lastUpload, converg
 // fetch's latency from that check. Or the fetch stores the chunk first, from
 // a holder the same push reached a moment earlier: the delivery precedes the
 // push by less than the push's span over its holders. The suite measures
-// both in every run (fetch latency, push span); with latency 0 they stay in
-// the tens of milliseconds (Decisions log), so 1 s leaves a wide margin and
-// is still a fifth of MinRoundInterval. A delivery further from its push is
-// one the node's reserve check should have stopped, a rangesync duplicate.
+// both in every run (fetch latency, push span); with latency 0 the fetch
+// latency stayed below 0.45 s and the span below 0.2 s at N ≤ 17 (Decisions
+// log), so 1 s leaves a margin of more than 2× and is a fifth of
+// MinRoundInterval. A delivery further from its push is one the node's
+// reserve check should have stopped, a rangesync duplicate.
 const accPushRaceWindow = time.Second
 
 // accDups are a node's duplicate deliveries, by cause (classifyDeliveries).
