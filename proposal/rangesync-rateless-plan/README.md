@@ -195,12 +195,13 @@ the implementer (otherwise every task conflicts on this list).
 | `FanoutBits` (fingerprint) | 4 | T1.1 defines, T1.8 uses |
 | `RootSymbols` / `Level1Symbols` / `BucketSymbols` (fingerprint) | 4096 / 512 / 32 | T1.1 defines, T2.2 uses |
 | `ScanLimit` (fingerprint) | 4096 | T1.1 defines, T2.2 uses |
-| `MinBatch`, batch factor, growth factor | 4, 1.6, 4 | T2.4 |
+| `MinBatch`, batch factor, growth factor | 4, 1.6, 2 (growth 4 → 2 at G6) | T2.4, T4.7 part 2 |
 | `MaxParts`, `MaxMessageBytes` | 1024, 1 MiB | T1.1 |
 | `ItemsPageSize` | 1024 | T1.8 |
 | `LargeDiff` | 65536 | T1.8 (hook), T3.1 (use) |
 | `SessionSymbolBudget`, `MaxScansPerMessage` | 16384, 64 | T2.5 |
 | `MaxConcurrentSessions` (node / per peer) | 16 / 1 | T1.9 |
+| Initiated-session cap (per node) / `MaxStripeSessions` | `InitiatedSessionCap(H, L)` = max(8, min(H + 4, 16 − L − max(0, H + L − 16))), 8–16; stripe slots 4 | T4.3, T4.7 part 2 |
 | `StatusMinInterval` / `StatusMaxInterval` | 5 s / 60 s | T4.1 |
 | `RoundInterval` | adaptive 5–30 s | T4.3 |
 | Claim deadline / `RejectTTL` | 30 s / 10 min | T1.7 / T4.4 |

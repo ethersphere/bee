@@ -3990,6 +3990,11 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     `-count=20 -cpu=1,2,4`, the whole reconciler package with `-count=3 -cpu=1,2,4`,
     `TestNeighborhoodPastTokens` with `-count=2 -cpu=1,2,4` and pkg/rangesync with `-count=1
     -cpu=1,2,4`: no failure. The CI list is in Follow-ups.
+- **(Orchestrator, T4.7 part 2 landing, 2026-10-21) Part 2 landed after one fix round.** Review: no
+  High; the Medium (the 16 → 8 cap step at N = 17/18) and both Lows were fixed in fix round 1, which
+  verified clean (no re-review: no High). README's "Shared constants" now shows growth factor 2 and
+  the per-node initiated-session cap. AC-B1 after part 2: N = 9 fails (59–61% modeled, 54–56% on the
+  wire; re-basing stays with T6.0/T6.4), N = 17 passes by ~10 points, N = 18–24 pass by only 1.5–4.2.
 
 ## Follow-ups
 _(sessions append here)_
