@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -761,4 +762,70 @@ func TestBPSPublishSeatNotGranted(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectClose(t, conn, api.BPSCloseInvalidMessage)
+}
+
+func TestBPSSubscribePosition(t *testing.T) {
+	t.Parallel()
+	seat1 := bytes.Repeat([]byte{0x11}, 20)
+	seat2 := bytes.Repeat([]byte{0x22}, 20)
+
+	t.Run("cursor, roster and rosterCursor reach the join", func(t *testing.T) {
+		t.Parallel()
+		f := newBPSFixture(t)
+		q := "broker=" + f.broker.String() + "&identity=" + hex.EncodeToString(f.identity) +
+			"&cursor=7&rosterCursor=3&roster=" + hex.EncodeToString(seat1) + ":4,0x" + hex.EncodeToString(seat2) + ":0"
+		u := url.URL{Scheme: "ws", Host: f.listener, Path: f.path("subscribe"), RawQuery: q}
+		conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, conn)
+		var req bps.JoinRequest
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			f.bps.mu.Lock()
+			req = f.bps.req
+			f.bps.mu.Unlock()
+			if req.Identity != nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		pos := req.Position
+		if pos.RosterCursor != 3 || len(pos.Roster) != 2 || !bytes.Equal(pos.Roster[0], seat1) || !bytes.Equal(pos.Roster[1], seat2) {
+			t.Fatalf("roster %x at %d", pos.Roster, pos.RosterCursor)
+		}
+		if pos.Cursors[string(f.owner)] != 7 || pos.Cursors[string(seat1)] != 4 || pos.Cursors[string(seat2)] != 0 || len(pos.Cursors) != 3 {
+			t.Fatalf("cursors %v", pos.Cursors)
+		}
+	})
+
+	for _, tc := range []struct {
+		name, roster string
+	}{
+		{"no index", hex.EncodeToString(seat1)},
+		{"short address", "1122:4"},
+		{"bad index", hex.EncodeToString(seat1) + ":x"},
+		{"the owner", "OWNER:1"},
+		{"twice", hex.EncodeToString(seat1) + ":1," + hex.EncodeToString(seat1) + ":2"},
+		{"too many", strings.Repeat(hex.EncodeToString(seat1)+":1,", 186) + hex.EncodeToString(seat2) + ":1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newBPSFixture(t)
+			roster := strings.ReplaceAll(tc.roster, "OWNER", hex.EncodeToString(f.owner))
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String()+"&identity="+hex.EncodeToString(f.identity)+"&roster="+roster, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := f.client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400", resp.StatusCode)
+			}
+		})
+	}
 }
