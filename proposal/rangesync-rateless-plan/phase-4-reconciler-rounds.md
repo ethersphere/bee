@@ -4558,6 +4558,188 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2 and 4; caught up after 5333.93–5335.13
     s; 0 wants; 9–13 stripe sessions, none timed out. Identical to part 3: AC-B2 within bound. The CI
     list is in Follow-ups.
+- **(T4.7 part 4 fix round 1) Review Medium 1: an honest peer's rejected deliveries no longer cost
+  its credit.** Before, every rejected delivery gave nothing back. Two kinds of rejection are honest
+  outcomes. In §7.7 a peer that holds c‖s1 delivers it to a node that holds the newer c‖s2
+  (`storage.ErrOverwriteNewerChunk`). And nodes that have seen a different chain state disagree on
+  a stamp: a batch expired here first, a dilution or a new batch not seen here yet
+  (`postage.ErrNotFound`, `postage.ErrInvalidIndex`). The review's attack drained honest neighbors
+  through the first kind. The attacker has one mutable batch and uploads X(s1) to the
+  neighborhood. A Sybil delivers X′(s2), the same index with a newer timestamp, to the victim alone
+  (+2 each). The victim then fetches X(s1) from its honest neighbors and rejects it, and each
+  neighbor loses 1. About 1000 pairs drain a neighbor, after which the victim refuses its real
+  chunks. Commit 11a26582 (pkg/rangesync: credit.go, fetch.go, rangesync.go) changes the refunds:
+  - *Older than the reserve's version: neutral (+1), uncapped.* It gives an attacker nothing it
+    lacks. A peer with a batch already earns +2 by delivering the newer version as a stored
+    overwrite.
+  - *Rejected for the chain state (`chainStateRejected`: `ErrNotFound` or `ErrInvalidIndex`, with a
+    signature that recovers).* The delivery is neutral in two cases. First, when this node held
+    that ID itself until it removed it from its reserve (the batch expired here first). Second,
+    when the peer has an excuse left, which it then spends. A peer earns one excuse per chunk it
+    stores, up to `creditMax`, and a new overlay has none. Anything else gets nothing back, as
+    before.
+  - *Why "this node knew the batch" is decided per ID, not per batch.* Per batch, the rule cannot be
+    made attacker-safe with the existing APIs. The batch store deletes an expired batch, and its
+    owner with it. `Stamp.Valid` checks the index (`ErrInvalidIndex`) before the owner. So a stamp
+    signed with any key over an expired batch's ID (public on chain), or over a live batch's ID with
+    an index past its depth, fails with the same error as an honest one. Neutral for "batches this
+    node knew" would therefore reopen the unknown-batch junk path (7.21 IDs/s at 12 per fetch,
+    ≈ 150 at 250) for every recently expired or known batch ID. An ID this node held carries the
+    real owner's stamp, so the peer delivered exactly what this node held. A peer can only replay
+    such IDs, and each removal excuses one delivery (`removals.take` forgets it), so the junk of
+    that path stays below the IDs this node removed.
+  - *How this node knows, within existing APIs.* `Start` registers `removalObserver` instead of the
+    bare Indexer. It passes every `storer.ReserveObserver` call to the Indexer and, after the
+    Indexer applied a transaction, records that transaction's removes. Their `ChunkID`s are what
+    the reserve already reports. The work is in memory only, under a leaf lock, so the observer
+    contract (points 3 and 4) holds. `removals` keys each ID by a 64-bit `maphash` under a random
+    seed of this node's, which a peer cannot aim at. It keeps two generations of 32768 entries
+    (`maxRemovals` 65536, ≈ 1 MB). A radius eviction can flush it: the cases it does not cover then
+    fall back to the excuses. Nothing changes in pkg/storer.
+  - *What the excuses cover.* A dilution this node has not seen yet (it never held such an ID), a
+    batch it does not know yet, and an expired batch's IDs it never held (for example while it
+    was bootstrapping). That is the "else capped per peer" of the review.
+  - *What it costs.* A peer without a batch that relays real chunks this node lacks earns an excuse
+    per chunk. It can then have this node request two junk IDs per such chunk instead of one: one
+    through its credit and one through an excuse, stamped on a made-up batch. A peer that stores
+    nothing gets no excuse, so every row of the residual table is unchanged. `TestFetchCreditJunkResidual`
+    was re-run: small 0.22, resets 0.15 (0.24 with reconnects), unknown batch 0.22, root moves
+    0.14 IDs/s, before as in part 4.
+  - *Tests.*
+    - `TestFetchCreditStaleStamps` runs the attack at 1300 pairs (more than a neighbor at the cap
+      can pay for). A Sybil delivers the newer versions to this node alone, and the honest neighbor
+      then delivers the 1300 older ones. Its credit stays 250 and its real chunks are fetched. With
+      the old rule it is refused at its 21st fetch (`ErrFetchCredit`).
+    - `TestFetchCreditChainState/expired here first`: 1300 chunks this node held, of a batch that
+      expired here first and that this node evicted. They are delivered by a neighbor that has not
+      seen the expiry, and its credit stays 250. Delivered again, they cost a unit each (one
+      excuse per removal).
+    - `TestFetchCreditChainState/excuses`: the peer stores 12 chunks, then delivers 36 chunks this
+      node never held, rejected half with `ErrInvalidIndex` and half with `ErrNotFound`. 12 are
+      excused and 24 charged: credit 238, against 226 under the old rule.
+    - With its old rule restored, each test fails.
+- **(T4.7 part 4 fix round 1) Review Medium 2: a claim is overtaken at most `maxClaimOvertakes`
+  times.** Ordering the claims by credit could starve a claim for ever. The credit measures fetches,
+  not claims, and a claim that ends idle (`endIdleClaim`) costs its peer nothing. So peers with more
+  credit than the claimant claimed again each time their claims ended and ran first every time.
+  Such peers can have the pool's 250 from their first fetch, or the cap from minted overwrites. The
+  claimant they starve has less credit: this node never fetched from it, it restarted, or the book
+  forgot it. Commit 3b7a4006 (reconciler: stripes_transfer.go).
+  - *The review's two directions were not taken.*
+    - An age bound (a claim queued longer than k × `claimIdleTimeout` runs next) undoes part 4's
+      item 3 once more than k Sybil claims are queued. Their oldest claims are then overdue at
+      every pick, and the order turns back into FIFO. An honest neighbor's high-credit claim waits
+      FIFO's 4·S minutes again, the part-3 hand-over problem.
+    - Charging the claimant's credit when its claim ends idle charges it for its stripe peers'
+      stalls, which are other peers. And it bounds nothing for a peer with a batch, which earns
+      its credit back with minted overwrites.
+  - *Built: an overtake budget.* Each claim counts the claims queued after it that the worker ran
+    before it (`stripeJob.overtaken`). A pick adds one to every claim queued before the one it
+    picks. Once the first queued claim has been overtaken `maxClaimOvertakes` = 4 times, it runs
+    next. Claims are only ever appended, so the counts never grow along the queue and only the
+    first one needs checking.
+  - *Bound.* A claim waits for the claims queued before it, which is FIFO's bound, and for at most 4
+    more. That is ≤ 8 minutes more when those claims store nothing. Sybil claims of equal credit
+    never overtake each other (FIFO among equals), so their counts grow only when a claim with more
+    credit runs. An honest neighbor's claim with credit still runs next, behind at most the claims
+    already overtaken 4 times.
+  - *Test.* In `TestClaimOrderBounded`, two liars at credit 1000 claim again at each idle end, and
+    the honest claimant has credit 0. The honest claim runs after exactly 4 liar claims queued after
+    it. Without the bound it has not run after 5. `TestClaimOrderByCredit` is unchanged.
+- **(T4.7 part 4 fix round 1) Review Lows 1 and 3: the credit book.**
+  - *Low 1, evict the least credit first.* A synced neighbor with no differences is never fetched
+    from, so it ages in the LRU. About 4096 cheap fresh overlays pushed it out with its full credit.
+    The book did not remember it, and the same overlays had drained the pool, so it came back at 0.
+    That meant 10 s of refusals, and its claims dropped in the order. Now, past its capacity the
+    book forgets the overlay with the least credit, the least recently asked among equals, and never
+    the overlay being asked. The scan starts from the least recently asked and stops at the first
+    overlay with 0. It is O(capacity) at worst, once per new overlay while the book is full. Fresh
+    overlays hold at most the pool's 250, and none once they spent it, so a neighbor with earned
+    credit is pushed out only by 4096 overlays that each have more.
+    `TestCreditBook/least credit first` fails under LRU eviction (credit 0).
+  - *Low 1 and Low 3, remember all forgotten credit.* The second LRU now remembers the credit of
+    every forgotten overlay, not only the debts (`forgotten`, which replaces `debts`). An overlay
+    asked again resumes its credit, debt or not, instead of drawing from the pool. `give` reaches a
+    remembered overlay, so the refund of a Want whose peer was forgotten meanwhile, with ≥ 250 left,
+    is no longer dropped. `FetchCredit` reads a remembered credit too, so a forgotten neighbor's
+    claims keep their rank. A debt is still forgotten only after 4096 more overlays were forgotten.
+    The debtor then comes back as a new overlay, as before. `TestCreditBook/forgotten credit` fails
+    when only debts are remembered (0).
+  - *Low 3, the pool.* `arriveLocked` grants only what `AllowN` charged and takes one less while it
+    refuses. The defect was latent at the current constants. `AllowN` accepts a deficit worth less
+    than one nanosecond of refill (250/60 units/s × 1 ns = 4.2e-9, above the 1e-9 rounding), so it
+    never refused. With a pool interval above 250 s it would have. `TestCreditBook/pool charged`
+    uses a one-hour pool (`NewCreditBookPool`, test only) and fails when the result is ignored.
+  - *Also new:* `TestCreditBook/excuses`.
+- **(T4.7 part 4 fix round 1) Corrections (review Medium 1 and Low 2).**
+  - *"An honest peer, which delivers nearly all"* (credit.go and "(T4.7 part 4) Catch-up fetches
+    and honest churn …").
+    - An honest peer can deliver chunks this node rejects through no fault of its own: older
+      versions (§7.7), and stamps of a chain state this node has not seen. Before this round,
+      each cost it a unit, so honest neighbors could be drained, and the review's attack did
+      that.
+    - Its credit only grows for those outcomes now. They are neutral, except chain-state
+      rejections of IDs this node never held once the peer's excuses are spent.
+    - The measurements of that entry stand: none of its fetches was rejected.
+  - *"The junk it can have this node request stays below the chunks it stored"* ("(T4.7 part 4) The
+    per-peer fetch credit, as built", the bound in "Item 4: the junk residual, measured", and the
+    Follow-up "Junk up to the chunks a peer stores").
+    - The stored chunks can be overwrites minted on one batch: one stamp index, ever newer
+      timestamps, on any batch, since the reserve overwrites by timestamp whatever the batch type.
+    - Each is stored and earns 2 units and now an excuse, so a peer with a batch has no credit
+      bound at all. Minting costs it a delivery per chunk, and this node a Put. Only the node-wide
+      fetch rate and the per-peer stream and claim limits bound it.
+    - The residual table (0.22 IDs/s) is the floor for an attacker without a batch only. Such an
+      attacker earns only by relaying real chunks this node lacks: up to two junk IDs per chunk
+      since this round (above).
+- **(T4.7 part 4 fix round 1) Superseded.**
+  - "(T4.7 part 4) The per-peer fetch credit, as built":
+    - *Refill*: `ErrOverwriteNewerChunk` and unknown or expired batches in "Some give back nothing"
+      are now as in Medium 1 above.
+    - *Key and memory*: "When it forgets one in debt … remembers that balance …; an overlay
+      forgotten with at least the initial credit is not remembered" now reads: past its capacity
+      it forgets the overlay with the least credit and remembers every forgotten overlay's credit.
+    - *Evicting and returning*: "lost only after 4096 other overlays were asked and 4096 more were
+      forgotten in debt" now reads "… and 4096 more were forgotten".
+  - "Item 3: the stripe worker runs the claims of the peers with the most fetch credit first": the
+    order is the same, but no claim is overtaken more than `maxClaimOvertakes` times.
+  - Tests changed by design: `TestCreditBook/evicted` (it no longer checks that an overlay forgotten
+    with credit is not remembered, which `forgotten credit` now checks the other way).
+- **(T4.7 part 4 fix round 1) Tests, scope and checks.**
+  - *Commits.* 11a26582 (pkg/rangesync: credit.go, fetch.go, rangesync.go and tests), 3b7a4006
+    (reconciler: stripes_transfer.go and tests), and this record.
+  - *New and changed code.* No new export. New in pkg/rangesync: `removals` and `removalObserver`
+    (credit.go), `chainStateRejected` and `excuseChainState` (fetch.go), and the book's `stored`,
+    `excuse`, `evictLocked` and `lookupLocked`. New in the reconciler: `maxClaimOvertakes` and
+    `stripeJob.overtaken`.
+  - *Test only.* `NewCreditBookPool`, `CreditBook.Stored` and `.Excuse`, and `MaxClaimOvertakes`.
+  - *Scope.* No pkg/pullsync, pkg/puller, pkg/node, pkg/storer, go.mod, proto or `*_fuzz_test.go`
+    change. README not ticked.
+  - *Checks.* All passed:
+    - `go build ./...`.
+    - `go vet` on pkg/rangesync/..., default and `-tags=sim`.
+    - `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+      ./pkg/rangesync/...`: 0 issues.
+    - gofumpt and gci on the changed files only.
+    - `go test ./pkg/rangesync/...`: pkg/rangesync 59 s, reconciler 5 s.
+    - pkg/node (`TestCombinedSyncerBothDrivers`, `TestSyncWiring`, `TestRangesyncOptions` among
+      them), not touched.
+  - *Stress runs instead of `-race`.* No `-race` here, so these ran instead, with no failure:
+    - the new tests (`TestCreditBook`, `TestFetchCreditStaleStamps`,
+      `TestFetchCreditChainState`, `TestClaimOrder*`) at `-count=20 -cpu=1,2,4`;
+    - `TestFetch*` and `TestCredit*` at `-count=3 -cpu=1,2,4` (306 s), `TestFetchCreditJunkResidual`
+      and `TestFetchCreditBootstrapNotSlowed` among them;
+    - the whole reconciler package at `-count=3 -cpu=1,2,4` (45 s): `TestClaim*`, `TestStripe*`,
+      `TestSyncRate*` and `TestWantSet*` among them.
+  - *Each new test fails with its old rule restored* (the Decisions above).
+  - *Sim* (`-tags=sim`, one run, 667 s). The results are identical to part 4, and AC-B2 is within
+    bound.
+    - `TestG6Bootstrap`: 1410 and 1409 KB of 2610 KB at ranks 4 and 14. 16 stripes done, none
+      reassigned or timed out, 0 duplicates. Fetches were skipped only as `held` and `in_reserve`
+      (no `no_credit`).
+    - `TestG6BootstrapTail`: 1232 / 1263 / 1326 KB (1.10 / 1.13 / 1.18 ×) of 2288 KB at ranks 1, 2
+      and 4. Caught up after 5333.93–5335.13 s, with 0 wants and 9–13 stripe sessions, none timed
+      out.
 ## Follow-ups
 _(sessions append here)_
 - **(T6.0) `round_interval_seconds` gauge (T4.3).** The current adaptive `RoundInterval`. AC-V1
@@ -6213,3 +6395,44 @@ _(sessions append here)_
   - `pkg/rangesync/reconciler`, new: `TestWantSetRetryNoCredit`, `TestStripeNoCreditReassigned`,
     `TestSyncRateNoCredit`, `TestClaimOrderByCredit`. The stripe worker's pick (`nextJobLocked`)
     reads the service's credit under `r.mu`, so re-run the whole reconciler package.
+- **(T4.7 part 4 fix round 1) Correction to "(T4.7 part 4 → T6.3) Claims of an honest claimant this
+  node never fetched from".** "Behind S Sybil claims that store nothing it waits up to
+  `claimIdleTimeout` per claim, as before part 4" was wrong. Sybils with more credit than that
+  claimant (the pool's 250, or the cap from minted overwrites) claimed again at each idle end and
+  ran first every time, so the claim could wait for ever. Since fix round 1 a claim waits for the
+  claims queued before it plus at most `maxClaimOvertakes` (4) claims queued after it: ≤ 8 minutes
+  over FIFO when those store nothing (Decisions log, "Review Medium 2"). The T6.3 measurement this
+  entry asks for stands.
+- **(T4.7 part 4 fix round 1) Correction to "(T4.7 part 4) Junk up to the chunks a peer stores".**
+  - The chunks a peer stores can be overwrites it minted on one batch (any batch). Each is stored
+    and earns 2 units and an excuse, so a peer with a batch is not bounded by the credit at all:
+    one junk ID per minted chunk through its credit, and one more through an excuse.
+  - The residual table of "Item 4" (0.22 IDs/s) is the floor for an attacker without a batch only.
+    Such an attacker earns by relaying real chunks this node lacks: up to two junk IDs per chunk
+    since fix round 1.
+  - A refund below 2 tightens only the no-batch case. Bounding a peer with a batch takes a cost per
+    minted overwrite, which is the sustained-overwrite item of T6.3.
+- **(T4.7 part 4 fix round 1) Correction to "(T4.7 part 4) The pool can be drained".** "… and an
+  honest neighbor the book forgot with full credit, then start from a probe" no longer holds. The
+  book forgets the overlays with the least credit first, so the attacker's fresh overlays, which hold
+  at most the pool's share, are forgotten first. And it remembers every forgotten overlay's credit,
+  so a neighbor that is forgotten comes back with its credit. Honest newcomers still start from a
+  probe once the pool is drained.
+- **(T4.7 part 4 fix round 1 → T6) Chain-state rejections to read off testnet.** How often the
+  rejections of honest neighbors are excused by a removal, excused by an excuse, or charged. No
+  metric was added; add one if `fetch_skipped_total{reason="no_credit"}` shows honest neighbors.
+  Also check whether `maxRemovals` (65536) covers a large batch's expiry: a radius eviction at the
+  same time can flush the record, and the excuses then cover what is left.
+- **(T4.7 part 4 fix round 1) No new peer-input decoder:** no followup-fuzzing.md line. The record
+  of removals reads the reserve observer's deltas, and the excuses only this node's own state.
+- **(T4.7 part 4 fix round 1) Tests to run with `-race` on CI.** There is no C compiler here, so
+  they ran with `-count=N -cpu=1,2,4` instead (Decisions log, "(T4.7 part 4 fix round 1) Tests, scope
+  and checks").
+  - `pkg/rangesync`, new: `TestFetchCreditStaleStamps`, `TestFetchCreditChainState`, and the
+    `TestCreditBook` subtests `excuses`, `pool charged`, `least credit first` and `forgotten
+    credit`. Changed: `TestCreditBook/evicted`.
+  - Re-run, because `deliver` and the book changed and `Start` now registers `removalObserver`,
+    which records removes from the reserve's `Commit` under its locks: `TestFetch*`, `TestCredit*`,
+    `TestIndexer*`, `TestReconcile*` and `TestNeighborhoodBootstrap*`.
+  - `pkg/rangesync/reconciler`, new: `TestClaimOrderBounded`. `nextJobLocked` now changes
+    `stripeJob.overtaken` under `r.mu`, so re-run the whole reconciler package.
