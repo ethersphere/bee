@@ -61,6 +61,11 @@ var (
 	errChannelEnded = errors.New("bps: channel ended")
 )
 
+// ForgingBrokerBlocklistDuration is how long a subscriber avoids a broker that
+// forwarded a delivery it should have refused — one that does not validate, or
+// whose owner the roster does not admit — which no honest broker sends.
+const ForgingBrokerBlocklistDuration = 10 * 24 * time.Hour
+
 // Options are the broker's resource bounds. Zero values take the defaults.
 type Options struct {
 	MaxSubsPerCohort        int // subscriber streams per cohort
@@ -329,13 +334,12 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 		sess.grant()
 	}
 
-	// a broker that forwards what it should have refused is avoided for good:
-	// blocklisted for the longest period there is, which is forever
+	// a broker that forwards what it should have refused is avoided for long
 	sess.forged = func(err error) {
 		if s.blocklister == nil {
 			return
 		}
-		if berr := s.blocklister.Blocklist(req.Broker, 0, err.Error()); berr != nil {
+		if berr := s.blocklister.Blocklist(req.Broker, ForgingBrokerBlocklistDuration, err.Error()); berr != nil {
 			s.logger.Debug("blocklist broker failed", "broker", req.Broker, "error", berr)
 		}
 	}

@@ -498,13 +498,13 @@ func TestInvalidDelivery(t *testing.T) {
 	if err := sub.Err(); !errors.Is(err, bps.ErrInvalidDelivery) {
 		t.Fatalf("got %v, want %v", err, bps.ErrInvalidDelivery)
 	}
-	// the broker is blocklisted for the longest period there is: forever
+	// the broker is blocklisted for long
 	eventually(t, func() bool { return bl.blocklisted(e.brokerAddr) })
 	bl.mu.Lock()
 	d := bl.durations[e.brokerAddr.ByteString()]
 	bl.mu.Unlock()
-	if d != 0 {
-		t.Fatalf("broker blocklisted for %v, want forever (0)", d)
+	if d != bps.ForgingBrokerBlocklistDuration {
+		t.Fatalf("broker blocklisted for %v, want %v", d, bps.ForgingBrokerBlocklistDuration)
 	}
 }
 
