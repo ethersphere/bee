@@ -3863,6 +3863,133 @@ _(sessions append here — T4.3 pushsync trigger; T4.4 expired-batch finding)_
     with `-count=50`, the whole reconciler package with `-count=3 -cpu=1,2,4`, the harness and
     session tests (`TestNeighborhood*` of the default build, `TestProtocolConverges`,
     `TestWorkedExamples`, `TestSREP*`) with `-count=2 -cpu=1,2,4`; the CI list is in Follow-ups.
+- **(T4.7 part 2 fix round 1) The per-node cap slides past N = 17: no step.** Review finding
+  (Medium): the landed rule stepped from up to 16 slots at N = 17 to 8 at N = 18 (one peer more
+  halved a low rank's cap, and a node whose eligible peers sat at 16/17 flipped 16 ↔ 8), and N =
+  18–24 ran the cap-8 control unmeasured. Adopted the reviewer's continuous rule
+  (`InitiatedSessionCap`, scheduler.go):
+
+      excess = max(0, higher + lower − MaxConcurrentSessions)
+      cap    = max(MinInitiatedSessions, min(higher + MaxStripeSessions, MaxConcurrentSessions − lower − excess))
+
+  It is the landed rule while higher + lower ≤ 16 (N ≤ 17) and 8 at every rank from higher +
+  lower ≥ 24 (N ≥ 25); between, each peer past the tokens takes a slot off the room: N = 18
+  ranks 0–7 get 15 … 8 (the step gave 8), N = 21 ranks 0–4 12 … 8, N = 24 rank 0 9. One peer more
+  moves the cap by at most 1 (a higher-overlay peer) or 2 (a lower-overlay one).
+  `TestG6InitiatedCap` (`-tags=sim`, steady load, 6 seeds; now N = 17, 18, 21, 25 at Delay 50 and
+  200 ms and N = 33 at 50 ms, the per-node cap against the constant 8). "step" is the landed
+  rule, measured with the code of 62615390 (the restructured test, before the rule changed);
+  "continuous" and "8" are two runs each at N = 18 and 21 (the second after the first, the same
+  seeds), one elsewhere. Share of AC-B1's modeled base (N(N − 1) × 102 B per upload), mean ± sd;
+  convergence mean and longest; Busy and session-limit answers per upload (opening side; the
+  serving side's Busy given matched Busy in every row); served min the fewest sessions per
+  lower-overlay peer a node served, unpaired the most pairs with no completed session:
+
+  | N | Delay | cap | share % | convergence mean, longest s | Busy, session limit /upload | served min, unpaired |
+  |---|---|---|---|---|---|---|
+  | 17 | 50 ms | per node (either rule) | 39.5 ± 0.5 | 3.48, 6.25 | 0, 0 | 6.0, 0 |
+  | 17 | 50 ms | 8 | 48.4 ± 0.9 | 3.76, 6.50 | 0, 0 | 6.0, 0 |
+  | 17 | 200 ms | per node (either rule) | 40.0 ± 1.0 | 5.52, 9.20 | 0, 0 | 6.0, 0 |
+  | 17 | 200 ms | 8 | 52.4 ± 1.1 | 6.49, 11.20 | 0, 0 | 5.0, 0 |
+  | 18 | 50 ms | continuous | 45.8 ± 2.1; 46.1 ± 2.4 | 3.69, 6.45; 3.71, 6.55 | 0.024, 0.001; 0.022, 0.001 | 5.6, 0; 5.6, 0 |
+  | 18 | 50 ms | step | 49.3 ± 1.7 | 3.86, 6.45 | 0.008, 0 | 5.7, 0 |
+  | 18 | 50 ms | 8 | 50.0 ± 1.1; 49.6 ± 1.0 | 3.86, 6.55; 3.87, 6.75 | 0.005, 0; 0.009, 0 | 5.8, 0; 5.8, 0 |
+  | 18 | 200 ms | continuous | 46.4 ± 1.1; 46.4 ± 0.7 | 5.45, 9.20; 5.15, 8.40 | 0.062, 0; 0.052, 0 | 6.1, 1; 6.0, 0 |
+  | 18 | 200 ms | step | 52.3 ± 0.6 | 5.91, 9.10 | 0.020, 0 | 6.1, 1 |
+  | 18 | 200 ms | 8 | 52.7 ± 0.8; 52.9 ± 1.2 | 5.91, 9.10; 5.91, 9.10 | 0.023, 0; 0.012, 0 | 6.2, 0; 6.0, 0 |
+  | 21 | 50 ms | continuous | 46.0 ± 1.2; 47.2 ± 1.1 | 4.26, 10.55; 4.05, 10.55 | 0.107, 0.001; 0.086, 0 | 4.5, 2; 5.0, 0 |
+  | 21 | 50 ms | step | 46.3 ± 1.2 | 3.93, 9.35 | 0.080, 0 | 4.6, 0 |
+  | 21 | 50 ms | 8 | 46.0 ± 1.2; 47.0 ± 1.7 | 4.15, 9.45; 4.01, 10.55 | 0.085, 0.001; 0.074, 0 | 4.7, 2; 4.8, 0 |
+  | 21 | 200 ms | continuous | 48.5 ± 0.9; 48.2 ± 1.7 | 6.20, 9.60; 6.14, 9.40 | 0.178, 0.001; 0.189, 0.001 | 4.9, 1; 5.0, 4 |
+  | 21 | 200 ms | step | 48.8 ± 1.5 | 6.23, 10.00 | 0.167, 0.002 | 4.8, 2 |
+  | 21 | 200 ms | 8 | 48.9 ± 2.1; 49.2 ± 2.0 | 6.12, 10.00; 6.05, 9.10 | 0.148, 0; 0.140, 0.001 | 4.9, 3; 4.8, 1 |
+  | 25 | 50 ms | continuous | 42.8 ± 1.5 | 4.35, 10.75 | 0.192, 0.002 | 3.6, 5 |
+  | 25 | 50 ms | 8 | 42.3 ± 1.1 | 4.32, 10.65 | 0.179, 0.002 | 3.9, 3 |
+  | 25 | 200 ms | continuous | 44.4 ± 1.3 | 6.71, 9.20 | 0.400, 0.004 | 3.8, 5 |
+  | 25 | 200 ms | 8 | 44.3 ± 1.1 | 6.54, 9.60 | 0.375, 0.006 | 3.9, 6 |
+  | 33 | 50 ms | continuous | 36.1 ± 0.8 | 4.61, 10.95 | 0.548, 0.045 | 3.7, 12 |
+  | 33 | 50 ms | 8 | 36.5 ± 0.7 | 4.26, 8.80 | 0.501, 0.023 | 3.9, 5 |
+
+  - The step past 17 is the constant 8, as built: its rows match the cap-8 rows within their
+    spread (N = 18: 49.3 / 52.3 against 49.6–50.0 / 52.7–52.9%). At N = 25 and 33 both caps are 8
+    at every rank once every peer is eligible, so those pairs of rows measure the run-to-run noise:
+    Busy within 0.05 per upload, longest convergence 8.80 against 10.95 s, unpaired 5 against 12
+    (of 528 pairs) at N = 33.
+  - N = 18: the continuous rule takes 3.2–6.5 points off the share (45.8–46.4% against
+    49.3–52.9%; a seed's sd is 0.6–2.4, the standard error of a 6-seed mean ≤ 1) and 0.15–0.76 s
+    off the mean convergence. Busy rises from 0.005–0.023 to 0.022–0.062 per upload (from 0.3–1.1%
+    to 1.2–2.9% of the completed sessions), about a sixth of N = 25's at the same Delay (0.18–0.40,
+    5–10%). Served min 5.6–6.1, unpaired ≤ 1.
+  - N = 21 (ranks 0–4 above 8): no gain and no loss beyond the noise: share 46.0–48.5 against
+    46.0–49.2%, mean convergence within 0.35 s, Busy 0.086–0.107 against 0.074–0.085 per upload
+    at 50 ms and 0.178–0.189 against 0.140–0.167 at 200 ms (3.3–6.4% of the sessions, against
+    2.9–5.7%), below N = 25's rate. Served min ≥ 4.5, unpaired ≤ 4 (of 210).
+  - Decision: the continuous rule. It keeps Busy bounded (1.2–6.4% of the sessions at N = 18–21,
+    where the step gave 0.3–5.7%: below N = 25's rate at the same Delay, which T4.7 part 2
+    accepted), starves no node, and removes the cliff: a peer that comes or goes moves the cap by at
+    most 2. Where it differs from the step it is not worse beyond the noise but for N = 21's Busy
+    at 200 ms (+0.01–0.05 per upload), and at N = 18 it is better by 3–6 standard errors. The
+    longest convergence at N ≥ 21 reaches 10–11 s in some runs with either cap (the AC-V1 bound is
+    10 s): a property of the neighborhood size, not of the rule.
+  - **The AC-B1 picture changes at N = 18–24.** With the landed step N = 18 fails AC-B1 at 200 ms
+    (52.3–52.9%, +2.3 to +2.9) and sits at the bound at 50 ms (49.3–50.0%): the part-2 follow-up's
+    "N ≥ 17 passes" held only at the measured N = 17, 25 and 33. With the continuous rule every
+    measured point passes (N = 18: 45.8–46.4%; N = 21: 46.0–48.5%; N = 25: 42.8–44.4%; N = 33:
+    36.1%), but between 18 and 24 by 1.5–4.2 points, not the ~10 of N = 17 (Follow-ups).
+  - Tests: `TestInitiatedSessionCap` takes the ranks of N = 18, 21 and 24 (no `floor(18)`) and
+    checks over higher, lower ≤ 40 that past the tokens the cap is at most the room less one slot
+    per peer past them, 8 from 8 peers past them, and that one peer more moves it by at most 1
+    (higher) or 2 (lower); `TestRoundSessionCapPerNode` has N = 18 rank 0 at 15 sessions at once and
+    N = 21 rank 2 at 10; `TestRoundSessionCap` takes 24 peers (8 past the tokens: the floor; 19
+    give 13 now). `TestRoundSessionCapFollowsPeers` (17 higher and 8 lower peers) and the N = 25
+    cases keep their cap (8 under both rules). The model (srep_model_test.go) runs N = 9 and 17
+    only, where the rules agree: its records stand.
+- **(T4.7 part 2 fix round 1) The `initiated_session_cap` gauge (review Low 1).** Each node
+  judges "past the tokens" by its own eligible peers, which may not be its targets' (mixed radii:
+  a deeper node sees ≤ 16 peers and takes up to 16 slots for targets that see more and are short
+  of tokens). The harness runs one radius, so this is not measured here; T6.3 is to (Follow-ups).
+  Added `bee_rangesync_initiated_session_cap` (reconciler metrics.go, appended last, as
+  `round_interval_seconds`: a GaugeFunc read when collected), the slot pool's current size: the
+  per-node cap the last round set (`MinInitiatedSessions` until the first), or the fixed cap of
+  `Options.InitiatedSessions`. `TestRoundSessionCapFollowsPeers` checks that it follows the cap
+  (16, then 8). No harness change.
+- **(T4.7 part 2 fix round 1) Delay-0 checks of `TestSREPModelVsHarness` (review Low 2).** Part 2
+  turned the Delay-0 share check (model against harness) and the live-against-record checks into
+  logs for every row of the compiled constants, though only N = 17 had become non-repeatable. Now
+  a row is checked at Delay 0 when no node opens more than `MinInitiatedSessions` sessions at one
+  instant (`srepConfig.repeatable`, from `srepParams.wave`: at each rank the cap or the
+  higher-overlay peers, whichever is fewer), as with the constant cap of 8, whose Delay-0 records
+  repeated:
+  - asserted again at Delay 0 (as before part 2): the compiled constants at N = 9 (wave 8: the
+    share against the model within 3 points; the live harness against its record, share within
+    1.5 points, n_Δ and symbols within 3%); the cap-8 configurations' share against their records
+    (asserted throughout, now through the same `repeatable`, always true for them);
+  - logged only: the compiled constants at N = 17, Delay 0 (wave 16), against the model and their
+    record, with a sanity bound instead: the harness's mean share at most 60%
+    (`srepDelay0ShareBound`; 47.3–52.8% measured);
+  - unchanged: n_Δ, the symbols and the median n_Δ per session are checked at a Delay only, for
+    every configuration (as before part 2).
+  - Run (`TestSREPModelVsHarness`, 238 s, passes): N = 9 at Delay 0 checked, share −0.56 (±3.96)
+    against the model, the live harness against its record share −0.28 (±2.79), n_Δ +1.08%
+    (±4.23), symbols −1.48% (±5.79); N = 17 at Delay 0 logged, harness 49.1 ± 2.0% (≤ 60%), and
+    its n_Δ −8.58% (±7.98) against the record, which would have failed: the reason it stays a log.
+- **(T4.7 part 2 fix round 1) Scope, tests and wall times.**
+  - Code: pkg/rangesync/reconciler (scheduler.go `InitiatedSessionCap`, metrics.go and
+    reconciler.go for the gauge) and tests (scheduler_test.go, export_test.go,
+    neighborhood_g6_sim_test.go `TestG6InitiatedCap`'s rows, srep_model_sim_test.go). No pkg/node,
+    pkg/pullsync, pkg/puller, go.mod, proto or `*_fuzz_test.go` change; README not ticked.
+  - `go build ./...`, `go vet` on pkg/rangesync/... (default and `-tags=sim`),
+    `GOTOOLCHAIN=go1.26.1 make lint` and `GOTOOLCHAIN=go1.26.1 golangci-lint run --build-tags sim
+    ./pkg/rangesync/...`: 0 issues. gofumpt and gci on the changed files only.
+    `go test ./pkg/rangesync/...` passes (`pkg/rangesync` 35 s, reconciler 6 s).
+  - `-tags=sim`, one at a time (4 cores, nothing else running): `TestG6InitiatedCap` 708 s (108
+    runs), its N = 18 and 21 rows again 317 s, the step's N = 18 and 21 rows 134 s on the landed
+    code; `TestSREPModelVsHarness` 238 s.
+  - No `-race` here: the changed tests (`TestInitiatedSessionCap`, `TestRoundSessionCap*`,
+    `TestMetrics`, `TestRoundIntervalAdapts`, `TestPeersGauge`, `TestSlotPool*`) ran with
+    `-count=20 -cpu=1,2,4`, the whole reconciler package with `-count=3 -cpu=1,2,4`,
+    `TestNeighborhoodPastTokens` with `-count=2 -cpu=1,2,4` and pkg/rangesync with `-count=1
+    -cpu=1,2,4`: no failure. The CI list is in Follow-ups.
 
 ## Follow-ups
 _(sessions append here)_
@@ -5298,3 +5425,39 @@ _(sessions append here)_
   `TestRangesyncOnlyGoroutines` (reconciler); `TestProtocolConverges`, `TestWorkedExamples`
   (rangesync). Every session the reconciler opens now takes its slot from the new semaphore, so
   re-run the whole reconciler package and the neighborhood tests (`TestNeighborhood*`).
+- **(T4.7 part 2 fix round 1 → the proposal) §8.2's cap: the continuous rule.** Supersedes the
+  text of "(T4.7 part 2 → the proposal) The per-node initiated-session cap in §8.2": add after
+  "Rounds": "**Cap.** A node opens at most a per-node number of sessions at once (round sessions,
+  takeovers, stripe transfers and verifications together; at most 4 of them stripe sessions).
+  With H eligible peers of a higher overlay and L of a lower one, and E = max(0, H + L − 16) of
+  them past the 16 session tokens (`MaxConcurrentSessions`) it shares with the sessions it serves,
+  it is `max(8, min(H + 4, 16 − L − E))`: up to 17 nodes a round reaches every higher-overlay peer
+  in one wave; past that each peer past the tokens takes a slot off, down to 8 at every rank from
+  25 nodes on, which leaves half of the tokens to the sessions it serves."
+  (reconciler.InitiatedSessionCap; Decisions, "(T4.7 part 2 fix round 1) The per-node cap slides".)
+- **(T4.7 part 2 fix round 1 → T6.3) Mixed radii: a Busy breakdown by the opener's cap.**
+  Supersedes the last sentence of "(T4.7 part 2 → T6.3) The per-node cap on testnet" (the gauge
+  now exists) and its "steps at 17 nodes" (it slides to 8 by 25). Each node judges "past the
+  tokens" by its own eligible peers, which may not match its targets': with mixed radii a deeper
+  node sees ≤ 16 peers and takes up to 16 slots, opening sessions to shallower targets that see
+  more than 16 and are short of tokens. The harness runs one radius, so this is unmeasured. On a
+  testnet with mixed radii, break `bee_rangesync_sessions_total{result=busy}` and
+  `{result=session_limit}` (opening side) and `bee_rangesync_session_busy_total` (serving side)
+  down by the opener's `bee_rangesync_initiated_session_cap` and both sides' depth, against the
+  completed sessions (harness, one radius: 1–3% of the sessions at N = 18, 3–6% at N = 21, 5–10%
+  at N = 25). If the deeper nodes' sessions draw most Busy answers, size the cap by the targets'
+  peer counts (a Status field) or count a shallower target's peers; if Busy at N ≈ 20–24 runs
+  above N = 25's, a steeper slope (two slots per peer past the tokens, the floor from N = 21) is
+  the next candidate (not measured).
+- **(T4.7 part 2 fix round 1 → T6.0, AC-B1) N = 18–24 pass by 1.5–4 points, not ~10.** With the
+  continuous cap every measured N ≥ 17 passes AC-B1 at Delay 50 and 200 ms (N = 17 39.5–40.0%, 18
+  45.8–46.4%, 21 46.0–48.5%, 25 42.8–44.4%, 33 36.1% at 50 ms), with the least margin at N = 21,
+  200 ms (48.2–48.5%). With the step as landed in part 2, N = 18 failed at 200 ms (52.3–52.9%).
+  This refines "(T4.7 part 2 → T6.0, AC-B1) Re-measured with the landed constants": AC-B1's
+  figures should cite N = 18–21 too, and T6.0 should measure AC-B1 on testnet at N ≈ 20.
+- **(T4.7 part 2 fix round 1) Tests to run with `-race` on CI.** No C compiler here: they ran with
+  `-count=20 -cpu=1,2,4` (the whole reconciler package `-count=3`, `TestNeighborhoodPastTokens`
+  `-count=2`, pkg/rangesync `-count=1`). Changed: `TestInitiatedSessionCap`, `TestRoundSessionCap`,
+  `TestRoundSessionCapPerNode`, `TestRoundSessionCapFollowsPeers` (the gauge) (reconciler). The
+  new gauge is read under the slot pool's lock from the metrics collector while rounds resize it,
+  so also run `TestPeersGauge` and `TestMetrics` and the whole reconciler package.
