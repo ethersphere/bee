@@ -170,6 +170,134 @@ _(sessions append here)_
     (`symbols_per_difference` definition, `parts_*{type}` for symbols/more, `index_memory_bytes`
     including symbol caches), Phase 3 (stripe and verification metrics), Phase 4
     (`round_interval_seconds`; `want_claims{result}` values incl. `expired` and `late`).
+- **(T6.2) Tests and where they are.** Storer half: `pkg/storer/reserveaddr_toggle_test.go`.
+  Node half: `pkg/node/rangesync_toggle_test.go`. Test-only seams in `pkg/storer/export_test.go`:
+  `AddrIndexDropStarted`, `CountWithinRadius`. No production code changed.
+- **(T6.2) Bullet → tests.** Existing tests (T1.5/T1.12) that already cover a bullet are kept as they
+  are. New tests are marked *new*.
+  - *off → on, Index equals brute force:* existing `TestReserveAddrIndexFillCanceled` (a reserve
+    with no index or marker, then an enabled start: one fill, ready, entries equal the
+    `ChunkBinItem`s) and `TestAddrIndexFill`. These check index keys only. *New*
+    `TestRangesyncToggle` (node) builds the rangesync Index through the node's wiring after the
+    first fill. Its root summary and every range down to 4 bits below the root equal an LtHash
+    brute force over the reserve, read through `ReserveIterateChunks` (the bin index). The same
+    holds after live puts, restamps and overwrites, which reach the Index through
+    `removalObserver` → `Indexer`.
+  - *on → off → changes → on, nothing stale served:* existing `TestReserveAddrIndexToggle` (index
+    keys only). *New* `TestReserveAddrIndexToggleServed` (storer) removes elements while off in
+    each way the reserve does (eviction, newer stamp for the same address, stamp index taken over).
+    It runs twice: once with the disabled start's drop completed, and once with it interrupted
+    (worst case: every entry of the enabled period written back, no marker). After the refill, the
+    whole-space and every 1–3-bit `ReserveIterateAddr` equal the reserve, and
+    `ReserveHasID`/`ReserveGetByID` find every element and none of the 15 stale ones. *New*
+    `TestRangesyncToggle` checks the same at the protocol surface. An empty peer's session
+    (`Reconcile`) wants exactly the node's reserve, the peer fetches all of it from the node, and a
+    `Fetch` of the stale IDs gets 0 chunks.
+  - *on → db repair → on:* existing `TestReserveRepairDropsAddrIndex` (repairer on an in-memory
+    store). *New* `TestReserveAddrIndexRepair` runs what `bee db repair-reserve` runs: the storer
+    with the defaults, then `ReserveRepairer`. One chunk loses its data. The test checks one refill,
+    entries equal the reserve, and the removed chunk is not served. `TestRangesyncToggle` also
+    covers the repair at node level.
+  - *crash during fill:* existing `TestReserveAddrIndexFillCanceled` (context canceled, store
+    closed cleanly) and `TestReserveAddrIndexUncleanShutdown` (copy taken after the fill). *New*
+    `TestReserveAddrIndexCrashDuringFill` copies the files of the open store from the fill hook,
+    after 9 of 30 entries were committed: a kill, with no `Close`. The copy has a partial index and
+    no marker. Its next enabled start refills and serves exactly the reserve.
+  - *disable → background drop, disk usage back down:* existing `TestReserveAddrIndexToggle`,
+    `…DropInterrupted`, `…NoReserve`, `…Compaction` (leveldb `SizeOf` of the range → 0). *New*
+    `TestReserveAddrIndexDiskUsage` measures the `indexstore` directory (see the numbers below).
+  - *defaults after any of the above:* existing `TestReserveAddrIndexDefaultNoWrites` (fresh store),
+    `TestSyncWiring`, `TestDisableAddrIndex` (zero writes). *New*
+    `TestReserveAddrIndexDefaultsAfterToggle` starts with the defaults after six cases: on; on, off;
+    on, reset; on, keep-mode change; on, repair; crash during the fill. The first default start
+    deletes the marker and starts a drop exactly when entries are left. Then no entry is written
+    through puts or evictions, and the next default start starts no drop and writes nothing. *New*
+    `TestRangesyncDefaultsNoIndex` (node) covers full-node defaults and a light node with
+    `--rangesync-enable`. No rangesync service is built (so no protocol and no Index), and
+    `SetReserveObserver` returns `ErrAddrIndexDisabled`. The leftovers are dropped, and a full
+    node's reserve changes write nothing. A rangesync service built on such a storer anyway (a
+    wiring error) fails `Start` with `ErrAddrIndexDisabled`.
+  - *downgrade:* *new* `TestReserveAddrIndexDowngrade` and a one-off cross-build check (both
+    below).
+- **(T6.2) Node level without `NewBee`.** A full node always enables the chain backend, so `NewBee`
+  cannot be built in a unit test (as in T1.12). `toggleNode` builds the parts the flags change, the
+  way `NewBee` does: `ResolveSyncWiring` → storer `ReserveAddrIndex` (reserve only on full nodes) →
+  `reconciler.New` + `rangesync.New(…, RangesyncOptions(r))` + `SetService` + `Start` (which
+  registers `removalObserver`) → `NewRangesyncCloser`, closed before the storer as in `Shutdown`.
+  The storer's context is canceled at stop, as `NewBee`'s is, so goleak sees no stats goroutine.
+  The peer's `Fetch` asks for 4 IDs per stream: a `streamtest` stream deadlocks when its reader
+  lags more than 16 writes behind and then closes it. This is a harness limitation, see Follow-ups.
+- **(T6.2) Disk usage (measured).** Same 4000 chunks; `indexstore` file sizes after a restart each
+  time (files on tmpfs; these are file lengths). Never indexed: 2 107 145 B. Indexed: 2 448 657 B
+  (+341 512 B, **85.4 B per chunk**, close to §5.1's ~80 B). After a start with the index disabled
+  (background drop, then compaction): **2 044 352 B**, 62 793 B below never indexed (the compaction
+  also drops older versions of other keys). Two more runs gave 85.3–85.6 B per chunk and the same
+  pattern. The test requires ≥ 50 B per chunk indexed, and at most never-indexed + 10 % of the index
+  after the disabled start. G4's 4.2M run (≈ 150 B per entry uncompacted, all of it back after drop
+  + compaction) is the full-scale number.
+- **(T6.2) Downgrade, simulated (automated).** Keep mode is the older build: `startAddrIndex` does
+  nothing in keep mode (no read, no write), the reserve opens without the index, and `Close` takes
+  the old path. So no new seam was needed. The remaining differences are the `ReserveAddrStore`
+  methods (an older build has none) and recovery's one `Has` of the marker (outside the
+  `chunkAddr` namespace). Eight entries whose values do not decode are added to the real leftovers
+  (32 entries + marker), so any read of the namespace would fail. The simulated older build then:
+  - starts (migrations, recovery) and runs `countWithinRadius`;
+  - iterates the reserve (`ReserveIterateChunks`, one `SubscribeBin` per bin),
+    `ReserveLastBinIDs`, `NeighborhoodsStat`, `DebugInfo` and a `ReserveSample` (all must count
+    exactly the reserve);
+  - puts, evicts a whole batch and part of another, reads everything again, and restarts.
+
+  There is no error, and the leftovers and the marker stay byte-identical. The upgraded enabled
+  start refills (the digest no longer matches) and serves exactly the reserve, none of the 20
+  elements the older build removed and none of the garbage. A disabled start on a copy drops
+  everything, which is the reclaim path.
+- **(T6.2) Downgrade, cross-build (one-off, not committed).**
+  - This build made a data dir with an enabled index: 32 elements, 40 `chunkAddr` entries (8 of
+    them garbage) and a marker.
+  - A detached worktree of `docs/rangesync-rateless-proposal` (74c084b1, no rangesync code; its
+    `pkg`/`cmd` have no `chunkAddr` or `addrIndexValid` namespace) ran a throwaway internal test on
+    that dir. It ran `New`, `StartReserveWorker` (its `countWithinRadius`) and the reads above, put
+    8 chunks, evicted 20, read again and restarted. There was no error, and the 40 entries and the
+    marker were unchanged.
+  - Back on this build, the enabled start refilled (fills 1). It served exactly the 20 elements and
+    none of the 20 stale ones. A disabled start on a copy dropped all entries and the marker.
+  - The throwaway files and the worktree were removed.
+- **(T6.2) Negative controls (manual, not committed).**
+  - (A) No drop in `CheckAddrIndex`: `…ToggleServed/drop interrupted` fails at the surface
+    (35 elements served, the reserve holds 20), and so does `…Downgrade/upgrade`. The `drop
+    completed` variant passes because the disabled start's drop had already emptied the
+    namespace. That is why the interrupted variant was added.
+  - (B) Trust any current-version marker, without the digest: `…Downgrade/upgrade` fails (fills 0).
+  - (C) `removalObserver` passes no removes to the Indexer: `TestRangesyncToggle` fails (Index root
+    count 26 against a brute force of 24).
+  - (D) `syncWiring` opens the address index with the defaults: `TestRangesyncToggle` and
+    `TestRangesyncDefaultsNoIndex/full node defaults` fail (`SetReserveObserver` succeeds).
+- **(T6.2) Finding, not fixed: `ReserveRepairer` deletes a live chunk's `ChunkBinItem`.** This
+  predates rangesync: the same code is in `docs/rangesync-rateless-proposal`, and the repro fails
+  20/20 there.
+  - Step 2 deletes every `ChunkBinItem`. Step 3 renumbers each bin from 1 in parallel, and removes
+    a chunk whose data is missing with `RemoveChunkWithItem`, which deletes
+    `ChunkBinItem{bin, old bin ID}`. When another chunk of the bin was already given that ID, its
+    new `ChunkBinItem` is the one deleted.
+  - The repair then fails its own final check (`check failed: chunkBinItem, bin 0, binID 1: not
+    found`). Without that check, a reserve chunk would be left that no bin iteration finds
+    (pullsync, sampling).
+  - It happened in about 2/3 of runs of the first version of `TestReserveAddrIndexRepair`.
+  - Deterministic repro: `TestReserveRepairMissingChunk`, skipped with a reason that points here
+    (fails 100/100 unskipped). It needs 4·NumCPU+4 chunks of one batch in one bin; the
+    highest-addressed one is put first and loses its data.
+  - Not fixed: `pkg/storer/migration` is outside the plan and the fix is not additive.
+    `TestReserveAddrIndexRepair` puts its damaged chunk alone in its bin, where the bug cannot
+    happen.
+- **(T6.2) Runs.** No `-race` (no C compiler).
+  - `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` and `./pkg/node/...` pass.
+  - `./pkg/storer/ ./pkg/storer/migration/` pass with `-count=3 -cpu=1,2,4`, and `./pkg/node/...`
+    with `-count=5 -cpu=1,2,4`.
+  - The new storer tests pass with `-count=5 -cpu=1,2,4`.
+  - `go build ./...`, `go vet` and `golangci-lint` (go1.26.1) on `pkg/storer/...` and
+    `pkg/node/...` are clean (0 issues). Only the three files of this task were formatted.
+  - The defaults change nothing: there is no production change, and
+    `TestReserveAddrIndexDefaultNoWrites`, `TestSyncWiring` and the new defaults tests pass.
 
 ## Follow-ups
 _(sessions append here)_
@@ -185,3 +313,35 @@ _(sessions append here)_
 - **(T6.0) T6.3:** define a propagation probe for AC-V1 on testnet (upload to one node of a
   `rangesync` cohort, then check its neighbors' reserves), or keep AC-V1 gating only in
   T6.1/T4.6.
+- **(T6.2) T6.3, runbook (`testnet-runbook.md`), downgrade paragraph.** A node downgraded to a
+  build without `rangesync` starts and runs normally with the leftover `chunkAddr` entries and the
+  `addrIndexValid` marker on disk. That build never reads or changes them (verified, see the
+  Decisions log). They take ~80 B per chunk: 85 B measured at 4000 chunks, ≈ 350 MB at 4.2M.
+  - To reclaim the space, start once with a `rangesync`-aware build and `--rangesync-enable=false`
+    before downgrading. That start deletes the marker and drops the entries in the background,
+    then compacts the range. Let it run until the drop finishes: at 4.2M, G4 measured ≈ 12–14 s of
+    drop and ≈ 19–21 s of compaction. A stop before that resumes the drop at the next such start.
+  - If the leftovers stay, upgrading again with `--rangesync-enable=true` costs one refill (the
+    marker no longer matches the reserve, ≈ 65–75 s at 4.2M per G4). No stale entry is served.
+- **(T6.2) `ReserveRepairer` with missing chunks (outside the plan).** See the Decisions-log
+  finding. In step 3, a missing or invalid chunk should not delete `ChunkBinItem{bin, old bin ID}`
+  (step 2 already deleted them all). For example, remove its `BatchRadiusItem`, stamp entries and
+  data without the `ChunkBinItem`. Then unskip `TestReserveRepairMissingChunk`
+  (`pkg/storer/reserveaddr_toggle_test.go`). For a separate issue against `bee db repair-reserve`.
+- **(T6.2) T6.1, `streamtest` lagging-reader deadlock.** `record.Write` holds the record lock
+  while it sends on a 16-slot signal channel, and `Read` takes a signal only once it caught up. So
+  a writer more than 16 writes ahead blocks with the lock held, and a `FullClose`/`Reset` of that
+  stream then deadlocks. A rangesync `Fetch` of ~25 chunks over one stream hit it in
+  `TestRangesyncToggle`; the test now fetches 4 IDs per stream. A streamtest-based T6.1 suite will
+  meet it with large fetches. Bound the IDs per Want there, or fix `pkg/p2p/streamtest` (outside
+  the plan).
+- **(T6.2) Tests to run with -race on CI.** The CI rule stays: `go test -race ./pkg/rangesync/...`,
+  `TestCombinedSyncerBothDrivers`, and the three Phase-1 storer tests `TestIterateAddrNoReserveLock`,
+  `TestIterateAddrSnapshot`, `TestSetReserveObserver`. Add these new tests:
+  - `TestRangesyncToggle` and `TestRangesyncDefaultsNoIndex` (`pkg/node`): a real storer with the
+    rangesync Indexer goroutine, the observer and streamtest sessions/fetches.
+  - `TestReserveAddrIndexDefaultsAfterToggle` and `TestReserveAddrIndexDowngrade` (`pkg/storer`):
+    the background drop goroutine runs alongside the test's reads, and `SubscribeBin` goroutines.
+
+  The other new storer tests run their steps one after another (the fill blocks in `New`) and
+  don't need it.
