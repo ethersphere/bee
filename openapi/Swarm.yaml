@@ -1040,6 +1040,23 @@ paths:
             type: integer
           required: false
           description: Lowest index of the owner's updates to deliver. Defaults to 0.
+        - in: query
+          name: roster
+          schema:
+            type: string
+          required: false
+          description: |
+            The roster the subscriber last received, with a cursor per grantee:
+            comma-separated `address:index` pairs, each the lowest index of that grantee's
+            updates to deliver (at most 186; not the owner). A dApp keeps it from the
+            deliveries it received and passes it back when it reconnects; it is the set
+            the node admits updates by until the broker delivers a later roster.
+        - in: query
+          name: rosterCursor
+          schema:
+            type: integer
+          required: false
+          description: Lowest roster index to accept — one past the index of the roster passed in `roster`. Defaults to 0.
       responses:
         "200":
           description: Establishes a WebSocket subscription for incoming broadcasts

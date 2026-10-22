@@ -11,7 +11,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,7 +53,7 @@ type bpsRequest struct {
 	topic    []byte
 	broker   swarm.Address
 	identity []byte
-	cursor   uint64
+	position bps.Position // the subscriber's place on the channel: cursor, roster, rosterCursor
 }
 
 // bpsGrantedMessage tells a seat's dApp that a roster naming its identity has
@@ -151,9 +153,11 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 	}
 
 	queries := struct {
-		Broker   swarm.Address `map:"broker"`
-		Identity []byte        `map:"identity" validate:"omitempty,len=20"`
-		Cursor   uint64        `map:"cursor"`
+		Broker       swarm.Address `map:"broker"`
+		Identity     []byte        `map:"identity" validate:"omitempty,len=20"`
+		Cursor       uint64        `map:"cursor"`
+		Roster       string        `map:"roster"`
+		RosterCursor uint64        `map:"rosterCursor"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -172,13 +176,66 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 		return bpsRequest{}, false
 	}
 
+	pos, err := bpsPosition(paths.Owner.Bytes(), queries.Cursor, queries.Roster, queries.RosterCursor)
+	if err != nil {
+		jsonhttp.BadRequest(w, err.Error())
+		return bpsRequest{}, false
+	}
+
 	return bpsRequest{
 		owner:    paths.Owner,
 		topic:    paths.Topic,
 		broker:   queries.Broker,
 		identity: queries.Identity,
-		cursor:   queries.Cursor,
+		position: pos,
 	}, true
+}
+
+// bpsMaxRoster is the most addresses a roster can name: what fits in one chunk.
+const bpsMaxRoster = 186
+
+var errBPSInvalidRoster = errors.New("invalid roster")
+
+// bpsPosition builds the subscriber's place on the channel from the query: the
+// owner's cursor, and the roster as address:cursor pairs — the grantees it
+// names, each with the lowest index of its updates to deliver — at the roster
+// cursor, the lowest roster index to accept. A dApp keeps them from the
+// deliveries it received and passes them back when it reconnects.
+func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64) (bps.Position, error) {
+	pos := bps.Position{
+		Cursors:      map[string]uint64{string(owner): cursor},
+		RosterCursor: rosterCursor,
+	}
+	if roster == "" {
+		return pos, nil
+	}
+	entries := strings.Split(roster, ",")
+	if len(entries) > bpsMaxRoster {
+		return pos, fmt.Errorf("%w: more than %d addresses", errBPSInvalidRoster, bpsMaxRoster)
+	}
+	for _, e := range entries {
+		addr, index, ok := strings.Cut(e, ":")
+		if !ok {
+			return pos, fmt.Errorf("%w: %q is not address:index", errBPSInvalidRoster, e)
+		}
+		a, err := hex.DecodeString(strings.TrimPrefix(addr, "0x"))
+		if err != nil || len(a) != common.AddressLength {
+			return pos, fmt.Errorf("%w: address %q", errBPSInvalidRoster, addr)
+		}
+		if bytes.Equal(a, owner) {
+			return pos, fmt.Errorf("%w: the owner is not on its roster", errBPSInvalidRoster)
+		}
+		n, err := strconv.ParseUint(index, 10, 64)
+		if err != nil {
+			return pos, fmt.Errorf("%w: index %q", errBPSInvalidRoster, index)
+		}
+		if _, dup := pos.Cursors[string(a)]; dup {
+			return pos, fmt.Errorf("%w: address %q twice", errBPSInvalidRoster, addr)
+		}
+		pos.Cursors[string(a)] = n
+		pos.Roster = append(pos.Roster, a)
+	}
+	return pos, nil
 }
 
 func (s *Service) bpsUpgrade(w http.ResponseWriter, r *http.Request, logger log.Logger) (*websocket.Conn, bool) {
@@ -281,7 +338,7 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 		Broker:   req.broker,
 		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
 		Identity: req.identity,
-		Position: bps.Position{Cursors: map[string]uint64{string(req.owner.Bytes()): req.cursor}},
+		Position: req.position,
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
