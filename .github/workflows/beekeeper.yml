@@ -223,7 +223,8 @@ jobs:
         run: |
           node=$(beekeeper print nodes --cluster-name local-dns --log-verbosity 0 | grep -m1 -E '^bee-[0-9]+$')
           timeout 10m pipx run --spec schemathesis==4.29.4 st run bee-src/openapi/Swarm.yaml \
-            --url "http://${node}.localhost" \
+            --url "http://localhost" \
+            --header "Host: ${node}.localhost" \
             --mode positive \
             --include-method GET \
             --exclude-path-regex '^/(chunks/stream|pss/subscribe|gsoc/subscribe|rchash)' \

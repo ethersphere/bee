@@ -27,8 +27,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Install Redocly CLI
+        run: npm install --ignore-scripts --no-save --no-audit --no-fund --prefix "${RUNNER_TEMP}/redocly" "@redocly/cli@${REDOCLY_CLI_VERSION}"
       - name: Lint the OpenAPI specs
-        run: npx --yes @redocly/cli@${REDOCLY_CLI_VERSION} lint --config openapi/redocly.yaml openapi/Swarm.yaml
+        run: |
+          "${RUNNER_TEMP}/redocly/node_modules/.bin/redocly" lint --config openapi/redocly.yaml openapi/Swarm.yaml
   breaking:
     name: Breaking changes
     if: github.event_name == 'pull_request'
@@ -41,7 +44,7 @@ jobs:
       - name: Install oasdiff
         run: |
           mkdir -p "${RUNNER_TEMP}/oasdiff"
-          curl -sSfL "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz" | tar -xz -C "${RUNNER_TEMP}/oasdiff" oasdiff
+          curl -sSfL --proto '=https' --tlsv1.2 "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz" | tar -xz -C "${RUNNER_TEMP}/oasdiff" oasdiff
           echo "${RUNNER_TEMP}/oasdiff" >> "$GITHUB_PATH"
       - name: Extract base specs
         run: |
