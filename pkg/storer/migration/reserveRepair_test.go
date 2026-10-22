@@ -5,11 +5,15 @@
 package migration_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -195,5 +199,83 @@ func TestReserveRepairDropsAddrIndex(t *testing.T) {
 	}
 	if has, err := store.IndexStore().Has(&reserve.ChunkAddrValidItem{}); err != nil || has {
 		t.Fatalf("marker left: %v, %v", has, err)
+	}
+}
+
+// TestReserveRepairMissingChunk is a T6.2 finding (see the phase-6 plan
+// file), about code that predates the address index: ReserveRepairer deletes
+// every ChunkBinItem (its step 2), then renumbers the bins from 1 in parallel
+// (step 3), where it removes a chunk whose data is missing with
+// RemoveChunkWithItem, which deletes the ChunkBinItem of the chunk's old bin
+// ID. If another chunk of the bin was given that bin ID first, that chunk's
+// new ChunkBinItem is deleted instead. Steps 3 and 4 commit before the final
+// check, so the reserve keeps a chunk without its ChunkBinItem, which no bin
+// iteration finds, whether or not the check then fails the repair. Here four
+// chunks are missing: they had bin IDs 1 to 4 and are the last ones the
+// repairer handles (one batch, one bin, the highest addresses), so each can
+// delete the new ChunkBinItem of a chunk renumbered before it; one is enough.
+func TestReserveRepairMissingChunk(t *testing.T) {
+	t.Parallel()
+	t.Skip("T6.2 finding, see the phase-6 Follow-ups: ReserveRepairer deletes a renumbered chunk's ChunkBinItem when another chunk of its bin is missing")
+
+	ctx := context.Background()
+	store := internal.NewInmemStorage()
+	baseAddr := swarm.RandAddress(t)
+	batchID := swarm.RandAddress(t).Bytes()
+	chunks := make([]swarm.Chunk, 4*runtime.NumCPU()+8)
+	for i := range chunks {
+		chunks[i] = chunktest.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batchID))
+	}
+	slices.SortFunc(chunks, func(a, b swarm.Chunk) int { return bytes.Compare(a.Address().Bytes(), b.Address().Bytes()) })
+	const missing = 4 // the last ones, with bin IDs 1 to missing
+	live := len(chunks) - missing
+
+	err := store.Run(ctx, func(s transaction.Store) error {
+		for i, ch := range chunks {
+			binID := uint64(missing + i + 1)
+			if i >= live {
+				binID = uint64(i - live + 1)
+			}
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				return err
+			}
+			err = errors.Join(
+				s.IndexStore().Put(&reserve.ChunkBinItem{Bin: 0, BinID: binID, Address: ch.Address(), BatchID: batchID, ChunkType: swarm.ChunkTypeContentAddressed, StampHash: stampHash}),
+				s.IndexStore().Put(&reserve.BatchRadiusItem{Bin: 0, BinID: binID, Address: ch.Address(), BatchID: batchID, StampHash: stampHash}),
+			)
+			if err != nil || i >= live {
+				continue // the missing chunks have no data
+			}
+			err = errors.Join(err, chunkstamp.Store(s.IndexStore(), "reserve", ch), s.ChunkStore().Put(ctx, ch))
+			if err != nil {
+				return err
+			}
+		}
+		return s.IndexStore().Put(&reserve.BinItem{Bin: 0, BinID: uint64(len(chunks))})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repairErr := localmigration.ReserveRepairer(store, func(swarm.Chunk) swarm.ChunkType { return swarm.ChunkTypeContentAddressed }, log.Noop)()
+
+	orphans := 0
+	err = store.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
+	}, func(res storage.Result) (bool, error) {
+		item := res.Entry.(*reserve.BatchRadiusItem)
+		err := store.IndexStore().Get(&reserve.ChunkBinItem{Bin: item.Bin, BinID: item.BinID})
+		if errors.Is(err, storage.ErrNotFound) {
+			orphans++
+			return false, nil
+		}
+		return false, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repairErr != nil || orphans != 0 {
+		t.Fatalf("repair left %d reserve chunks without a ChunkBinItem: %v", orphans, repairErr)
 	}
 }

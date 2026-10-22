@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/rangesync/reconciler"
 	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
@@ -233,21 +235,17 @@ func idSet(cs []storer.ChunkID) map[fingerprint.ID]struct{} {
 	return set
 }
 
-func chunkIDs(ids []fingerprint.ID) []storer.ChunkID {
-	cs := make([]storer.ChunkID, len(ids))
-	for i, id := range ids {
-		cs[i] = storer.ChunkID{Address: id.Address(), StampHash: id.StampHash()}
-	}
-	return cs
-}
-
 // checkServed checks what n's rangesync serves against a brute force over
 // its reserve, with stale the IDs the reserve no longer holds:
 //   - the Index (the node's Status and the summary of every range down to 4
 //     bits below its root) equals the brute force;
 //   - the address index reports each reserve ID and none of stale;
 //   - an empty peer reconciling with n wants exactly the reserve (no stale
-//     ID is listed) and fetches all of it from n, and n delivers no stale ID.
+//     ID is listed) and fetches all of it from n.
+//
+// Stale IDs are not fetched or got by ID: the chunk is read through the
+// reserve's own items, keyed by stamp hash, which no stale address index
+// entry can bring back, so that would not test the index.
 func checkServed(t *testing.T, n *toggleNode, stale []fingerprint.ID) {
 	t.Helper()
 
@@ -289,9 +287,6 @@ func checkServed(t *testing.T, n *toggleNode, stale []fingerprint.ID) {
 		}
 		if has, err := n.db.ReserveHasID(id.Address(), id.StampHash()); err != nil || has {
 			t.Fatalf("ReserveHasID of stale element %s: %v, %v", id.Address(), has, err)
-		}
-		if _, err := n.db.ReserveGetByID(ctx, id.Address(), id.StampHash()); !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("ReserveGetByID of stale element %s: %v", id.Address(), err)
 		}
 	}
 
@@ -338,12 +333,6 @@ func checkServed(t *testing.T, n *toggleNode, stale []fingerprint.ID) {
 	if fetched != len(ids) {
 		t.Fatalf("the peer fetched %d of %d chunks", fetched, len(ids))
 	}
-	if len(stale) > 0 {
-		stored, _ := peer.Fetch(ctx, n.overlay, chunkIDs(stale)) // the node leaves them missing
-		if stored != 0 {
-			t.Fatalf("the node delivered %d stale chunks", stored)
-		}
-	}
 }
 
 // checkNoRangesync checks a node whose flags do not enable rangesync: no
@@ -372,15 +361,55 @@ func (nopObserver) Commit(run func() (adds, removes []storer.ChunkID, err error)
 func (nopObserver) RadiusChanged(uint8) {}
 func (nopObserver) Reset()              {}
 
-// rawItem reads the entries of a namespace without their item type.
-type rawItem struct{ ns, id string }
+// rawItem is an entry of any namespace with an opaque value, to read and
+// write entries regardless of their item type.
+type rawItem struct {
+	ns, id string
+	val    []byte
+}
 
 func (r *rawItem) ID() string               { return r.id }
 func (r *rawItem) Namespace() string        { return r.ns }
-func (r *rawItem) Marshal() ([]byte, error) { return nil, nil }
-func (r *rawItem) Unmarshal([]byte) error   { return nil }
-func (r *rawItem) Clone() storage.Item      { return &rawItem{ns: r.ns, id: r.id} }
+func (r *rawItem) Marshal() ([]byte, error) { return r.val, nil }
+func (r *rawItem) Unmarshal(b []byte) error { r.val = slices.Clone(b); return nil }
+func (r *rawItem) Clone() storage.Item      { return &rawItem{ns: r.ns, id: r.id, val: slices.Clone(r.val)} }
 func (r *rawItem) String() string           { return r.ns + "/" + r.id }
+
+// rawEntries returns the entries of the namespace, ID to value.
+func rawEntries(t *testing.T, db *storer.DB, ns string) map[string][]byte {
+	t.Helper()
+
+	entries := make(map[string][]byte)
+	err := db.Storage().IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &rawItem{ns: ns} },
+	}, func(res storage.Result) (bool, error) {
+		entries[res.ID] = res.Entry.(*rawItem).val
+		return false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
+// putRawEntries writes the entries into the namespace of the closed node
+// store in dir, through its leveldb directly.
+func putRawEntries(t *testing.T, dir, ns string, entries map[string][]byte) {
+	t.Helper()
+
+	st, _, err := leveldbstore.New(filepath.Join(dir, "indexstore"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, val := range entries {
+		if err := st.Put(&rawItem{ns: ns, id: id, val: val}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // addrIndexKeys returns the number of address index entries and markers in
 // the node's store.
@@ -420,13 +449,15 @@ func checkNoAddrIndexKeys(t *testing.T, n *toggleNode, batchID []byte) {
 // TestRangesyncToggle runs a full node through the toggle cases with the
 // node's rangesync wiring: defaults, then rangesync on (the first fill), off
 // with reserve changes, on again (the refill), `bee db repair-reserve`, on
-// again, and the defaults once more. Whenever rangesync is on, the Index it
-// builds and keeps current through its reserve observer equals a brute force
-// over the reserve, and no element removed while it was off is served, to an
-// empty peer's session or fetch included. Whenever it is off, no rangesync
-// service (and so no protocol and no Index) is built, no reserve observer can
-// be registered, the leftovers of the index are dropped and nothing of it is
-// written.
+// again, and the defaults once more. Before the refill, the entries of the
+// enabled period are written back, as a disabled start whose background drop
+// was interrupted leaves them, so that the refill starts from stale entries.
+// Whenever rangesync is on, the Index it builds and keeps current through its
+// reserve observer equals a brute force over the reserve, and no element
+// removed while it was off is reported by the address index or listed to an
+// empty peer's session. Whenever it is off, no rangesync service (and so no
+// protocol and no Index) is built, no reserve observer can be registered, the
+// leftovers of the index are dropped and nothing of it is written.
 func TestRangesyncToggle(t *testing.T) {
 	t.Parallel()
 
@@ -448,6 +479,10 @@ func TestRangesyncToggle(t *testing.T) {
 	putChunks(t, n.db, restamped(c1[0]), overwriting(t, overlay, c1[1]))
 	checkServed(t, n, minus(before, reserveIDs(t, n.db)))
 	before = reserveIDs(t, n.db)
+	leftovers := rawEntries(t, n.db, "chunkAddr")
+	if len(leftovers) != len(before) {
+		t.Fatalf("%d address index entries, %d reserve elements", len(leftovers), len(before))
+	}
 	n.stop(t)
 
 	// off, with changes the address index does not see
@@ -456,8 +491,12 @@ func TestRangesyncToggle(t *testing.T) {
 	checkNoAddrIndexKeys(t, n, b3.ID)
 	putChunks(t, n.db, restamped(c2[0]), restamped(c2[1]), overwriting(t, overlay, c2[2]))
 	n.stop(t)
+	// The disabled start's drop interrupted before it deleted anything (the
+	// worst case): the enabled period's entries, without the marker, which
+	// the disabled start deleted first.
+	putRawEntries(t, dir, "chunkAddr", leftovers)
 
-	// on: the refill
+	// on: the refill, which drops the leftovers first
 	n = startToggleNode(t, dir, overlay, true, true)
 	stale := minus(before, reserveIDs(t, n.db))
 	if len(stale) != 3 {

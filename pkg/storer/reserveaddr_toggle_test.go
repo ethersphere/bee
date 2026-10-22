@@ -13,7 +13,6 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -89,7 +88,10 @@ func iterateAddrSet(t *testing.T, db *storer.DB, prefix swarm.Address, bits uint
 // ReserveIterateAddr over the whole address space and over every range of 1
 // to 3 bits yields exactly the reserve's elements with their batch IDs,
 // ReserveHasID and ReserveGetByID find each of them, and no stale element (one
-// the reserve no longer holds) is iterated, reported or returned.
+// the reserve no longer holds) is iterated or reported. ReserveGetByID of a
+// stale element is checked as part of the served surface, but it does not
+// test the index: it reads the chunk through the reserve's own items, keyed
+// by stamp hash, which no stale index entry can bring back.
 func checkAddrStoreServes(t *testing.T, db *storer.DB, stale []element) {
 	t.Helper()
 
@@ -318,64 +320,63 @@ func TestReserveAddrIndexToggleServed(t *testing.T) {
 // with the defaults, then the repairer, which drops the index and its marker)
 // on a store with an enabled index, one of whose chunks lost its data and is
 // removed by the repair. The next enabled start refills the index, which
-// serves exactly the repaired reserve. The damaged chunk is alone in its bin:
-// see TestReserveRepairMissingChunk for what the repairer does otherwise.
+// serves exactly the repaired reserve. The repair of an older build (without
+// rangesync) is simulated as this build's repair with the marker and the
+// entries written back afterwards, since such a repairer does not know them:
+// it deletes the reserve epoch (its step 0), so the marker no longer matches
+// and the next enabled start refills too. The damaged chunk is alone in its
+// bin: see TestReserveRepairMissingChunk (pkg/storer/migration) for what the
+// repairer does otherwise.
 func TestReserveAddrIndexRepair(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := swarm.RandAddress(t)
-	dir := t.TempDir()
-	batch := postagetesting.MustNewBatch()
-	db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
-	putReserveChunks(t, db, baseAddr, batch.ID, 20)
-	lone := chunk.GenerateTestRandomChunkAt(t, baseAddr, 6).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
-	putChunks(t, db, lone)
-	before := reserveSet(t, db)
-	closeDB(t, db)
+	for _, tc := range []struct {
+		name       string
+		olderBuild bool
+	}{
+		{name: "this build"},
+		{name: "older build", olderBuild: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	repairReserve(t, dir, baseAddr, func(db *storer.DB) { deleteChunkData(t, db, lone) })
+			baseAddr := swarm.RandAddress(t)
+			dir := t.TempDir()
+			batch := postagetesting.MustNewBatch()
+			db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+			putReserveChunks(t, db, baseAddr, batch.ID, 20)
+			lone := chunk.GenerateTestRandomChunkAt(t, baseAddr, 6).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+			putChunks(t, db, lone)
+			before := reserveSet(t, db)
+			closeDB(t, db)
 
-	db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
-	defer closeDB(t, db)
-	if db.AddrIndexFills() != 1 || !db.ReserveAddrIndexReady() {
-		t.Fatalf("enabled start after the repair: fills %d ready %v", db.AddrIndexFills(), db.ReserveAddrIndexReady())
-	}
-	stale := staleElements(t, db, before)
-	if len(stale) != 1 || !stale[0].addr.Equal(lone.Address()) {
-		t.Fatalf("the repair removed %d elements, want the damaged one", len(stale))
-	}
-	checkIndexEqualsReserve(t, db)
-	checkAddrStoreServes(t, db, stale)
-}
+			db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{keep: true})
+			leftovers, leftoverMarker := rawNamespace(t, db, "chunkAddr"), rawNamespace(t, db, "addrIndexValid")
+			closeDB(t, db)
 
-// TestReserveRepairMissingChunk is a T6.2 finding about the repairer, not the
-// address index (the code predates it): ReserveRepairer deletes every
-// ChunkBinItem (its step 2), then renumbers the bins from 1 in parallel (step
-// 3), where it removes a chunk whose data is missing with
-// RemoveChunkWithItem, which deletes the ChunkBinItem of the chunk's old bin
-// ID. If another chunk of the bin was given that bin ID first, that chunk's
-// new ChunkBinItem is deleted instead: the repair fails its own final check
-// (and without it would leave a reserve chunk no bin iteration finds). Here
-// the missing chunk had bin ID 1 and is the last one the repairer handles.
-func TestReserveRepairMissingChunk(t *testing.T) {
-	t.Parallel()
-	t.Skip("T6.2 finding, see the phase-6 Follow-ups: ReserveRepairer deletes a renumbered chunk's ChunkBinItem when another chunk of its bin is missing")
+			repairReserve(t, dir, baseAddr, func(db *storer.DB) { deleteChunkData(t, db, lone) })
+			if tc.olderBuild {
+				if len(leftovers) != len(before) || len(leftoverMarker) != 1 {
+					t.Fatalf("leftovers: %d entries, %d markers", len(leftovers), len(leftoverMarker))
+				}
+				db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{keep: true})
+				putRaw(t, db, "chunkAddr", leftovers)
+				putRaw(t, db, "addrIndexValid", leftoverMarker)
+				closeDB(t, db)
+			}
 
-	baseAddr := swarm.RandAddress(t)
-	batch := postagetesting.MustNewBatch()
-	chunks := make([]swarm.Chunk, 4*runtime.NumCPU()+4)
-	for i := range chunks {
-		chunks[i] = chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
-	}
-	// The repairer handles one bin of one batch in address order. The
-	// highest address is put first (bin ID 1) and handled last.
-	slices.SortFunc(chunks, func(a, b swarm.Chunk) int { return bytes.Compare(b.Address().Bytes(), a.Address().Bytes()) })
-	db := openAddrIndexDB(t, t.TempDir(), baseAddr, addrIndexOpts{capacity: 2 * len(chunks)})
-	defer closeDB(t, db)
-	putChunks(t, db, chunks...)
-	deleteChunkData(t, db, chunks[0])
-	if err := localmigration.ReserveRepairer(db.Storage(), storage.ChunkType, log.Noop)(); err != nil {
-		t.Fatalf("repair: %v", err)
+			db = openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+			defer closeDB(t, db)
+			if db.AddrIndexFills() != 1 || !db.ReserveAddrIndexReady() {
+				t.Fatalf("enabled start after the repair: fills %d ready %v", db.AddrIndexFills(), db.ReserveAddrIndexReady())
+			}
+			stale := staleElements(t, db, before)
+			if len(stale) != 1 || !stale[0].addr.Equal(lone.Address()) {
+				t.Fatalf("the repair removed %d elements, want the damaged one", len(stale))
+			}
+			checkIndexEqualsReserve(t, db)
+			checkAddrStoreServes(t, db, stale)
+		})
 	}
 }
 
