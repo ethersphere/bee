@@ -180,7 +180,7 @@ the implementer (otherwise every task conflicts on this list).
 **Phase 6**
 - [x] T6.0 Draft acceptance criteria (wave A)
 - [ ] T6.1 Mixed-network acceptance test suite
-- [ ] T6.2 Toggle-safety and upgrade/downgrade tests
+- [x] T6.2 Toggle-safety and upgrade/downgrade tests
 - [ ] T6.3 Testnet runbook, dashboards, comparison runs
 - [ ] T6.4 Acceptance criteria + exit report (input for the phase-out proposal)
 
