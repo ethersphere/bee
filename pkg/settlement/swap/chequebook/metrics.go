@@ -24,7 +24,7 @@ type metrics struct {
 }
 
 func newMetrics() metrics {
-	subsystem := "chequebook"
+	subsystem := loggerName
 
 	return metrics{
 		OutOfFunds: prometheus.NewCounter(prometheus.CounterOpts{
