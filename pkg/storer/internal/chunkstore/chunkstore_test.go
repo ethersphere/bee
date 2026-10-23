@@ -17,13 +17,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -497,17 +496,160 @@ type chunkStore struct {
 	sharky *sharky.Store
 }
 
-func makeStorage(t *testing.T) *chunkStore {
-	t.Helper()
+func makeStorage(tb testing.TB) *chunkStore {
+	tb.Helper()
 
 	store := inmemstore.New()
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
-	assert.NoError(t, err)
+	assert.NoError(tb, err)
 
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close())
-		assert.NoError(t, sharky.Close())
+	tb.Cleanup(func() {
+		assert.NoError(tb, store.Close())
+		assert.NoError(tb, sharky.Close())
 	})
 
 	return &chunkStore{transaction.NewStorage(sharky, store), sharky}
+}
+
+// BenchmarkChunkStoreGet measures a single chunk read: one retrieval-index
+// lookup followed by one sharky read. It is the micro-benchmark for the read
+// path that the reserve sampler drives once per chunk.
+//
+// The two variants differ only in where the ChunkStore handle comes from.
+// "per_call" mirrors what the sampler does today, building a fresh handle for
+// every chunk; "hoisted" builds it once. The gap between them is the cost of
+// that handle alone.
+func BenchmarkChunkStoreGet(b *testing.B) {
+	ctx := context.Background()
+
+	setup := func(b *testing.B) (*chunkStore, swarm.Address) {
+		b.Helper()
+
+		st := makeStorage(b)
+		ch := chunktest.GenerateTestRandomChunk()
+
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch)
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		return st, ch.Address()
+	}
+
+	b.Run("per_call", func(b *testing.B) {
+		st, addr := setup(b)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := st.ChunkStore().Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("hoisted", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("get_into", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+		buf := make([]byte, swarm.SocMaxChunkSize)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.GetInto(ctx, addr, buf); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+// TestGetInto checks the buffer contract of GetInto: the size check is on
+// len(buf), one full-length buffer serves both a CAC and a larger SOC via the
+// returned count, nothing is written past len(buf), and a buffer whose length
+// is too short is rejected even when its capacity would fit the chunk.
+func TestGetInto(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st := makeStorage(t)
+
+	cac := chunktest.GenerateTestRandomChunk()
+	soc := soctesting.GenerateMockSOC(t, cac.Data()[swarm.SpanSize:]).Chunk()
+	if len(soc.Data()) <= len(cac.Data()) {
+		t.Fatalf("soc data (%d) should be larger than cac data (%d)", len(soc.Data()), len(cac.Data()))
+	}
+
+	for _, ch := range []swarm.Chunk{cac, soc} {
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cs := st.ChunkStore()
+
+	t.Run("reused buffer serves CAC and SOC", func(t *testing.T) {
+		buf := make([]byte, swarm.SocMaxChunkSize)
+		for _, ch := range []swarm.Chunk{cac, soc, cac} {
+			n, err := cs.GetInto(ctx, ch.Address(), buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != len(ch.Data()) || !bytes.Equal(buf[:n], ch.Data()) {
+				t.Fatalf("chunk %s: got %d bytes, want %d with matching data", ch.Address(), n, len(ch.Data()))
+			}
+		}
+	})
+
+	t.Run("does not write past len", func(t *testing.T) {
+		backing := make([]byte, swarm.SocMaxChunkSize)
+		for i := range backing {
+			backing[i] = 0xff
+		}
+		buf := backing[:len(cac.Data())]
+		n, err := cs.GetInto(ctx, cac.Address(), buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != len(cac.Data()) || !bytes.Equal(buf, cac.Data()) {
+			t.Fatalf("got %d bytes, want %d with matching data", n, len(cac.Data()))
+		}
+		for i := n; i < len(backing); i++ {
+			if backing[i] != 0xff {
+				t.Fatalf("GetInto wrote past len(buf) at index %d", i)
+			}
+		}
+	})
+
+	t.Run("length too small", func(t *testing.T) {
+		// Capacity would fit the chunk; only the length is short.
+		buf := make([]byte, len(soc.Data())-1, swarm.SocMaxChunkSize)
+		n, err := cs.GetInto(ctx, soc.Address(), buf)
+		if err == nil {
+			t.Fatal("expected error for buffer shorter than the chunk")
+		}
+		if n != 0 {
+			t.Fatalf("got %d bytes, want 0", n)
+		}
+	})
 }

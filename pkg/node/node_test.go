@@ -5,9 +5,16 @@
 package node_test
 
 import (
+	"context"
+	"errors"
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 )
 
@@ -181,5 +188,80 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 		if got != want {
 			t.Fatalf("closer %q registered with the wrong instance", name)
 		}
+	}
+}
+
+// orderedCloser records its name in order when closed and returns err.
+type orderedCloser struct {
+	name  string
+	order *[]string
+	err   error
+}
+
+func (c *orderedCloser) Close() error {
+	*c.order = append(*c.order, c.name)
+	return c.err
+}
+
+// Shutdown must close the API service, not only its http.Server: hijacked
+// websocket connections outlive the server, and only the service tells their
+// handlers to send a close frame and return.
+func TestShutdownClosesAPIService(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	server := &orderedCloser{name: "server", order: &order}
+	service := &orderedCloser{name: "service", order: &order, err: errors.New("open websockets")}
+
+	err := node.NewTestBeeWithAPI(server, service).Shutdown()
+
+	// The server stops accepting connections before the service closes the
+	// websockets that are already open.
+	if want := []string{"server", "service"}; !slices.Equal(order, want) {
+		t.Fatalf("closed %v, want %v", order, want)
+	}
+	if err == nil || !strings.Contains(err.Error(), "api service: open websockets") {
+		t.Fatalf("expected the api service close error in the shutdown error, got %v", err)
+	}
+}
+
+// A node whose startup fails before the API service is configured must still
+// shut down cleanly: the service's quit channel only exists once Configure has
+// run, so it must not be closed before then.
+func TestNewBeeStartupFailureBeforeAPIConfigure(t *testing.T) {
+	t.Parallel()
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	libp2pKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pssKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = node.NewBee(
+		context.Background(),
+		"127.0.0.1:0",
+		&key.PublicKey,
+		crypto.NewDefaultSigner(key),
+		1,
+		log.Noop,
+		libp2pKey,
+		pssKey,
+		accesscontrol.NewDefaultSession(key),
+		&node.Options{
+			DataDir:                 t.TempDir(),
+			StatestoreCacheCapacity: 1000,
+			APIAddr:                 "127.0.0.1:0",
+			PaymentThreshold:        "1", // rejected after the API service is created
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "payment threshold below minimum") {
+		t.Fatalf("expected the payment threshold error, got %v", err)
 	}
 }

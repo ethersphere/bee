@@ -3,12 +3,9 @@ name: Beekeeper
 on:
   repository_dispatch:
     types: [trigger-beekeeper, beekeeper]
+  # No paths-ignore on pull_request: the required check below must always
+  # report. Docs-only PRs are detected by the changes job and skip the work.
   pull_request:
-    paths-ignore:
-      - packaging/**
-      - openapi/**
-      - "**/*.md"
-      - ".github/ISSUE_TEMPLATE/**"
     branches:
       - "**"
 
@@ -32,30 +29,55 @@ env:
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      # "false" only for a pull request touching nothing but ignored paths.
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+    steps:
+      - name: Detect code changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - "!packaging/**"
+              - "!openapi/**"
+              - "!**/*.md"
+              - "!.github/ISSUE_TEMPLATE/**"
   init:
     name: Init
+    needs: [changes]
+    # When skipped, the dependent "Integration tests" job is skipped too, and
+    # skipped jobs report success to required status checks.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     outputs:
       msg: ${{ steps.commit.outputs.msg }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         if: github.event.action != 'beekeeper'
         with:
           fetch-depth: 0
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         if: github.event.action == 'beekeeper'
         with:
           fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           cache: false
           go-version-file: go.mod
       - name: Cache Go Modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -106,7 +128,7 @@ jobs:
     needs: [init]
     steps:
       - name: Cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}

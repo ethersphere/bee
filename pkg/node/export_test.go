@@ -4,7 +4,11 @@
 
 package node
 
-import "io"
+import (
+	"io"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+)
 
 var (
 	ValidatePublicAddress = validatePublicAddress
@@ -27,4 +31,15 @@ func (b *Bee) ShutdownClosersByName() map[string]io.Closer {
 		m[nc.name] = nc.closer
 	}
 	return m
+}
+
+// NewTestBeeWithAPI builds a Bee with only what Shutdown needs and the API
+// server and service closers set, for exercising how Shutdown closes the API.
+func NewTestBeeWithAPI(apiServer, apiService io.Closer) *Bee {
+	return &Bee{
+		logger:           log.Noop,
+		ctxCancel:        func() {},
+		apiCloser:        apiServer,
+		apiServiceCloser: apiService,
+	}
 }

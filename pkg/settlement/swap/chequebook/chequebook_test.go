@@ -231,12 +231,10 @@ func TestChequebookIssue(t *testing.T) {
 
 	// issue a cheque
 	expectedCheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: amount,
-			Chequebook:       address,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: amount,
+		Chequebook:       address,
+		Signature:        sig,
 	}
 
 	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
@@ -267,12 +265,10 @@ func TestChequebookIssue(t *testing.T) {
 
 	// issue another cheque for the same beneficiary
 	expectedCheque = &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: expectedCumulative,
-			Chequebook:       address,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: expectedCumulative,
+		Chequebook:       address,
+		Signature:        sig,
 	}
 
 	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {
@@ -303,12 +299,10 @@ func TestChequebookIssue(t *testing.T) {
 
 	// issue another cheque for the different beneficiary
 	expectedChequeOwner := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      ownerAdress,
-			CumulativePayout: amount,
-			Chequebook:       address,
-		},
-		Signature: sig,
+		Beneficiary:      ownerAdress,
+		CumulativePayout: amount,
+		Chequebook:       address,
+		Signature:        sig,
 	}
 
 	chequeSigner.sign = func(cheque *chequebook.Cheque) ([]byte, error) {

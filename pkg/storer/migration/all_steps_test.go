@@ -6,17 +6,16 @@ package migration_test
 
 import (
 	"context"
+	"maps"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-
-	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPreSteps(t *testing.T) {
@@ -80,9 +79,7 @@ func Test_GapInVersionsValidation(t *testing.T) {
 	}
 
 	invalid := make(migration.Steps, len(steps))
-	for version, step := range steps {
-		invalid[version] = step
-	}
+	maps.Copy(invalid, steps)
 
 	// Create a gap without depending on any concrete version numbers:
 	// remove the current latest step and add a new one at latest+2.

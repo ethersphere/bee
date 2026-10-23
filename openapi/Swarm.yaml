@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.1
+  version: 8.2.1
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -242,6 +242,8 @@ paths:
                 format: binary
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     head:
@@ -967,9 +969,23 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: "Single Owner Chunk address (which may have multiple payloads)"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmSocFieldsParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCacheWrappedChunkParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmSocFieldsQueryParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCacheWrappedChunkQueryParameter"
       responses:
         "200":
-          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk address
+          description: >
+            Establishes a WebSocket subscription for incoming messages on the
+            Single Owner Chunk address. Each message is the binary serialization
+            of the Single Owner Chunk fields requested through the
+            swarm-soc-fields header or query parameter (defaults to the wrapped
+            chunk payload).
+            Pending messages are buffered per subscription up to a fixed limit;
+            a client that does not keep up with the incoming rate misses the
+            oldest of them, as they are discarded in favor of the newest ones.
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1078,6 +1094,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2430,6 +2448,36 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    patch:
+      summary: Enable or disable participation in new redistribution rounds
+      description: >
+        Controls whether the node will commit in a new redistribution round.
+        Sampling still runs while disabled so that a later re-enable can commit
+        in the following commit phase. Disabling does not abort an in-flight
+        commit and does not skip reveal or claim for a round that already committed.
+        Re-enabling during a commit phase that was already skipped does not retry
+        that round. After a node restart participation is enabled again.
+      tags:
+        - RedistributionState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableRequest"
+      responses:
+        "200":
+          description: Participation flag updated
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":

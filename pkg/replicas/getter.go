@@ -19,14 +19,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// ErrSwarmageddon is returned in case of a vis mayor called Swarmageddon.
-// Swarmageddon is the situation when none of the replicas can be retrieved.
-// If 2^{depth} replicas were uploaded and they all have valid postage stamps
-// then the probability of Swarmageddon is less than 0.000001
-// assuming the error rate of chunk retrievals stays below the level expressed
-// as depth by the publisher.
 var (
-	ErrSwarmageddon = errors.New("swarmageddon has begun")
+	// ErrContentNotFound is returned when content and erasure coded content cannot be found.
+	ErrContentNotFound = errors.New("erasure coded content not found")
 	// errGetterExhausted is returned when the retry loop exhausts all levels without
 	// receiving a result or enough errors to trigger ErrSwarmageddon.
 	// This path should never be reached under normal operation.
@@ -115,7 +110,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			errs = errors.Join(errs, err)
 			errcnt++
 			if errcnt > total {
-				return nil, errors.Join(ErrSwarmageddon, errs)
+				return nil, errors.Join(ErrContentNotFound, errs)
 			}
 
 			// ticker switches on the address channel

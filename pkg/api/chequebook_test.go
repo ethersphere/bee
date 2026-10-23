@@ -39,7 +39,7 @@ func TestChequebookBalance(t *testing.T) {
 		return returnedAvailableBalance, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -69,7 +69,7 @@ func TestChequebookBalanceError(t *testing.T) {
 		return big.NewInt(0), wantErr
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
@@ -92,7 +92,7 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 		return nil, errors.New("New errors")
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -114,7 +114,7 @@ func TestChequebookAddress(t *testing.T) {
 		return common.HexToAddress("0xfffff")
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
 	})
 
@@ -149,7 +149,7 @@ func TestChequebookWithdraw(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -178,7 +178,7 @@ func TestChequebookWithdraw(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -211,7 +211,7 @@ func TestChequebookDeposit(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -241,7 +241,7 @@ func TestChequebookDeposit(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -287,30 +287,24 @@ func TestChequebookLastCheques(t *testing.T) {
 		lastSentCheques := make(map[string]*chequebook.SignedCheque, 3)
 		sig := make([]byte, 65)
 		lastSentCheques[addr1.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary1,
-				CumulativePayout: cumulativePayout1,
-				Chequebook:       chequebookAddress1,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary1,
+			CumulativePayout: cumulativePayout1,
+			Chequebook:       chequebookAddress1,
+			Signature:        sig,
 		}
 
 		lastSentCheques[addr2.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary2,
-				CumulativePayout: cumulativePayout2,
-				Chequebook:       chequebookAddress2,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary2,
+			CumulativePayout: cumulativePayout2,
+			Chequebook:       chequebookAddress2,
+			Signature:        sig,
 		}
 
 		lastSentCheques[addr3.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary3,
-				CumulativePayout: cumulativePayout3,
-				Chequebook:       chequebookAddress3,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary3,
+			CumulativePayout: cumulativePayout3,
+			Chequebook:       chequebookAddress3,
+			Signature:        sig,
 		}
 		return lastSentCheques, nil
 	}
@@ -320,36 +314,30 @@ func TestChequebookLastCheques(t *testing.T) {
 		sig := make([]byte, 65)
 
 		lastReceivedCheques[addr1.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout4,
-				Chequebook:       chequebookAddress1,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout4,
+			Chequebook:       chequebookAddress1,
+			Signature:        sig,
 		}
 
 		lastReceivedCheques[addr4.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout5,
-				Chequebook:       chequebookAddress4,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout5,
+			Chequebook:       chequebookAddress4,
+			Signature:        sig,
 		}
 
 		lastReceivedCheques[addr5.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout6,
-				Chequebook:       chequebookAddress5,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout6,
+			Chequebook:       chequebookAddress5,
+			Signature:        sig,
 		}
 
 		return lastReceivedCheques, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
 	})
 
@@ -435,12 +423,10 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 		sig := make([]byte, 65)
 
 		lastSentCheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary1,
-				CumulativePayout: cumulativePayout1,
-				Chequebook:       chequebookAddress,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary1,
+			CumulativePayout: cumulativePayout1,
+			Chequebook:       chequebookAddress,
+			Signature:        sig,
 		}
 
 		return lastSentCheque, nil
@@ -448,18 +434,16 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 
 	lastReceivedChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
 		lastReceivedCheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary0,
-				CumulativePayout: cumulativePayout2,
-				Chequebook:       chequebookAddress,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary0,
+			CumulativePayout: cumulativePayout2,
+			Chequebook:       chequebookAddress,
+			Signature:        sig,
 		}
 
 		return lastReceivedCheque, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
 	})
 
@@ -497,7 +481,7 @@ func TestChequebookCashout(t *testing.T) {
 		return deployCashingHash, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -527,7 +511,7 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 		return deployCashingHash, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -568,12 +552,10 @@ func TestChequebookCashoutStatus(t *testing.T) {
 
 	sig := make([]byte, 65)
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	result := &chequebook.CashChequeResult{
@@ -602,7 +584,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -649,7 +631,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -687,7 +669,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -714,7 +696,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string

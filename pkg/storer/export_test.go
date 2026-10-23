@@ -5,8 +5,10 @@
 package storer
 
 import (
+	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func (db *DB) Reserve() *reserve.Reserve {
@@ -34,4 +36,15 @@ func (db *DB) WaitForBgCacheWorkers() (unblock func()) {
 
 func DefaultOptions() *Options {
 	return defaultOptions()
+}
+
+// TransformedAddress exposes the sampler's per-chunk hashing so it can be
+// benchmarked on its own.
+//
+// The exported signature takes a swarm.Chunk and is deliberately held stable
+// even where transformedAddress itself does not, so that the same benchmark
+// source can be run against branches that shape the internal function
+// differently. Only this shim changes between them.
+func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
+	return transformedAddress(hasher, ch.Address(), ch.Data(), chType)
 }

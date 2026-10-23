@@ -16,6 +16,7 @@ import (
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
@@ -63,6 +64,7 @@ const (
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
+	optionNamePostageSyncBlockRange        = "postage-sync-block-range"
 	optionNamePriceOracleAddress           = "price-oracle-address"
 	optionNameRedistributionAddress        = "redistribution-address"
 	optionNameStakingAddress               = "staking-address"
@@ -292,8 +294,7 @@ func (c *command) initConfig() (err error) {
 
 	// If a config file is found, read it in.
 	if err := config.ReadInConfig(); err != nil {
-		var e viper.ConfigFileNotFoundError
-		if !errors.As(err, &e) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return err
 		}
 	}
@@ -365,6 +366,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
+	cmd.Flags().Uint64(optionNamePostageSyncBlockRange, listener.DefaultBlockPage, "maximum number of blocks per eth_getLogs request when syncing postage contract events")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
@@ -388,7 +390,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
-	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
+	cmd.Flags().Uint64(optionNameGasLimitFallback, 900_000, "gas limit fallback when estimation fails for contract transactions")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")

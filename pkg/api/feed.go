@@ -132,7 +132,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	sig := socCh.Signature()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:              {"application/octet-stream"},
+		ContentTypeHeader:              {contentTypeOctetStream},
 		SwarmFeedIndexHeader:           {hex.EncodeToString(curBytes)},
 		SwarmFeedIndexNextHeader:       {hex.EncodeToString(nextBytes)},
 		SwarmSocSignatureHeader:        {hex.EncodeToString(sig)},
@@ -244,6 +244,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "create manifest failed")
 		}
+		return
 	}
 
 	meta := map[string]string{

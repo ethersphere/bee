@@ -79,9 +79,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -120,9 +121,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -161,10 +163,11 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
 
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -201,9 +204,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -264,9 +268,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -344,9 +349,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			0,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -372,9 +378,10 @@ func TestListener(t *testing.T) {
 			1,
 			50*time.Millisecond,
 			0,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case <-c.C:
@@ -399,9 +406,10 @@ func TestListener(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -419,15 +427,16 @@ func TestListener(t *testing.T) {
 }
 
 // TestListenerPageSize verifies that the block paging window is selected based
-// on the backend: a plain backend pages by blockPage, while a backend that also
-// exposes GetBatchSnapshot (the snapshot filterer) pages by blockPageSnapshot.
+// on the backend: a plain backend pages by the configured block page, while a
+// backend that also exposes GetBatchSnapshot (the snapshot filterer) pages by
+// blockPageSnapshot.
 func TestListenerPageSize(t *testing.T) {
 	t.Parallel()
 
 	// well above both page sizes so the first iteration is always capped by paging
 	const blockNumber = uint64(200000)
 
-	firstPageTo := func(t *testing.T, mkFilterer func(*pageCaptureFilterer) listener.BlockHeightContractFilterer) uint64 {
+	firstPageTo := func(t *testing.T, blockPage uint64, mkFilterer func(*pageCaptureFilterer) listener.BlockHeightContractFilterer) uint64 {
 		t.Helper()
 
 		base := &pageCaptureFilterer{
@@ -447,6 +456,7 @@ func TestListenerPageSize(t *testing.T) {
 			1,
 			stallingTimeout,
 			backoffTime,
+			blockPage,
 		)
 		testutil.CleanupCloser(t, l)
 
@@ -462,17 +472,34 @@ func TestListenerPageSize(t *testing.T) {
 		}
 	}
 
-	t.Run("standard backend uses block page", func(t *testing.T) {
-		to := firstPageTo(t, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
-			return f
-		})
-		if want := listener.BlockPage - 1; to != want {
+	standard := func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
+		return f
+	}
+
+	t.Run("standard backend uses default block page", func(t *testing.T) {
+		to := firstPageTo(t, listener.DefaultBlockPage, standard)
+		if want := listener.DefaultBlockPage - 1; to != want {
+			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
+		}
+	})
+
+	t.Run("zero block page falls back to default", func(t *testing.T) {
+		to := firstPageTo(t, 0, standard)
+		if want := listener.DefaultBlockPage - 1; to != want {
+			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
+		}
+	})
+
+	t.Run("standard backend uses configured block page", func(t *testing.T) {
+		const blockPage = 5000
+		to := firstPageTo(t, blockPage, standard)
+		if want := uint64(blockPage - 1); to != want {
 			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
 		}
 	})
 
 	t.Run("snapshot backend uses snapshot page", func(t *testing.T) {
-		to := firstPageTo(t, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
+		to := firstPageTo(t, listener.DefaultBlockPage, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
 			return snapshotPageCaptureFilterer{f}
 		})
 		if want := listener.BlockPageSnapshot - 1; to != want {
@@ -492,8 +519,7 @@ func TestListenerBackoffAfterPagedError(t *testing.T) {
 
 	f := &backoffFilterer{done: make(chan struct{})}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	l := listener.New(
 		nil,
@@ -504,6 +530,7 @@ func TestListenerBackoffAfterPagedError(t *testing.T) {
 		1,
 		stallingTimeout,
 		testBackoff,
+		listener.DefaultBlockPage,
 	)
 	testutil.CleanupCloser(t, l)
 
@@ -546,7 +573,7 @@ type backoffFilterer struct {
 }
 
 func (f *backoffFilterer) BlockNumber(context.Context) (uint64, error) {
-	return listener.BlockPage * 3, nil
+	return listener.DefaultBlockPage * 3, nil
 }
 
 func (f *backoffFilterer) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {

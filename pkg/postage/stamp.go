@@ -29,6 +29,8 @@ var (
 	ErrInvalidIndex = errors.New("invalid index")
 	// ErrStampInvalid is the error given if stamp cannot deserialise.
 	ErrStampInvalid = errors.New("invalid stamp")
+	// ErrBatchInvalid is the error given if batch cannot deserialise.
+	ErrBatchInvalid = errors.New("invalid batch")
 	// ErrBucketMismatch is the error given if stamp index bucket verification fails.
 	ErrBucketMismatch = errors.New("bucket mismatch")
 	// ErrInvalidBatchID is the error returned if the batch ID is incorrect
@@ -39,6 +41,9 @@ var (
 	ErrInvalidBatchTimestamp = errors.New("invalid batch timestamp")
 	// ErrInvalidBatchSignature is the error returned if the batch signature is incorrect
 	ErrInvalidBatchSignature = errors.New("invalid batch signature")
+	// ErrInvalidChunkAddress is the error returned if the chunk address is not a
+	// full-length swarm address.
+	ErrInvalidChunkAddress = errors.New("invalid chunk address")
 )
 
 var _ swarm.Stamp = (*Stamp)(nil)
@@ -211,6 +216,11 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
 func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDepth uint8, immutable bool) error {
+	// The chunk address arrives from the wire, and toBucket slices its first
+	// four bytes, so a short address must be rejected before it is used.
+	if !chunkAddr.IsValidLength() {
+		return ErrInvalidChunkAddress
+	}
 	signerAddr, err := RecoverBatchOwner(chunkAddr, s)
 	if err != nil {
 		return err

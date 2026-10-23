@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"errors"
 	"testing"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -234,4 +235,60 @@ func TestGranteeRemoveTwo(t *testing.T) {
 	assertNoError(t, "2nd granteelist add", err)
 	err = gl.Remove([]*ecdsa.PublicKey{keys[0]})
 	assertNoError(t, "granteelist remove", err)
+}
+
+func TestGranteeDeserializeMalformedLength(t *testing.T) {
+	t.Parallel()
+
+	keys, err := generateKeyListFixture()
+	assertNoError(t, "key generation", err)
+	valid, err := accesscontrol.Serialize(keys)
+	assertNoError(t, "key serialization", err)
+
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "single byte", data: []byte{0x04}},
+		{name: "one byte short", data: valid[:len(valid)-1]},
+		{name: "one byte long", data: append(append([]byte{}, valid...), 0x04)},
+		{name: "truncated first key", data: valid[:accesscontrol.PublicKeyLen-1]},
+		{name: "invalid key", data: make([]byte, accesscontrol.PublicKeyLen)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := accesscontrol.Deserialize(tc.data)
+			if !errors.Is(err, accesscontrol.ErrInvalidGranteeList) {
+				t.Fatalf("got error %v, want %v", err, accesscontrol.ErrInvalidGranteeList)
+			}
+			assert.Empty(t, res)
+		})
+	}
+
+	res, err := accesscontrol.Deserialize([]byte{})
+	assertNoError(t, "deserialize empty", err)
+	assert.Empty(t, res)
+
+	res, err = accesscontrol.Deserialize(valid)
+	assertNoError(t, "deserialize valid", err)
+	assert.Len(t, res, len(keys))
+}
+
+// TestNewGranteeListReferenceMalformedBlob asserts that loading a stored blob
+// whose length is not a multiple of the public key length returns an error
+// instead of panicking or masking the corruption as an empty grantee list.
+func TestNewGranteeListReferenceMalformedBlob(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ls := createLs()
+
+	ref, err := ls.Save(ctx, []byte("0"))
+	assertNoError(t, "save malformed grantee blob", err)
+
+	_, err = accesscontrol.NewGranteeListReference(ctx, ls, swarm.NewAddress(ref))
+	if !errors.Is(err, accesscontrol.ErrInvalidGranteeList) {
+		t.Fatalf("got error %v, want %v", err, accesscontrol.ErrInvalidGranteeList)
+	}
 }

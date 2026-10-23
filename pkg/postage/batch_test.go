@@ -6,6 +6,8 @@ package postage_test
 
 import (
 	"bytes"
+	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -49,5 +51,53 @@ func TestBatchMarshalling(t *testing.T) {
 	}
 	if a.Immutable != b.Immutable {
 		t.Fatalf("depth mismatch, expected %v, got %v", a.Immutable, b.Immutable)
+	}
+}
+
+// TestBatchUnmarshalBufferLength tests that a truncated buffer is rejected
+// rather than panicking, and that the legacy 96 byte serialisation is still
+// accepted.
+func TestBatchUnmarshalBufferLength(t *testing.T) {
+	t.Parallel()
+
+	valid, err := postagetesting.MustNewBatch().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, buf := range [][]byte{nil, {}, []byte("0"), valid[:94]} {
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(buf); !errors.Is(err, postage.ErrBatchInvalid) {
+			t.Fatalf("expected %v for buffer of length %d, got %v", postage.ErrBatchInvalid, len(buf), err)
+		}
+	}
+
+	// legacy encoding carried a trailing storage radius byte.
+	legacy := append(append([]byte{}, valid...), 0)
+	b := &postage.Batch{}
+	if err := b.UnmarshalBinary(legacy); err != nil {
+		t.Fatalf("unexpected error unmarshalling legacy batch: %v", err)
+	}
+}
+
+// TestBatchMarshalOversizedFields tests that oversized fields are rejected
+// rather than corrupting neighbouring fields or panicking.
+func TestBatchMarshalOversizedFields(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		mod  func(*postage.Batch)
+	}{
+		{"nil value", func(b *postage.Batch) { b.Value = nil }},
+		{"oversized value", func(b *postage.Batch) { b.Value = new(big.Int).Lsh(big.NewInt(1), 8*64) }},
+		{"oversized id", func(b *postage.Batch) { b.ID = make([]byte, 33) }},
+		{"oversized owner", func(b *postage.Batch) { b.Owner = make([]byte, 21) }},
+	} {
+		b := postagetesting.MustNewBatch()
+		tc.mod(b)
+		if _, err := b.MarshalBinary(); !errors.Is(err, postage.ErrBatchInvalid) {
+			t.Fatalf("%s: expected %v, got %v", tc.name, postage.ErrBatchInvalid, err)
+		}
 	}
 }

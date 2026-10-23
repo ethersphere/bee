@@ -133,10 +133,8 @@ func mapBlockListedPeers(peers []p2p.BlockListedPeer) []BlockListedPeer {
 	out := make([]BlockListedPeer, 0, len(peers))
 	for _, peer := range peers {
 		out = append(out, BlockListedPeer{
-			Peer: Peer{
-				Address:  peer.Address,
-				FullNode: peer.FullNode,
-			},
+			Address:  peer.Address,
+			FullNode: peer.FullNode,
 			Reason:   peer.Reason,
 			Duration: int(peer.Duration.Seconds()),
 		})

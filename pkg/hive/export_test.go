@@ -11,8 +11,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive/pb"
 )
 
-var MaxBatchSize = maxBatchSize
-var LimitBurst = limitBurst
+var (
+	MaxBatchSize      = maxBatchSize
+	LimitBurst        = limitBurst
+	CoalesceThreshold = coalesceThreshold
+	MessageTimeout    = messageTimeout
+)
 
 func (s *Service) SetTimeFunc(f func() time.Time) {
 	s.now = f
