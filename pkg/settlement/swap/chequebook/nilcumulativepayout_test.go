@@ -177,8 +177,8 @@ func TestChequebookIssueNilCumulativePayout(t *testing.T) {
 	chequebookService, err := chequebook.New(
 		transactionmock.New(
 			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
 				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(100).FillBytes(make([]byte, 32)), "balance"),
 			),
 		),
 		address,
@@ -186,6 +186,7 @@ func TestChequebookIssueNilCumulativePayout(t *testing.T) {
 		store,
 		&chequeSignerMock{},
 		erc20mock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)

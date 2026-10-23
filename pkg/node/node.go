@@ -612,6 +612,7 @@ func NewBee(
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				erc20Service,
+				o.BlockTime,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("init chequebook service: %w", err)
@@ -1436,6 +1437,9 @@ func NewBee(
 		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
 		if swapService != nil {
 			apiService.MustRegisterMetrics(swapService.Metrics()...)
+		}
+		if c, ok := chequebookService.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(c.Metrics()...)
 		}
 
 		apiService.Configure(signer, tracer, api.Options{
