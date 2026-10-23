@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -62,6 +63,14 @@ func (c *command) initStartCmd() (err error) {
 			fmt.Print(beeWelcomeMessage)
 			logger.Info("bee version", "version", bee.Version)
 
+			// Resolve the node mode before the node is built, so that an invalid
+			// configuration exits with a non-zero status, and before the keystore
+			// is unlocked.
+			nodeMode, err := c.resolveNodeMode(logger)
+			if err != nil {
+				return err
+			}
+
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
 			sysInterruptChannel := make(chan os.Signal, 1)
@@ -79,7 +88,7 @@ func (c *command) initStartCmd() (err error) {
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
-			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
+			respC := buildBeeNodeAsync(ctx, c, cmd, logger, nodeMode)
 			var beeNode atomic.Value
 
 			p := &program{
@@ -180,18 +189,18 @@ type buildBeeNodeResp struct {
 	err error
 }
 
-func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
+func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger, nodeMode node.NodeMode) <-chan buildBeeNodeResp {
 	respC := make(chan buildBeeNodeResp, 1)
 
 	go func() {
-		bee, err := buildBeeNode(ctx, c, cmd, logger)
+		bee, err := buildBeeNode(ctx, c, cmd, logger, nodeMode)
 		respC <- buildBeeNodeResp{bee, err}
 	}()
 
 	return respC
 }
 
-func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
+func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger, nodeMode node.NodeMode) (*node.Bee, error) {
 	var err error
 
 	// If the resolver is specified, resolve all connection strings
@@ -211,11 +220,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	}
 
 	bootNode := c.config.GetBool(optionNameBootnodeMode)
-	fullNode := c.config.GetBool(optionNameFullNode)
-
-	if bootNode && !fullNode {
-		return nil, errors.New("boot node must be started as a full node")
-	}
 
 	mainnet := c.config.GetBool(optionNameMainNet)
 	userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
@@ -324,7 +328,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
-		FullNodeMode:                  fullNode,
+		NodeMode:                      nodeMode,
 		LightNodeLimit:                c.config.GetInt(optionNameLightNodeLimit),
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
@@ -368,6 +372,270 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	})
 
 	return b, err
+}
+
+// legacyNodeModeRemovalVersion is the release in which node-mode inference from
+// the deprecated full-node option and blockchain-rpc-endpoint presence is
+// removed. From that release on, node-mode is required.
+const legacyNodeModeRemovalVersion = "v2.11.0"
+
+// resolveNodeMode determines the effective node mode from config. There are
+// two regimes, selected by whether node-mode is set.
+//
+// node-mode unset (legacy): the node behaves as releases before node-mode
+// existed. The mode is inferred from the deprecated full-node option and the
+// presence of blockchain-rpc-endpoint, and the flag defaults of true for
+// chequebook-enable and storage-incentives-enable stay in effect. A deprecation
+// warning lists the config changes that keep the node's behavior once
+// node-mode is set, and the release in which the inference is removed.
+//
+// node-mode set: the mode owns the config. Options the mode implies are
+// enabled unless the operator explicitly disabled them (full bootnodes are
+// exempt), options the mode cannot support are rejected when explicitly enabled
+// (overriding the pflag defaults of true when unset), and
+// blockchain-rpc-endpoint is required for light and full nodes. An unset
+// chequebook-enable follows swap-enable. Implied values are written back to
+// config so the rest of node startup picks them up.
+//
+// In both regimes, options the resolved mode cannot run with are rejected
+// before the node is built.
+func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
+	raw := c.config.GetString(optionNameNodeMode)
+	legacy := raw == ""
+
+	var (
+		mode node.NodeMode
+		err  error
+	)
+	if legacy {
+		mode, err = c.resolveLegacyNodeMode()
+	} else {
+		mode, err = c.resolveExplicitNodeMode(logger, raw)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := c.validateNodeModeOptions(mode); err != nil {
+		return "", err
+	}
+	if legacy {
+		c.logLegacyNodeModeMigration(logger, mode)
+	}
+	return mode, nil
+}
+
+// resolveExplicitNodeMode applies the regime in which node-mode is set. The
+// value is matched case-insensitively, ignoring surrounding whitespace.
+func (c *command) resolveExplicitNodeMode(logger log.Logger, raw string) (node.NodeMode, error) {
+	mode := node.NodeMode(strings.ToLower(strings.TrimSpace(raw)))
+	if !mode.IsValid() {
+		return "", fmt.Errorf("invalid node-mode %q: must be one of full, light, ultra-light", raw)
+	}
+	if c.config.GetBool(optionNameFullNode) {
+		logger.Warning("--full-node is set alongside --node-mode; --full-node is ignored")
+	}
+
+	// Surrounding whitespace is not significant: a whitespace-only endpoint
+	// counts as unset, and the trimmed value is what the node dials.
+	rpcEndpoint := strings.TrimSpace(c.config.GetString(configKeyBlockchainRpcEndpoint))
+	if rpcEndpoint != c.config.GetString(configKeyBlockchainRpcEndpoint) {
+		c.config.Set(configKeyBlockchainRpcEndpoint, rpcEndpoint)
+	}
+
+	switch mode {
+	case node.FullMode:
+		if rpcEndpoint == "" {
+			return "", errors.New("full node requires blockchain-rpc-endpoint to be set")
+		}
+		// A full node implies swap, chequebook and storage incentives. Bootnodes
+		// are exempt: NewBee never runs the reserve or the incentives agent for
+		// them, so they have no use for the implied options. Swap still starts on
+		// a bootnode when explicitly enabled, and chequebook follows it.
+		if !c.config.GetBool(optionNameBootnodeMode) {
+			c.enableImpliedOption(logger, mode, optionNameSwapEnable)
+			if c.config.GetBool(optionNameSwapEnable) {
+				c.enableImpliedOption(logger, mode, optionNameChequebookEnable)
+			}
+			c.enableImpliedOption(logger, mode, optionNameStorageIncentivesEnable)
+		} else if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
+		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
+			logger.Warning("storage-incentives-enable has no effect on a bootnode", "node_mode", mode)
+		}
+	case node.LightMode:
+		if rpcEndpoint == "" {
+			return "", errors.New("light node requires blockchain-rpc-endpoint to be set")
+		}
+		// Storage incentives are full-node only; override the pflag default of true when unset.
+		if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
+		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
+			return "", errors.New("light node cannot have storage-incentives-enable set to true")
+		}
+		// Light mode does not imply swap, as before node-mode. Without it the
+		// node pays peers only through the free pseudosettle allowance, which
+		// limits uploads and downloads.
+		if !c.config.GetBool(optionNameSwapEnable) {
+			logger.Info("swap is disabled, so uploads and downloads are limited to the free pseudosettle allowance; to exceed it set swap-enable=true and fund the chequebook", "node_mode", mode)
+		}
+	case node.UltraLightMode:
+		if rpcEndpoint != "" {
+			logger.Warning("blockchain-rpc-endpoint is ignored in ultra-light mode", "node_mode", mode)
+		}
+		if c.config.GetBool(optionNameSwapEnable) {
+			return "", errors.New("ultra-light node cannot have swap-enable set to true")
+		}
+		// Storage incentives are not supported on ultra-light; override the pflag default of true when unset.
+		if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
+		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
+			return "", errors.New("ultra-light node cannot have storage-incentives-enable set to true")
+		}
+		if c.config.IsSet(optionNameChequebookEnable) && c.config.GetBool(optionNameChequebookEnable) {
+			return "", errors.New("ultra-light node cannot have chequebook-enable set to true")
+		}
+	}
+
+	// Chequebook requires swap. When chequebook is not explicitly configured,
+	// follow swap rather than the pflag default of true.
+	if !c.config.IsSet(optionNameChequebookEnable) {
+		c.config.Set(optionNameChequebookEnable, c.config.GetBool(optionNameSwapEnable))
+	}
+
+	// chequebook init is gated on swap-enable in NewBee. With node-mode set the
+	// implied values above never produce this combination, so it is always an
+	// explicit contradiction rather than a silent no-op.
+	if c.config.GetBool(optionNameChequebookEnable) && !c.config.GetBool(optionNameSwapEnable) {
+		return "", errors.New("chequebook-enable requires swap-enable to be true")
+	}
+
+	return mode, nil
+}
+
+// enableImpliedOption turns on an option implied by the node mode unless the
+// operator set it explicitly. An explicit false is honored and reported at Info:
+// it is a deliberate choice (the legacy migration may suggest it), not a
+// problem for the operator to act on.
+func (c *command) enableImpliedOption(logger log.Logger, mode node.NodeMode, key string) {
+	if !c.config.IsSet(key) {
+		logger.Debug("enabling option implied by node-mode", "node_mode", mode, "option", key)
+		c.config.Set(key, true)
+		return
+	}
+	if !c.config.GetBool(key) {
+		logger.Info("option implied by node-mode is explicitly disabled", "node_mode", mode, "option", key)
+	}
+}
+
+// resolveLegacyNodeMode infers the mode as releases before node-mode did, for
+// configs that do not set node-mode. A full node must have a
+// blockchain-rpc-endpoint: those releases enabled the chain backend for every
+// full node and failed at chain init without one, so the early error changes
+// the message, not the outcome.
+func (c *command) resolveLegacyNodeMode() (node.NodeMode, error) {
+	switch {
+	case c.config.GetBool(optionNameFullNode):
+		if strings.TrimSpace(c.config.GetString(configKeyBlockchainRpcEndpoint)) == "" {
+			return "", errors.New("full node requires blockchain-rpc-endpoint to be set")
+		}
+		return node.FullMode, nil
+	case c.config.GetString(configKeyBlockchainRpcEndpoint) != "":
+		// Untrimmed, as before node-mode existed: a whitespace-only endpoint
+		// still selects light mode and fails at chain init instead of silently
+		// starting an ultra-light node.
+		return node.LightMode, nil
+	default:
+		return node.UltraLightMode, nil
+	}
+}
+
+// validateNodeModeOptions rejects options the resolved mode cannot run with, in
+// both regimes. Releases before node-mode rejected the same configurations,
+// the bootnode one in the start command and the others in NewBee, which keeps
+// its checks for other callers. Checking here rejects the configuration before
+// the node is built, with a non-zero exit status.
+func (c *command) validateNodeModeOptions(mode node.NodeMode) error {
+	chainEnabled := mode == node.FullMode || mode == node.LightMode
+	switch {
+	case c.config.GetBool(optionNameBootnodeMode) && mode != node.FullMode:
+		return errors.New("boot node must be started as a full node")
+	case mode != node.FullMode && c.config.GetInt(optionReserveCapacityDoubling) != 0:
+		return errors.New("reserve capacity doubling is only allowed for full nodes")
+	case c.config.GetBool(optionNameSwapEnable) && !chainEnabled:
+		return errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	case c.config.GetBool(optionNameChequebookVerification) && (mode != node.FullMode || !c.config.GetBool(optionNameChequebookEnable) || !chainEnabled):
+		return fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)",
+			mode == node.FullMode, c.config.GetBool(optionNameChequebookEnable), chainEnabled)
+	}
+	return nil
+}
+
+// legacyNodeModeMigration lists the config changes that make a legacy config
+// behave the same once node-mode is set to the inferred mode, as option=value
+// pairs to set and options to remove. Notes describe behavior that cannot be
+// preserved.
+type legacyNodeModeMigration struct {
+	set    []string
+	remove []string
+	notes  []string
+}
+
+func (c *command) legacyMigration(mode node.NodeMode) legacyNodeModeMigration {
+	var m legacyNodeModeMigration
+	bootnode := c.config.GetBool(optionNameBootnodeMode)
+	swap := c.config.GetBool(optionNameSwapEnable)
+	verification := c.config.GetBool(optionNameChequebookVerification)
+
+	m.set = append(m.set, optionNameNodeMode+"="+string(mode))
+	if c.config.IsSet(optionNameFullNode) {
+		m.remove = append(m.remove, optionNameFullNode)
+	}
+	// With node-mode set, chequebook-enable follows swap-enable and
+	// chequebook-verification requires the chequebook, so verification cannot
+	// keep running without swap.
+	switch {
+	case verification && !swap && mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable):
+		m.notes = append(m.notes, "node-mode: full enables swap and chequebook, which chequebook-verification requires; to keep swap off, set swap-enable=false and remove chequebook-verification")
+	case verification && !swap:
+		m.notes = append(m.notes, "chequebook-verification requires swap-enable once node-mode is set; set swap-enable=true or remove chequebook-verification")
+	case mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable):
+		// node-mode: full implies swap, which legacy full nodes did not.
+		m.set = append(m.set, optionNameSwapEnable+"=false")
+	}
+	// With node-mode set, an explicit chequebook-enable=true is rejected
+	// without swap, and on ultra-light nodes.
+	if c.config.IsSet(optionNameChequebookEnable) && c.config.GetBool(optionNameChequebookEnable) && (mode == node.UltraLightMode || !swap) {
+		m.remove = append(m.remove, optionNameChequebookEnable)
+	}
+	// Legacy inference treats a whitespace-only endpoint as set; with node-mode
+	// set it counts as unset, which light mode rejects.
+	if mode == node.LightMode && strings.TrimSpace(c.config.GetString(configKeyBlockchainRpcEndpoint)) == "" {
+		m.notes = append(m.notes, "blockchain-rpc-endpoint contains only whitespace; node-mode=light requires an endpoint")
+	}
+	// Storage incentives only run on full nodes that are not bootnodes; with
+	// node-mode set an explicit true is rejected on light and ultra-light nodes.
+	if c.config.IsSet(optionNameStorageIncentivesEnable) && c.config.GetBool(optionNameStorageIncentivesEnable) && (mode != node.FullMode || bootnode) {
+		m.remove = append(m.remove, optionNameStorageIncentivesEnable)
+	}
+	return m
+}
+
+// logLegacyNodeModeMigration warns that the mode was inferred and lists the
+// config changes that keep the node's behavior once node-mode is set.
+func (c *command) logLegacyNodeModeMigration(logger log.Logger, mode node.NodeMode) {
+	m := c.legacyMigration(mode)
+	kv := []any{
+		"node_mode", mode,
+		"removed_in", legacyNodeModeRemovalVersion,
+		"set", m.set,
+	}
+	if len(m.remove) > 0 {
+		kv = append(kv, "remove", m.remove)
+	}
+	if len(m.notes) > 0 {
+		kv = append(kv, "behavior_change", m.notes)
+	}
+	logger.Warning("node-mode is not set and was inferred from legacy options, which will be removed; to keep the current behavior, apply the listed options in the config file, flags or BEE_* environment variables", kv...)
 }
 
 type program struct {
