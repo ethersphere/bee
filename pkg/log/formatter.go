@@ -10,11 +10,11 @@ import (
 	"bytes"
 	"encoding"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // MessageCategory indicates which category or categories
@@ -72,17 +72,32 @@ const (
 	maxLogDepthExceeded = `"<max-log-depth-exceeded>"`
 )
 
-// caller represents the original call site for a log line. The File and
-// Line fields will always be provided, while the Func field is optional.
+// callerPathPrefix is trimmed from caller paths to make them repository relative.
+var callerPathPrefix = func() string {
+	const suffix = "pkg/log/formatter.go"
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return ""
+	}
+	file = slashPath(file)
+	if !strings.HasSuffix(file, suffix) {
+		return ""
+	}
+	return strings.TrimSuffix(file, suffix)
+}()
+
+// caller represents the original call site for a log line.
 type caller struct {
-	// File is the basename of the file for this call site.
-	File string `json:"file"`
-	// Line is the line number in the file for this call site.
-	Line int `json:"line"`
-	// Func is the function name for this call site, or empty if
-	// fmtOptions.logCallerFunc is not enabled.
-	Func string `json:"function,omitempty"`
+	// location is " file:line"; the leading space lets terminals detect
+	// the path with its line number when it follows the "caller"=" prefix.
+	location any
+	function any
 }
+
+var unknownCaller = caller{location: " <unknown>:0", function: "<unknown>"}
+
+// callers caches call sites by program counter.
+var callers sync.Map // map[uintptr]caller
 
 // newFormatter constructs a formatter which
 // behavior is influenced by the given options.
@@ -373,17 +388,34 @@ func (f *formatter) prettyWithFlags(value any, flags uint32, depth int) string {
 
 // caller captures basic information about the caller (filename, line, function).
 func (f *formatter) caller() caller {
-	pc, file, line, ok := runtime.Caller(f.opts.callerDepth + 3)
-	if !ok {
-		return caller{"<unknown>", 0, ""}
+	var pcs [1]uintptr
+	if runtime.Callers(f.opts.callerDepth+4, pcs[:]) == 0 {
+		return unknownCaller
 	}
-	caller := caller{File: filepath.Base(file), Line: line}
-	if f.opts.logCallerFunc {
-		if fp := runtime.FuncForPC(pc); fp != nil {
-			caller.Func = fp.Name()
-		}
+	if c, ok := callers.Load(pcs[0]); ok {
+		return c.(caller)
 	}
-	return caller
+	frame, _ := runtime.CallersFrames(pcs[:]).Next()
+	if frame.File == "" {
+		return unknownCaller
+	}
+	c := caller{
+		location: " " + normalizeCallerFile(frame.File) + ":" + strconv.Itoa(frame.Line),
+		function: frame.Function,
+	}
+	callers.Store(pcs[0], c)
+	return c
+}
+
+// slashPath rewrites Windows path separators so prefix checks work on every OS.
+func slashPath(file string) string {
+	return strings.ReplaceAll(file, `\`, "/")
+}
+
+// normalizeCallerFile turns a runtime file path into a repository-relative
+// path with forward slashes, so Windows and Unix logs look the same.
+func normalizeCallerFile(file string) string {
+	return strings.TrimPrefix(slashPath(file), callerPathPrefix)
 }
 
 // nonStringKey converts non-string value v to string.

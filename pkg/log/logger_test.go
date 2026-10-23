@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 )
+
+const callerFile = "pkg/log/logger_test.go"
 
 // hook is a helper type for recording
 // if Hook.Fire method has been triggered.
@@ -343,8 +345,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		logger, bb := newLogger(WithCaller(CategoryAll))
 
 		logger.Build().Debug("msg")
-		_, file, line, _ := runtime.Caller(0)
-		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		_, _, line, _ := runtime.Caller(0)
+		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -353,8 +355,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Info("msg")
-		_, file, line, _ = runtime.Caller(0)
-		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		_, _, line, _ = runtime.Caller(0)
+		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -363,8 +365,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Warning("msg")
-		_, file, line, _ = runtime.Caller(0)
-		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		_, _, line, _ = runtime.Caller(0)
+		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -373,9 +375,9 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Error(errors.New("err"), "msg")
-		_, file, line, _ = runtime.Caller(0)
+		_, _, line, _ = runtime.Caller(0)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg" "error"="err"`, filepath.Base(file), line-1)
+		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "msg"="msg" "error"="err"`, callerFile, line-1)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -386,8 +388,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		logger, bb := newLogger(WithCaller(CategoryAll), WithCallerFunc())
 
 		logger.Build().Debug("msg")
-		_, file, line, _ := runtime.Caller(0)
-		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"={"file":%q,"line":%d,"function":%q} "msg"="msg"`, filepath.Base(file), line-1, thisFunc)
+		_, _, line, _ := runtime.Caller(0)
+		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "function"=%q "msg"="msg"`, callerFile, line-1, thisFunc)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -396,8 +398,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Info("msg")
-		_, file, line, _ = runtime.Caller(0)
-		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"={"file":%q,"line":%d,"function":%q} "msg"="msg"`, filepath.Base(file), line-1, thisFunc)
+		_, _, line, _ = runtime.Caller(0)
+		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "function"=%q "msg"="msg"`, callerFile, line-1, thisFunc)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -406,8 +408,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Warning("msg")
-		_, file, line, _ = runtime.Caller(0)
-		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"={"file":%q,"line":%d,"function":%q} "msg"="msg"`, filepath.Base(file), line-1, thisFunc)
+		_, _, line, _ = runtime.Caller(0)
+		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "function"=%q "msg"="msg"`, callerFile, line-1, thisFunc)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -416,9 +418,9 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Error(errors.New("err"), "msg")
-		_, file, line, _ = runtime.Caller(0)
+		_, _, line, _ = runtime.Caller(0)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"={"file":%q,"line":%d,"function":%q} "msg"="msg" "error"="err"`, filepath.Base(file), line-1, thisFunc)
+		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "function"=%q "msg"="msg" "error"="err"`, callerFile, line-1, thisFunc)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -427,8 +429,8 @@ func TestLoggerWithCaller(t *testing.T) {
 		logger, bb := newLogger(WithCaller(CategoryDebug))
 
 		logger.Build().Debug("msg")
-		_, file, line, _ := runtime.Caller(0)
-		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		_, _, line, _ := runtime.Caller(0)
+		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
@@ -474,9 +476,9 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Info("msg")
-		_, file, line, _ := runtime.Caller(0)
+		_, _, line, _ := runtime.Caller(0)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		want = fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -521,9 +523,9 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Warning("msg")
-		_, file, line, _ := runtime.Caller(0)
+		_, _, line, _ := runtime.Caller(0)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line-1)
+		want = fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -568,9 +570,9 @@ func TestLoggerWithCaller(t *testing.T) {
 		bb.Reset()
 
 		logger.Build().Error(errors.New("err"), "msg")
-		_, file, line, _ := runtime.Caller(0)
+		_, _, line, _ := runtime.Caller(0)
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg" "error"="err"`, filepath.Base(file), line-1)
+		want = fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "msg"="msg" "error"="err"`, callerFile, line-1)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -608,6 +610,27 @@ func TestLoggerWithCaller(t *testing.T) {
 		logger.Build().Error(errors.New("err"), "msg")
 		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		want = `"level"="error" "logger"="root" "msg"="msg" "error"="err"`
+		if have != want {
+			t.Errorf("\nwant %q\nhave %q", want, have)
+		}
+	})
+	t.Run("caller=CategoryAll, derived loggers", func(t *testing.T) {
+		logger, bb := newLogger(WithCaller(CategoryAll), WithVerbosity(VerbosityAll))
+
+		logger.WithName("pfx").WithValues("k", "v").Build().Info("msg")
+		_, _, line, _ := runtime.Caller(0)
+		want := fmt.Sprintf(`"level"="info" "logger"="root/pfx" "caller"=" %s:%d" "msg"="msg" "k"="v"`, callerFile, line-1)
+		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
+		if have != want {
+			t.Errorf("\nwant %q\nhave %q", want, have)
+		}
+
+		bb.Reset()
+
+		logger.V(1).Build().Debug("msg")
+		_, _, line, _ = runtime.Caller(0)
+		want = fmt.Sprintf(`"level"="debug" "logger"="root" "v"=1 "caller"=" %s:%d" "msg"="msg"`, callerFile, line-1)
+		have = string(bytes.TrimRight(bb.Bytes(), "\n"))
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -803,7 +826,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Debug("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line)
+		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -813,7 +836,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Info("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="info" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line)
+		want := fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -823,7 +846,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Warning("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="warning" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg"`, filepath.Base(file), line)
+		want := fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -833,7 +856,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Error(errors.New("err"), "msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="error" "logger"="root" "caller"={"file":%q,"line":%d} "msg"="msg" "error"="err"`, filepath.Base(file), line)
+		want := fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "msg"="msg" "error"="err"`, file, line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -1049,4 +1072,49 @@ func TestLoggerVerbosity(t *testing.T) {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
 	})
+}
+
+func TestNormalizeCallerFile(t *testing.T) {
+	t.Parallel()
+
+	if callerPathPrefix == "" {
+		t.Fatal("callerPathPrefix is empty")
+	}
+	if strings.Contains(callerPathPrefix, "\\") {
+		t.Fatalf("callerPathPrefix contains backslash: %q", callerPathPrefix)
+	}
+
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	if have := normalizeCallerFile(file); have != callerFile {
+		t.Fatalf("current file: want %q, have %q", callerFile, have)
+	}
+
+	win := strings.ReplaceAll(callerPathPrefix, "/", `\`) + strings.ReplaceAll(callerFile, "/", `\`)
+	if have := normalizeCallerFile(win); have != callerFile {
+		t.Fatalf("windows path: want %q, have %q", callerFile, have)
+	}
+}
+
+func BenchmarkLoggerCaller(b *testing.B) {
+	for _, bc := range []struct {
+		name string
+		opts []Option
+	}{
+		{name: "caller=CategoryNone"},
+		{name: "caller=CategoryAll", opts: []Option{WithCaller(CategoryAll)}},
+		{name: "caller=CategoryAll, logCallerFunc=true", opts: []Option{WithCaller(CategoryAll), WithCallerFunc()}},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			logger, bb := newLogger(bc.opts...)
+			l := logger.Build()
+			b.ReportAllocs()
+			for b.Loop() {
+				l.Info("msg", "k", "v")
+				bb.Reset()
+			}
+		})
+	}
 }

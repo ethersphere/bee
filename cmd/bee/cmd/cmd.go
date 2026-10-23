@@ -48,6 +48,7 @@ const (
 	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
+	optionNameLogCaller                    = "log-caller"
 	optionNamePaymentThreshold             = "payment-threshold"
 	optionNamePaymentTolerance             = "payment-tolerance-percent"
 	optionNamePaymentEarly                 = "payment-early-percent"
@@ -344,6 +345,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-* options")
 	}
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+	cmd.Flags().Bool(optionNameLogCaller, false, "add caller file:line to log lines (development only)")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Int64(optionNamePaymentTolerance, 25, "excess debt above payment threshold in percentages where you disconnect from your peer")
@@ -411,7 +413,11 @@ func (c *command) preRun(cmd *cobra.Command) error {
 
 func (c *command) initLogger(cmd *cobra.Command) error {
 	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-	logger, err := newLogger(cmd, v)
+	var opts []log.Option
+	if c.config.GetBool(optionNameLogCaller) {
+		opts = append(opts, log.WithCaller(log.CategoryAll))
+	}
+	logger, err := newLogger(cmd, v, opts...)
 	if err != nil {
 		return fmt.Errorf("new logger: %w", err)
 	}
@@ -472,7 +478,7 @@ func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dot
 	}
 }
 
-func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
+func newLogger(cmd *cobra.Command, verbosity string, opts ...log.Option) (log.Logger, error) {
 	var (
 		sink   = cmd.OutOrStdout()
 		vLevel = log.VerbosityNone
@@ -495,10 +501,10 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}
 
-	log.ModifyDefaults(
+	log.ModifyDefaults(append([]log.Option{
 		log.WithTimestamp(),
 		log.WithLogMetrics(),
-	)
+	}, opts...)...)
 
 	return log.NewLogger(
 		node.LoggerName,

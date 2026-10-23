@@ -7,6 +7,7 @@ package cmd_test
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
@@ -38,4 +39,29 @@ func newCommand(t *testing.T, opts ...cmd.Option) (c *cmd.Command) {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func TestLogCallerConfigAccepted(t *testing.T) {
+	t.Parallel()
+
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("log-caller: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := newCommand(t)
+	c.SetCfgFileForTest(cfgFile)
+
+	for _, name := range []string{"start", "init"} {
+		sub := c.SubCommandForTest(name)
+		if sub == nil {
+			t.Fatalf("%s subcommand not found", name)
+		}
+		if err := c.CheckUnknownParamsForTest(sub); err != nil {
+			t.Fatalf("%s rejected log-caller: %v", name, err)
+		}
+		if sub.Flags().Lookup("log-caller") == nil {
+			t.Fatalf("%s is missing the log-caller flag", name)
+		}
+	}
 }
