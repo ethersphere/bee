@@ -125,8 +125,9 @@ type testServerOptions struct {
 	SwapOpts        []swapmock.Option
 	TransactionOpts []transactionmock.Option
 
-	BatchStore postage.Storer
-	SyncStatus func() (bool, error)
+	BatchStore      postage.Storer
+	SyncStatus      func() (bool, error)
+	SyncRateOutside func() float64
 
 	BackendOpts                 []backendmock.Option
 	Erc20Opts                   []erc20mock.Option
@@ -216,6 +217,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		PostageContract: o.PostageContract,
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,
+		SyncRateOutside: o.SyncRateOutside,
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
 		PinIntegrity:    o.PinIntegrity,
@@ -712,7 +714,7 @@ func createRedistributionAgentService(
 		postageContract,
 		stakingContract,
 		mockstorer.NewReserve(),
-		func() bool { return true },
+		func(uint8) bool { return true },
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,

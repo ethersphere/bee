@@ -6,8 +6,8 @@ package mock
 
 import "context"
 
-type mockSyncer struct{ rate float64 }
+type mockSyncer struct{ synced bool }
 
-func NewMockRateReporter(r float64) *mockSyncer { return &mockSyncer{r} }
-func (m *mockSyncer) SyncRate() float64         { return m.rate }
-func (m *mockSyncer) Start(context.Context)     {}
+func NewMockSyncer(synced bool) *mockSyncer      { return &mockSyncer{synced} }
+func (m *mockSyncer) IsReserveSynced(uint8) bool { return m.synced }
+func (m *mockSyncer) Start(context.Context)      {}

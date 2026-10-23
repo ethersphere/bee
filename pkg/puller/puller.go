@@ -68,7 +68,10 @@ func countErrors(err error) int {
 }
 
 const (
-	DefaultHistRateWindow = time.Minute * 10
+	// DefaultHistRateWindow must stay shorter than the reserve worker wakeup
+	// (reserveWakeUpDuration in pkg/node), so a full window of syncing has
+	// passed before the radius is decreased again.
+	DefaultHistRateWindow = time.Minute * 5
 
 	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
@@ -104,7 +107,7 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	rate *rate.Rate // rate of historical syncing
+	binRate [swarm.MaxBins]*rate.Rate // rate of historical syncing per bin
 
 	start sync.Once
 
@@ -123,24 +126,26 @@ func New(
 ) *Puller {
 	bins := swarm.MaxBins
 	if o.Bins != 0 {
-		bins = o.Bins
+		bins = min(o.Bins, swarm.MaxBins)
 	}
-	histRate := rate.New(DefaultHistRateWindow)
 	p := &Puller{
 		base:        addr,
 		statestore:  stateStore,
 		topology:    topology,
 		radius:      reserveState,
 		syncer:      pullSync,
-		metrics:     newMetrics(histRate.Rate),
 		logger:      logger.WithName(loggerName).Register(),
 		syncPeers:   make(map[string]*syncPeer),
 		bins:        bins,
 		blockLister: blockLister,
-		rate:        histRate,
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
 		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/maxChunksPerSecond), maxChunksPerSecond),
 	}
+
+	for i := range p.binRate {
+		p.binRate[i] = rate.New(DefaultHistRateWindow)
+	}
+	p.metrics = newMetrics(p.SyncRateWithinRadius)
 
 	return p
 }
@@ -155,8 +160,37 @@ func (p *Puller) Start(ctx context.Context) {
 	})
 }
 
-func (p *Puller) SyncRate() float64 {
-	return p.rate.Rate()
+// SyncRateWithinRadius returns the historical sync rate of the bins within the storage radius.
+func (p *Puller) SyncRateWithinRadius() float64 {
+	var r float64
+	for bin := p.radius.StorageRadius(); bin < p.bins; bin++ {
+		r += p.binRate[bin].Rate()
+	}
+	return r
+}
+
+// SyncRateOutsideRadius returns the historical sync rate of the bins outside the storage radius.
+func (p *Puller) SyncRateOutsideRadius() float64 {
+	var r float64
+	radius := p.radius.StorageRadius()
+	for bin := uint8(0); bin < radius && bin < p.bins; bin++ {
+		r += p.binRate[bin].Rate()
+	}
+	return r
+}
+
+// IsReserveSynced returns true if no bin at or above depth is historically syncing.
+// A depth beyond the tracked bins is never reported as synced.
+func (p *Puller) IsReserveSynced(depth uint8) bool {
+	if depth >= p.bins {
+		return false
+	}
+	for bin := depth; bin < p.bins; bin++ {
+		if p.binRate[bin].Rate() > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Puller) manage(ctx context.Context) {
@@ -391,7 +425,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
-				p.rate.Add(count)
+				p.binRate[bin].Add(count)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

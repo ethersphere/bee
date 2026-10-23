@@ -75,6 +75,37 @@ func TestGetStatus(t *testing.T) {
 		)
 	})
 
+	t.Run("sync rate outside radius", func(t *testing.T) {
+		t.Parallel()
+
+		outside := 32.0
+		ssr := api.StatusSnapshotResponse{
+			Proximity:           256,
+			BeeMode:             api.FullMode.String(),
+			PullsyncRate:        64,
+			PullsyncRateOutside: &outside,
+			NeighborhoodSize:    1,
+			IsReachable:         true,
+		}
+
+		ssMock := &statusSnapshotMock{
+			syncRate:   ssr.PullsyncRate,
+			chainState: &postage.ChainState{},
+		}
+		statusSvc := status.NewService(log.Noop, nil, new(topologyPeersIterNoopMock), api.FullMode.String(), ssMock, ssMock, nil)
+		statusSvc.SetSync(ssMock)
+
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
+			BeeMode:         api.FullMode,
+			NodeStatus:      statusSvc,
+			SyncRateOutside: func() float64 { return outside },
+		})
+
+		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(ssr),
+		)
+	})
+
 }
 
 // TestGetStatusPeersIncludesBootnodes is a regression test for
@@ -136,7 +167,7 @@ type statusSnapshotMock struct {
 	committedDepth          uint8
 }
 
-func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
+func (m *statusSnapshotMock) SyncRateWithinRadius() float64      { return m.syncRate }
 func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
 func (m *statusSnapshotMock) Commitment() (uint64, error)        { return m.commitment, nil }
