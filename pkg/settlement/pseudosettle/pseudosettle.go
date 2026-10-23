@@ -62,6 +62,8 @@ type Service struct {
 type pseudoSettlePeer struct {
 	lock     sync.Mutex // lock to be held during receiving a payment from this peer
 	fullNode bool
+	received bool // a refreshment was received on this connection, guarded by peersMu
+	sent     bool // a refreshment was sent on this connection, guarded by peersMu
 }
 
 type lastPayment struct {
@@ -142,7 +144,7 @@ func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 
 // peerAllowance computes the maximum incoming payment value we accept
 // this is the time based allowance or the peers actual debt, whichever is less
-func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.Int, stamp int64, err error) {
+func (s *Service) peerAllowance(peer swarm.Address, fullNode, settled bool) (limit *big.Int, stamp int64, err error) {
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementReceivedPrefix), &lastTime)
 	if err != nil {
@@ -165,7 +167,15 @@ func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.I
 		refreshRateUsed = s.lightRefreshRate
 	}
 
-	maxAllowance := new(big.Int).Mul(big.NewInt(currentTime-lastTime.Timestamp), refreshRateUsed)
+	// the stored timestamp only bounds refreshments made within one connection. before
+	// the first refreshment of a connection it is absent or predates the connection, so
+	// allow a single refresh interval instead of the time since it was written.
+	interval := int64(1)
+	if settled {
+		interval = currentTime - lastTime.Timestamp
+	}
+
+	maxAllowance := new(big.Int).Mul(big.NewInt(interval), refreshRateUsed)
 
 	peerDebt, err := s.accounting.PeerDebt(peer)
 	if err != nil {
@@ -202,6 +212,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	s.peersMu.Lock()
 	pseudoSettlePeer, ok := s.peers[p.Address.String()]
+	settled := ok && pseudoSettlePeer.received
 	s.peersMu.Unlock()
 	if !ok {
 		return ErrNoPseudoSettlePeer
@@ -210,7 +221,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	pseudoSettlePeer.lock.Lock()
 	defer pseudoSettlePeer.lock.Unlock()
 
-	allowance, timestamp, err := s.peerAllowance(p.Address, pseudoSettlePeer.fullNode)
+	allowance, timestamp, err := s.peerAllowance(p.Address, pseudoSettlePeer.fullNode, settled)
 	if err != nil {
 		return err
 	}
@@ -249,6 +260,10 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
+	s.peersMu.Lock()
+	pseudoSettlePeer.received = true
+	s.peersMu.Unlock()
+
 	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
 	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
 	s.metrics.ReceivedPseudoSettlements.Inc()
@@ -279,6 +294,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		lastTime.Total = big.NewInt(0)
 		lastTime.Timestamp = 0
 	}
+
+	s.peersMu.Lock()
+	peerData, known := s.peers[peer.String()]
+	settled := known && peerData.sent
+	s.peersMu.Unlock()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -320,6 +340,13 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
+	// mirror peerAllowance: before the first refreshment of a connection the stored
+	// timestamps are absent or predate it, so expect a single refresh interval.
+	if !settled {
+		lastTime.Timestamp = paymentAck.Timestamp - 1
+		lastTime.CheckTimestamp = checkTime/1000 - 1
+	}
+
 	experiencedInterval := checkTime/1000 - lastTime.CheckTimestamp
 	allegedInterval := paymentAck.Timestamp - lastTime.Timestamp
 
@@ -349,6 +376,12 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	if err != nil {
 		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
 		return
+	}
+
+	if known {
+		s.peersMu.Lock()
+		peerData.sent = true
+		s.peersMu.Unlock()
 	}
 
 	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
