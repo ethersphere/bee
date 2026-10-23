@@ -7,6 +7,7 @@ package api
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/gorilla/mux"
 )
 
 type (
@@ -157,3 +158,7 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
 }
+
+const RootPath = rootPath
+
+func (s *Service) Router() *mux.Router { return s.router }
