@@ -7,46 +7,56 @@ package storer
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// directUploadRequeueLimit is how many chunks of one direct upload may wait
-// for their second push at the same time. Many failures in a short time point
-// to a problem that a later push will not fix, so the upload then fails fast.
-const directUploadRequeueLimit = 16
+const (
+	// directUploadRequeueLimit is how many chunks of one direct upload may
+	// wait for their second push. When it is reached, the oldest is pushed
+	// again, and the upload fails if that push fails too.
+	directUploadRequeueLimit = 16
+
+	// directUploadRequeueMinAge is how long a chunk waits before its second
+	// push when the queue is full, so that a short outage can pass first.
+	directUploadRequeueMinAge = 30 * time.Second
+)
 
 // requeued is a chunk of a direct upload waiting for its second push.
 type requeued struct {
-	ctx context.Context // the Put context, still alive at Done
-	ch  swarm.Chunk
+	ctx   context.Context // the Put context, still alive at Done
+	ch    swarm.Chunk
+	since time.Time // when the chunk was queued
 }
 
 // requeue holds the chunks of a direct upload that failed once. They are
 // pushed again at the end of the upload.
 type requeue struct {
-	mu    sync.Mutex
-	limit int
-	items []requeued
+	mu     sync.Mutex
+	limit  int
+	minAge time.Duration
+	items  []requeued
 }
 
-func newRequeue(limit int) *requeue {
-	return &requeue{limit: limit}
+func newRequeue(limit int, minAge time.Duration) *requeue {
+	return &requeue{limit: limit, minAge: minAge}
 }
 
-// add appends r. When the queue is full, it removes the oldest entry in the
-// same step and returns it; the caller must push that one now.
-func (q *requeue) add(r requeued) (requeued, bool) {
+// add appends r. When the queue is full, it removes and returns the oldest
+// entry and how long it still has to wait; the caller must push it.
+func (q *requeue) add(r requeued, now time.Time) (oldest requeued, wait time.Duration, full bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	r.since = now
 	if len(q.items) < q.limit {
 		q.items = append(q.items, r)
-		return requeued{}, false
+		return requeued{}, 0, false
 	}
-	oldest := q.items[0]
+	oldest = q.items[0]
 	q.items = append(q.items[1:], r)
-	return oldest, true
+	return oldest, max(0, q.minAge-now.Sub(oldest.since)), true
 }
 
 // drain returns the entries, oldest first, and empties the queue.

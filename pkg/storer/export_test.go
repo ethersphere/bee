@@ -6,6 +6,7 @@ package storer
 
 import (
 	"context"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
@@ -52,16 +53,21 @@ func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkTyp
 	return transformedAddress(hasher, ch.Address(), ch.Data(), chType)
 }
 
-const DirectUploadRequeueLimit = directUploadRequeueLimit
+const (
+	DirectUploadRequeueLimit  = directUploadRequeueLimit
+	DirectUploadRequeueMinAge = directUploadRequeueMinAge
+)
 
 // Requeue exposes requeue to tests with chunks only.
 type Requeue struct{ q *requeue }
 
-func NewRequeue(limit int) *Requeue { return &Requeue{q: newRequeue(limit)} }
+func NewRequeue(limit int, minAge time.Duration) *Requeue {
+	return &Requeue{q: newRequeue(limit, minAge)}
+}
 
-func (r *Requeue) Add(ch swarm.Chunk) (swarm.Chunk, bool) {
-	oldest, full := r.q.add(requeued{ctx: context.Background(), ch: ch})
-	return oldest.ch, full
+func (r *Requeue) Add(ch swarm.Chunk, now time.Time) (swarm.Chunk, time.Duration, bool) {
+	oldest, wait, full := r.q.add(requeued{ctx: context.Background(), ch: ch}, now)
+	return oldest.ch, wait, full
 }
 
 func (r *Requeue) Drain() []swarm.Chunk {

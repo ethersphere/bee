@@ -32,7 +32,7 @@ func (db *DB) DirectUpload() PutterSession {
 
 	// chunks that failed once wait here for one more push at the end of the
 	// upload
-	q := newRequeue(directUploadRequeueLimit)
+	q := newRequeue(directUploadRequeueLimit, directUploadRequeueMinAge)
 
 	return &putterSession{
 		Putter: putterWithMetrics{
@@ -57,9 +57,22 @@ func (db *DB) DirectUpload() PutterSession {
 					db.metrics.DirectUploadRequeued.Inc()
 					db.logger.Debug("direct upload: chunk failed, will push it again at the end of the upload", "chunk_address", ch.Address())
 
-					oldest, full := q.add(requeued{ctx: ctx, ch: ch})
+					oldest, wait, full := q.add(requeued{ctx: ctx, ch: ch}, time.Now())
 					if !full {
 						return nil
+					}
+					// a full queue means an outage: let it pass before the
+					// second push, holding the upload back meanwhile
+					if wait > 0 {
+						select {
+						case <-time.After(wait):
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-egCtx.Done():
+							return context.Cause(egCtx)
+						case <-db.quit:
+							return ErrDBQuit
+						}
 					}
 					return db.pushRequeued(egCtx, oldest)
 				}))

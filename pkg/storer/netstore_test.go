@@ -598,6 +598,12 @@ func TestDirectUploadRequeue(t *testing.T) {
 					put(t, session, ch)
 				}
 
+				// the oldest chunk waits out the minimum age first
+				if got := p.count(chunks[0].Address()); got != 1 {
+					t.Fatalf("oldest chunk: got %d pushes while the queue is full, want 1", got)
+				}
+				time.Sleep(storer.DirectUploadRequeueMinAge)
+				synctest.Wait()
 				if got := p.count(chunks[0].Address()); got != 2 {
 					t.Fatalf("oldest chunk: got %d pushes before done, want 2", got)
 				}
@@ -625,7 +631,15 @@ func TestDirectUploadRequeue(t *testing.T) {
 					put(t, session, ch)
 				}
 
+				// the upload is alive while the oldest chunk waits
+				if err := session.Put(context.Background(), next); err != nil {
+					t.Fatalf("session.Put(next) while waiting: unexpected error: %v", err)
+				}
+				time.Sleep(storer.DirectUploadRequeueMinAge)
+				synctest.Wait()
+
 				// the upload has failed: the next chunk is not pushed
+				next = chunktesting.GenerateTestRandomChunk()
 				if err := session.Put(context.Background(), next); !errors.Is(err, pusher.ErrCouldNotSync) {
 					t.Fatalf("session.Put(next): got %v, want %v", err, pusher.ErrCouldNotSync)
 				}
