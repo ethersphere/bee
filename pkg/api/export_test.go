@@ -42,8 +42,6 @@ var (
 	FeedMetadataEntryOwner = feedMetadataEntryOwner
 	FeedMetadataEntryTopic = feedMetadataEntryTopic
 	FeedMetadataEntryType  = feedMetadataEntryType
-
-	SuccessWsMsg = successWsMsg
 )
 
 const GsocQueueCapacity = gsocQueueCapacity
@@ -160,7 +158,6 @@ func NewParseError(entry, value string, cause error) error {
 }
 
 const (
-	ChunkStreamSubprotocol  = chunkStreamSubprotocol
 	MaxStreamQueueSize      = maxStreamQueueSize
 	DefaultStreamSubWorkers = defaultStreamSubWorkers
 	MaxStreamFrameSize      = maxStreamFrameSize
@@ -174,4 +171,13 @@ func (s *Service) ChunkStreamDeliveryCount(status string) float64 {
 		return -1
 	}
 	return m.GetCounter().GetValue()
+}
+
+// ChunkStreamOpenConnections returns the number of open chunk streams.
+func (s *Service) ChunkStreamOpenConnections() float64 {
+	m := &dto.Metric{}
+	if err := s.metrics.ChunkStreamOpenConnections.WithLabelValues("stream").Write(m); err != nil {
+		return -1
+	}
+	return m.GetGauge().GetValue()
 }

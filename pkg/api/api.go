@@ -272,14 +272,14 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 type Options struct {
 	CORSAllowedOrigins []string
 	WsPingPeriod       time.Duration
-	// ChunkDeliveryWriteDeadline bounds a single response write on the
-	// /chunks/stream bidirectional stream. Zero selects chunkDeliveryWriteDeadline.
+	// ChunkDeliveryWriteDeadline bounds a single response write on
+	// /chunks/stream. Zero selects chunkDeliveryWriteDeadline.
 	ChunkDeliveryWriteDeadline time.Duration
-	// ChunkDownloadRequestTimeout bounds a single chunk retrieval on the
-	// /chunks/stream bidirectional stream. Zero selects chunkDownloadRequestTimeout.
+	// ChunkDownloadRequestTimeout bounds a single chunk retrieval on
+	// /chunks/stream. Zero selects chunkDownloadRequestTimeout.
 	ChunkDownloadRequestTimeout time.Duration
-	// ChunkStreamReadTimeout bounds how long the /chunks/stream bidirectional
-	// stream waits for a request or a pong. Zero selects streamReadTimeout.
+	// ChunkStreamReadTimeout bounds how long /chunks/stream waits for a
+	// request, a pong or a ping. Zero selects streamReadTimeout.
 	ChunkStreamReadTimeout time.Duration
 }
 

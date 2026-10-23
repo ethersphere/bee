@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api/pb"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
@@ -41,231 +41,6 @@ import (
 
 // streamTestTimeout bounds how long a test waits for a websocket response.
 const streamTestTimeout = 10 * time.Second
-
-// nolint:paralleltest
-func TestChunkUploadStream(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
-
-	var (
-		storerMock                  = mockstorer.New()
-		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
-			Storer:       storerMock,
-			Post:         mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
-			DirectUpload: true,
-		})
-	)
-
-	t.Run("upload and verify", func(t *testing.T) {
-		chsToGet := make([]swarm.Chunk, 0, 5)
-		for range 5 {
-			ch := testingc.GenerateTestRandomChunk()
-
-			err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = wsConn.WriteMessage(websocket.BinaryMessage, ch.Data())
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			mt, msg, err := wsConn.ReadMessage()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if mt != websocket.BinaryMessage || !bytes.Equal(msg, api.SuccessWsMsg) {
-				t.Fatal("invalid response", mt, string(msg))
-			}
-
-			chsToGet = append(chsToGet, ch)
-		}
-
-		for _, c := range chsToGet {
-			err := spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	})
-
-	t.Run("close on incorrect msg", func(t *testing.T) {
-		err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = wsConn.WriteMessage(websocket.TextMessage, []byte("incorrect msg"))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		_, _, err = wsConn.ReadMessage()
-		if err == nil {
-			t.Fatal("expected failure on read")
-		}
-		// nolint:errorlint
-		if cerr, ok := err.(*websocket.CloseError); !ok {
-			t.Fatal("invalid error on read")
-		} else if cerr.Text != "invalid message" {
-			t.Fatalf("incorrect response on error, exp: (invalid message) got (%s)", cerr.Text)
-		}
-	})
-}
-
-// nolint:paralleltest
-func TestChunkUploadStreamWithStamp(t *testing.T) {
-	// Generate signer and batch for pre-signed stamps
-	key, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(key)
-	owner, err := signer.EthereumAddress()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Generate chunks and their pre-signed stamps
-	chunks := make([]swarm.Chunk, 5)
-	stampBytes := make([][]byte, 5)
-
-	for i := range 5 {
-		chunks[i] = testingc.GenerateTestRandomChunk()
-		stamp := testingpostage.MustNewValidStamp(signer, chunks[i].Address())
-		sb, err := stamp.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		stampBytes[i] = sb
-	}
-
-	// Mock batch store: accept all batch IDs and return a batch with the correct owner
-	batchStore := mockbatchstore.New(
-		mockbatchstore.WithAcceptAllExistsFunc(),
-		mockbatchstore.WithBatch(&postage.Batch{
-			Owner: owner.Bytes(),
-		}),
-	)
-
-	// No Swarm-Postage-Batch-Id header — triggers per-chunk stamp mode
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-
-	var (
-		storerMock                  = mockstorer.New()
-		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
-			Storer:       storerMock,
-			Post:         mockpost.New(mockpost.WithAcceptAll()),
-			BatchStore:   batchStore,
-			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
-			DirectUpload: true,
-		})
-	)
-
-	t.Run("upload with pre-signed stamps", func(t *testing.T) {
-		for i := range 5 {
-			// Prepend stamp bytes to chunk data
-			msg := append(stampBytes[i], chunks[i].Data()...)
-
-			err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = wsConn.WriteMessage(websocket.BinaryMessage, msg)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			mt, msg, err := wsConn.ReadMessage()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if mt != websocket.BinaryMessage || !bytes.Equal(msg, api.SuccessWsMsg) {
-				t.Fatal("invalid response", mt, string(msg))
-			}
-		}
-
-		for _, c := range chunks {
-			err := spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	})
-}
-
-// nolint:paralleltest
-func TestChunkUploadStreamInvalidStamp(t *testing.T) {
-	// No Swarm-Postage-Batch-Id header — triggers per-chunk stamp mode
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-
-	var (
-		storerMock         = mockstorer.New()
-		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:       storerMock,
-			Post:         mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:       "/chunks/stream",
-			WsHeaders:    wsHeaders,
-			DirectUpload: true,
-		})
-	)
-
-	t.Run("message too small for stamp", func(t *testing.T) {
-		// Send a message smaller than StampSize + SpanSize
-		tooSmall := make([]byte, postage.StampSize)
-
-		err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = wsConn.WriteMessage(websocket.BinaryMessage, tooSmall)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = wsConn.SetReadDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		_, _, err = wsConn.ReadMessage()
-		if err == nil {
-			t.Fatal("expected failure on read")
-		}
-		// nolint:errorlint
-		if cerr, ok := err.(*websocket.CloseError); !ok {
-			t.Fatal("invalid error on read")
-		} else if cerr.Text != "message too small for stamp + chunk" {
-			t.Fatalf("incorrect response on error, exp: (message too small for stamp + chunk) got (%s)", cerr.Text)
-		}
-	})
-}
 
 func sendPBRequest(t *testing.T, conn *websocket.Conn, req *pb.Request) {
 	t.Helper()
@@ -343,7 +118,6 @@ func streamHeaders(withBatch bool) http.Header {
 	if withBatch {
 		h.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 	}
-	h.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 	return h
 }
 
@@ -833,18 +607,12 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	batch := &postage.Batch{ID: testingpostage.MustNewID(), Owner: owner.Bytes(), Depth: 20, BucketDepth: 16}
 	ch := testingc.GenerateTestRandomChunk()
-	stamp := testingpostage.MustNewValidStamp(signer, ch.Address())
-	stampBytes, err := stamp.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	batchStore := mockbatchstore.New(
 		mockbatchstore.WithAcceptAllExistsFunc(),
-		mockbatchstore.WithBatch(&postage.Batch{
-			Owner: owner.Bytes(),
-		}),
+		mockbatchstore.WithBatch(batch),
 	)
 
 	var (
@@ -866,9 +634,18 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 		t.Fatalf("expected STATUS_BAD_REQUEST without stamp, got %v (err: %s)", resp.Status, resp.Error)
 	}
 
+	// A stamp signed by the batch owner but for another bucket would be
+	// rejected by the network, so it is not pushed.
+	wrongBucket := presignedStamp(t, signer, batch, ch.Address(), 1)
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), wrongBucket, nil))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "invalid postage stamp" {
+		t.Fatalf("expected a stamp for another bucket to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+	}
+
 	// With a valid pre-signed stamp it succeeds, and the stamp outranks a
 	// BatchId the node could not use anyway.
-	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stampBytes, []byte("not-a-batch")))
+	stamp := presignedStamp(t, signer, batch, ch.Address(), 0)
+	sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), stamp, []byte("not-a-batch")))
 	resp := readPut(t, wsConn)
 	if resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK with stamp, got %v (err: %s)", resp.Status, resp.Error)
@@ -878,35 +655,23 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 	}
 }
 
-// nolint:paralleltest
-func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
-	wsHeaders := http.Header{}
-	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
+// presignedStamp returns a serialized stamp for addr, signed by signer, in the
+// bucket the address belongs to in batch, shifted by bucketOffset.
+func presignedStamp(t *testing.T, signer crypto.Signer, batch *postage.Batch, addr swarm.Address, bucketOffset uint32) []byte {
+	t.Helper()
 
-	var (
-		storerMock       = mockstorer.New()
-		_, _, addr, _, _ = newTestServer(t, testServerOptions{
-			Storer:       storerMock,
-			Post:         mockpost.New(mockpost.WithAcceptAll()),
-			DirectUpload: true,
-		})
-	)
+	bucket := binary.BigEndian.Uint32(addr.Bytes()[:4])>>(32-batch.BucketDepth) + bucketOffset
+	index := make([]byte, postage.IndexSize)
+	binary.BigEndian.PutUint32(index[:4], bucket)
+	timestamp := make([]byte, 8)
+	binary.BigEndian.PutUint64(timestamp, uint64(time.Now().UnixNano()))
+	sig := testingpostage.MustNewValidSignature(signer, addr, batch.ID, index, timestamp)
 
-	wsConn, _, err := websocket.DefaultDialer.Dial("ws://"+addr+"/chunks/stream?mode=stream", wsHeaders)
+	stamp, err := postage.NewStamp(batch.ID, index, timestamp, sig).MarshalBinary()
 	if err != nil {
-		t.Fatalf("dial: %v", err)
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = wsConn.Close() })
-
-	ch := testingc.GenerateTestRandomChunk()
-	sendPBRequest(t, wsConn, chunkPut(ch))
-	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
-		t.Fatalf("expected STATUS_OK via ?mode=stream, got %v (err: %s)", resp.Status, resp.Error)
-	}
-
-	// Invalid mode query parameter returns 400
-	jsonhttptest.Request(t, http.DefaultClient, http.MethodGet, "http://"+addr+"/chunks/stream?mode=invalid", http.StatusBadRequest)
+	return stamp
 }
 
 // cacheRecordingStorer records the cache flag of each download.
@@ -1851,5 +1616,100 @@ func TestChunkBidirectionalStream_ClientPingsKeepStreamOpen(t *testing.T) {
 	sendPBRequest(t, wsConn, getRequest(ch.Address().Bytes(), pb.CacheOption_CACHE_DEFAULT))
 	if resp := readGet(t, wsConn); resp.Status != pb.Status_STATUS_OK {
 		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+	}
+}
+
+// A stream can stay open for longer than a batch lives, so a batch that
+// expires mid-stream must not be used for the next chunk.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_BatchExpiresDuringStream(t *testing.T) {
+	t.Run("node stamping", func(t *testing.T) {
+		post := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 20, 16, 1000, false)))
+		_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockstorer.New(),
+			Post:         post,
+			WsPath:       "/chunks/stream",
+			WsHeaders:    streamHeaders(true),
+			DirectUpload: true,
+		})
+
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
+		if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+			t.Fatalf("expected STATUS_OK before expiry, got %v (err: %s)", resp.Status, resp.Error)
+		}
+
+		if err := post.(postage.BatchExpiryHandler).HandleStampExpiry(context.Background(), batchOk); err != nil {
+			t.Fatal(err)
+		}
+
+		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
+		if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found" {
+			t.Fatalf("expected the expired batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+		}
+	})
+
+	t.Run("pre-signed stamp", func(t *testing.T) {
+		key, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(key)
+		owner, err := signer.EthereumAddress()
+		if err != nil {
+			t.Fatal(err)
+		}
+		batch := &postage.Batch{ID: testingpostage.MustNewID(), Owner: owner.Bytes(), Depth: 20, BucketDepth: 16}
+
+		var expired atomic.Bool
+		batchStore := mockbatchstore.New(
+			mockbatchstore.WithExistsFunc(func([]byte) (bool, error) { return !expired.Load(), nil }),
+			mockbatchstore.WithBatch(batch),
+		)
+		_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockstorer.New(),
+			Post:         mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore:   batchStore,
+			WsPath:       "/chunks/stream",
+			WsHeaders:    streamHeaders(false),
+			DirectUpload: true,
+		})
+
+		upload := func() *pb.PutResponse {
+			ch := testingc.GenerateTestRandomChunk()
+			sendPBRequest(t, wsConn, putRequest(ch.Address().Bytes(), ch.Data(), presignedStamp(t, signer, batch, ch.Address(), 0), nil))
+			return readPut(t, wsConn)
+		}
+
+		if resp := upload(); resp.Status != pb.Status_STATUS_OK {
+			t.Fatalf("expected STATUS_OK before expiry, got %v (err: %s)", resp.Status, resp.Error)
+		}
+		expired.Store(true)
+		if resp := upload(); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found or unusable" {
+			t.Fatalf("expected the expired batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
+		}
+	})
+}
+
+// A client closing its stream must end it on the node, not leave it waiting
+// for node shutdown.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_ClientCloseEndsStream(t *testing.T) {
+	_, wsConn, _, _, svc := newTestServer(t, testServerOptions{
+		Storer:    mockstorer.New(),
+		Post:      mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:    "/chunks/stream",
+		WsHeaders: streamHeaders(false),
+	})
+
+	if err := spinlock.Wait(streamTestTimeout, func() bool { return svc.ChunkStreamOpenConnections() == 1 }); err != nil {
+		t.Fatalf("expected 1 open stream, got %v", svc.ChunkStreamOpenConnections())
+	}
+
+	if err := wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := spinlock.Wait(streamTestTimeout, func() bool { return svc.ChunkStreamOpenConnections() == 0 }); err != nil {
+		t.Fatalf("expected the stream to end after the client closed it, %v still open", svc.ChunkStreamOpenConnections())
 	}
 }
