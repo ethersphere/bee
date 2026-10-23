@@ -7,6 +7,7 @@ package api
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	dto "github.com/prometheus/client_model/go"
 )
 
 type (
@@ -41,8 +42,6 @@ var (
 	FeedMetadataEntryOwner = feedMetadataEntryOwner
 	FeedMetadataEntryTopic = feedMetadataEntryTopic
 	FeedMetadataEntryType  = feedMetadataEntryType
-
-	SuccessWsMsg = successWsMsg
 )
 
 const GsocQueueCapacity = gsocQueueCapacity
@@ -156,4 +155,29 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
+}
+
+const (
+	MaxStreamQueueSize      = maxStreamQueueSize
+	DefaultStreamSubWorkers = defaultStreamSubWorkers
+	MaxStreamFrameSize      = maxStreamFrameSize
+)
+
+// ChunkStreamDeliveryCount returns the chunk stream delivery counter for one
+// outcome.
+func (s *Service) ChunkStreamDeliveryCount(status string) float64 {
+	m := &dto.Metric{}
+	if err := s.metrics.ChunkStreamDeliveryCount.WithLabelValues(status).Write(m); err != nil {
+		return -1
+	}
+	return m.GetCounter().GetValue()
+}
+
+// ChunkStreamOpenConnections returns the number of open chunk streams.
+func (s *Service) ChunkStreamOpenConnections() float64 {
+	m := &dto.Metric{}
+	if err := s.metrics.ChunkStreamOpenConnections.WithLabelValues("stream").Write(m); err != nil {
+		return -1
+	}
+	return m.GetGauge().GetValue()
 }

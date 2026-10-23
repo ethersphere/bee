@@ -225,6 +225,10 @@ type Service struct {
 	lightNodes  *lightnode.Container
 	blockTime   time.Duration
 
+	chunkDeliveryWriteDeadline  time.Duration
+	chunkDownloadRequestTimeout time.Duration
+	chunkStreamReadTimeout      time.Duration
+
 	statusSem        *semaphore.Weighted
 	postageSem       *semaphore.Weighted
 	stakingSem       *semaphore.Weighted
@@ -268,6 +272,15 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 type Options struct {
 	CORSAllowedOrigins []string
 	WsPingPeriod       time.Duration
+	// ChunkDeliveryWriteDeadline bounds a single response write on
+	// /chunks/stream. Zero selects chunkDeliveryWriteDeadline.
+	ChunkDeliveryWriteDeadline time.Duration
+	// ChunkDownloadRequestTimeout bounds a single chunk retrieval on
+	// /chunks/stream. Zero selects chunkDownloadRequestTimeout.
+	ChunkDownloadRequestTimeout time.Duration
+	// ChunkStreamReadTimeout bounds how long /chunks/stream waits for a
+	// request, a pong or a ping. Zero selects streamReadTimeout.
+	ChunkStreamReadTimeout time.Duration
 }
 
 type ExtraOptions struct {
@@ -381,6 +394,21 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.lightNodes = e.LightNodes
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
+
+	s.chunkDeliveryWriteDeadline = o.ChunkDeliveryWriteDeadline
+	if s.chunkDeliveryWriteDeadline <= 0 {
+		s.chunkDeliveryWriteDeadline = chunkDeliveryWriteDeadline
+	}
+
+	s.chunkDownloadRequestTimeout = o.ChunkDownloadRequestTimeout
+	if s.chunkDownloadRequestTimeout <= 0 {
+		s.chunkDownloadRequestTimeout = chunkDownloadRequestTimeout
+	}
+
+	s.chunkStreamReadTimeout = o.ChunkStreamReadTimeout
+	if s.chunkStreamReadTimeout <= 0 {
+		s.chunkStreamReadTimeout = streamReadTimeout
+	}
 
 	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)
