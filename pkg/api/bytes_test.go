@@ -144,7 +144,8 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+swarm.EmptyAddress.String(), http.StatusNotFound)
+		ref := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+ref.String(), http.StatusNotFound)
 	})
 }
 
@@ -625,6 +626,22 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 }
 
 // TestBytesGetHandlerNoPeers verifies that a retrieval failure caused by having no available peers
+func TestBytesEmptyAddress(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+swarm.EmptyAddress.String(), http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "all-zero address is not a valid reference",
+			Code:    http.StatusBadRequest,
+		}),
+	)
+	jsonhttptest.Request(t, client, http.MethodHead, "/bytes/"+swarm.EmptyAddress.String(), http.StatusBadRequest)
+}
+
 func TestBytesGetHandlerNoPeers(t *testing.T) {
 	t.Parallel()
 

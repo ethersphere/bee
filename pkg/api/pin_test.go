@@ -215,7 +215,10 @@ func TestIntegrityHandler(t *testing.T) {
 		endp := "/pins/check?ref=" + pinRef
 
 		// When probe is not set health endpoint should indicate that node is not healthy
-		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusOK, jsonhttptest.WithExpectedResponse(nil))
+		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusOK,
+			jsonhttptest.WithExpectedResponse(nil),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/x-ndjson"),
+		)
 	})
 
 	t.Run("wrong hash format", func(t *testing.T) {
