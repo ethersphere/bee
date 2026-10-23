@@ -138,6 +138,7 @@ var (
 	errActDownload                      = errors.New("act download failed")
 	errActUpload                        = errors.New("act upload failed")
 	errActGranteeList                   = errors.New("failed to create or update grantee list")
+	errEmptyAddress                     = errors.New("all-zero address is not a valid reference")
 
 	batchIdOrStampSig = fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
 )

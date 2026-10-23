@@ -166,6 +166,21 @@ func TestChunkGetHandlerNoPeers(t *testing.T) {
 	)
 }
 
+func TestChunkGetHandlerEmptyAddress(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	jsonhttptest.Request(t, client, http.MethodGet, "/chunks/"+swarm.EmptyAddress.String(), http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "all-zero address is not a valid reference",
+			Code:    http.StatusBadRequest,
+		}),
+	)
+}
+
 func TestChunkHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 

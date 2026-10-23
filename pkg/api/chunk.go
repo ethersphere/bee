@@ -225,6 +225,10 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
+	if address.IsEmpty() {
+		jsonhttp.BadRequest(w, errEmptyAddress)
+		return
+	}
 
 	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
 	if err != nil {

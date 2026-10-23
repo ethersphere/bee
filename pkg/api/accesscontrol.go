@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/gorilla/mux"
 )
 
@@ -147,6 +148,10 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 					jsonhttp.BadRequest(w, "invalid public key")
 				case errors.Is(err, accesscontrol.ErrUnexpectedType):
 					jsonhttp.BadRequest(w, "failed to create history")
+				case errors.Is(err, storage.ErrNotFound):
+					jsonhttp.NotFound(w, "act or history entry not found")
+				case errors.Is(err, topology.ErrNotFound):
+					jsonhttp.ServiceUnavailable(w, "act history could not be retrieved because no usable peer was available")
 				default:
 					jsonhttp.InternalServerError(w, errActDownload)
 				}

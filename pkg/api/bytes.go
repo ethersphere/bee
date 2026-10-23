@@ -182,6 +182,10 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
+	if address.IsEmpty() {
+		jsonhttp.BadRequest(w, errEmptyAddress)
+		return
+	}
 
 	additionalHeaders := http.Header{
 		ContentTypeHeader: {contentTypeOctetStream},
@@ -204,6 +208,10 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	address := paths.Address
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
+	}
+	if address.IsEmpty() {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
 	additionalHeaders := http.Header{

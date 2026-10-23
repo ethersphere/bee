@@ -1462,3 +1462,9 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+    "503":
+      description: Service Unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
