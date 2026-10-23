@@ -136,13 +136,13 @@ components:
         balance:
           $ref: "#/components/schemas/BigInt"
         thresholdreceived:
-          description: Null when no payment threshold has been agreed with the peer yet.
+          description: Not set by this endpoint, always `null`. Payment thresholds per peer are available from `GET /accounting`.
           type: string
           nullable: true
           allOf:
             - $ref: "#/components/schemas/BigInt"
         thresholdgiven:
-          description: Null when no payment threshold has been agreed with the peer yet.
+          description: Not set by this endpoint, always `null`. Payment thresholds per peer are available from `GET /accounting`.
           type: string
           nullable: true
           allOf:
@@ -281,9 +281,10 @@ components:
       example: 30.5
 
     EthereumAddress:
+      description: Ethereum address with the `0x` prefix, in EIP-55 checksum case.
       type: string
-      pattern: "^(0x)?[A-Fa-f0-9]{40}$"
-      example: "0x36b7efd913ca4cf880b8eeac5093fa27b0825906"
+      pattern: "^0x[A-Fa-f0-9]{40}$"
+      example: "0x36b7EFd913CA4cF880B8eEAc5093FA27B0825906"
 
     FileName:
       type: string
@@ -613,7 +614,9 @@ components:
         start:
           type: integer
         owner:
-          $ref: "#/components/schemas/EthereumAddress"
+          description: Ethereum address of the batch owner, as lowercase hex without the `0x` prefix.
+          type: string
+          pattern: "^[A-Fa-f0-9]{40}$"
         depth:
           type: integer
         bucketDepth:

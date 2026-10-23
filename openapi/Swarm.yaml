@@ -845,7 +845,11 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
         "429":
-          $ref: "SwarmCommon.yaml#/components/responses/429"
+          description: A check of all pins is already running. Only one such check can run at a time; checks of a single `ref` are not limited.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1063,7 +1067,8 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
           required: true
           description: Ethereum address of the feed owner
         - in: path
@@ -1112,7 +1117,8 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
           required: true
           description: Ethereum address of the feed owner
         - in: path
@@ -2448,7 +2454,8 @@ paths:
           name: address
           required: true
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
         - in: path
           name: coin
           required: true
