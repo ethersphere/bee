@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -203,7 +204,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -218,7 +219,7 @@ func TestRedistribution(t *testing.T) {
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,7 +238,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -252,7 +253,7 @@ func TestRedistribution(t *testing.T) {
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
@@ -272,7 +273,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -309,7 +310,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -401,7 +402,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData, request.Data) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -421,4 +422,170 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+}
+
+// sentRequest is what a contract method handed to SendWithRetry, with its retry options applied.
+type sentRequest struct {
+	request   *transaction.TxRequest
+	overrides transaction.RetryOverrides
+}
+
+func newRecordingContract(t *testing.T, gasLimit uint64) (redistribution.Contract, *[]sentRequest) {
+	t.Helper()
+
+	var sent []sentRequest
+	txSvc := transactionMock.New(
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			var overrides transaction.RetryOverrides
+			for _, opt := range opts {
+				opt(&overrides)
+			}
+			sent = append(sent, sentRequest{request: request, overrides: overrides})
+			return common.HexToHash("cafe"), &types.Receipt{Status: types.ReceiptStatusSuccessful}, nil
+		}),
+	)
+	c := redistribution.New(
+		swarm.NewAddress(common.HexToHash("cbd").Bytes()),
+		common.HexToAddress("abcd"),
+		log.Noop,
+		txSvc,
+		common.HexToAddress("ffff"),
+		redistributionContractABI,
+		gasLimit,
+	)
+	return c, &sent
+}
+
+// gameTransactions sends each redistribution game transaction once.
+func gameTransactions(t *testing.T) map[string]func(context.Context, redistribution.Contract) error {
+	t.Helper()
+
+	proofs := randChunkInclusionProofs(t)
+	return map[string]func(context.Context, redistribution.Contract) error{
+		"commit": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Commit(ctx, common.Hex2Bytes("hash"), 0)
+			return err
+		},
+		"reveal": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Reveal(ctx, 1, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
+			return err
+		},
+		"claim": func(ctx context.Context, c redistribution.Contract) error {
+			_, err := c.Claim(ctx, proofs, nil)
+			return err
+		},
+	}
+}
+
+// Game transactions have to land inside their phase, so the node retry delay is capped for them.
+func TestGameTransactions_RetryDelayCap(t *testing.T) {
+	t.Parallel()
+
+	for name, send := range gameTransactions(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, 0)
+			if err := send(context.Background(), c); err != nil {
+				t.Fatal(err)
+			}
+			if len(*sent) != 1 {
+				t.Fatalf("expected 1 send, got %d", len(*sent))
+			}
+			rewrite := (*sent)[0].overrides.RetryDelay
+			if rewrite == nil {
+				t.Fatal("retry delay is not rewritten")
+			}
+			if got := rewrite(time.Minute); got != 35*time.Second {
+				t.Fatalf("node delay 1m: got %s, want 35s", got)
+			}
+			if got := rewrite(10 * time.Second); got != 10*time.Second {
+				t.Fatalf("node delay 10s: got %s, want 10s", got)
+			}
+		})
+	}
+}
+
+// Fees of game transactions come from the retry loop, and the gas limit comes from the
+// contract config. Gas settings carried by the context must not leak into the request.
+func TestGameTransactions_IgnoreContextGasSettings(t *testing.T) {
+	t.Parallel()
+
+	const gasLimit = 400_000
+	ctx := sctx.SetGasLimit(sctx.SetGasPrice(context.Background(), big.NewInt(1000)), 9_000_000)
+
+	for name, send := range gameTransactions(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, gasLimit)
+			if err := send(ctx, c); err != nil {
+				t.Fatal(err)
+			}
+			request := (*sent)[0].request
+			if request.GasPrice != nil {
+				t.Fatalf("gas price from the context must be ignored, got %s", request.GasPrice)
+			}
+			if request.GasLimit != gasLimit {
+				t.Fatalf("got gas limit %d, want the contract gas limit %d", request.GasLimit, gasLimit)
+			}
+		})
+	}
+}
+
+// Claim passes the bypass block to the retry loop only when options are set.
+func TestClaim_MaxPriceBypass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		opts *redistribution.ClaimOpts
+	}{
+		{name: "nil opts keep the max price"},
+		{name: "bypass from a block", opts: &redistribution.ClaimOpts{BypassFromBlock: 100}},
+		{name: "bypass from block zero", opts: &redistribution.ClaimOpts{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, 0)
+			if _, err := c.Claim(context.Background(), randChunkInclusionProofs(t), tc.opts); err != nil {
+				t.Fatal(err)
+			}
+			got := (*sent)[0].overrides.MaxPriceBypassFromBlock
+			if tc.opts == nil {
+				if got != nil {
+					t.Fatalf("nil opts must not bypass the max price, got block %d", *got)
+				}
+				return
+			}
+			if got == nil || *got != tc.opts.BypassFromBlock {
+				t.Fatalf("got bypass block %v, want %d", got, tc.opts.BypassFromBlock)
+			}
+		})
+	}
+}
+
+// Only claim may exceed MaxTxPrice; commit and reveal keep the node limit.
+func TestCommitReveal_KeepMaxPrice(t *testing.T) {
+	t.Parallel()
+
+	for name, send := range gameTransactions(t) {
+		if name == "claim" {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c, sent := newRecordingContract(t, 0)
+			if err := send(context.Background(), c); err != nil {
+				t.Fatal(err)
+			}
+			if (*sent)[0].overrides.MaxPriceBypassFromBlock != nil {
+				t.Fatalf("%s must not bypass MaxTxPrice", name)
+			}
+		})
+	}
 }

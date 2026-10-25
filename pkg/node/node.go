@@ -164,6 +164,7 @@ type Options struct {
 	DBOpenFilesLimit              uint64
 	DBWriteBufferSize             uint64
 	EnableStorageIncentives       bool
+	ClaimPriceBypass              bool
 	EnableWS                      bool
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
@@ -183,6 +184,7 @@ type Options struct {
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
 	PostageSyncBlockRange         uint64
+	ClaimPriceBypassBlocks        uint64
 	PriceOracleAddress            string
 	RedistributionContractAddress string
 	ReserveCapacityDoubling       int
@@ -1352,6 +1354,10 @@ func NewBee(
 				transactionService,
 				saludService,
 				logger,
+				storageincentives.ClaimMaxPriceBypass{
+					Enabled:     o.ClaimPriceBypass,
+					DelayBlocks: o.ClaimPriceBypassBlocks,
+				},
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)

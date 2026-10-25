@@ -6,6 +6,7 @@ package storageincentives
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -295,38 +296,57 @@ func TestReward(t *testing.T) {
 	}
 }
 
-// TestFee check if fees increments when called multiple times
+// TestFee checks that transaction fees add up in the node total and survive a restart.
 func TestFee(t *testing.T) {
 	t.Parallel()
-	firstFee := big.NewInt(10)
-	state := createRedistribution(t, nil, []transactionmock.Option{
-		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-			return firstFee, nil
-		}),
-	})
-	ctx := context.Background()
-	state.AddFee(ctx, common.Hash{})
-	gotFirstResult, err := state.Status()
-	if err != nil {
-		t.Fatal("failed to get status")
-	}
-	if gotFirstResult.Fees.Cmp(firstFee) != 0 {
-		t.Fatalf("expected fee %d got %d", firstFee, gotFirstResult.Fees)
-	}
-	secondFee := big.NewInt(15)
-	state.txService = transactionmock.New([]transactionmock.Option{
-		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-			return secondFee, nil
-		}),
-	}...)
 
-	state.AddFee(ctx, common.Hash{})
-	gotSecondResult, err := state.Status()
-	if err != nil {
-		t.Fatal("failed to get status")
+	var (
+		hashA   = common.HexToHash("a")
+		hashB   = common.HexToHash("b")
+		hashC   = common.HexToHash("c")
+		unknown = common.HexToHash("d")
+		fees    = map[common.Hash]int64{hashA: 10, hashB: 15, hashC: 7}
+	)
+	txService := transactionmock.New(
+		transactionmock.WithTransactionFeeFunc(func(_ context.Context, txHash common.Hash) (*big.Int, error) {
+			fee, ok := fees[txHash]
+			if !ok {
+				return nil, errors.New("fee unavailable")
+			}
+			return big.NewInt(fee), nil
+		}),
+	)
+	store := mock.NewStateStore()
+	newState := func() *RedistributionState {
+		t.Helper()
+		state, err := NewRedistributionState(testutil.NewLogger(t), common.Address{}, store, erc20mock.New(), txService)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
 	}
-	expectedResult := secondFee.Add(secondFee, firstFee)
-	if gotSecondResult.Fees.Cmp(expectedResult) != 0 {
-		t.Fatalf("expected fee %d got %d", expectedResult, gotSecondResult.Fees)
+
+	ctx := context.Background()
+	state := newState()
+	state.AddFee(ctx, hashA)
+	state.AddFee(ctx, hashB)
+	state.AddFee(ctx, hashC)
+	state.AddFee(ctx, unknown)
+
+	status, err := state.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Fees.Cmp(big.NewInt(32)) != 0 {
+		t.Fatalf("got total fees %s, want 32", status.Fees)
+	}
+
+	restarted := newState()
+	status, err = restarted.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Fees.Cmp(big.NewInt(32)) != 0 {
+		t.Fatalf("after restart got total fees %s, want 32", status.Fees)
 	}
 }

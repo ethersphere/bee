@@ -9,14 +9,18 @@ import (
 	"errors"
 )
 
-// RetryMetricsRecorder records SendWithRetry completion metrics.
+// RetryMetricsRecorder records SendWithRetry metrics.
 type RetryMetricsRecorder interface {
 	RecordRetryComplete(broadcastAttempts int, err error)
+	// RecordMaxPriceBypass records an attempt sent above the max tx price.
+	RecordMaxPriceBypass()
 }
 
 type noopRetryMetricsRecorder struct{}
 
 func (noopRetryMetricsRecorder) RecordRetryComplete(int, error) {}
+
+func (noopRetryMetricsRecorder) RecordMaxPriceBypass() {}
 
 type retryMetricsBackend interface {
 	RetryMetrics() RetryMetricsRecorder

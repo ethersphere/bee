@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
@@ -83,6 +84,8 @@ const (
 	optionNameAllowPrivateCIDRs            = "allow-private-cidrs"
 	optionNameSleepAfter                   = "sleep-after"
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
+	optionNameClaimPriceBypass             = "claim-max-price-bypass"
+	optionNameClaimPriceBypassBlocks       = "claim-max-price-bypass-delay-blocks"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
 	optionNameNeighborhoodSuggester        = "neighborhood-suggester"
@@ -393,6 +396,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
+	cmd.Flags().Bool(optionNameClaimPriceBypass, false, "allow the redistribution claim to ignore transaction-fee-max-tx-price-wei after the configured delay into the claim phase")
+	cmd.Flags().Uint64(optionNameClaimPriceBypassBlocks, storageincentives.DefaultClaimMaxPriceBypassDelayBlocks, "blocks to wait after the claim phase starts before the claim may ignore the max tx price; 0 waits nothing. Values beyond the last block of the claim phase are clamped to it. After the delay the price is not capped")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")

@@ -32,6 +32,45 @@ const mempoolBumpPercent = 15
 // before escalating to the next tier.
 const defaultAttemptsPerTier = 2
 
+// RetryOverrides controls per-call behaviour overrides for SendWithRetry.
+// Fields are optional; nil means "use default behaviour".
+type RetryOverrides struct {
+	// MaxPriceBypassFromBlock, if set, lets the fee cap exceed maxTxPrice once
+	// the chain head reaches this block. Before that, an over-cap attempt is
+	// deferred instead of ending the session.
+	MaxPriceBypassFromBlock *uint64
+
+	// RetryDelay, if set, rewrites the configured delay between attempts.
+	RetryDelay func(time.Duration) time.Duration
+}
+
+// RetryOption configures per-call overrides for SendWithRetry.
+type RetryOption func(*RetryOverrides)
+
+// WithMaxPriceBypassFromBlock lets the fee cap exceed maxTxPrice once the chain
+// head reaches block. Before that, an attempt over maxTxPrice sends nothing:
+// it waits on the transaction already in the mempool, if any, and does not
+// count toward the attempts budget or advance the fee tier.
+func WithMaxPriceBypassFromBlock(block uint64) RetryOption {
+	return func(o *RetryOverrides) { o.MaxPriceBypassFromBlock = &block }
+}
+
+// WithRetryDelay returns a RetryOption that rewrites the configured retry delay.
+func WithRetryDelay(fn func(time.Duration) time.Duration) RetryOption {
+	return func(o *RetryOverrides) { o.RetryDelay = fn }
+}
+
+func applyRetryOptions(opts []RetryOption) *RetryOverrides {
+	if len(opts) == 0 {
+		return nil
+	}
+	var o RetryOverrides
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return &o
+}
+
 func retryStateKey(nonce uint64) string {
 	return fmt.Sprintf("%s%020d", retryStatePrefix, nonce)
 }
@@ -59,14 +98,16 @@ func (rs *RetriedTransaction) allHashes() []common.Hash {
 
 // SendWithRetry sends an EIP-1559 transaction using fee-history tiers with automatic
 // escalation. Each tier gets attemptsPerTier broadcast rounds with fresh eth_feeHistory
-// data. A +15% mempool bump floor is applied to the tip and the fee cap so a replacement is accepted.
-func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
+// data. A +15% mempool bump floor is applied to ensure replacement transactions are accepted.
+// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error) {
 	if request.GasPrice != nil {
 		err = errors.New("send txs with retry requires automatic gas pricing")
 		t.retryMetrics.RecordRetryComplete(1, err)
 		return common.Hash{}, nil, err
 	}
-	return t.sendWithRetry(ctx, request, nil, nil, nil, nil)
+	overrides := applyRetryOptions(opts)
+	return t.sendWithRetry(ctx, request, nil, nil, nil, nil, overrides)
 }
 
 // applyMempoolBump returns amount increased by mempoolBumpPercent.
@@ -79,7 +120,7 @@ func applyMempoolBump(amount *big.Int) *big.Int {
 
 // suggestGasFeeForTier fetches fresh fee history, picks the tip for the given tier,
 // and applies the mempool bump floor to the tip and the fee cap.
-func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip, previousFeeCap *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
+func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
 	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
 	header, err := t.backend.HeaderByNumber(callCtx, nil)
 	cancel()
@@ -120,8 +161,19 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 	}
 
 	if t.maxTxPrice != nil && gasFeeCapWithTip.Cmp(t.maxTxPrice) > 0 {
-		return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
+		if overrides == nil || overrides.MaxPriceBypassFromBlock == nil {
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
+		}
+
+		head := header.Number.Uint64()
+		if head < *overrides.MaxPriceBypassFromBlock {
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s, block %d, bypass from block %d",
+				ErrTxMaxPriceDeferred, gasFeeCapWithTip, t.maxTxPrice, head, *overrides.MaxPriceBypassFromBlock)
+		}
+		t.logger.Warning("max price bypass: sending above limit", "gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice, "block", head)
+		t.retryMetrics.RecordMaxPriceBypass()
 	}
+
 	return gasFeeCapWithTip, tip, nil
 }
 
@@ -147,7 +199,7 @@ func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier
 }
 
 // sendAndRecord prepares, broadcasts and records one attempt.
-func (t *transactionService) sendAndRecord(ctx context.Context, rs *RetriedTransaction, request *TxRequest, tier feeTier, previousTip, previousFeeCap *big.Int) (*types.Transaction, error) {
+func (t *transactionService) sendAndRecord(ctx context.Context, rs *RetriedTransaction, request *TxRequest, tier feeTier, previousTip, previousFeeCap *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
 	// a nonce is not needed to prepare a transaction for broadcast,
 	// so this is done outside the mutex.
 	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
@@ -157,7 +209,7 @@ func (t *transactionService) sendAndRecord(ctx context.Context, rs *RetriedTrans
 		return nil, fmt.Errorf("estimate gas: %w", err)
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestGasFeeForTier(ctx, tier, previousTip, previousFeeCap)
+	gasFeeCap, gasTipCap, err := t.suggestGasFeeForTier(ctx, tier, previousTip, previousFeeCap, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("suggest gas fee: %w", err)
 	}
@@ -285,8 +337,10 @@ type retryNonceWatch struct {
 //     In that case we use data to restore session.
 func (t *transactionService) sendWithRetry(
 	ctx context.Context,
-	request *TxRequest, rs *RetriedTransaction,
+	request *TxRequest,
+	rs *RetriedTransaction,
 	nonceWatch *retryNonceWatch, previousTip, previousFeeCap *big.Int,
+	overrides *RetryOverrides,
 ) (common.Hash, *types.Receipt, error) {
 	tiers, err := t.tierRangeForRequest(ctx)
 	if err != nil {
@@ -301,7 +355,7 @@ func (t *transactionService) sendWithRetry(
 		nonceWatch = &retryNonceWatch{}
 	}
 
-	txHash, receipt, attempts, terminateTxErr := t.retryLoop(ctx, request, rs, nonceWatch, previousTip, previousFeeCap, tiers)
+	txHash, receipt, attempts, terminateTxErr := t.retryLoop(ctx, request, rs, nonceWatch, previousTip, previousFeeCap, tiers, overrides)
 	t.finishRetry(rs, attempts, terminateTxErr, nonceWatch, txHash)
 	return txHash, receipt, terminateTxErr
 }
@@ -310,14 +364,19 @@ func (t *transactionService) sendWithRetry(
 func (t *transactionService) retryLoop(
 	ctx context.Context, request *TxRequest,
 	rs *RetriedTransaction, nonceWatch *retryNonceWatch,
-	previousTip, previousFeeCap *big.Int, tiers []feeTier,
+	previousTip, previousFeeCap *big.Int, tiers []feeTier, overrides *RetryOverrides,
 ) (common.Hash, *types.Receipt, int, error) {
 	var attempts int // track total number of attempts for metrics
 	for _, tier := range tiers {
-		for k := 0; k < t.attemptsPerTier; k++ {
+		for k := 0; k < t.attemptsPerTier; {
+			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonceWatch, overrides)
+			if errors.Is(err, ErrTxMaxPriceDeferred) {
+				t.logger.Debug("retried transaction: attempt deferred until max price bypass", "nonce", rs.Nonce, "tier", tier.String(), "error", err)
+				continue
+			}
 			attempts++
+			k++
 
-			signedTx, receipt, err := t.attempt(ctx, rs, request, previousTip, previousFeeCap, tier, nonceWatch)
 			// Check receipt before check error: some non-retryable errors might occur after transaction was sent and executed
 			// It might have receipt
 			if receipt != nil {
@@ -444,8 +503,8 @@ func (t *transactionService) pollReceiptAfterNonceMined(ctx context.Context, rs 
 }
 
 // attempt performs a single broadcast+wait cycle: broadcast, persist state, wait for receipt.
-func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip, previousFeeCap *big.Int, tier feeTier, nonceWatch *retryNonceWatch) (*types.Transaction, *types.Receipt, error) {
-	signedTx, broadCastErr := t.sendAndRecord(ctx, rs, request, tier, previousTip, previousFeeCap)
+func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction, request *TxRequest, previousTip, previousFeeCap *big.Int, tier feeTier, nonceWatch *retryNonceWatch, overrides *RetryOverrides) (*types.Transaction, *types.Receipt, error) {
+	signedTx, broadCastErr := t.sendAndRecord(ctx, rs, request, tier, previousTip, previousFeeCap, overrides)
 	switch {
 	case isNonceTooLow(broadCastErr):
 		// The nonce was rejected before this session stored one, so nothing was broadcast
@@ -486,18 +545,26 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		t.watchRetryNonce(signedTx.Nonce(), nonceWatch)
 	}
 
+	delay := t.txRetryDelay
+	if overrides != nil && overrides.RetryDelay != nil {
+		delay = overrides.RetryDelay(t.txRetryDelay)
+	}
+
 	if nonceWatch.minedC == nil {
 		// Rare case: no successful broadcast yet (RPC is unavailable), nothing to monitor.
 		// Wait to avoid spamming attempts.
 		select {
 		case <-ctx.Done():
 			return nil, nil, fmt.Errorf("wait to broadcast: %w", ctx.Err())
-		case <-time.After(t.txRetryDelay):
+		case <-time.After(delay):
 			return nil, nil, broadCastErr
 		}
 	}
 
-	receipt, err := t.waitNonceChanged(ctx, rs, nonceWatch, t.txRetryDelay)
+	receipt, err := t.waitNonceChanged(ctx, rs, nonceWatch, delay)
+	if errors.Is(broadCastErr, ErrTxMaxPriceDeferred) && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return nil, nil, broadCastErr
+	}
 	return signedTx, receipt, err
 }
 
@@ -708,7 +775,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 			previousFeeCap = new(big.Int).Set(stored.GasFeeCap)
 		}
 		t.wg.Go(func() {
-			_, _, _ = t.sendWithRetry(t.ctx, request, &rs, nonceWatch, previousTip, previousFeeCap)
+			_, _, _ = t.sendWithRetry(t.ctx, request, &rs, nonceWatch, previousTip, previousFeeCap, nil)
 		})
 	}
 	return nil

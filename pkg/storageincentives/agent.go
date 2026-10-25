@@ -44,7 +44,20 @@ const (
 
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
+
+	// DefaultClaimMaxPriceBypassDelayBlocks is how long a claim waits after the
+	// claim_phase starts before it may ignore the configured max tx price.
+	DefaultClaimMaxPriceBypassDelayBlocks = 50
 )
+
+// ClaimMaxPriceBypass is the node setting for the redistribution claim.
+// When Enabled, the claim may ignore the max tx price once DelayBlocks have
+// passed since the start of the claim phase. After that there is no price cap.
+// DelayBlocks is clamped to the last block of the claim phase.
+type ClaimMaxPriceBypass struct {
+	DelayBlocks uint64
+	Enabled     bool
+}
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
@@ -62,6 +75,8 @@ type Agent struct {
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
+	claimMaxPriceBypass    ClaimMaxPriceBypass
+	claimPhaseStartBlock   atomic.Uint64
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
@@ -95,6 +110,7 @@ func New(overlay swarm.Address,
 	tranService transaction.Service,
 	health Health,
 	logger log.Logger,
+	claimMaxPriceBypass ClaimMaxPriceBypass,
 ) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
@@ -111,6 +127,7 @@ func New(overlay swarm.Address,
 		health:                 health,
 		chainStateGetter:       chainStateGetter,
 	}
+	a.claimMaxPriceBypass = clampClaimMaxPriceBypass(a.logger, blocksPerRound, blocksPerPhase, claimMaxPriceBypass)
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
 	if err != nil {
@@ -124,6 +141,32 @@ func New(overlay swarm.Address,
 	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
+}
+
+func (a *Agent) claimOpts() *redistribution.ClaimOpts {
+	if !a.claimMaxPriceBypass.Enabled {
+		return nil
+	}
+	return &redistribution.ClaimOpts{
+		BypassFromBlock: a.claimPhaseStartBlock.Load() + a.claimMaxPriceBypass.DelayBlocks,
+	}
+}
+
+func clampClaimMaxPriceBypass(logger log.Logger, blocksPerRound, blocksPerPhase uint64, bypass ClaimMaxPriceBypass) ClaimMaxPriceBypass {
+	if !bypass.Enabled {
+		return bypass
+	}
+
+	claimPhaseBlocks := blocksPerRound - 2*blocksPerPhase
+	maxDelayBlocks := claimPhaseBlocks - 1
+	if bypass.DelayBlocks > maxDelayBlocks {
+		logger.Warning("claim max price bypass delay exceeds the claim phase, clamping",
+			"configured_blocks", bypass.DelayBlocks,
+			"claim_phase_blocks", claimPhaseBlocks,
+			"clamped_blocks", maxDelayBlocks)
+		bypass.DelayBlocks = maxDelayBlocks
+	}
+	return bypass
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
@@ -212,6 +255,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			currentPhase = reveal
 		} else if p >= 2*blocksPerPhase {
 			currentPhase = claim // [76, 151]
+			a.claimPhaseStartBlock.Store(block - p + 2*blocksPerPhase)
 		}
 
 		// write the current phase only once
@@ -365,7 +409,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	errBalance := a.state.SetBalance(ctx)
 	if errBalance != nil {
-		a.logger.Info("could not set balance", "err", err)
+		a.logger.Info("could not set balance", "err", errBalance)
 	}
 
 	sampleData, exists := a.state.SampleData(round - 1)
@@ -383,8 +427,12 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx, proofs)
+	txHash, err := a.contract.Claim(ctx, proofs, a.claimOpts())
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			a.logger.Info("claim aborted by context", "round", round, "err", err)
+			return nil
+		}
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
 	}
@@ -394,7 +442,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	if errBalance == nil {
 		errReward := a.state.CalculateWinnerReward(ctx)
 		if errReward != nil {
-			a.logger.Info("calculate winner reward", "err", err)
+			a.logger.Info("calculate winner reward", "err", errReward)
 		}
 	}
 

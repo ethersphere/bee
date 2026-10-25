@@ -6,14 +6,13 @@ package redistribution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -21,13 +20,24 @@ import (
 const (
 	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
+
+	//  caps the retry delay for redistribution game txs.
+	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
+
+// ClaimOpts configures optional claim behaviour. Once the chain head reaches
+// BypassFromBlock, the max-tx-price cap is ignored for this claim and there is
+// no further price limit. Before that, attempts over the cap wait instead of
+// failing the claim. Nil opts keep the cap.
+type ClaimOpts struct {
+	BypassFromBlock uint64
+}
 
 type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
+	Claim(context.Context, ChunkInclusionProofs, *ClaimOpts) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
 }
@@ -101,8 +111,9 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	return results[0].(bool), nil
 }
 
-// Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
+// Claim sends a transaction to blockchain if a win is claimed. When opts is
+// non-nil, the configured max-tx-price is bypassed from opts.BypassFromBlock.
+func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (txHash common.Hash, err error) {
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
 		return common.Hash{}, err
@@ -110,17 +121,21 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		GasLimit:             c.gasLimit,
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request)
+
+	var retryOpts []transaction.RetryOption
+	if opts != nil {
+		retryOpts = append(retryOpts, transaction.WithMaxPriceBypassFromBlock(opts.BypassFromBlock))
+	}
+
+	txHash, err = c.sendAndWait(ctx, request, retryOpts...)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
-
 	return txHash, nil
 }
 
@@ -133,8 +148,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		GasLimit:             c.gasLimit,
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
@@ -156,8 +170,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		GasLimit:             c.gasLimit,
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
@@ -190,7 +203,9 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (txHash common.Hash, err error) {
+	opts = append(opts, transaction.WithRetryDelay(capRetryDelay))
+
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -200,14 +215,8 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		)
 	}()
 
-	txHash, receipt, err := c.txService.SendWithRetry(ctx, request)
-	if err != nil {
-		return txHash, err
-	}
-	if receipt == nil {
-		return txHash, errors.New("missing receipt after send with retry")
-	}
-	return txHash, nil
+	txHash, _, err = c.txService.SendWithRetry(ctx, request, opts...)
+	return txHash, err
 }
 
 // callTx simulates a transaction based on tx request.
@@ -220,4 +229,12 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+// capRetryDelay limits the retry delay for redistribution game transactions
+func capRetryDelay(d time.Duration) time.Duration {
+	if d > redistributionGameTransactionsRetryDelay {
+		return redistributionGameTransactionsRetryDelay
+	}
+	return d
 }
