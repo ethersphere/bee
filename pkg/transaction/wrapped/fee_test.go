@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
@@ -133,6 +134,57 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 
 			if diff := cmp.Diff(tc.wantGasTipCap.String(), gasTipCap.String()); diff != "" {
 				t.Errorf("gasTipCap mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// History tips below the node minimum are raised to it. Tips already above it stay put.
+func TestSuggestedFeeAndTipsFromHistory_MinimumTip(t *testing.T) {
+	t.Parallel()
+
+	// Two reward rows make the medians low=15, market=55, aggressive=95.
+	history := &ethereum.FeeHistory{
+		BaseFee: []*big.Int{big.NewInt(1), big.NewInt(1000)},
+		Reward: [][]*big.Int{
+			{big.NewInt(10), big.NewInt(50), big.NewInt(90)},
+			{big.NewInt(20), big.NewInt(60), big.NewInt(100)},
+		},
+	}
+
+	tests := []struct {
+		name                    string
+		minimum                 uint64
+		low, market, aggressive string
+	}{
+		{name: "no minimum leaves history tips", minimum: 0, low: "15", market: "55", aggressive: "95"},
+		{name: "minimum raises only the tip below it", minimum: 40, low: "40", market: "55", aggressive: "95"},
+		{name: "minimum above every tier raises all of them", minimum: 200, low: "200", market: "200", aggressive: "200"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := wrapped.NewBackend(
+				backendmock.New(
+					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+						return history, nil
+					}),
+				),
+				tc.minimum,
+				5*time.Second,
+				90,
+				wrapped.DefaultFeeHistoryBlockCount,
+			)
+
+			got, err := backend.SuggestedFeeAndTipsFromHistory(context.Background(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.LowTip.String() != tc.low || got.MarketTip.String() != tc.market || got.AggressiveTip.String() != tc.aggressive {
+				t.Fatalf("got low %s market %s aggressive %s, want %s %s %s",
+					got.LowTip, got.MarketTip, got.AggressiveTip, tc.low, tc.market, tc.aggressive)
 			}
 		})
 	}

@@ -95,8 +95,17 @@ func (b *wrappedBackend) SuggestedFeeAndTipsFromHistory(ctx context.Context, las
 		return nil, err
 	}
 	return &transaction.FeeHistorySuggestedFeeAndTips{
-		LowTip:        low,
-		MarketTip:     market,
-		AggressiveTip: aggressive,
+		LowTip:        clampTip(low, b.minimumGasTipCap),
+		MarketTip:     clampTip(market, b.minimumGasTipCap),
+		AggressiveTip: clampTip(aggressive, b.minimumGasTipCap),
 	}, nil
+}
+
+// clampTip raises tip to minimum when the history tip is below the node floor.
+func clampTip(tip *big.Int, minimum int64) *big.Int {
+	floor := big.NewInt(minimum)
+	if tip.Cmp(floor) < 0 {
+		return floor
+	}
+	return tip
 }

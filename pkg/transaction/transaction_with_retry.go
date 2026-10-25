@@ -448,6 +448,11 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 	signedTx, broadCastErr := t.sendAndRecord(ctx, rs, request, tier, previousTip, previousFeeCap)
 	switch {
 	case isNonceTooLow(broadCastErr):
+		// The nonce was rejected before this session stored one, so nothing was broadcast
+		// and there is no receipt to look up. The broadcast error goes back to the retry loop.
+		if !rs.NonceAssigned {
+			return nil, nil, broadCastErr
+		}
 		// The node reports the nonce as already mined. Wait for the receipt now:
 		// a receipt that has not landed yet must not fail the call.
 		receipt, err := t.pollReceiptAfterNonceMined(ctx, rs)
@@ -548,6 +553,10 @@ func (t *transactionService) waitForPendingRetry(rs *RetriedTransaction, nonceWa
 // clearRetrySession removes the retry session and every pending key.
 // The stored transaction is kept only for resultHash. A zero hash keeps none.
 func (t *transactionService) clearRetrySession(rs *RetriedTransaction, resultHash common.Hash) {
+	// Nonce 0 is a valid nonce. An unassigned session must not delete that key.
+	if !rs.NonceAssigned {
+		return
+	}
 	_ = t.store.Delete(retryStateKey(rs.Nonce))
 	for _, h := range rs.allHashes() {
 		_ = t.store.Delete(pendingTransactionKey(h))

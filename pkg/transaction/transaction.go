@@ -522,6 +522,16 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		maxNonce = max(maxNonce, trx.Nonce())
 	}
 
+	// A retry session keeps its nonce and will broadcast it again. TransactionByHash
+	// can miss that hash, so the pending list above is not enough to reserve it.
+	retries, err := t.pendingRetryTransactions()
+	if err != nil {
+		return 0, err
+	}
+	for nonce := range retries {
+		maxNonce = max(maxNonce, nonce)
+	}
+
 	return maxNonce + 1, nil
 }
 

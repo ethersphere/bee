@@ -1182,6 +1182,37 @@ func TestSendWithRetry_ExhaustedPreviousHashConfirmed(t *testing.T) {
 	s.assertSessionCleared(t, svc, store, txs.hash(0), txs.hashes()...)
 }
 
+// "nonce too low" before any broadcast was stored is a stale nonce, not a mined one.
+// The broadcast error is returned unchanged, and a session that owns nonce 0 stays on disk.
+func TestSendWithRetry_NonceTooLowBeforeBroadcast(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
+
+	svc := s.newService(t, store, s.retryConfig(), nonceWatchIdle(),
+		backendmock.WithSendTransactionFunc(func(context.Context, *types.Transaction) error {
+			return errors.New("nonce too low")
+		}),
+		chainHead(100),
+	)
+
+	nonce0 := transaction.RetriedTransaction{
+		NonceAssigned: true,
+		CurrentHash:   common.HexToHash("0"),
+	}
+	require.NoError(t, store.Put(transaction.RetryStateKey(0), &nonce0))
+
+	_, _, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.ErrorIs(t, err, transaction.ErrAllAttemptsExhausted)
+	require.NotErrorIs(t, err, transaction.ErrTransactionCancelled)
+
+	var got transaction.RetriedTransaction
+	require.NoError(t, store.Get(transaction.RetryStateKey(0), &got))
+	assert.True(t, got.NonceAssigned, "unassigned session must not delete the nonce 0 retry state")
+	assert.Equal(t, nonce0.CurrentHash, got.CurrentHash)
+}
+
 // "nonce too low" on a rebroadcast means the nonce was consumed. Receipts are
 // looked up newest-first without waiting for another watch registration.
 func TestSendWithRetry_NonceTooLow(t *testing.T) {
@@ -1471,6 +1502,45 @@ func (k *knownTxs) nonce(t *testing.T, hash common.Hash) uint64 {
 	tx, ok := k.txs[hash]
 	require.True(t, ok, "tx %s was not broadcast", hash)
 	return tx.Nonce()
+}
+
+// The RPC no longer has the retry session's hash, so its pending nonce is offered again.
+// The session still owns that nonce and will rebroadcast it; the new send takes the next one.
+func TestSendWithRetry_MissingHashKeepsRetryNonce(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := newRetryStore(t)
+
+	cfg := s.retryConfig()
+	cfg.AttemptsPerTier = 1
+
+	var txs broadcastLog
+	svc := s.newService(t, store, cfg, nonceWatchIdle(),
+		txs.sendOK(),
+		backendmock.WithTransactionByHashFunc(func(context.Context, common.Hash) (*types.Transaction, bool, error) {
+			return nil, false, ethereum.NotFound
+		}),
+		receiptNotFound(),
+	)
+
+	owned := common.HexToHash("1")
+	require.NoError(t, store.Put(transaction.RetryStateKey(s.nonce), &transaction.RetriedTransaction{
+		Nonce:         s.nonce,
+		NonceAssigned: true,
+		CurrentHash:   owned,
+	}))
+	require.NoError(t, store.Put(transaction.PendingTransactionKey(owned), struct{}{}))
+
+	_, _, err := svc.SendWithRetry(context.Background(), s.request())
+	require.ErrorIs(t, err, transaction.ErrAllAttemptsExhausted)
+
+	broadcasts := txs.all()
+	require.Len(t, broadcasts, 1)
+	assert.Equal(t, s.nonce+1, broadcasts[0].Nonce, "nonce owned by the retry session must not be reused")
+
+	var kept transaction.RetriedTransaction
+	require.NoError(t, store.Get(transaction.RetryStateKey(s.nonce), &kept))
+	assert.Equal(t, owned, kept.CurrentHash)
 }
 
 // A restarted node resumes a session while the agent sends a new tx. The RPC pending nonce
