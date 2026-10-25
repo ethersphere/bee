@@ -41,6 +41,14 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
+	ErrTxMaxPriceExceeded  = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	// ErrSignTransaction is returned when signing a transaction fails.
+	ErrSignTransaction      = errors.New("sign transaction")
+	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")
+	// ErrUpdateRetryState is returned when persisting send-with-retry state fails.
+	ErrUpdateRetryState = errors.New("update transaction retry state")
+	// ErrReceiptNotFound is returned when none of the known transaction hashes has a receipt.
+	ErrReceiptNotFound = errors.New("receipt not found")
 )
 
 const (
@@ -50,7 +58,41 @@ const (
 	MinGasLimit            = 21_000     // Minimum gas for any transaction
 	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
 	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
+	// DefaultSendWithRetryDelay is the default wait for a receipt before escalating fees in SendWithRetry.
+	DefaultSendWithRetryDelay = 1 * time.Minute
+
+	// defaultReceiptPollInterval is three blocks of a 5s chain. InitChain sets the real block time.
+	defaultReceiptPollInterval = 15 * time.Second
 )
+
+// TransactionsRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
+type TransactionsRetryConfig struct {
+	RetryDelay      time.Duration
+	AttemptsPerTier int
+	StartTier       string
+	EndTier         string
+	MaxTxPrice      *big.Int
+
+	// CancellationDepth is how many blocks ago the nonce of a retried transaction must have
+	// been used before the transaction is cancelled for lack of a receipt.
+	CancellationDepth uint64
+	// ReceiptPollInterval is the pause between receipt lookups once the nonce is mined.
+	ReceiptPollInterval time.Duration
+}
+
+// normalizeServiceRetryConfig fills zero fields with package defaults.
+func normalizeServiceRetryConfig(c TransactionsRetryConfig) TransactionsRetryConfig {
+	if c.RetryDelay <= 0 {
+		c.RetryDelay = DefaultSendWithRetryDelay
+	}
+	if c.AttemptsPerTier <= 0 {
+		c.AttemptsPerTier = defaultAttemptsPerTier
+	}
+	if c.ReceiptPollInterval <= 0 {
+		c.ReceiptPollInterval = defaultReceiptPollInterval
+	}
+	return c
+}
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
@@ -84,6 +126,8 @@ type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
+	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see transaction_with_retry.go.
+	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -123,10 +167,21 @@ type transactionService struct {
 	chainID          *big.Int
 	monitor          Monitor
 	fallbackGasLimit uint64
+
+	txRetryDelay    time.Duration
+	attemptsPerTier int
+	startTier       feeTier
+	endTier         feeTier
+	maxTxPrice      *big.Int
+
+	cancellationDepth   uint64
+	receiptPollInterval time.Duration
+
+	retryMetrics RetryMetricsRecorder
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64) (Service, error) {
+func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64, retryCfg TransactionsRetryConfig) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -136,22 +191,55 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		fallbackGasLimit = FallbackGasLimit
 	}
 
+	rc := normalizeServiceRetryConfig(retryCfg)
+
+	startTier, err := ParseFeeTier(rc.StartTier)
+	if err != nil {
+		return nil, fmt.Errorf("start tier: %w", err)
+	}
+	endTier, err := ParseFeeTier(rc.EndTier)
+	if err != nil {
+		return nil, fmt.Errorf("end tier: %w", err)
+	}
+	if startTier > endTier {
+		return nil, fmt.Errorf("start tier %q must not be higher than end tier %q", rc.StartTier, rc.EndTier)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+	logger.Info("transaction retry configuration",
+		"start_tier", startTier.String(),
+		"end_tier", endTier.String(),
+		"attempts_per_tier", rc.AttemptsPerTier,
+		"retry_delay", rc.RetryDelay,
+		"max_tx_price_wei", rc.MaxTxPrice,
+	)
 
 	t := &transactionService{
-		ctx:              ctx,
-		cancel:           cancel,
-		logger:           logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
-		backend:          backend,
-		signer:           signer,
-		sender:           senderAddress,
-		store:            store,
-		chainID:          chainID,
-		monitor:          monitor,
-		fallbackGasLimit: fallbackGasLimit,
+		ctx:                 ctx,
+		cancel:              cancel,
+		logger:              logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
+		backend:             backend,
+		signer:              signer,
+		sender:              senderAddress,
+		store:               store,
+		chainID:             chainID,
+		monitor:             monitor,
+		fallbackGasLimit:    fallbackGasLimit,
+		txRetryDelay:        rc.RetryDelay,
+		attemptsPerTier:     rc.AttemptsPerTier,
+		startTier:           startTier,
+		endTier:             endTier,
+		maxTxPrice:          rc.MaxTxPrice,
+		cancellationDepth:   rc.CancellationDepth,
+		receiptPollInterval: rc.ReceiptPollInterval,
+		retryMetrics:        retryMetricsFromBackend(backend),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {
+		return nil, err
+	}
+
+	if err = t.resumeRetryTransactions(); err != nil {
 		return nil, err
 	}
 
@@ -159,12 +247,32 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 }
 
 func (t *transactionService) waitForAllPendingTx() error {
+	retryStates, err := t.pendingRetryTransactions()
+	if err != nil {
+		return err
+	}
+
 	pendingTxs, err := t.PendingTransactions()
 	if err != nil {
 		return err
 	}
 
-	pending := t.filterPendingTransactions(t.ctx, pendingTxs)
+	retryHashes := make(map[common.Hash]struct{})
+	for _, rs := range retryStates {
+		for _, h := range rs.allHashes() {
+			retryHashes[h] = struct{}{}
+		}
+	}
+
+	nonRetry := make([]common.Hash, 0, len(pendingTxs))
+	for _, txHash := range pendingTxs {
+		if _, skip := retryHashes[txHash]; skip {
+			continue
+		}
+		nonRetry = append(nonRetry, txHash)
+	}
+
+	pending := t.filterPendingTransactions(t.ctx, nonRetry)
 
 	for txHash := range pending {
 		t.waitForPendingTx(txHash)
@@ -281,9 +389,7 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 	return &tx, nil
 }
 
-// prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
-	var gasLimit uint64
+func (t *transactionService) estimateGasLimit(ctx context.Context, request *TxRequest) (gasLimit uint64, err error) {
 	if request.GasLimit == 0 {
 		// Estimate gas using pending state for consistency with PendingNonceAt
 		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
@@ -333,7 +439,16 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	}
 
 	if gasLimit == 0 {
-		return nil, errors.New("gas limit cannot be zero")
+		return 0, errors.New("gas limit cannot be zero")
+	}
+	return gasLimit, nil
+}
+
+// prepareTransaction creates a signable transaction based on a request.
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
+	gasLimit, err := t.estimateGasLimit(ctx, request)
+	if err != nil {
+		return nil, err
 	}
 
 	/*
@@ -394,7 +509,7 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	pending := t.filterPendingTransactions(t.ctx, pendingTxs)
+	pending := t.filterPendingTransactions(ctx, pendingTxs)
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
@@ -405,6 +520,16 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 			continue
 		}
 		maxNonce = max(maxNonce, trx.Nonce())
+	}
+
+	// A retry session keeps its nonce and will broadcast it again. TransactionByHash
+	// can miss that hash, so the pending list above is not enough to reserve it.
+	retries, err := t.pendingRetryTransactions()
+	if err != nil {
+		return 0, err
+	}
+	for nonce := range retries {
+		maxNonce = max(maxNonce, nonce)
 	}
 
 	return maxNonce + 1, nil

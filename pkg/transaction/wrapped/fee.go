@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 const (
@@ -80,4 +82,30 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 	gasFeeCap.Add(gasFeeCap, gasTipCap)
 
 	return gasFeeCap, gasTipCap, nil
+}
+
+func (b *wrappedBackend) SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryBlockCount, lastBlock, b.feeHistoryRewardPercentiles)
+	if err != nil {
+		return nil, err
+	}
+	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh)
+	if err != nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, err
+	}
+	return &transaction.FeeHistorySuggestedFeeAndTips{
+		LowTip:        clampTip(low, b.minimumGasTipCap),
+		MarketTip:     clampTip(market, b.minimumGasTipCap),
+		AggressiveTip: clampTip(aggressive, b.minimumGasTipCap),
+	}, nil
+}
+
+// clampTip raises tip to minimum when the history tip is below the node floor.
+func clampTip(tip *big.Int, minimum int64) *big.Int {
+	floor := big.NewInt(minimum)
+	if tip.Cmp(floor) < 0 {
+		return floor
+	}
+	return tip
 }

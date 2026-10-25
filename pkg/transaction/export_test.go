@@ -4,4 +4,8 @@
 
 package transaction
 
-var StoredTransactionKey = storedTransactionKey
+var (
+	StoredTransactionKey  = storedTransactionKey
+	PendingTransactionKey = pendingTransactionKey
+	RetryStateKey         = retryStateKey
+)

@@ -81,6 +81,7 @@ func FuzzUnwrapABIError(f *testing.F) {
 			chainID,
 			monitormock.New(),
 			0,
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
