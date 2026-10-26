@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // MessageCategory indicates which category or categories
@@ -90,14 +89,11 @@ var callerPathPrefix = func() string {
 type caller struct {
 	// location is " file:line"; the leading space lets terminals detect
 	// the path with its line number when it follows the "caller"=" prefix.
-	location any
-	function any
+	location string
+	function string
 }
 
 var unknownCaller = caller{location: " <unknown>:0", function: "<unknown>"}
-
-// callers caches call sites by program counter.
-var callers sync.Map // map[uintptr]caller
 
 // newFormatter constructs a formatter which
 // behavior is influenced by the given options.
@@ -388,22 +384,16 @@ func (f *formatter) prettyWithFlags(value any, flags uint32, depth int) string {
 
 // caller captures basic information about the caller (filename, line, function).
 func (f *formatter) caller() caller {
-	var pcs [1]uintptr
-	if runtime.Callers(f.opts.callerDepth+4, pcs[:]) == 0 {
+	pc, file, line, ok := runtime.Caller(f.opts.callerDepth + 3)
+	if !ok {
 		return unknownCaller
 	}
-	if c, ok := callers.Load(pcs[0]); ok {
-		return c.(caller)
+	c := caller{location: " " + normalizeCallerFile(file) + ":" + strconv.Itoa(line)}
+	if f.opts.logCallerFunc {
+		if fp := runtime.FuncForPC(pc); fp != nil {
+			c.function = fp.Name()
+		}
 	}
-	frame, _ := runtime.CallersFrames(pcs[:]).Next()
-	if frame.File == "" {
-		return unknownCaller
-	}
-	c := caller{
-		location: " " + normalizeCallerFile(frame.File) + ":" + strconv.Itoa(frame.Line),
-		function: frame.Function,
-	}
-	callers.Store(pcs[0], c)
 	return c
 }
 

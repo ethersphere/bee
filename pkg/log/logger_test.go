@@ -826,7 +826,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Debug("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
+		want := fmt.Sprintf(`"level"="debug" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, normalizeCallerFile(file), line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -836,7 +836,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Info("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
+		want := fmt.Sprintf(`"level"="info" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, normalizeCallerFile(file), line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -846,7 +846,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Warning("msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, file, line)
+		want := fmt.Sprintf(`"level"="warning" "logger"="root" "caller"=" %s:%d" "msg"="msg"`, normalizeCallerFile(file), line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -856,7 +856,7 @@ func TestLoggerWithCallDepth(t *testing.T) {
 		logger.Build().Error(errors.New("err"), "msg")
 		_, file, line, _ := runtime.Caller(1)
 		have := string(bytes.TrimRight(bb.Bytes(), "\n"))
-		want := fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "msg"="msg" "error"="err"`, file, line)
+		want := fmt.Sprintf(`"level"="error" "logger"="root" "caller"=" %s:%d" "msg"="msg" "error"="err"`, normalizeCallerFile(file), line)
 		if have != want {
 			t.Errorf("\nwant %q\nhave %q", want, have)
 		}
@@ -1095,26 +1095,5 @@ func TestNormalizeCallerFile(t *testing.T) {
 	win := strings.ReplaceAll(callerPathPrefix, "/", `\`) + strings.ReplaceAll(callerFile, "/", `\`)
 	if have := normalizeCallerFile(win); have != callerFile {
 		t.Fatalf("windows path: want %q, have %q", callerFile, have)
-	}
-}
-
-func BenchmarkLoggerCaller(b *testing.B) {
-	for _, bc := range []struct {
-		name string
-		opts []Option
-	}{
-		{name: "caller=CategoryNone"},
-		{name: "caller=CategoryAll", opts: []Option{WithCaller(CategoryAll)}},
-		{name: "caller=CategoryAll, logCallerFunc=true", opts: []Option{WithCaller(CategoryAll), WithCallerFunc()}},
-	} {
-		b.Run(bc.name, func(b *testing.B) {
-			logger, bb := newLogger(bc.opts...)
-			l := logger.Build()
-			b.ReportAllocs()
-			for b.Loop() {
-				l.Info("msg", "k", "v")
-				bb.Reset()
-			}
-		})
 	}
 }
