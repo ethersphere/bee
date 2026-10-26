@@ -129,6 +129,41 @@ peak Index memory — and compare with the baseline.
 
 ---
 
+## T6.5 Pre-cluster fixes and observability (added 2026-10-26, before T6.3's cluster runs)
+
+**Depends on:** T4.7, T6.1. **Blocks:** T6.3's cluster runs (the runbook is finished against it).
+Placed in Phase 6 because the T6.1 acceptance harness, which reproduces both findings, lives here.
+
+**Scope (two parts, each verified and reviewed separately):**
+1. **Part 1, production fixes from T6.1 part 2** (Follow-ups "(T6.1 part 2 → T4, Low) Stripe
+   sessions race the moved-root Status", "(T6.1 part 2 → T4/T6.4, finding) Stripe verification scores
+   honest deliverers when uploads land in their stripes", and "(T6.1 part 2 fix round 1 → before
+   T6.3)"):
+   - the stripe worker waits for the moved-root Status to be reached (as round sessions do) before
+     it opens stripe sessions after a radius change, so the stripe peer can build the scope;
+   - stripe verification does not count against a deliverer the chunks uploaded into its stripe
+     after it listed the stripe, while a withholding deliverer is still detected (T3.3, T4.4 and
+     T4.5 rules).
+2. **Part 2, cluster knobs and observability** (T6.3 docs Follow-ups):
+   - a `--rangesync-fetch-rate` flag (chunks per second, default `DefaultFetchRate`), plumbed into
+     `rangesync.Options.FetchRate` for full nodes with rangesync enabled;
+   - an `isFullySynced` gauge in `pkg/node`, reported in every sync mode so the pullsync-only
+     cohort reports it too (an additive metric, no behaviour change);
+   - a reason label on the reconciler's `peer_failures_total`;
+   - metrics for stripe-job waits (queue wait of claims and own jobs) and first-chunk latency of
+     stripe jobs and catch-ups;
+   - an Info log when the address-index reclaim (background drop + compaction) finishes.
+
+**Tests:** a regression test per fix that fails before it; in the acceptance harness, the Radius
+scenario's stripes are no longer reassigned on the moved-root race and
+`TestAcceptanceChurn/N=5/bootstrap_during_uploads` runs unskipped and passes; the flag's wiring and
+its default; the new metrics registered and moving; `go test ./pkg/pullsync/... ./pkg/puller/...
+./pkg/storer/...` and the defaults unchanged apart from the new metric.
+
+**Size:** M (two parts).
+
+---
+
 ## Decisions log
 _(sessions append here)_
 - **(T6.0) Criteria draft written** in [acceptance-criteria.md](acceptance-criteria.md): 44 rows

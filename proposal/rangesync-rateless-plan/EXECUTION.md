@@ -291,6 +291,7 @@ of them.
 | 25 | T6.2 | 6 | — |
 | 26 | T6.1 | 6 | — |
 | 27 | T6.3 | 6 | Runbook and dashboards; the testnet runs are human wall-clock. **G7** |
+| 27a | T6.5 | 6 | Pre-cluster fixes and observability (added 2026-10-26 at the user's request): two parts, then T6.3's runbook finished against them, then G7 |
 | 28 | T6.4 | 6 | Exit report |
 
 T2.7 (optional) runs only on request. T2.8 waits for an arm64 environment. TF (fuzzing,
