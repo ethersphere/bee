@@ -21,10 +21,12 @@ var (
 )
 
 // NonBlockingWriter is an io.Writer that hands messages over to a background
-// goroutine through a bounded queue, so that a slow or stalled underlying
-// writer (an unread pipe, a full disk, a paused log collector) never blocks
-// the caller. When the queue is full, messages are dropped and counted, and
-// the count is logged once the underlying writer accepts writes again.
+// goroutine through a bounded queue, so that a stalled underlying writer
+// (an unread pipe, a full disk, a paused log collector) does not block the
+// caller. While the underlying writer makes progress, a full queue makes the
+// caller wait for space, as a synchronous writer would. Once a single write
+// has been stuck for longer than the stall timeout, messages are dropped and
+// counted instead, and the count is logged once the writer recovers.
 type NonBlockingWriter struct {
 	w       io.Writer
 	queue   chan queuedMessage
@@ -37,6 +39,16 @@ type NonBlockingWriter struct {
 	// closeTimeout bounds how long Close waits for the
 	// queued messages to be written to the underlying writer.
 	closeTimeout time.Duration
+
+	// stallTimeout is how long a single write to the underlying
+	// writer may take before the writer is considered stalled.
+	stallTimeout time.Duration
+
+	// epoch is the monotonic reference for writeStart.
+	epoch time.Time
+	// writeStart is the time since epoch, plus one, when the current write
+	// to the underlying writer started, or zero if no write is in progress.
+	writeStart atomic.Int64
 
 	// logger reports dropped messages directly to w. It is created lazily
 	// by the writing goroutine so that it inherits the default options.
@@ -61,13 +73,16 @@ func NewNonBlockingWriter(w io.Writer, size int) *NonBlockingWriter {
 		metrics: newNonBlockingWriterMetrics(),
 
 		closeTimeout: 5 * time.Second,
+		stallTimeout: time.Second,
+		epoch:        time.Now(),
 	}
 	go nb.run()
 	return nb
 }
 
-// Write implements the io.Writer interface. It never blocks and never
-// returns an error; if the queue is full, the message is dropped.
+// Write implements the io.Writer interface. It never returns an error and
+// blocks for at most the stall timeout; if the underlying writer is stalled
+// and the queue is full, the message is dropped.
 func (nb *NonBlockingWriter) Write(p []byte) (int, error) {
 	select {
 	case <-nb.quit:
@@ -76,19 +91,49 @@ func (nb *NonBlockingWriter) Write(p []byte) (int, error) {
 	}
 
 	// Check before copying, so that dropping a message does not allocate.
-	if len(nb.queue) == cap(nb.queue) {
+	if len(nb.queue) == cap(nb.queue) && nb.stalledFor() >= nb.stallTimeout {
 		nb.drop(1)
 		return len(p), nil
 	}
 
 	dropped := nb.dropped.Swap(0)
+	msg := queuedMessage{p: bytes.Clone(p), dropped: dropped}
 	select {
-	case nb.queue <- queuedMessage{p: bytes.Clone(p), dropped: dropped}:
+	case nb.queue <- msg:
+		return len(p), nil
 	default:
-		nb.dropped.Add(dropped)
-		nb.drop(1)
 	}
-	return len(p), nil
+
+	// The queue is full: wait for space while the underlying writer makes
+	// progress, and drop the message once its current write is stalled.
+	timer := time.NewTimer(nb.stallTimeout)
+	defer timer.Stop()
+	for {
+		wait := nb.stallTimeout - nb.stalledFor()
+		if wait <= 0 {
+			nb.dropped.Add(dropped)
+			nb.drop(1)
+			return len(p), nil
+		}
+		timer.Reset(wait)
+		select {
+		case nb.queue <- msg:
+			return len(p), nil
+		case <-timer.C:
+		case <-nb.quit:
+			return len(p), nil
+		}
+	}
+}
+
+// stalledFor returns for how long the current write
+// to the underlying writer has been in progress.
+func (nb *NonBlockingWriter) stalledFor() time.Duration {
+	start := nb.writeStart.Load()
+	if start == 0 {
+		return 0
+	}
+	return time.Since(nb.epoch) - time.Duration(start-1)
 }
 
 func (nb *NonBlockingWriter) drop(n uint64) {
@@ -134,8 +179,13 @@ func (nb *NonBlockingWriter) run() {
 }
 
 func (nb *NonBlockingWriter) write(msg queuedMessage) {
+	nb.writeStart.Store(int64(time.Since(nb.epoch)) + 1)
 	nb.reportDropped(msg.dropped)
-	_, _ = nb.w.Write(msg.p)
+	_, err := nb.w.Write(msg.p)
+	nb.writeStart.Store(0)
+	if err != nil {
+		nb.metrics.DroppedCount.Inc()
+	}
 }
 
 func (nb *NonBlockingWriter) reportDropped(n uint64) {
@@ -145,7 +195,7 @@ func (nb *NonBlockingWriter) reportDropped(n uint64) {
 	if nb.logger == nil {
 		nb.logger = NewLogger("log", WithSink(nb.w), WithVerbosity(VerbosityWarning))
 	}
-	nb.logger.Warning("log output is not keeping up, messages were dropped", "dropped", n)
+	nb.logger.Warning("log output is stalled, messages were dropped", "dropped", n)
 }
 
 type nonBlockingWriterMetrics struct {
@@ -158,7 +208,7 @@ func newNonBlockingWriterMetrics() nonBlockingWriterMetrics {
 			Namespace: m.Namespace,
 			Subsystem: "log",
 			Name:      "dropped_count",
-			Help:      "Number of log messages dropped because the log output was not keeping up.",
+			Help:      "Number of log messages that were not written to the log output.",
 		}),
 	}
 }

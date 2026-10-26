@@ -6,8 +6,10 @@ package log
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -44,10 +46,31 @@ func (s *stalledWriter) unblock() {
 	s.once.Do(func() { close(s.release) })
 }
 
-// newNonBlockingWriter returns a NonBlockingWriter whose dropped messages
-// notice is logged without pinning the defaults, see newLogger.
+// slowWriter delays every Write, mimicking a log
+// consumer that is slow but keeps on reading.
+type slowWriter struct {
+	delay time.Duration
+	buf   bytes.Buffer
+}
+
+func (s *slowWriter) Write(p []byte) (int, error) {
+	time.Sleep(s.delay)
+	return s.buf.Write(p)
+}
+
+// failingWriter fails every Write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+// newNonBlockingWriter returns a NonBlockingWriter with a short stall
+// timeout, whose dropped messages notice is logged without pinning
+// the defaults, see newLogger.
 func newNonBlockingWriter(w io.Writer, size int) *NonBlockingWriter {
 	nb := NewNonBlockingWriter(w, size)
+	nb.stallTimeout = 20 * time.Millisecond
 	l, _ := newLogger(WithVerbosity(VerbosityWarning))
 	l.(*logger).sink = w
 	nb.logger = l.(*logger)
@@ -93,7 +116,7 @@ func stall(t *testing.T, nb *NonBlockingWriter, sink *stalledWriter, total int) 
 }
 
 func droppedNotice(n int) string {
-	return fmt.Sprintf(`"level"="warning" "logger"="root" "msg"="log output is not keeping up, messages were dropped" "dropped"=%d`+"\n", n)
+	return fmt.Sprintf(`"level"="warning" "logger"="root" "msg"="log output is stalled, messages were dropped" "dropped"=%d`+"\n", n)
 }
 
 func TestNonBlockingWriter(t *testing.T) {
@@ -153,6 +176,121 @@ func TestNonBlockingWriter(t *testing.T) {
 		want := kept + droppedNotice(wantDropped)
 		if got := sink.buf.String(); got != want {
 			t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+
+	t.Run("slow output is waited for", func(t *testing.T) {
+		t.Parallel()
+
+		sink := &slowWriter{delay: 5 * time.Millisecond}
+		nb := newNonBlockingWriter(sink, 1)
+		nb.stallTimeout = 5 * time.Second
+
+		for i := range 20 {
+			_, _ = fmt.Fprintf(nb, "%d\n", i)
+		}
+		if err := nb.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := droppedCount(t, nb); got != 0 {
+			t.Fatalf("dropped count: got %d, want 0", got)
+		}
+		if got := bytes.Count(sink.buf.Bytes(), []byte("\n")); got != 20 {
+			t.Fatalf("written messages: got %d, want 20", got)
+		}
+	})
+
+	t.Run("healthy output under concurrent load drops nothing", func(t *testing.T) {
+		t.Parallel()
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		drained := make(chan struct{})
+		go func() {
+			defer close(drained)
+			_, _ = io.Copy(io.Discard, r)
+		}()
+
+		nb := newNonBlockingWriter(w, 64)
+		nb.stallTimeout = 5 * time.Second
+		l, _ := newLogger(WithVerbosity(VerbosityAll))
+		l.(*logger).sink = nb
+
+		const goroutines, lines = 4, 5000
+		var wg sync.WaitGroup
+		for range goroutines {
+			wg.Go(func() {
+				for i := range lines {
+					l.(*logger).Debug("message", "n", i)
+				}
+			})
+		}
+		wg.Wait()
+		if err := nb.Close(); err != nil {
+			t.Fatal(err)
+		}
+		_ = w.Close()
+		<-drained
+		_ = r.Close()
+
+		if got := droppedCount(t, nb); got != 0 {
+			t.Fatalf("dropped count: got %d, want 0", got)
+		}
+	})
+
+	t.Run("logger on a stalled pipe does not block", func(t *testing.T) {
+		t.Parallel()
+
+		// Nothing reads r, so the pipe fills up and writes to w block.
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		nb := newNonBlockingWriter(w, 16)
+		l, _ := newLogger(WithVerbosity(VerbosityAll))
+		l.(*logger).sink = nb
+		t.Cleanup(func() {
+			_ = r.Close() // Unblocks the stalled write.
+			_ = nb.Close()
+			_ = w.Close()
+		})
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for range 2000 {
+				l.(*logger).Warning("could not send payment threshold announcement to peer",
+					"peer_address", "0000000000000000000000000000000000000000000000000000000000000000")
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("logger blocked on a stalled pipe")
+		}
+
+		if got := droppedCount(t, nb); got == 0 {
+			t.Fatal("expected dropped messages")
+		}
+	})
+
+	t.Run("failed writes are counted", func(t *testing.T) {
+		t.Parallel()
+
+		nb := newNonBlockingWriter(failingWriter{}, 16)
+		for range 3 {
+			_, _ = fmt.Fprintln(nb, "message")
+		}
+		if err := nb.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := droppedCount(t, nb); got != 3 {
+			t.Fatalf("dropped count: got %d, want 3", got)
 		}
 	})
 
