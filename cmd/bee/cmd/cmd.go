@@ -178,6 +178,7 @@ type command struct {
 	root             *cobra.Command
 	config           *viper.Viper
 	logger           log.Logger
+	logSink          *log.NonBlockingWriter
 	passwordReader   passwordReader
 	cfgFile          string
 	homeDir          string
@@ -243,6 +244,11 @@ func newCommand(opts ...option) (c *command, err error) {
 }
 
 func (c *command) Execute() (err error) {
+	defer func() {
+		if c.logSink != nil {
+			_ = c.logSink.Close()
+		}
+	}()
 	return c.root.Execute()
 }
 
@@ -411,7 +417,9 @@ func (c *command) preRun(cmd *cobra.Command) error {
 
 func (c *command) initLogger(cmd *cobra.Command) error {
 	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-	logger, err := newLogger(cmd, v)
+	// A stalled log consumer must cost log lines, not node operation.
+	c.logSink = log.NewNonBlockingWriter(cmd.OutOrStdout(), logQueueSize)
+	logger, err := newLoggerWithSink(c.logSink, v)
 	if err != nil {
 		return fmt.Errorf("new logger: %w", err)
 	}
@@ -472,11 +480,16 @@ func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dot
 	}
 }
 
+// logQueueSize is the number of log messages that are buffered
+// before they are dropped when the log output is not keeping up.
+const logQueueSize = 4096
+
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
-	var (
-		sink   = cmd.OutOrStdout()
-		vLevel = log.VerbosityNone
-	)
+	return newLoggerWithSink(cmd.OutOrStdout(), verbosity)
+}
+
+func newLoggerWithSink(sink io.Writer, verbosity string) (log.Logger, error) {
+	vLevel := log.VerbosityNone
 
 	switch verbosity {
 	case "0", "silent":

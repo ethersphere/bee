@@ -167,7 +167,11 @@ type logger struct {
 
 // Metrics implements metrics.Collector interface.
 func (l *logger) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(l.metrics)
+	collectors := m.PrometheusCollectorsFromFields(l.metrics)
+	if c, ok := l.sink.(m.Collector); ok {
+		collectors = append(collectors, c.Metrics()...)
+	}
+	return collectors
 }
 
 // Verbosity implements the Logger interface Verbosity method.
