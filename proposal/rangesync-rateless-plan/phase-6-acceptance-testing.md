@@ -2463,3 +2463,39 @@ _(sessions append here)_
     30/s. In-process, N = 17 needed 30/s for the reference load; if the testnet does not reach it,
     AC-B1 at N ≥ 17 is recorded at the median reached, and T6.4 decides.
   - New drafts (G7-5): the ≤ 0.1 % below-radius allowance of the rule-8 check.
+- **(T6.3 docs round-2 re-review; recorded by the orchestrator, 2026-10-26) Open findings; T6.3's docs
+  part is not landed (two fix rounds used; the user decides).** No High. The round-2 fixes hold
+  against the code and the arithmetic; the problems are where they meet the rest of the runbook.
+  1. **Medium: every 6-h measurement window contains a load-batch expiry.** With a 25-h TTL and a
+     6-h rotation each batch expires 1 h after a later rotation, so ~350k chunks per neighborhood
+     leave inside every "active 6 h" window (runbook ~L347, L372–375); neighbors evict at slightly
+     different times, so rangesync fetches IDs whose batch expired (the S6 path; more than the
+     removal record's 65,536 entries). Nothing excludes expiries from STEADY (~L1088–1101), the
+     AC-B1/D3/D5 windows, AC-N1's steady clause or AC-V2; the AC-C2/AC-V5 pauses (~L410, L1153) can
+     land on one. Fix: exclude windows with `increase(bee_localstore_expired_count) > 0` plus ~30
+     min, or rotate every L/4 so expiries fall on rotation boundaries, and keep pauses clear.
+  2. **Medium: the pin makes AC-N2 untestable.** ~L187 pins every joiner at r; the reserve worker
+     lowers the radius only above the pin (`radius > minimumRadius`, pkg/storer/reserve.go ~L176),
+     so a pinned joiner can never decrease and AC-N2 (~L1027) passes whatever the sync rate does.
+     Fix: start the §4.8 joiners unpinned (they start empty, below C; `waitNetworkRFunc` gives them
+     the network's r).
+  3. **Medium: the AC-B1 workaround is not wired in.** ~L325–329 offers the 8-h segment at 30/s
+     for AC-B1 at N ≥ 17 but never cuts AC-B1's windows (and Run 0's P baseline) to that segment;
+     the rotation snippet's depth 23 (~L366–367, L401) fails the runbook's own 3× rule at 30/s
+     (needs depth 24). G7 lever: V_min is read from the contract (`getProperty`, contract.go ~L333);
+     on the now-mandatory private network a shorter V_min, if the deployment allows it, lifts the
+     ~16/s cap.
+  4. **Lows.** The B9 upload guard (~L360, L879) counts the seed, tripping for ~25 h after Run S
+     (exclude the seed uploaders by name). The pin is missing from the §4.1 start template (~L223)
+     and the emergency rollback (~L272): an unpinned restart after the drain lowers that node's
+     radius and makes it unhealthy. Under Method B, AC-N3's "none while B1 > 0" (~L1033) cannot
+     fail (the r−1 pin blocks a second decrease). ~L477–481 assume the network radius stays r; with
+     3 of 4 pairs decreasing (option a) or option b it becomes r−1 (negligible at 1/s). "Repeat with
+     another pair" (~L500–501) has no pair left under option b and most of option a. The G7-5 row
+     (~L27) lacks the new 0.1 % and AC-S4 10 % drafts, and §0 lacks the load-cap item the records
+     list. "However the price moved" (~L356) is overstated (a price fall after the top-ups stop
+     still lengthens B_drop's TTL).
+  5. Verifier nits (round 2): postage.go's check is at L124 (L123 is a brace); the 8-h/day schedule
+     is bounded over a 26-h window while the cap is derived for 25 h (conservative); 4 of 98 PromQL
+     expressions fail to parse (two prose label lists, the `[w]`/`[steady]` placeholders), not 2;
+     the generator's "64-hex-digit" check is a length check only.
