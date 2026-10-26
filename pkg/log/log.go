@@ -215,9 +215,7 @@ func WithVerbosity(verbosity Level) Option {
 }
 
 // WithCaller tells the logger to add a "caller" key to some or all log lines.
-// The value is a repository-relative file:line string with a leading space so
-// terminals can detect the path after the "caller"= prefix. This has some
-// overhead, so some users might not want it.
+// This has some overhead, so some users might not want it.
 func WithCaller(category MessageCategory) Option {
 	return func(opts *Options) { opts.fmtOptions.caller = category }
 }
