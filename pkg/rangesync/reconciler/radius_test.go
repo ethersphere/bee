@@ -410,7 +410,13 @@ func TestRadiusDecreaseThenIncreaseCancels(t *testing.T) {
 	}
 
 	svc.set(func() { svc.local = selfRoot(0, 5) }) // decrease again
-	waitFor(t, "half striped again", func() bool { return h.r.StripesTotal("done") >= 2 })
+	// the fourth root sent back to back goes out PeerStatusInterval later
+	// (the sender-side rate), and the stripe sessions wait until it has
+	// reached their peers (T6.5 part 1): move the clock on
+	waitFor(t, "half striped again", func() bool {
+		h.clock.Add(100 * time.Millisecond)
+		return h.r.StripesTotal("done") >= 2
+	})
 }
 
 // TestRadiusTwoDecreases: r -> r-1 -> r-2 while the first half is in
@@ -546,4 +552,82 @@ func TestRadiusHalfOverlapRetried(t *testing.T) {
 	}
 	h.r.ReleaseStripe(held)
 	waitFor(t, "half striped", func() bool { return h.r.StripesTotal("done") >= 2 })
+}
+
+// TestRadiusStripeWaitsForMovedRoot (T6.5 part 1): after a radius decrease,
+// a stripe session of the new half with a peer that this node's Status with
+// the new root has not reached yet (a gossip send in flight) waits until it
+// has, as round sessions do, instead of opening a session the peer refuses
+// (it cannot build the scope from its stale root of this node) and having the
+// stripe reassigned. The wait is the peer's Busy, off the stripe clock, and
+// ends as soon as the Status reaches the peer, before the stripe retry
+// interval (the fake clock does not move).
+func TestRadiusStripeWaitsForMovedRoot(t *testing.T) {
+	t.Parallel()
+
+	const retry = 1234 * time.Millisecond // unlike any other wait on the clock
+	other := addr(0xf1, 0)
+	peers := []swarm.Address{higher, other}
+	svc := newFakeService(selfRoot(1, 5))
+	for _, p := range peers {
+		svc.remote[p.ByteString()] = selfRoot(0, 10)
+		svc.wants[p.ByteString()] = 2
+	}
+	h := &harness{svc: svc, topo: &fakeTopology{peers: peers}, clock: &fakeClock{now: time.Unix(1_000_000, 0)}}
+	// rounds run at Start and when the test runs them: a triggered round
+	// waits an hour on the fake clock
+	h.r = reconciler.New(self, h.topo, svc, log.Noop, reconciler.Options{
+		Now:           h.clock.Now,
+		After:         h.clock.After,
+		RoundInterval: time.Hour,
+	})
+	h.r.SetStripeRetryInterval(retry)
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	h.r.Start(context.Background())
+	for _, p := range peers {
+		waitFor(t, "first session", func() bool { return len(svc.sessionOpens(p)) > 0 })
+		waitState(t, h.r, p, reconciler.StateIdle)
+	}
+
+	// the radius decreases; the gossip delivers the new root to other at
+	// once, and its send to higher stays in flight
+	gate := make(chan struct{})
+	svc.set(func() {
+		svc.sendGate[higher.ByteString()] = gate
+		svc.local = selfRoot(0, 5)
+		svc.scoped = true
+	})
+	go h.r.Gossip()
+	waitFor(t, "new root in flight to higher", func() bool {
+		var ok bool
+		svc.set(func() { ok = svc.gated[higher.ByteString()] > 0 && svc.delivered[other.ByteString()].Root.Bits == 0 })
+		return ok
+	})
+	h.r.Round() // registers the new half for the stripe worker
+	waitFor(t, "stripe with higher refused or waiting", func() bool {
+		return svc.count(svc.refused, higher) > 0 || h.clock.waiting(retry)
+	})
+	close(gate)
+	waitFor(t, "new half striped and verified", func() bool {
+		return !h.r.RadiusStriping() && h.r.StripesTotal("done") >= 2
+	})
+
+	if n := svc.count(svc.refused, higher); n != 0 {
+		t.Fatalf("%d sessions opened with higher before it had the new root", n)
+	}
+	if got := h.r.StripesTotal("reassigned"); got != 0 {
+		t.Fatalf("stripes reassigned %v, want 0", got)
+	}
+	if countInside(svc, sibling(1), higher) == 0 {
+		t.Fatal("no stripe session with higher")
+	}
+	for _, p := range peers {
+		if s := h.r.Score(p); s != 0 {
+			t.Fatalf("score of %s = %d", p, s)
+		}
+	}
 }

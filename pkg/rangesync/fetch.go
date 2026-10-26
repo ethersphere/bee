@@ -6,6 +6,7 @@ package rangesync
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -100,6 +101,12 @@ var (
 type FetchResult struct {
 	// Stored is the number of chunks stored.
 	Stored int
+	// StampTimes are the timestamps of the stamps of the chunks stored
+	// (postage.Stamp.Timestamp: Unix nanoseconds on the clock of the stamp's
+	// issuer), one per chunk counted in Stored, in the order stored. The
+	// reconciler's stripe verification uses them to tell the chunks uploaded
+	// after a deliverer listed its stripe from the ones it withheld.
+	StampTimes []uint64
 	// Undelivered are the IDs requested from the peer whose chunk was
 	// neither stored nor rejected: the peer did not deliver it, delivered
 	// it invalid, or its Want failed or timed out, or storing it failed on
@@ -788,6 +795,7 @@ func (s *Service) deliver(ctx context.Context, peer swarm.Address, claimed map[f
 	s.wantSet.Done(id)
 	s.metrics.Delivered.Inc()
 	res.Stored++
+	res.StampTimes = append(res.StampTimes, binary.BigEndian.Uint64(stamp.Timestamp()))
 	s.credits.stored(peer)
 	if stored != nil {
 		stored()

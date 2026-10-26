@@ -6,6 +6,7 @@ package reconciler_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -131,7 +132,21 @@ type fakeService struct {
 	openUntil map[string]time.Time
 	now       func() time.Time
 	fetchErrs []error
+	// sendGate, by peer, makes SendStatusWith wait until it is closed (a
+	// Status in flight), counting the sends waiting in gated; delivered, by
+	// peer, is the last Status SendStatusWith delivered. With scoped, a
+	// ReconcileWith with a peer that the local root has not been delivered
+	// to fails as the peer's reset (the peer cannot build the session's
+	// scope from a stale root), counted in refused.
+	sendGate  map[string]chan struct{}
+	gated     map[string]int
+	delivered map[string]rangesync.Status
+	scoped    bool
+	refused   map[string]int
 }
+
+// errStreamReset is the error of a session the peer reset.
+var errStreamReset = errors.New("stream reset")
 
 func newFakeService(local rangesync.Status) *fakeService {
 	return &fakeService{
@@ -162,6 +177,10 @@ func newFakeService(local rangesync.Status) *fakeService {
 		busyErr:         make(map[string]error),
 		sendBlock:       make(map[string]bool),
 		openUntil:       make(map[string]time.Time),
+		sendGate:        make(map[string]chan struct{}),
+		gated:           make(map[string]int),
+		delivered:       make(map[string]rangesync.Status),
+		refused:         make(map[string]int),
 	}
 }
 
@@ -253,6 +272,11 @@ func (s *fakeService) ReconcileWith(ctx context.Context, peer swarm.Address, opt
 		}
 	}
 	s.mu.Lock()
+	if s.scoped && !s.delivered[k].Root.Equal(s.local.Root) {
+		s.refused[k]++
+		s.mu.Unlock()
+		return nil, fmt.Errorf("read: %w", errStreamReset)
+	}
 	busy, localBusy := s.busyN[k] > 0, s.localBusyN[k] > 0
 	switch {
 	case busy:
@@ -307,17 +331,32 @@ func (s *fakeService) LocalStatus() (rangesync.Status, error) {
 	return s.local, s.localErr
 }
 
-func (s *fakeService) SendStatusWith(ctx context.Context, peer swarm.Address, st rangesync.Status) error {
+func (s *fakeService) SendStatusWith(ctx context.Context, peer swarm.Address, st rangesync.Status) (rerr error) {
 	s.mu.Lock()
 	s.sent[peer.ByteString()]++
 	s.statuses[peer.ByteString()] = append(s.statuses[peer.ByteString()], st)
 	calls, unsupported, err := s.sendCalls, s.unsupported[peer.ByteString()], s.sendErr[peer.ByteString()]
-	block := s.sendBlock[peer.ByteString()]
+	block, gate := s.sendBlock[peer.ByteString()], s.sendGate[peer.ByteString()]
+	if gate != nil {
+		s.gated[peer.ByteString()]++
+	}
 	s.mu.Unlock()
 	if block {
 		<-ctx.Done()
 		return ctx.Err()
 	}
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	defer func() {
+		if rerr == nil {
+			s.set(func() { s.delivered[peer.ByteString()] = st })
+		}
+	}()
 	if calls != nil {
 		release := make(chan struct{})
 		select {
@@ -522,6 +561,14 @@ func (c *fakeClock) Add(d time.Duration) {
 		t.c <- c.now
 		return true
 	})
+}
+
+// waiting reports whether a timer of After is set for d after now.
+func (c *fakeClock) waiting(d time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	at := c.now.Add(d)
+	return slices.ContainsFunc(c.timers, func(t fakeTimer) bool { return t.at.Equal(at) })
 }
 
 func (c *fakeClock) After(d time.Duration) <-chan time.Time {

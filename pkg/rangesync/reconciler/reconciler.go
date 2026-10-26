@@ -154,7 +154,9 @@ type peerState struct {
 	// is the theoretical arrival time of the sender-side rate (statusBurst).
 	// reached is the root of the last Status of ours that reached the peer
 	// (valid while sent); rounds start no session with a peer that lacks
-	// this node's current root.
+	// this node's current root, and stripe sessions wait for it
+	// (reachedRoot), woken by rootWake, which is closed when a Status of
+	// ours reaches the peer.
 	lastSent    time.Time
 	last        rangesync.Status
 	sending     bool
@@ -163,6 +165,7 @@ type peerState struct {
 	resend      bool
 	tat         time.Time
 	reached     fingerprint.Range
+	rootWake    chan struct{}
 
 	// takeoverSince, if not zero, is when this node started to wait for the
 	// peer, which initiates, to run a session while their digests differ;

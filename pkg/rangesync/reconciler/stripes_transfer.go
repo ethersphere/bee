@@ -46,9 +46,10 @@ const (
 	stripeRetryInterval = time.Second
 	// maxStripeBusyRetries bounds the retries of one stripe attempt after
 	// the peer's Busy answers (about 30 s at stripeRetryInterval, longer
-	// than an index rebuild); past it the attempt fails and runStripe
-	// reassigns the stripe. Busy causes on this node (localBusy) are not
-	// counted.
+	// than an index rebuild), its fetch stream opens backing off and waits
+	// for this node's current root to reach it (stripeBusy); past it the
+	// attempt fails and runStripe reassigns the stripe. Busy causes on this
+	// node (localBusy) are not counted.
 	maxStripeBusyRetries = 30
 	// maxStripeReassign bounds the reassignments of one stripe to another
 	// peer after a failure, timeout or withholding without progress.
@@ -187,6 +188,12 @@ type StripeResult struct {
 	// verify the stripe.
 	PeerStored int
 	Tried      []swarm.Address
+	// ListedAt is when the session of Peer's last attempt opened, on the
+	// reconciler's clock (Options.Now): the session that listed what Peer
+	// held of the stripe then and this node lacked. Its verification holds
+	// against Peer only the chunks whose stamps are older (VerifyStripes,
+	// verifyStampSlack).
+	ListedAt time.Time
 	// Err is nil when the stripe is done: the session completed, every
 	// listed ID went through Fetch, the peer delivered every ID requested
 	// and none is deferred. It wraps ErrStripeTimeout on timeout and is
@@ -204,6 +211,31 @@ type StripeResult struct {
 	// (stripePeerBudget), not for inactivity.
 	clock  time.Duration
 	capped bool
+	// newer is how many of Stored have stamps at or after newerSince, when
+	// the attempt was given one (a verification, verifyStripe), and not
+	// later than verifyStampSlack past the fetch that stored them: stamped
+	// after the deliverer's listing, less verifyStampSlack, and not in the
+	// future. A stored chunk whose stamp time the fetch did not report is
+	// not newer.
+	newer      int
+	newerSince time.Time
+}
+
+// addFetch adds the outcome of one of the attempt's fetches, which ended at
+// now, to res.
+func (res *StripeResult) addFetch(out fetchOutcome, now time.Time) {
+	res.Stored += out.stored
+	res.Undelivered += out.undelivered
+	res.outsideRoot += out.outsideRoot
+	if res.newerSince.IsZero() {
+		return
+	}
+	from, to := res.newerSince.UnixNano(), now.Add(verifyStampSlack).UnixNano()
+	for _, ts := range out.stamps[:min(len(out.stamps), out.stored)] {
+		if ts <= math.MaxInt64 && int64(ts) >= from && int64(ts) <= to {
+			res.newer++
+		}
+	}
 }
 
 // TransferStripes transfers stripes (§7.4): for each, it opens a session
@@ -396,7 +428,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 			tried[peer.ByteString()] = true
 			total.PeerStored, used = 0, 0
 		}
-		res := r.transferStripe(ctx, st.Range, peer, locks, started, stored, budget-used)
+		res := r.transferStripe(ctx, st.Range, peer, locks, started, stored, budget-used, time.Time{})
 		used += res.clock
 		if res.ran && !slices.ContainsFunc(total.Tried, peer.Equal) {
 			total.Tried = append(total.Tried, peer)
@@ -407,6 +439,7 @@ func (r *Reconciler) runStripe(ctx context.Context, st Stripe, locks *peerLocks,
 		total.Undelivered += res.Undelivered
 		total.Deferred = res.Deferred
 		total.PeerStored += res.Stored
+		total.ListedAt = res.ListedAt
 		total.Err = res.Err
 		if res.Undelivered > 0 && (res.Err == nil || errors.Is(res.Err, ErrStripeDeferred)) {
 			total.Err = fmt.Errorf("stripe %s from %s: stored %d of %d, %d undelivered: %w", st.Range, peer, res.Stored, res.Listed, res.Undelivered, ErrStripeWithheld)
@@ -516,7 +549,10 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // transferStripe transfers stripe sr from peer: a session opened with sr
 // whose wants are queued (stripeQueue) for a fetch that runs alongside.
 // It is one attempt of runStripe; started is called with the first wants,
-// and stored, if not nil, whenever its fetches store chunks.
+// and stored, if not nil, whenever its fetches store chunks. newerSince, if
+// not zero, makes it count the chunks it stores whose stamps are not older
+// (res.newer, for a verification). res.ListedAt is when its last session
+// opened.
 // It takes the peer's lock in locks first (one stripe session per peer), and
 // holds it, and the peer in Striped (acquireStripe), until it ends, except
 // while it waits to ask again for IDs the want set held (resolvePending):
@@ -526,7 +562,9 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // waits to retry a Busy answer: at most maxStripeBusyRetries times for the
 // peer's Busy, and without a count for a cause on this node (localBusy). A
 // peer whose fetch stream opens back off (opensBackOff) is not asked for a
-// session: that counts as the peer's Busy (stripeBusy). The stripe clock
+// session, nor is a peer that this node's current root has not reached
+// (reachedRoot: the peer would refuse the session, T6.5 part 1): both count
+// as the peer's Busy (stripeBusy). The stripe clock
 // (stripeClock) starts once it holds them and then runs until it ends, the
 // fetch after the session included, except while it waits to retry the
 // peer's Busy with no fetch of the attempt running. The attempt times out
@@ -537,8 +575,8 @@ func (r *Reconciler) stripePeers() (all, ready []PeerStatus) {
 // timeout, and runStripe restarts such an attempt with the same peer
 // (maxStripeRestarts) instead of reassigning it. The wait for the peer's
 // round session to end (acquireStripe) counts towards the stripe timeout.
-func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, locks *peerLocks, started, stored func(), capacity time.Duration) (res StripeResult) {
-	res = StripeResult{Range: sr, Peer: peer}
+func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, peer swarm.Address, locks *peerLocks, started, stored func(), capacity time.Duration, newerSince time.Time) (res StripeResult) {
+	res = StripeResult{Range: sr, Peer: peer, newerSince: newerSince}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	unlock, err := locks.acquire(ctx, peer)
@@ -603,9 +641,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			}
 			out, err := r.fetchFrom(ctx, peer, ids, true, progress)
 			queued.Add(-1)
-			res.Stored += out.stored
-			res.Undelivered += out.undelivered
-			res.outsideRoot += out.outsideRoot
+			res.addFetch(out, r.now())
 			pending = append(pending, out.pending...)
 			unverified += out.unverified
 			if err != nil {
@@ -628,12 +664,22 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 			}
 		},
 	}
-	var lastLocal error // the last answer, if Busy for a cause on this node
+	var (
+		lastLocal error           // the last answer, if Busy for a cause on this node
+		rootWake  <-chan struct{} // closed when a Status of this node reaches peer
+	)
 	for busy := 0; ; {
-		if r.opensBackOff(peer) {
+		rootWake = nil
+		switch {
+		case r.opensBackOff(peer):
 			// its fetches would fail at once: wait as for its Busy
 			err = rangesync.ErrOpenBackoff
-		} else {
+		case !r.reachedRoot(peer, &rootWake):
+			// the peer would refuse the session: wait as for its Busy, or
+			// until a Status of this node reaches it
+			err = errRootNotReached
+		default:
+			res.ListedAt = r.now()
 			_, err = r.svc.ReconcileWith(ctx, peer, opts)
 		}
 		clock.expireIfDue()
@@ -662,6 +708,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 		select {
 		case <-ctx.Done():
 		case <-r.after(r.stripeRetry):
+		case <-rootWake:
 		}
 		if clock.expireIfDue(); ctx.Err() != nil {
 			break
@@ -750,9 +797,7 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pro
 		default:
 		}
 		out, err := r.fetchFrom(ctx, peer, pending, true, progress)
-		res.Stored += out.stored
-		res.Undelivered += out.undelivered
-		res.outsideRoot += out.outsideRoot
+		res.addFetch(out, r.now())
 		unverified += out.unverified
 		if err != nil {
 			return out.pending, unverified, fmt.Errorf("fetch: %w", err)
@@ -826,11 +871,50 @@ func (r *Reconciler) opensBackOff(peer swarm.Address) bool {
 }
 
 // stripeBusy reports whether err makes a stripe wait and ask its peer again,
-// as Busy (maxStripeBusyRetries): a Busy answer (isBusy), or the peer's
-// fetch stream opens backing off (rangesync.ErrOpenBackoff), which says
-// nothing about the peer either.
+// as Busy (maxStripeBusyRetries): a Busy answer (isBusy), the peer's fetch
+// stream opens backing off (rangesync.ErrOpenBackoff), or this node's
+// current root not yet at the peer (errRootNotReached), which say nothing
+// about the peer either.
 func stripeBusy(err error) bool {
-	return isBusy(err) || errors.Is(err, rangesync.ErrOpenBackoff)
+	return isBusy(err) || errors.Is(err, rangesync.ErrOpenBackoff) || errors.Is(err, errRootNotReached)
+}
+
+// errRootNotReached is the answer a stripe attempt takes, without opening a
+// session, while this node's current root has not reached the peer
+// (reachedRoot).
+var errRootNotReached = errors.New("reconciler: the peer lacks this node's current root")
+
+// reachedRoot reports whether this node's current root (LocalStatus) has
+// reached peer: the root of the last Status of this node that reached it
+// (peerState.reached), as round sessions require (scheduleLocked,
+// recheckSession). If not, *wake is set to a channel that is closed when a
+// Status of this node next reaches the peer (peerState.rootWake), so that a
+// stripe that waits for the root asks again at once. A peer that lacks it would refuse a session opened with
+// it: the peer builds the session's scope from this node's last Status it
+// holds, and a stale root, for example the one before a radius decrease
+// whose new half the stripe lies in, gives a scope without the stripe, or
+// none, so it resets the stream (T6.1 part 2, "Stripe sessions race the
+// moved-root Status"). The Status gossip sends a moved root at once, within
+// the sender-side rate, and a send that delivers it triggers a round. A peer
+// the reconciler keeps no state for, or that does not speak rangesync, is
+// not checked, and neither is a LocalStatus that fails: the session finds
+// out.
+func (r *Reconciler) reachedRoot(peer swarm.Address, wake *<-chan struct{}) bool {
+	local, err := r.svc.LocalStatus()
+	if err != nil {
+		return true
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.peers[peer.ByteString()]
+	if !ok || st.fsm.state == stateUnsupported || st.sent && st.reached.Equal(local.Root) {
+		return true
+	}
+	if st.rootWake == nil {
+		st.rootWake = make(chan struct{})
+	}
+	*wake = st.rootWake
+	return false
 }
 
 // localBusy reports whether err is a Busy for a cause on this node: its index

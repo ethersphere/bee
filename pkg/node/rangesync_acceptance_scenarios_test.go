@@ -1647,7 +1647,7 @@ const (
 	// accChurnLeave and accChurnRejoin are when a node leaves and rejoins,
 	// from the first upload: away for 5 s, it misses ~75 pushes at 15 per
 	// second, fewer than accLargeDiff, so that its catch-up is a session,
-	// not a striped transfer during the uploads (see accChurnRepro)
+	// not a striped transfer during the uploads
 	accChurnLeave  = 3 * time.Second
 	accChurnRejoin = 8 * time.Second
 	// accChurnStripePeerAway is how long the stripe peer that leaves stays
@@ -1656,16 +1656,10 @@ const (
 	// accChurnStripeShare is the share of its root the joiner stored when
 	// its stripe peer leaves
 	accChurnStripeShare = 0.25
-	// accChurnReproJoin is when the joiner of accChurnRepro joins, from the
-	// first upload
-	accChurnReproJoin = 5 * time.Second
+	// accChurnUploadsJoin is when the joiner of the sub-case "bootstrap
+	// during uploads" joins, from the first upload
+	accChurnUploadsJoin = 5 * time.Second
 )
-
-// accChurnRepro reports whether the Churn scenario's skipped sub-case runs
-// (RANGESYNC_ACCEPTANCE_REPRO set): a node that bootstraps while uploads run
-// at the reference load scores its honest stripe peers (Decisions log, T6.1
-// part 2).
-func accChurnRepro() bool { return os.Getenv("RANGESYNC_ACCEPTANCE_REPRO") != "" }
 
 // accChurnResult is what a Churn scenario measured, with the window's
 // totals in all.
@@ -1692,10 +1686,11 @@ type accChurnResult struct {
 // deliveries of chunks a node held at most the claims that expired) and that
 // no honest peer was scored or disconnected.
 //
-// The sub-case "bootstrap during uploads" (accChurnRepro, skipped by
-// default) lets the empty node join while the uploads run: the verification
-// of its stripes then scores the honest stripe peers for the chunks uploaded
-// into their stripes after they listed them.
+// The sub-case "bootstrap during uploads" lets the empty node join while the
+// uploads run, and no other fault happens: the verification of its stripes
+// must not score the honest stripe peers for the chunks uploaded into their
+// stripes after they listed them (T6.1 part 2's finding, fixed in T6.5 part
+// 1).
 func TestAcceptanceChurn(t *testing.T) {
 	for _, n := range accScenarioSizes(t) {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
@@ -1710,9 +1705,6 @@ func TestAcceptanceChurn(t *testing.T) {
 				logChurnTable(t, runChurn(t, o, false))
 			})
 			t.Run("bootstrap during uploads", func(t *testing.T) {
-				if !accChurnRepro() {
-					t.Skip("finding (T6.1 part 2): the verification of a bootstrap that runs while uploads land in its stripes scores the honest stripe peers; set RANGESYNC_ACCEPTANCE_REPRO to run it")
-				}
 				logChurnTable(t, runChurn(t, o, true))
 			})
 		})
@@ -1720,7 +1712,7 @@ func TestAcceptanceChurn(t *testing.T) {
 }
 
 // runChurn runs the Churn scenario; with duringUploads, the joiner joins at
-// accChurnReproJoin while the uploads run, and no other fault happens.
+// accChurnUploadsJoin while the uploads run, and no other fault happens.
 func runChurn(t *testing.T, o accOptions, duringUploads bool) *accChurnResult {
 	t.Helper()
 
@@ -1757,7 +1749,7 @@ func runChurn(t *testing.T, o accOptions, duringUploads bool) *accChurnResult {
 	leaveRejoin := func(since time.Duration) {
 		switch {
 		case duringUploads:
-			if since >= accChurnReproJoin && joiner == nil {
+			if since >= accChurnUploadsJoin && joiner == nil {
 				join()
 			}
 		case since >= accChurnLeave && !leaver.offline && rejoinAt.IsZero():

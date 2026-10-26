@@ -258,6 +258,30 @@ func TestTransferStripesSessionLimitRetried(t *testing.T) {
 	}
 }
 
+// TestTransferStripesListedAt (T6.5 part 1): a stripe's ListedAt is when the
+// session that listed it opened, on the reconciler's clock, not when an
+// earlier Busy answer came: the deliverer's verification holds against it
+// only chunks stamped before then (verifyStampSlack).
+func TestTransferStripesListedAt(t *testing.T) {
+	t.Parallel()
+
+	const retry = 7 * time.Millisecond
+	svc := newFakeService(status(0))
+	svc.busyN[higher.ByteString()] = 1
+	svc.wants[higher.ByteString()] = 3
+	h := newStripeHarness(t, svc, time.Hour, retry)
+	start := h.clock.Now()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})[0]
+	if res.Err != nil || res.Stored != 3 {
+		t.Fatalf("stored %d, err %v", res.Stored, res.Err)
+	}
+	if want := start.Add(retry); !res.ListedAt.Equal(want) {
+		t.Fatalf("listed at %v, want %v (the session after the Busy answer)", res.ListedAt, want)
+	}
+}
+
 func TestTransferStripesFetchError(t *testing.T) {
 	t.Parallel()
 

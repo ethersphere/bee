@@ -394,3 +394,121 @@ func TestVerifyStripesVerifierOutsideRoot(t *testing.T) {
 		t.Fatalf("verifier score %d, want 0", got)
 	}
 }
+
+// stampedService is a fakeService whose fetches report results
+// (FetchWithResult) with the stamp time of each chunk stored
+// (FetchResult.StampTimes): of each fetch from a peer, the first old[peer]
+// chunks are stamped at oldAt, the others at newAt. The fields are guarded by
+// the fakeService's mu.
+type stampedService struct {
+	*fakeService
+	oldAt, newAt uint64
+	old          map[string]int
+}
+
+func (s *stampedService) FetchWithResult(ctx context.Context, peer swarm.Address, ids []storer.ChunkID) (rangesync.FetchResult, error) {
+	n, err := s.Fetch(ctx, peer, ids)
+	res := rangesync.FetchResult{Stored: n, Undelivered: ids[n:]}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range n {
+		at := s.newAt
+		if i < s.old[peer.ByteString()] {
+			at = s.oldAt
+		}
+		res.StampTimes = append(res.StampTimes, at)
+	}
+	return res, err
+}
+
+// stampedVerifyHarness is verifyHarness on a stampedService.
+func stampedVerifyHarness(t *testing.T, deliver, verify int) (*harness, *stampedService, swarm.Address) {
+	t.Helper()
+	other := addr(0xf1, 0)
+	svc := newFakeService(status(1))
+	svc.remote[higher.ByteString()] = status(2)
+	svc.remote[other.ByteString()] = status(2)
+	svc.wants[higher.ByteString()] = deliver
+	svc.wants[other.ByteString()] = verify
+	ssvc := &stampedService{fakeService: svc, old: make(map[string]int)}
+	h := &harness{svc: svc, topo: &fakeTopology{peers: []swarm.Address{higher, other}}, clock: &fakeClock{now: time.Unix(1_000_000, 0)}}
+	h.r = reconciler.New(self, h.topo, ssvc, log.Noop, reconciler.Options{
+		Now:           h.clock.Now,
+		After:         h.clock.After,
+		RoundInterval: 10 * time.Millisecond,
+	})
+	t.Cleanup(func() {
+		if err := h.r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	h.r.Start(context.Background())
+	waitFor(t, "status", func() bool { return svc.count(svc.sent, other) > 0 && svc.count(svc.sent, higher) > 0 })
+	waitAdmitted(t, h.r, higher, other)
+	return h, ssvc, other
+}
+
+// TestVerifyStripesUploadsDuringTransfer (T6.5 part 1): the verification
+// holds against the deliverer only the chunks it stores whose stamps are
+// older than the deliverer's listing of the stripe (StripeResult.ListedAt) by
+// more than verifyStampSlack, or ahead of the clock by more. Chunks uploaded
+// into the stripe after the deliverer listed it are not held against it,
+// however many, while a deliverer that left out older chunks is still scored
+// past the tolerance. (The fake clock does not move: the listing is now.)
+func TestVerifyStripesUploadsDuringTransfer(t *testing.T) {
+	t.Parallel()
+
+	const (
+		deliver = 100
+		verify  = 30 // far above the tolerance of a 100-chunk stripe
+	)
+	for _, tc := range []struct {
+		name string
+		old  int           // of the verifier's chunks, stamped an hour before the listing
+		at   time.Duration // the stamp time of the others, from the listing
+		want int           // the deliverer's score
+	}{
+		{"uploaded after the listing", 0, time.Second, 0},
+		{"stamped within the slack before it", 0, -reconciler.VerifyStampSlack, 0},
+		{"stamped past the slack before it", 0, -reconciler.VerifyStampSlack - 1, 1},
+		{"stamped within the slack ahead of the clock", 0, reconciler.VerifyStampSlack, 0},
+		{"stamped past the slack ahead of the clock", 0, reconciler.VerifyStampSlack + 1, 1},
+		{"older ones at the tolerance", reconciler.VerifyMinDiff, time.Second, 0},
+		{"older ones past the tolerance", reconciler.VerifyMinDiff + 1, time.Second, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, svc, other := stampedVerifyHarness(t, deliver, verify)
+			root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+			res := h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+			if res[0].Err != nil || res[0].PeerStored != deliver {
+				t.Fatalf("transfer: peer stored %d, err %v", res[0].PeerStored, res[0].Err)
+			}
+			listed := res[0].ListedAt
+			if !listed.Equal(h.clock.Now()) {
+				t.Fatalf("listed at %v, want %v", listed, h.clock.Now())
+			}
+			svc.set(func() {
+				svc.oldAt = uint64(listed.Add(-time.Hour).UnixNano())
+				svc.newAt = uint64(listed.Add(tc.at).UnixNano())
+				svc.old[other.ByteString()] = tc.old
+			})
+
+			v := h.r.VerifyStripes(context.Background(), res)[0]
+			newer := verify - tc.old
+			if tc.at < -reconciler.VerifyStampSlack || tc.at > reconciler.VerifyStampSlack {
+				newer = 0
+			}
+			if v.Err != nil || !v.Verifier.Equal(other) || v.Stored != verify || v.Newer != newer {
+				t.Fatalf("verifier %s, stored %d, newer %d, err %v; want %s, %d, %d", v.Verifier, v.Stored, v.Newer, v.Err, other, verify, newer)
+			}
+			if got := h.r.Score(higher); got != tc.want {
+				t.Fatalf("deliverer score %d, want %d", got, tc.want)
+			}
+			if got := h.r.Score(other); got != 0 {
+				t.Fatalf("verifier score %d, want 0", got)
+			}
+		})
+	}
+}

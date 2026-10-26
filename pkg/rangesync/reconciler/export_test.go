@@ -155,8 +155,11 @@ const (
 	StripePeerBudget  = stripePeerBudget
 )
 
-// VerifyMinDiff is verifyMinDiff.
-const VerifyMinDiff = verifyMinDiff
+// VerifyMinDiff is verifyMinDiff; VerifyStampSlack is verifyStampSlack.
+const (
+	VerifyMinDiff    = verifyMinDiff
+	VerifyStampSlack = verifyStampSlack
+)
 
 // VerificationDiffCount returns the number of verification_diff
 // observations.

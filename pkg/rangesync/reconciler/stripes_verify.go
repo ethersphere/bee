@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -17,15 +18,34 @@ import (
 
 const (
 	// verifyMinDiff is the largest verification difference that never
-	// counts against the deliverer, whatever the stripe's size: chunks
-	// uploaded while the stripe was transferred.
+	// counts against the deliverer, whatever the stripe's size: older
+	// chunks that reached the neighborhood late (pushed long after they
+	// were stamped) and stamps skewed past verifyStampSlack.
 	verifyMinDiff = 4
 	// verifyDiffRatio sets the tolerance of larger stripes: a difference
 	// above 1/verifyDiffRatio of the chunks the deliverer itself stored
 	// (StripeResult.PeerStored, and above verifyMinDiff) is reported as a
 	// failure of the deliverer. The difference counted is what the
-	// verifier delivered (stored, so validated), never what it only listed.
+	// verifier delivered (stored, so validated), never what it only listed,
+	// and of that only the chunks stamped before the deliverer's listing
+	// (verifyStampSlack).
 	verifyDiffRatio = 100
+	// verifyStampSlack is how much older than the deliverer's listing of
+	// the stripe (StripeResult.ListedAt) the stamp of a chunk the
+	// verification stored must be for the chunk to count against the
+	// deliverer (T6.5 part 1). A chunk stamped later was uploaded after the
+	// listing opened, or so shortly before that it may not have reached
+	// the deliverer by then: the slack covers the spread of an upload
+	// through the neighborhood (its rounds, up to (takeoverRounds + 1) ×
+	// MaxRoundInterval for a peer that takes over), the latency of the
+	// push and the skew between the uploader's clock and this node's. A
+	// stamp more than the slack ahead of this node's clock when the chunk
+	// was stored is no evidence of a late upload either: such a chunk
+	// counts. The stamps are signed by their batch owners and bound to the
+	// IDs listed (an ID holds its stamp's hash), so neither the deliverer
+	// nor the verifier can move them. See the T6.5 part 1 decisions log for
+	// what a deliverer can still withhold unscored.
+	verifyStampSlack = 10 * time.Minute
 )
 
 var (
@@ -51,12 +71,15 @@ type VerifyResult struct {
 	// it was verified with (zero when not verified).
 	Deliverer, Verifier swarm.Address
 	// Diff is the number of IDs the verification session listed; Stored
-	// the number of chunks fetched (and validated) for them, the
-	// difference the deliverer is judged on; Undelivered the number of IDs
-	// requested from the verifier that it did not deliver, its shortfall
-	// (not those outside its root by its last Status, which it was not
-	// asked for).
-	Diff, Stored, Undelivered int
+	// the number of chunks fetched (and validated) for them; Newer the
+	// number of those whose stamps are not older than the deliverer's
+	// listing (StripeResult.ListedAt) by verifyStampSlack, nor ahead of
+	// this node's clock by more: uploaded after it listed the stripe. The
+	// deliverer is judged on Stored − Newer.
+	// Undelivered is the number of IDs requested from the verifier that it
+	// did not deliver, its shortfall (not those outside its root by its
+	// last Status, which it was not asked for).
+	Diff, Stored, Newer, Undelivered int
 	// Err is ErrStripeNotDone or ErrNoVerifier for a stripe not verified,
 	// or the error of the verification session or its fetch.
 	Err error
@@ -70,7 +93,12 @@ type VerifyResult struct {
 // 1/verifyDiffRatio of what the deliverer stored) is reported to the
 // PeerScorer as a failure of the deliverer (§9 stripe withholding); only
 // chunks the verifier delivered count, so a verifier cannot get a
-// deliverer scored by listing IDs it does not have. A verifier whose
+// deliverer scored by listing IDs it does not have, and of those only the
+// ones whose stamps are older than the deliverer's listing of the stripe
+// (StripeResult.ListedAt) by more than verifyStampSlack, or ahead of this
+// node's clock by more, so that the chunks uploaded into the stripe since
+// are not held against it (T6.5 part 1). A stored chunk whose stamp time the
+// Service does not report counts. A verifier whose
 // shortfall (IDs requested from it and not delivered; not the IDs the want
 // set did not grant or whose stamp was rejected) is above the same
 // tolerance (of what it listed) is scored itself (withholding). A stripe
@@ -148,9 +176,13 @@ func (r *Reconciler) verifier(res StripeResult, statuses, ready []PeerStatus) (s
 // if not nil, is called whenever its fetch stores chunks.
 func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifier swarm.Address, locks *peerLocks, stored func()) VerifyResult {
 	v := VerifyResult{Range: res.Range, Deliverer: res.Peer, Verifier: verifier}
+	var since time.Time // the stamps from which on a chunk is not held against the deliverer
+	if !res.ListedAt.IsZero() {
+		since = res.ListedAt.Add(-verifyStampSlack)
+	}
 	// one attempt, with a peer's whole budget on the stripe clock
-	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {}, stored, stripePeerBudget*r.stripeTimeout)
-	v.Diff, v.Stored, v.Undelivered, v.Err = t.Listed, t.Stored, t.Undelivered-t.outsideRoot, t.Err
+	t := r.transferStripe(ctx, res.Range, verifier, locks, func() {}, stored, stripePeerBudget*r.stripeTimeout, since)
+	v.Diff, v.Stored, v.Newer, v.Undelivered, v.Err = t.Listed, t.Stored, t.newer, t.Undelivered-t.outsideRoot, t.Err
 	if v.Err != nil {
 		// an incomplete verification says nothing about the deliverer
 		return v
@@ -159,8 +191,8 @@ func (r *Reconciler) verifyStripe(ctx context.Context, res StripeResult, verifie
 		r.Fail(verifier, fmt.Errorf("stripe %s: verifier stored %d of %d, %d undelivered: %w", res.Range, v.Stored, v.Diff, v.Undelivered, ErrVerifierWithheld))
 	}
 	r.metrics.VerificationDiff.Observe(float64(v.Stored))
-	if v.Stored > max(verifyMinDiff, res.PeerStored/verifyDiffRatio) {
-		r.Fail(res.Peer, fmt.Errorf("stripe %s: %d missing after verification with %s: %w", res.Range, v.Stored, verifier, ErrStripeVerification))
+	if missing := v.Stored - v.Newer; missing > max(verifyMinDiff, res.PeerStored/verifyDiffRatio) {
+		r.Fail(res.Peer, fmt.Errorf("stripe %s: %d missing after verification with %s (and %d uploaded since the listing): %w", res.Range, missing, verifier, v.Newer, ErrStripeVerification))
 	}
 	return v
 }

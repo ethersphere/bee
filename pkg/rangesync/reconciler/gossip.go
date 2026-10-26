@@ -216,6 +216,10 @@ func (r *Reconciler) probe(picks []statusPick, local rangesync.Status) (newRoot 
 				}
 				st.sent, st.failed, st.statusFails = true, false, 0
 				st.reached = local.Root
+				if st.rootWake != nil { // stripe sessions wait for the root
+					close(st.rootWake)
+					st.rootWake = nil
+				}
 			case errors.Is(err, rangesync.ErrProtocolUnsupported):
 				if st.fsm.state != stateProbing {
 					// a reconnect the peer set did not show: a new peer

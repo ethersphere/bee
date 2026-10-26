@@ -6,9 +6,11 @@ package rangesync_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,6 +88,30 @@ func TestFetchWithResult(t *testing.T) {
 		t.Fatalf("want set holds %d claims, want 1 (the foreign one)", l)
 	}
 	assertNotScored(t, a, b.addr)
+}
+
+// TestFetchStampTimes (T6.5 part 1) checks that FetchWithResult reports the
+// stamp timestamp of each chunk it stores, and of no other: not of an ID the
+// peer did not deliver, nor of one whose stamp was rejected.
+func TestFetchStampTimes(t *testing.T) {
+	t.Parallel()
+
+	chs := validChunks(4)
+	// 0, 1: stored; 2: not held by b; 3: stamp rejected
+	a := newTestNodeOpts(t, nodeOpts{validStamp: rejectAddr(chs[3].Address())})
+	b := newTestNode(t, chs[0], chs[1], chs[3])
+	connect0(a, b)
+
+	res, err := a.svc.FetchWithResult(context.Background(), b.addr, idsOf(t, chs...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []uint64{binary.BigEndian.Uint64(chs[0].Stamp().Timestamp()), binary.BigEndian.Uint64(chs[1].Stamp().Timestamp())}
+	slices.Sort(want)
+	got := slices.Sorted(slices.Values(res.StampTimes))
+	if res.Stored != 2 || !slices.Equal(got, want) {
+		t.Fatalf("stored %d, stamp times %v, want 2, %v", res.Stored, got, want)
+	}
 }
 
 // TestFetchWithProgress (T4.5 part 2c fix round 2) checks that

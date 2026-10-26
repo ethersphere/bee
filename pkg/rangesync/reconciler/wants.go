@@ -69,6 +69,10 @@ type fetchOutcome struct {
 	// outsideRoot is how many of undelivered were not requested because
 	// they lie outside the peer's root (FetchResult.OutsideRoot).
 	outsideRoot int
+	// stamps are the stamp times of the chunks stored, as far as the
+	// fetch reports them (FetchResult.StampTimes; none without a
+	// resultFetcher).
+	stamps []uint64
 }
 
 // fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
@@ -114,7 +118,7 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 	r.sources.add(r.now(), peer, res.Held)
 	r.retry(peer, append(slices.Clip(res.Undelivered), res.NoCredit...), catchUp)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
-	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified), outsideRoot: res.OutsideRoot}, err
+	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified), outsideRoot: res.OutsideRoot, stamps: res.StampTimes}, err
 }
 
 // retry fetches ids, which failed did not deliver (or delivered invalid, or
