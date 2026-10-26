@@ -136,9 +136,17 @@ components:
         balance:
           $ref: "#/components/schemas/BigInt"
         thresholdreceived:
-          $ref: "#/components/schemas/BigInt"
+          description: Not set by this endpoint, always `null`. Payment thresholds per peer are available from `GET /accounting`.
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/BigInt"
         thresholdgiven:
-          $ref: "#/components/schemas/BigInt"
+          description: Not set by this endpoint, always `null`. Payment thresholds per peer are available from `GET /accounting`.
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/BigInt"
 
     Balances:
       type: object
@@ -186,6 +194,7 @@ components:
                 type: integer
               disconnectedPeers:
                 type: array
+                nullable: true
                 items:
                   type: object
                   properties:
@@ -195,6 +204,7 @@ components:
                       $ref: "#/components/schemas/PeerMetricsView"
               connectedPeers:
                 type: array
+                nullable: true
                 items:
                   type: object
                   properties:
@@ -228,9 +238,17 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         lastreceived:
-          $ref: "#/components/schemas/Cheque"
+          description: Null when no cheque has been received from the peer.
+          type: object
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Cheque"
         lastsent:
-          $ref: "#/components/schemas/Cheque"
+          description: Null when no cheque has been sent to the peer.
+          type: object
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Cheque"
 
     ChequebookBalance:
       type: object
@@ -263,9 +281,10 @@ components:
       example: 30.5
 
     EthereumAddress:
+      description: Ethereum address with the `0x` prefix, in EIP-55 checksum case.
       type: string
-      pattern: "^[A-Fa-f0-9]{40}$"
-      example: "36b7efd913ca4cf880b8eeac5093fa27b0825906"
+      pattern: "^0x[A-Fa-f0-9]{40}$"
+      example: "0x36b7EFd913CA4cF880B8eEAc5093FA27B0825906"
 
     FileName:
       type: string
@@ -312,8 +331,9 @@ components:
         uid:
           $ref: "#/components/schemas/Uid"
         address:
-          $ref: "#/components/schemas/SwarmAddress"
-          description: Root reference associated with the tag once the upload is finalized; zero value before that.
+          type: string
+          pattern: "^([A-Fa-f0-9]{64})?$"
+          description: Root reference associated with the tag once the upload is finalized; empty string before that.
         startedAt:
           $ref: "#/components/schemas/DateTime"
         split:
@@ -424,10 +444,14 @@ components:
           type: string
         reasons:
           type: array
-          nullable: true
           description: List of reasons for the error message.
           items:
-            type: string
+            type: object
+            properties:
+              field:
+                type: string
+              error:
+                type: string
 
     ReferenceResponse:
       type: object
@@ -590,7 +614,9 @@ components:
         start:
           type: integer
         owner:
-          $ref: "#/components/schemas/EthereumAddress"
+          description: Ethereum address of the batch owner, as lowercase hex without the `0x` prefix.
+          type: string
+          pattern: "^[A-Fa-f0-9]{40}$"
         depth:
           type: integer
         bucketDepth:
@@ -957,6 +983,7 @@ components:
           $ref: "#/components/schemas/LoggerTreeNode"
         loggers:
           type: array
+          nullable: true
           items:
             $ref: "#/components/schemas/Logger"
 
@@ -1429,36 +1456,36 @@ components:
     "400":
       description: Bad request
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
     "401":
       description: Unauthorized
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
     "402":
       description: Payment Required
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
     "404":
       description: Not Found
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
     "429":
       description: Too many requests
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
     "500":
       description: Internal Server Error
       content:
-        application/problem+json:
+        application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
