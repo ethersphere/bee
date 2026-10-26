@@ -27,8 +27,8 @@ var (
 // the count is logged once the underlying writer accepts writes again.
 type NonBlockingWriter struct {
 	w       io.Writer
-	queue   chan []byte
-	dropped atomic.Uint64
+	queue   chan queuedMessage
+	dropped atomic.Uint64 // dropped messages not yet reported
 	quit    chan struct{}
 	done    chan struct{}
 	close   sync.Once
@@ -43,12 +43,19 @@ type NonBlockingWriter struct {
 	logger Logger
 }
 
+// queuedMessage is a message waiting to be written, together with
+// the number of messages dropped right before it was queued.
+type queuedMessage struct {
+	p       []byte
+	dropped uint64
+}
+
 // NewNonBlockingWriter returns a NonBlockingWriter that writes to w
 // and queues at most size messages. Close must be called to release it.
 func NewNonBlockingWriter(w io.Writer, size int) *NonBlockingWriter {
 	nb := &NonBlockingWriter{
 		w:       w,
-		queue:   make(chan []byte, size),
+		queue:   make(chan queuedMessage, size),
 		quit:    make(chan struct{}),
 		done:    make(chan struct{}),
 		metrics: newNonBlockingWriterMetrics(),
@@ -63,17 +70,35 @@ func NewNonBlockingWriter(w io.Writer, size int) *NonBlockingWriter {
 // returns an error; if the queue is full, the message is dropped.
 func (nb *NonBlockingWriter) Write(p []byte) (int, error) {
 	select {
-	case nb.queue <- bytes.Clone(p):
+	case <-nb.quit:
+		return len(p), nil
 	default:
-		nb.dropped.Add(1)
-		nb.metrics.DroppedCount.Inc()
+	}
+
+	// Check before copying, so that dropping a message does not allocate.
+	if len(nb.queue) == cap(nb.queue) {
+		nb.drop(1)
+		return len(p), nil
+	}
+
+	dropped := nb.dropped.Swap(0)
+	select {
+	case nb.queue <- queuedMessage{p: bytes.Clone(p), dropped: dropped}:
+	default:
+		nb.dropped.Add(dropped)
+		nb.drop(1)
 	}
 	return len(p), nil
 }
 
+func (nb *NonBlockingWriter) drop(n uint64) {
+	nb.dropped.Add(n)
+	nb.metrics.DroppedCount.Add(float64(n))
+}
+
 // Close stops the writing goroutine after the queued messages are written,
-// waiting for at most closeTimeout. Messages written after
-// Close are discarded.
+// waiting for at most closeTimeout. Messages written after Close are
+// discarded.
 func (nb *NonBlockingWriter) Close() error {
 	nb.close.Do(func() { close(nb.quit) })
 	select {
@@ -92,14 +117,15 @@ func (nb *NonBlockingWriter) run() {
 	defer close(nb.done)
 	for {
 		select {
-		case p := <-nb.queue:
-			nb.write(p)
+		case msg := <-nb.queue:
+			nb.write(msg)
 		case <-nb.quit:
 			for {
 				select {
-				case p := <-nb.queue:
-					nb.write(p)
+				case msg := <-nb.queue:
+					nb.write(msg)
 				default:
+					nb.reportDropped(nb.dropped.Swap(0))
 					return
 				}
 			}
@@ -107,14 +133,19 @@ func (nb *NonBlockingWriter) run() {
 	}
 }
 
-func (nb *NonBlockingWriter) write(p []byte) {
-	if n := nb.dropped.Swap(0); n > 0 {
-		if nb.logger == nil {
-			nb.logger = NewLogger("log", WithSink(nb.w), WithVerbosity(VerbosityWarning))
-		}
-		nb.logger.Warning("log output is not keeping up, messages were dropped", "dropped", n)
+func (nb *NonBlockingWriter) write(msg queuedMessage) {
+	nb.reportDropped(msg.dropped)
+	_, _ = nb.w.Write(msg.p)
+}
+
+func (nb *NonBlockingWriter) reportDropped(n uint64) {
+	if n == 0 {
+		return
 	}
-	_, _ = nb.w.Write(p)
+	if nb.logger == nil {
+		nb.logger = NewLogger("log", WithSink(nb.w), WithVerbosity(VerbosityWarning))
+	}
+	nb.logger.Warning("log output is not keeping up, messages were dropped", "dropped", n)
 }
 
 type nonBlockingWriterMetrics struct {

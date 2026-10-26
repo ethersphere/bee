@@ -64,56 +64,93 @@ func droppedCount(t *testing.T, nb *NonBlockingWriter) int {
 	return int(m.GetCounter().GetValue())
 }
 
+// stall writes total messages to nb so that the first one is held by the
+// stalled sink, the next size ones fill the queue and the rest are dropped.
+func stall(t *testing.T, nb *NonBlockingWriter, sink *stalledWriter, total int) {
+	t.Helper()
+
+	// Wait for the first message to be held by the
+	// stalled sink, so that the queue is empty again.
+	_, _ = fmt.Fprintf(nb, "message %d\n", 0)
+	select {
+	case <-sink.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first message did not reach the sink")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 1; i < total; i++ {
+			_, _ = fmt.Fprintf(nb, "message %d\n", i)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("writer blocked on a stalled sink")
+	}
+}
+
+func droppedNotice(n int) string {
+	return fmt.Sprintf(`"level"="warning" "logger"="root" "msg"="log output is not keeping up, messages were dropped" "dropped"=%d`+"\n", n)
+}
+
 func TestNonBlockingWriter(t *testing.T) {
 	t.Parallel()
 
-	t.Run("stalled sink does not block the logger", func(t *testing.T) {
-		t.Parallel()
+	const (
+		size        = 4
+		total       = 100
+		wantDropped = total - 1 - size
+		kept        = "message 0\nmessage 1\nmessage 2\nmessage 3\nmessage 4\n"
+	)
 
-		const (
-			size  = 4
-			total = 100
-		)
+	t.Run("stalled sink does not block and drops are reported where they happened", func(t *testing.T) {
+		t.Parallel()
 
 		sink := newStalledWriter()
 		nb := newNonBlockingWriter(sink, size)
 		t.Cleanup(func() { sink.unblock(); _ = nb.Close() })
 
-		// Wait for the first message to be held by the
-		// stalled sink, so that the queue is empty again.
-		_, _ = fmt.Fprintf(nb, "message %d\n", 0)
-		select {
-		case <-sink.entered:
-		case <-time.After(5 * time.Second):
-			t.Fatal("first message did not reach the sink")
-		}
-
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			for i := 1; i < total; i++ {
-				_, _ = fmt.Fprintf(nb, "message %d\n", i)
-			}
-		}()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("logger blocked on a stalled sink")
-		}
-
-		wantDropped := total - 1 - size
+		stall(t, nb, sink, total)
 		if got := droppedCount(t, nb); got != wantDropped {
 			t.Fatalf("dropped count: got %d, want %d", got, wantDropped)
 		}
 
 		sink.unblock()
+		deadline := time.Now().Add(5 * time.Second)
+		for len(nb.queue) > 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("queue was not drained")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		_, _ = fmt.Fprintln(nb, "after recovery")
 		if err := nb.Close(); err != nil {
 			t.Fatal(err)
 		}
 
-		want := fmt.Sprintf("message 0\n"+
-			`"level"="warning" "logger"="root" "msg"="log output is not keeping up, messages were dropped" "dropped"=%d`+"\n"+
-			"message 1\nmessage 2\nmessage 3\nmessage 4\n", wantDropped)
+		want := kept + droppedNotice(wantDropped) + "after recovery\n"
+		if got := sink.buf.String(); got != want {
+			t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+
+	t.Run("drops before close are reported", func(t *testing.T) {
+		t.Parallel()
+
+		sink := newStalledWriter()
+		nb := newNonBlockingWriter(sink, size)
+		t.Cleanup(func() { sink.unblock(); _ = nb.Close() })
+
+		stall(t, nb, sink, total)
+		sink.unblock()
+		if err := nb.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		want := kept + droppedNotice(wantDropped)
 		if got := sink.buf.String(); got != want {
 			t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 		}
@@ -137,6 +174,29 @@ func TestNonBlockingWriter(t *testing.T) {
 		want := "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
 		if got := sink.String(); got != want {
 			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("writes after close are discarded", func(t *testing.T) {
+		t.Parallel()
+
+		var sink bytes.Buffer
+		nb := newNonBlockingWriter(&sink, 16)
+		if err := nb.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fmt.Fprintln(nb, "message"); err != nil {
+			t.Fatal(err)
+		}
+		if n := len(nb.queue); n != 0 {
+			t.Fatalf("queued messages: got %d, want 0", n)
+		}
+		if got := droppedCount(t, nb); got != 0 {
+			t.Fatalf("dropped count: got %d, want 0", got)
+		}
+		if sink.Len() != 0 {
+			t.Fatalf("unexpected output: %q", sink.String())
 		}
 	})
 
@@ -164,4 +224,19 @@ func TestNonBlockingWriter(t *testing.T) {
 			t.Fatal("close blocked on a stalled sink")
 		}
 	})
+}
+
+// TestNonBlockingWriterDropDoesNotAllocate is not parallel,
+// because testing.AllocsPerRun counts allocations process wide.
+func TestNonBlockingWriterDropDoesNotAllocate(t *testing.T) {
+	sink := newStalledWriter()
+	nb := newNonBlockingWriter(sink, 1)
+	t.Cleanup(func() { sink.unblock(); _ = nb.Close() })
+
+	stall(t, nb, sink, 2)
+
+	p := []byte("message\n")
+	if allocs := testing.AllocsPerRun(100, func() { _, _ = nb.Write(p) }); allocs != 0 {
+		t.Fatalf("allocations per dropped message: got %v, want 0", allocs)
+	}
 }

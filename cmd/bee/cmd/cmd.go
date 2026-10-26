@@ -417,9 +417,13 @@ func (c *command) preRun(cmd *cobra.Command) error {
 
 func (c *command) initLogger(cmd *cobra.Command) error {
 	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-	// A stalled log consumer must cost log lines, not node operation.
-	c.logSink = log.NewNonBlockingWriter(cmd.OutOrStdout(), logQueueSize)
-	logger, err := newLoggerWithSink(c.logSink, v)
+	sink := cmd.OutOrStdout()
+	if v != "0" && v != "silent" {
+		// A stalled log consumer must cost log lines, not node operation.
+		c.logSink = log.NewNonBlockingWriter(sink, logQueueSize)
+		sink = c.logSink
+	}
+	logger, err := newLoggerWithSink(sink, v)
 	if err != nil {
 		return fmt.Errorf("new logger: %w", err)
 	}
