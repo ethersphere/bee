@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const statusLabel = "status"
+
 type metrics struct {
 	TotalSent               prometheus.Counter
 	TotalReceived           prometheus.Counter
@@ -24,13 +26,12 @@ type metrics struct {
 	Storer                  prometheus.Counter
 	TotalHandlerTime        *prometheus.HistogramVec
 	PushToPeerTime          *prometheus.HistogramVec
-
-	ReceiptDepth        *prometheus.CounterVec
-	ShallowReceiptDepth *prometheus.CounterVec
-	ShallowReceipt      prometheus.Counter
-	OverdraftRefresh    prometheus.Counter
-	OutOfDepthStoring   prometheus.Counter
-	OriginNoPeersLeft   prometheus.Counter
+	ReceiptDepth            *prometheus.CounterVec
+	ShallowReceiptDepth     *prometheus.CounterVec
+	ShallowReceipt          prometheus.Counter
+	OverdraftRefresh        prometheus.Counter
+	OutOfDepthStoring       prometheus.Counter
+	OriginNoPeersLeft       prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -96,7 +97,7 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "stamp_validation_time",
 			Help:      "Time taken to validate stamps.",
-		}, []string{"status"}),
+		}, []string{statusLabel}),
 		Forwarder: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -115,7 +116,7 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
-			}, []string{"status"},
+			}, []string{statusLabel},
 		),
 		PushToPeerTime: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -123,7 +124,7 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
-			}, []string{"status"},
+			}, []string{statusLabel},
 		),
 		ShallowReceiptDepth: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
