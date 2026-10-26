@@ -425,8 +425,15 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	a.metrics.NeighborhoodSelected.Inc()
 	a.logger.Info("neighbourhood chosen", "round", round)
 
-	if !a.reserveSyncedFunc(committedDepth) {
-		a.logger.Info("skipping round because reserve is not synced", "depth", committedDepth, "round", round)
+	salt, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	// in a sister neighbourhood round the sample comes from our bin PO(overlay, anchor)
+	depth := min(committedDepth, swarm.Proximity(a.overlay.Bytes(), salt))
+	if !a.reserveSyncedFunc(depth) {
+		a.logger.Info("skipping round because reserve is not synced", "depth", depth, "round", round)
 		return false, nil
 	}
 
@@ -445,7 +452,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	now := time.Now()
-	sample, err := a.makeSample(ctx, committedDepth)
+	sample, err := a.makeSample(ctx, salt, committedDepth)
 	if err != nil {
 		return false, err
 	}
@@ -491,12 +498,7 @@ func (a *Agent) reserveSampleAndHash(ctx context.Context, anchor []byte, depth u
 	return res, err
 }
 
-func (a *Agent) makeSample(ctx context.Context, committedDepth uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
-	if err != nil {
-		return SampleData{}, err
-	}
-
+func (a *Agent) makeSample(ctx context.Context, salt []byte, committedDepth uint8) (SampleData, error) {
 	res, err := a.reserveSampleAndHash(ctx, salt, committedDepth)
 	if err != nil {
 		return SampleData{}, err

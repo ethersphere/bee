@@ -5,6 +5,7 @@
 package storageincentives_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -44,6 +45,7 @@ func TestAgent(t *testing.T) {
 		balance         *big.Int
 		doubling        uint8
 		isReserveSynced func(depth uint8) bool
+		sisterAnchor    bool // round anchor at PO radius from the overlay instead of within committed depth
 	}{
 		{
 			name:           "3 blocks per phase, same block number returns twice",
@@ -113,6 +115,28 @@ func TestAgent(t *testing.T) {
 			balance:         bigBalance,
 			doubling:        1,
 			isReserveSynced: func(depth uint8) bool { return depth > 9 },
+		}, {
+			name:            "no expected calls - sister anchor with sub-depth syncing",
+			blocksPerRound:  12,
+			blocksPerPhase:  4,
+			incrementBy:     2,
+			expectedCalls:   false,
+			limit:           144,
+			balance:         bigBalance,
+			doubling:        1,
+			isReserveSynced: func(depth uint8) bool { return depth >= 9 },
+			sisterAnchor:    true,
+		}, {
+			name:            "expected calls - sister anchor with reserve synced at radius",
+			blocksPerRound:  12,
+			blocksPerPhase:  4,
+			incrementBy:     2,
+			expectedCalls:   true,
+			limit:           144,
+			balance:         bigBalance,
+			doubling:        1,
+			isReserveSynced: func(depth uint8) bool { return depth >= 8 },
+			sisterAnchor:    true,
 		},
 	}
 
@@ -135,6 +159,10 @@ func TestAgent(t *testing.T) {
 				var radius uint8 = 8
 
 				contract := &mockContract{t: t, expectedRadius: radius + tc.doubling}
+				if tc.sisterAnchor {
+					contract.anchor = bytes.Clone(addr.Bytes())
+					contract.anchor[radius/8] ^= 0x80 >> (radius % 8)
+				}
 
 				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.isReserveSynced)
 				testutil.CleanupCloser(t, service)
@@ -596,6 +624,7 @@ type mockContract struct {
 	isPlayingCount  int
 	beforeIsPlaying func()
 	beforeCommit    func()
+	anchor          []byte
 }
 
 // getCalls returns a snapshot of the calls list
@@ -627,7 +656,7 @@ func (m *mockContract) playingCount() int {
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
-	return nil, nil
+	return m.anchor, nil
 }
 
 func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {

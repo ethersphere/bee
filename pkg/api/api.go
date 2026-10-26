@@ -218,8 +218,7 @@ type Service struct {
 	// pinIntegrityFullScan is set while a check of all pins is running.
 	pinIntegrityFullScan atomic.Bool
 
-	syncStatus            func() (bool, error)
-	syncRateOutsideRadius func() float64
+	syncStatus func() (bool, error)
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -291,7 +290,6 @@ type ExtraOptions struct {
 	Staking         staking.Contract
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
-	SyncRateOutside func() float64
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
 }
@@ -392,7 +390,6 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.syncStatus = e.SyncStatus
-	s.syncRateOutsideRadius = e.SyncRateOutside
 
 	s.statusService = e.NodeStatus
 

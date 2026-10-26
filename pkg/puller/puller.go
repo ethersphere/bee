@@ -71,7 +71,7 @@ const (
 	// DefaultHistRateWindow must stay shorter than the reserve worker wakeup
 	// (reserveWakeUpDuration in pkg/node), so a full window of syncing has
 	// passed before the radius is decreased again.
-	DefaultHistRateWindow = time.Minute * 5
+	DefaultHistRateWindow = time.Minute * 10
 
 	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
@@ -169,16 +169,6 @@ func (p *Puller) SyncRateWithinRadius() float64 {
 	return r
 }
 
-// SyncRateOutsideRadius returns the historical sync rate of the bins outside the storage radius.
-func (p *Puller) SyncRateOutsideRadius() float64 {
-	var r float64
-	radius := p.radius.StorageRadius()
-	for bin := uint8(0); bin < radius && bin < p.bins; bin++ {
-		r += p.binRate[bin].Rate()
-	}
-	return r
-}
-
 // IsReserveSynced returns true if no bin at or above depth is historically syncing.
 // A depth beyond the tracked bins is never reported as synced.
 func (p *Puller) IsReserveSynced(depth uint8) bool {
@@ -191,6 +181,20 @@ func (p *Puller) IsReserveSynced(depth uint8) bool {
 		}
 	}
 	return true
+}
+
+// localBin returns our bin for chunks in bin of a peer at proximity peerPO.
+// For bin == peerPO our bin is only known to be deeper, so the top bin is used
+// and every depth check counts the chunks.
+func (p *Puller) localBin(peerPO, bin uint8) uint8 {
+	switch {
+	case bin < peerPO:
+		return bin
+	case bin > peerPO:
+		return peerPO
+	default:
+		return p.bins - 1
+	}
 }
 
 func (p *Puller) manage(ctx context.Context) {
@@ -425,7 +429,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
-				p.binRate[bin].Add(count)
+				p.binRate[p.localBin(peer.po, bin)].Add(count)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

@@ -96,76 +96,52 @@ func TestSyncOutsideDepth(t *testing.T) {
 func TestSyncRates(t *testing.T) {
 	t.Parallel()
 
-	var (
-		addr    = swarm.RandAddress(t)
-		addr2   = swarm.RandAddress(t)
-		cursors = []uint64{1000, 1000, 1000, 1000}
-	)
+	const radius = 2
 
-	newRatesPuller := func(t *testing.T, replies ...mockps.SyncReply) (*puller.Puller, *kadMock.Mock) {
-		t.Helper()
-		p, _, kad, _ := newPuller(t, opts{
-			kad: []kadMock.Option{
-				kadMock.WithEachPeerRevCalls(
-					kadMock.AddrTuple{Addr: addr, PO: 2},
-					kadMock.AddrTuple{Addr: addr2, PO: 0},
-				),
-			},
-			pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
-			bins:     4,
-			rs:       resMock.NewReserve(resMock.WithRadius(2)),
+	// the peer bin is PO(peer, chunk); the rate must be recorded in our bin PO(base, chunk)
+	for _, tc := range []struct {
+		name     string
+		peerPO   uint8
+		bin      uint8
+		syncedAt uint8 // lowest depth reported as synced, 5 = none
+	}{
+		{name: "outer peer", peerPO: 1, bin: 1, syncedAt: 5},             // our bin unknown, >= radius
+		{name: "sister peer same bin", peerPO: 2, bin: 2, syncedAt: 5},   // our bin unknown, > 2
+		{name: "sister peer deeper bin", peerPO: 2, bin: 3, syncedAt: 3}, // our bin 2
+		{name: "neighbor shallower bin", peerPO: 4, bin: 2, syncedAt: 3}, // our bin 2
+		{name: "neighbor deeper bin", peerPO: 3, bin: 4, syncedAt: 4},    // our bin 3
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			addr := swarm.RandAddress(t)
+			p, _, kad, _ := newPuller(t, opts{
+				kad:      []kadMock.Option{kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: tc.peerPO})},
+				pullSync: []mockps.Option{mockps.WithCursors([]uint64{1000, 1000, 1000, 1000, 1000}, 0), mockps.WithReplies(mockps.SyncReply{Bin: tc.bin, Start: 1, Topmost: 1000, Count: 100, Peer: addr})},
+				bins:     5,
+				rs:       resMock.NewReserve(resMock.WithRadius(radius)),
+			})
+			if !p.IsReserveSynced(radius) {
+				t.Fatal("expected reserve to be synced before any syncing")
+			}
+			kad.Trigger()
+
+			err := spinlock.Wait(time.Second, func() bool {
+				return p.SyncRateWithinRadius() > 0
+			})
+			if err != nil {
+				t.Fatal("expected a non-zero sync rate within radius")
+			}
+			for depth := uint8(radius); depth < 5; depth++ {
+				if got, want := p.IsReserveSynced(depth), depth >= tc.syncedAt; got != want {
+					t.Fatalf("depth %d: got synced %v, want %v", depth, got, want)
+				}
+			}
+			if p.IsReserveSynced(5) {
+				t.Fatal("expected a depth beyond the tracked bins not to be synced")
+			}
 		})
-		return p, kad
 	}
-
-	t.Run("outside radius only", func(t *testing.T) {
-		t.Parallel()
-
-		p, kad := newRatesPuller(t, mockps.SyncReply{Bin: 0, Start: 1, Topmost: 1000, Count: 100, Peer: addr2})
-		if !p.IsReserveSynced(2) {
-			t.Fatal("expected reserve to be synced before any syncing")
-		}
-		kad.Trigger()
-
-		err := spinlock.Wait(time.Second, func() bool {
-			return p.SyncRateOutsideRadius() > 0
-		})
-		if err != nil {
-			t.Fatal("expected a non-zero sync rate outside radius")
-		}
-		if within := p.SyncRateWithinRadius(); within != 0 {
-			t.Fatalf("got sync rate within radius %v, want 0", within)
-		}
-		if !p.IsReserveSynced(2) {
-			t.Fatal("expected reserve to be synced when only bins outside radius are syncing")
-		}
-	})
-
-	t.Run("within radius", func(t *testing.T) {
-		t.Parallel()
-
-		p, kad := newRatesPuller(t, mockps.SyncReply{Bin: 2, Start: 1, Topmost: 1000, Count: 100, Peer: addr})
-		kad.Trigger()
-
-		err := spinlock.Wait(time.Second, func() bool {
-			return p.SyncRateWithinRadius() > 0
-		})
-		if err != nil {
-			t.Fatal("expected a non-zero sync rate within radius")
-		}
-		if outside := p.SyncRateOutsideRadius(); outside != 0 {
-			t.Fatalf("got sync rate outside radius %v, want 0", outside)
-		}
-		if p.IsReserveSynced(2) {
-			t.Fatal("expected reserve not to be synced at depth 2 when bin 2 is syncing")
-		}
-		if !p.IsReserveSynced(3) {
-			t.Fatal("expected reserve to be synced at depth 3 when only bin 2 is syncing")
-		}
-		if p.IsReserveSynced(4) {
-			t.Fatal("expected a depth beyond the tracked bins not to be synced")
-		}
-	})
 
 	t.Run("bins above max", func(t *testing.T) {
 		t.Parallel()
@@ -178,7 +154,6 @@ func TestSyncRates(t *testing.T) {
 			t.Fatal("expected bins to be capped at swarm.MaxBins")
 		}
 		_ = p.SyncRateWithinRadius()
-		_ = p.SyncRateOutsideRadius()
 	})
 }
 

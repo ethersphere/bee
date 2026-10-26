@@ -1391,9 +1391,6 @@ func NewBee(
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
 	}
-	if pullerService != nil {
-		extraOpts.SyncRateOutside = pullerService.SyncRateOutsideRadius
-	}
 
 	if o.APIAddr != "" {
 		// register metrics from components

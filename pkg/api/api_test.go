@@ -125,9 +125,8 @@ type testServerOptions struct {
 	SwapOpts        []swapmock.Option
 	TransactionOpts []transactionmock.Option
 
-	BatchStore      postage.Storer
-	SyncStatus      func() (bool, error)
-	SyncRateOutside func() float64
+	BatchStore postage.Storer
+	SyncStatus func() (bool, error)
 
 	BackendOpts                 []backendmock.Option
 	Erc20Opts                   []erc20mock.Option
@@ -217,7 +216,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		PostageContract: o.PostageContract,
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,
-		SyncRateOutside: o.SyncRateOutside,
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
 		PinIntegrity:    o.PinIntegrity,
