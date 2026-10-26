@@ -34,6 +34,14 @@ type addressKey struct{}
 const granteeListEncrypt = true
 
 // getAddressFromContext is a helper function to extract the address from the context.
+// isEmptyReference reports whether the content address of a reference, its
+// first swarm.HashSize bytes, is all zeros. An encrypted reference appends the
+// decryption key to the content address.
+func isEmptyReference(ref swarm.Address) bool {
+	b := ref.Bytes()
+	return len(b) >= swarm.HashSize && swarm.NewAddress(b[:swarm.HashSize]).IsEmpty()
+}
+
 func getAddressFromContext(ctx context.Context) swarm.Address {
 	v, ok := ctx.Value(addressKey{}).(swarm.Address)
 	if ok {

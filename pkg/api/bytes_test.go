@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -625,7 +626,6 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 	}
 }
 
-// TestBytesGetHandlerNoPeers verifies that a retrieval failure caused by having no available peers
 func TestBytesEmptyAddress(t *testing.T) {
 	t.Parallel()
 
@@ -633,15 +633,23 @@ func TestBytesEmptyAddress(t *testing.T) {
 		Storer: mockstorer.New(),
 	})
 
-	jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+swarm.EmptyAddress.String(), http.StatusBadRequest,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: "all-zero address is not a valid reference",
-			Code:    http.StatusBadRequest,
-		}),
-	)
-	jsonhttptest.Request(t, client, http.MethodHead, "/bytes/"+swarm.EmptyAddress.String(), http.StatusBadRequest)
+	key := strings.Repeat("ab", swarm.HashSize)
+	for _, ref := range []string{
+		swarm.EmptyAddress.String(),
+		swarm.EmptyAddress.String() + strings.Repeat("00", swarm.HashSize),
+		swarm.EmptyAddress.String() + key,
+	} {
+		jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+ref, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "all-zero address is not a valid reference",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+		jsonhttptest.Request(t, client, http.MethodHead, "/bytes/"+ref, http.StatusBadRequest)
+	}
 }
 
+// TestBytesGetHandlerNoPeers verifies that a retrieval failure caused by having no available peers
 func TestBytesGetHandlerNoPeers(t *testing.T) {
 	t.Parallel()
 

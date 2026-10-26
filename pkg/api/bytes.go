@@ -182,7 +182,7 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
-	if address.IsEmpty() {
+	if isEmptyReference(address) {
 		jsonhttp.BadRequest(w, errEmptyAddress)
 		return
 	}
@@ -209,7 +209,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
-	if address.IsEmpty() {
+	if isEmptyReference(address) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
