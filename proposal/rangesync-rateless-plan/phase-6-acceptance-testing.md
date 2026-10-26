@@ -1390,6 +1390,152 @@ _(sessions append here)_
   `make test-integration` fails outside the plan on the base too: `pkg/jsonhttp`
   `TestPanicRespond` under the host's go1.27.0 (passes under go1.26.1) and the `ens` integration
   test, which does not compile (`undefined: testutil`).
+- **(T6.5 part 1) Stripe sessions wait for this node's root to reach their peer (fixes "(T6.1 part
+  2 → T4, Low) Stripe sessions race the moved-root Status", ranked Medium by "(T6.1 part 2 fix
+  round 1 → before T6.3)").** As built (`stripes_transfer.go`):
+  - Before each session a stripe attempt opens (transfers, restarts, reassignments and
+    verifications alike, whatever moved the root), `reachedRoot(peer)` must hold: the peer's
+    `peerState.reached` (the root of the last Status of this node that reached it) equals
+    `LocalStatus().Root`, the condition round sessions use (`scheduleLocked`, `recheckSession`).
+    `handleStatus` stores a Status before its `FullClose`, so `reached` means the peer holds it.
+  - A peer that lacks it is not asked: the attempt waits as for the peer's Busy
+    (`errRootNotReached` in `stripeBusy`), as "(T4.5 part 2c fix round 2, Low 1) An open backoff is
+    the peer's Busy for stripes" made the open backoff: off the stripe clock (unless a fetch of the
+    attempt runs), without its slots, counted in `maxStripeBusyRetries` (30, about 30 s) with the
+    peer's Busy answers and its open backoff. It asks again after `stripeRetryInterval`, or at once
+    when a Status of this node reaches the peer (`peerState.rootWake`, closed by `probe`, as
+    `st.idle` wakes the stripes waiting for a round session): with the 1-s poll alone, the first run
+    of the harness after the fix took the new half's first chunk 1 s later (6.05 s against 5.05 s
+    after the decrease) in 3 of 5 runs of one orientation. Past it the attempt fails without a session (`ran` false, so the peer may still verify
+    the stripe) and `runStripe` reassigns the stripe, unscored.
+  - Not checked: a peer the reconciler keeps no entry for (`TransferStripes` called directly), an
+    Unsupported one, and a `LocalStatus` that fails (the session reports it).
+
+  Decision: the wait is the peer's Busy, not a cause on this node. A local cause runs on the stripe
+  clock and restarts with the same peer (up to `maxStripeRestarts` × `StripeTimeout`), so a peer
+  that never takes this node's Status (it resets the Status stream, or stalls it to the timeout)
+  would hold the stripe for hours. 30 s covers the gossip: a moved root is due at once, or a few
+  seconds later under the sender-side rate (`PeerStatusInterval`, 2.5 s, per Status past
+  `statusBurst` back to back), and a failed send is retried after 5 s, then 10 s. `planStripes`
+  still plans on such a peer (it is in `ready`): a wait of seconds costs less than the imbalance a
+  re-plan would cause, which is what made the race expensive (one peer serving 3 of 4 stripes).
+
+  Not built: the finding's "keep the peer instead of reassigning a stripe whose session the peer
+  refused for a stale root". The refusal is a stream reset, which the frozen wire does not tell
+  apart from any other reset; the check closes the window before the session opens instead. What
+  is left of the race: a root that moves again between the check and the session's
+  `LocalStatus` (two radius changes within milliseconds), which ends as before (a reassignment).
+  Kept: own jobs and claims (preemption, adoption, caps), the stripe inactivity clock (the wait is
+  off it), the SyncRate holds (the transfer holds `catchUpFetches` throughout; the own-job grace,
+  `radiusHold` and `claimIdleTimeout` all outlast 30 s), the fetch credit (no fetch is made). No
+  wire change. Superseded: nothing written; T3.4's "newHalf is registered ... through the stripe
+  worker as soon as a peer with a Status covers it" still holds, its stripe sessions now wait for
+  the root as round sessions do.
+- **(T6.5 part 1) Stripe verification judges the deliverer on the chunks stamped before its listing
+  (fixes "(T6.1 part 2 → T4/T6.4, finding) Stripe verification scores honest deliverers when uploads
+  land in their stripes", ranked Medium by "(T6.1 part 2 fix round 1 → before T6.3)").** As built:
+  - `rangesync.FetchResult.StampTimes` (additive API, no wire change): the stamp timestamp of each
+    chunk stored, in the order stored (`deliver`). The reconciler carries it in `fetchOutcome`.
+  - `StripeResult.ListedAt`: when the session of the deliverer's last attempt opened, on the
+    reconciler's clock (`transferStripe` sets it before each `ReconcileWith`; `runStripe` keeps the
+    last attempt's). The deliverer is accountable for what it held then: the last attempt lists all
+    it holds of the stripe that this node lacks, whatever earlier attempts delivered.
+  - `verifyStripe` passes `ListedAt − verifyStampSlack` (10 min) to the verifier's attempt, which
+    counts `VerifyResult.Newer`: the stored chunks whose stamps are at or after it and not more than
+    `verifyStampSlack` ahead of this node's clock when stored. The deliverer is scored
+    (`ErrStripeVerification`) when `Stored − Newer > max(verifyMinDiff, PeerStored/verifyDiffRatio)`
+    (tolerance unchanged). A stored chunk whose stamp time the Service does not report counts (as
+    before: the fakes without `FetchWithResult`). Unchanged: the verifier's own check
+    (`Undelivered` above its tolerance), the `Tried` exclusion, `verification_diff` (it still
+    observes `Stored`, all the verification found).
+
+  Why stamps, not a tolerance scaled by the upload rate (the finding's two directions). The stamp
+  of a chunk the verification stores is signed by its batch owner and bound to the ID the verifier
+  listed (the ID holds the stamp's hash), so neither the deliverer nor the verifier can move it; the
+  deliverer cannot move `ListedAt` earlier either (a restart only moves it later, which makes more of
+  what it withheld count). A rate-scaled tolerance would need an upload rate from evidence the
+  deliverer cannot influence, which leaves the peers' Status counts: debounced to 5 s, noisy over
+  the seconds of the suite's transfers, lowered by evictions, and per root rather than per stripe;
+  and it would give a withholding deliverer a free budget of *any* chunks, old ones included, as
+  large as the expected uploads (at heavy load a large one). With stamps only recent chunks are
+  excused. The slack covers an upload's spread through the neighborhood (up to (`takeoverRounds` +
+  1) × `MaxRoundInterval` = 90 s for a peer that takes over), the push's latency and clock skew of
+  minutes; the upper bound (a stamp more than the slack ahead of the clock is no evidence of a late
+  upload) keeps a colluding uploader from shielding chunks by dating them in the future.
+
+  What an attacker can still do:
+  - a deliverer can leave out unscored the chunks stamped less than `verifyStampSlack` before its
+    listing opened (at the reference load of 15 uploads/s per neighborhood ~9,000, ~2,250 per
+    stripe of 4: 0.2 % of a 2^22/4 stripe), those that reach it while it lists, and, as before,
+    max(4, 1 %) of any. The verification still fetches all of them from the verifier: only the
+    deterrent is lost;
+  - a colluding uploader gains nothing by stamping honest chunks anew: a second stamp of an address
+    is another ID, and the original keeps its stamp; future-dated stamps count;
+  - framing an honest deliverer still costs what it did: upload into its stripe during its transfer
+    more chunks than the tolerance (addresses are cheap to mine into a stripe), now with stamps
+    backdated by more than 10 min (free for the batch owner). The deliverer's score rises by one
+    (deprioritized above `ScoreThreshold`, decays one per 10 min); no disconnect;
+  - a colluding verifier still shields a deliverer (lists nothing), as before.
+
+  False positives left: honest chunks stamped more than 10 min before the listing that reach the
+  neighborhood after it (deferred uploads pushed late, a pusher backlog, re-uploads with their old
+  stamps) and a node whose clock runs more than 10 min ahead; both fall under the 1 % tolerance in
+  ordinary operation. In tests whose stamps are random (`postagetesting.MustNewStamp`, the sims'
+  `randBytes`) or whose reconciler runs on a fake clock, `Newer` is arbitrary; no such test checks a
+  deliverer's score.
+
+  Superseded: T3.3's "Scoring" ("the tolerance absorbs uploads that arrived during the transfer")
+  and "Verification blame basis" ("The deliverer is judged on the chunks the verifier delivered"),
+  and T4.4's "The deliverer check (verifier-Stored above the tolerance) is unchanged": the
+  deliverer is now judged on the verifier's stored chunks stamped before `ListedAt` −
+  `verifyStampSlack` (and not more than it ahead of the clock). T3.3's "Tolerance basis"
+  consequence ("a deliverer can withhold up to max(4, 1%) of its stripe per bootstrap unscored")
+  grows by the recent chunks above.
+- **(T6.5 part 1) Results and runs.** No `-race` (no C compiler); one test process at a time on
+  this 4-core host.
+  - Regression tests, each failing before its fix (run against the old code by reverting the
+    production lines only): `TestRadiusStripeWaitsForMovedRoot` ("2 sessions opened with higher
+    before it had the new root", then reassigned), and without the wake-up it times out (the fake
+    clock does not move); `TestVerifyStripesUploadsDuringTransfer` (the deliverer scored 1 in the
+    four cases whose chunks are newer); `TestTransferStripesListedAt`; `TestFetchStampTimes`.
+  - `TestAcceptanceRadius`, 5 runs × 2 rangesync orientations (default, no Baseline), before and
+    after:
+
+    | | before (base code) | after (final code) |
+    |---|---|---|
+    | runs with a stripe reassigned | 2 of 10 (both decreaser lowest), 1 each | 0 of 10 |
+    | decrease to first chunk | 3.2–5.1 s | 3.0–5.1 s |
+    | decrease to the new half complete | 11.6–17.7 s (17.7 s in the 2 race runs, one peer 15 MB) | 11.4–14.2 s |
+    | peer failures; disconnects | 0; 0 | 0; 0 |
+
+    An intermediate version without the wake-up (the 1-s poll only), 5 runs: 0 of 10 reassigned,
+    but the first chunk 6.05 s instead of 5.05 s in 3 of 5 runs of the decreaser-lowest
+    orientation, which the wake-up removed.
+  - `TestAcceptanceChurn/N=5/bootstrap_during_uploads`: on the base code with
+    `RANGESYNC_ACCEPTANCE_REPRO=1`, 2 of 2 runs failed ("honest peers scored": 2 and 1 peer
+    failures); after, unskipped, 3 of 3 runs passed with 0 peer failures, 0 disconnects (joiner's
+    base 9.5–10.9 s after it joined, `stripes_total` done 4). The sibling case "leave rejoin and
+    stripe peer" passed in the same 3 runs (reassigned 1 each, as it asserts; 0 peer failures).
+  - AC-B2 (`-tags=sim`, `TestG6Bootstrap$|TestG6BootstrapTail`, 670 s): identical to T4.7 part 4's
+    record, within bound: `TestG6Bootstrap` 1410 and 1409 KB of 2610 KB (16 stripes done, none
+    reassigned), `TestG6BootstrapTail` 1232 / 1263 / 1326 KB of 2288 KB (1.10 / 1.13 / 1.18 ×),
+    caught up after 5333.93–5335.13 s, no stripe timed out.
+  - Default `go test -tags=integration -count=1 ./pkg/node/`: passed, package 507 s (wall 8m29s),
+    up from 357–407 s at T6.1 part 2's landing: the unskipped sub-case adds 54–81 s (its setup
+    varies, 16–54 s). Under the 10-min default timeout, with ~90 s of margin (Follow-ups).
+  - `RANGESYNC_ACCEPTANCE_FULL=1 go test -tags=integration -count=1 -timeout 30m -run
+    'TestAcceptanceRadius|TestAcceptanceChurn' ./pkg/node/`, once: passed, package 313 s. Radius:
+    Baseline new half 9.3 s, rangesync 13.4 s and 12.5 s (decreaser highest), `stripes_total` done
+    4 with none reassigned in both orientations, mixed-radii uploads max 9.97 s and 4.96 s (within
+    the bounds), 0 peer failures; Churn: both sub-cases passed, 0 peer failures.
+  - `go test ./pkg/rangesync/...` (default build), `go test ./pkg/rangesync/reconciler/
+    -count=3 -cpu=1,2,4` and `go test ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...` pass;
+    `go build ./...` is clean; `go vet` on `./pkg/rangesync/...` (default and `-tags=sim`) and
+    `-tags=integration ./pkg/node/` clean; `GOTOOLCHAIN=go1.26.1 make lint` and `golangci-lint run`
+    with `--build-tags sim ./pkg/rangesync/...` and `--build-tags integration ./pkg/node/...`: 0
+    issues. Only the edited files were formatted (gofumpt, gci). No `pkg/pullsync`, `pkg/puller`,
+    `pkg/storer`, `go.mod` or proto change; no new parser of peer input (no `followup-fuzzing.md`
+    line).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1724,3 +1870,31 @@ _(sessions append here)_
   log, "(T6.1 part 2 fix round 1) Runs"): `pkg/jsonhttp` `TestPanicRespond` under go1.27 and the
   `pkg/resolver/client/ens` integration test, which does not compile (undefined `testutil`); both
   need an owner before `make test-integration` can gate anything.
+- **(T6.5 part 1) Tests to run with -race on CI.** They ran with `-count=3 -cpu=1,2,4` (no C
+  compiler here). `pkg/rangesync/reconciler`: `TestRadiusStripeWaitsForMovedRoot`,
+  `TestVerifyStripesUploadsDuringTransfer`, `TestTransferStripesListedAt` (new) and
+  `TestRadiusDecreaseThenIncreaseCancels` (changed: it moves the fake clock so that the fourth
+  root sent back to back goes out). `pkg/rangesync`: `TestFetchStampTimes`. `pkg/node`
+  (`-tags=integration`): `TestAcceptanceChurn/N=5/bootstrap_during_uploads`, which now runs by
+  default (append it to the "(T6.1 part 2)" list).
+- **(T6.5 part 1 → T6.5 part 2 / T6.3) Tell uploads from withholding on the dashboards.**
+  `verification_diff` still observes everything a verification stored, uploads since the listing
+  included, so on a bootstrapping node under load it is not a withholding signal; only
+  `peer_failures_total` (with part 2's reason label, `ErrStripeVerification`) is. A histogram of
+  `VerifyResult.Newer`, or of `Stored − Newer`, would show both; not added here (part 2 owns the
+  metrics). T6.3 should expect no `ErrStripeVerification` on honest bootstraps under the reference
+  load; one is either withholding or one of the false-positive sources in the decisions log (late
+  pushes of old stamps, a clock more than 10 min ahead).
+- **(T6.5 part 1 → T6.4, proposal wording) §9 "Stripe withholding" and §7.4.** The verification
+  now judges a deliverer on the chunks stamped more than `verifyStampSlack` before its listing; the
+  proposal's mitigation row does not say what counts as withheld. T6.4's report could state it,
+  with the residual window (decisions log).
+- **(T6.5 part 1 → sims) Stamps on the simulated clock.** The sims stamp with random bytes
+  (`simNeighborhood.newStamp`: random timestamps) and run the reconciler
+  on a simulated clock, so a verification's `Newer` there is arbitrary. No sim checks a deliverer's
+  score today; one that does (withholding at scale) must stamp on the simulated clock.
+- **(T6.5 part 1) The default integration run is 507 s with the unskipped Churn sub-case.** Under
+  `go test`'s 10-min default timeout per package with ~90 s to spare on this host (decisions log,
+  "(T6.5 part 1) Results and runs"); a slower runner, or part 2's additions, can cross it. This adds
+  weight to "(T6.1 part 2 fix round 1) `make test-integration` needs a `-timeout`"; alternatively the
+  Churn sub-cases could share one harness setup (16–54 s each).
