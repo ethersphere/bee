@@ -1927,6 +1927,137 @@ _(sessions append here)_
   but the two `<…>` templates; the Python block equals the tested file; 98 PromQL expressions parse
   with `promql/parser` v0.301.0 (the two failures are label lists in prose); table column counts
   and metric names re-checked. Docs only.
+- **(T6.3 docs fix round 3) Round-2 re-review findings, fixed in [testnet-runbook.md](testnet-runbook.md)**
+  (the Follow-ups entry "(T6.3 docs round-2 re-review; recorded by the orchestrator, 2026-10-26)
+  Open findings …"). This entry supersedes, in "(T6.3 docs fix round 2) Re-review findings …", the
+  6-h rotation and the depth 23 of High 1, its "one 8-h segment a day at up to 30/s with 5/s
+  otherwise (≤ 1,368,000 in any 26-h window)", the windows "≤ 6 h … inside one load batch's active
+  6 h", and High 2's "(and every joiner)"; the rest of that entry stands.
+  - **Medium 1, an expiry in every window.** Load batches now rotate every L/4 (6 h 15 min at
+    L = 25 h) on a fixed clock, so each one expires at the rotation four later (at a constant
+    price): every rotation is also an expiry, and the windows sit between them. The runbook defines
+    the measurement windows once (§4.5): inside one rotation period, from 30 min after its rotation
+    to 15 min before the next; 30 min after any pause or rate change; no radius change; and the
+    expiry guard, new panel B10 `max by (neighborhood) (increase(bee_localstore_expired_count[30m]))`
+    reading 0 from the window's start to its end (no expiry in it or in the 30 min before it), with
+    the smallest `batchTTL` in `GET /batches` checked before a pause or a timed event, since a price
+    change moves expiries off the rotations. STEADY (§9) gains the same guard (`[40m]`: the 10-min
+    window plus 30 min); AC-B1, AC-B1b, AC-D3, AC-D5, AC-V2, AC-K2, AC-N1's steady clause, C3, Row D
+    and Q4 read these windows. The upload pauses (§4.6) come 30 min after a rotation, one per
+    period, and are voided if B10 rises; the timed events (§4.8, §4.11, Run 6) start 30 min after
+    a rotation; a rotation period's timeline is a table in §4.5.
+  - **Medium 2, the pin and AC-N2.** The §4.8 joiners start unpinned, from the code: the reserve
+    worker lowers a radius only above the minimum (`radius > minimumRadius`,
+    `pkg/storer/reserve.go` L176), so a pinned joiner could never decrease. An empty node's radius is
+    0 until its warm-up ends; `startReserveWorkers` (`pkg/storer/reserve.go` L71–85) then sets it
+    from `waitNetworkRFunc`, which returns max(network radius, minimum) for a local radius at or
+    below the minimum (`pkg/node/node.go` L1182–1184), i.e. the network's r on the pinned network,
+    and only then starts the sync. So the unpinned joiner stores within r like the pinned nodes,
+    and a decrease before `t_union` is a real AC-N2 failure. After `t_synced` + 2 rounds each joiner
+    restarts pinned (or stops) before the drain: unpinned, the drain would lower its radius and
+    salud would mark it unhealthy. The AC-N2 row says why.
+  - **Medium 3, AC-B1's 30/s.** Two load schedules, the same in Runs 0 and 2: A (≤ 16/s around the
+    clock) and B (30/s in one rotation period of every four, ≤ 11/s in the other three). B is
+    periodic in L, so every L-window holds exactly 30 × 22,500 + 11 × 67,500 = 1,417,500 uploads per
+    neighborhood (≤ 0.35 C = 1,468,006). AC-B1 at N ≥ 17 reads only the 30/s periods' windows, and
+    Run 0 (from a rotation, ≥ L) gives the P baseline in its own 30/s periods. Every load batch is
+    depth 24 at r = 3: a 30/s period is 5.4M uploads (82 per bucket, × 3 = 247 ≤ 256), and a 6 h
+    15 min period at 16/s is 2.88M (44 per bucket, × 3 = 132 > 128, so 23 no longer fits either);
+    the seed batches are depth 25 (10.1M each, 154 per bucket, × 3 = 461 ≤ 512). New §0 row G7-8,
+    the load cap, with the V_min lever: V_min is the contract's `minimumValidityBlocks` (read with
+    `getProperty`, `pkg/postage/postagecontract/contract.go` L333), so a private deployment with a
+    lower value, if the contract allows it, raises the cap (V_min = 12 h: 31.4/s).
+  - **Lows.** B9 leaves out the seed's uploaders (named `seed1`, `seed2`, … in Run S) as two
+    matchers, `{uploader!="s1",uploader!~"seed.*"}`, so the table cell has no `|`. The pin is in
+    §4.1's start template, with "every restart keeps it", and the emergency rollback keeps it. AC-N3
+    is read only where a node decreases unpinned (Method A), else recorded as not exercised: under
+    Method B the r − 1 pin blocks a second decrease. §4.9 now says the network radius becomes r − 1
+    in Run 4 under both G7-3 options (three of four pairs decrease under (a); the pair is the whole
+    network under (b) at r = 1), so the decreasers also take live pushes of the sibling half, which
+    is negligible at `D_low`'s ≤ 1/s and counted by T(t) anyway; salud keeps every node healthy
+    (between a pair's first and last decrease, a decreased node can read unhealthy for minutes;
+    self-health gates redistribution, not sync). A void AC-V4 measurement can be repeated only on a
+    sibling pair of the same cohort that has not decreased: none under (b) at r = 1, the fourth pair
+    for its own cohort under (a); otherwise AC-V4 for that cohort is recorded as not measured. G7-5
+    lists T6.3's drafts (AC-D2 `late` = 0, AC-V5 150 B, AC-S4 10 %, the 0.1 % of rule 8, the Mores
+    rule, the two cache triggers). `B_drop`'s scheduled expiry: a price rise after the top-ups stop
+    shortens its TTL and a fall lengthens it, so the drain reads its `batchTTL`.
+  - **Verifier nits.** The API's check is cited as `pkg/api/postage.go` L124–127; the 26-h bound
+    is gone with the 8-h segment (schedule B's L-window figure is exact); round 2's PromQL count was
+    4 failures of 98, not 2 (two prose label lists and the `[w]`/`[steady]` placeholders); the
+    generator's batch check is now `re.fullmatch(r'[0-9a-fA-F]{64}', …)`, a real hex check.
+- **(T6.3 docs fix round 3) The runbook updated to T6.5** (decisions log "(T6.5 part 1) …",
+  "(T6.5 part 2) …", "(T6.5 part 2 fix round 1) …"; Follow-ups "(T6.5 part 1 review; recorded by the
+  orchestrator at landing) Lows" and "(T6.5 part 2 …) → T6.3"). Code references move to
+  `rangesync/phase-6` at 53823b98, with the line numbers that changed (`cmd/bee/cmd/cmd.go` L397,
+  `pkg/node/node.go` L229, L1182–1186, L1341–1343 and L1371–1374, `pkg/rangesync/fetch.go` L376).
+  - §2.4 "Tuning knob: `--rangesync-fetch-rate`": default 1000, 0 = the default, 1 to 1,000,000,
+    a negative or larger value stops the node; full nodes with `--rangesync-enable` only (elsewhere
+    ignored with a Warning); a dual node pulls up to pullsync's 1000/s plus this rate; keep it ≥ 250
+    (a claim's first request must store within `claimIdleTimeout`); `wantset.MaxRejected` covers less
+    time above the default. §2.3 gains the Warning, the reclaim's Info line and the shutdown Warning.
+  - §0: G7-1 is decided (fixed by T6.5 part 1; S10 runs once); G7-2 is rewritten around the flag on
+    the dual nodes only (n ≥ 250), which keeps one build and leaves the rangesync-only cohort at the
+    default, so the old bias of a lower-`DefaultFetchRate` build is gone; G7-7 asks for a build at or
+    after 53823b98.
+  - New §3 rule 9 (T6.5 part 1 review Low 2): NTP on every cohort node, uploader node and generator
+    host (`timedatectl show -p NTPSynchronized --value`, or `chronyc tracking`; on the dashboard
+    node_exporter's `node_timex_sync_status` and `node_time_seconds`); direct uploads only, the seed
+    included; no pusher backlog, checked as `GET /debugstore` `.Upload.PendingUpload` = 0 on every
+    uploader (`pkg/storer/debug.go`). `pkg/pusher` has no queue metric: its metrics are
+    `total_to_push`, `total_synced`, `total_errors`, `sync_time` and `error_time`, so the runbook
+    names none as a backlog gauge. §10.2 runs the check before each run and before §4.8 and §4.9.
+  - Dashboard: F1 groups `peer_failures_total` by `reason` and notes that `invalid_message` lumps an
+    honest peer's stalls with junk; H1 reads `bee_node_is_fully_synced`, with the poll as a
+    cross-check (the gauge is live, `/redistributionstate` is the agent's sample at the phase's
+    start); B7 notes that `verification_diff` still counts uploads since the listing.
+  - S4 is measured: S4-W (queue wait by kind), S4-F (first chunk by kind), S4-C (claims with no
+    chunk within 120 s, the corrected (idle + count − bucket{le="120"}) ÷ (idle + count), with an
+    `or … * 0` fallback for `stripes_total{result="idle"}`), S4-G (catch-ups past `catchUpGrace`);
+    S5 reads the joiner's first chunk from S4-F; S7 reads F1's reasons; S10 runs once at the
+    reference load and expects 0 `stripe_verification`; S11 expects no reassignment (one naming
+    `the peer lacks this node's current root` is the residual); S14 is closed by the gauge.
+  - §4.4: the completion signal is the Info `reclaimed the disabled reserve address index`
+    (`count`, `duration`); the interrupted cases are spelled out (a stop during the drop resumes it
+    and logs the line at the next disabled start; a stop during the compaction leaves nothing to
+    drop, so no line ever comes for it).
+  - §11 is split: 11.1 "Fixed before the runs (T6.5)" holds K1 (residual: a peer without the new
+    root after ~30 s gets its stripe reassigned, unscored), K2 (residual: 10 min × the stripe's upload
+    rate unscored, and the false positive back with a clock more than 10 min off or a pusher backlog
+    over 10 min) and K12 (residual: an interrupted compaction logs no line); 11.2 keeps the rest and
+    adds K17 (`invalid_message` lumps stalls and junk) and K18 (a stripe's retries do not refresh its
+    claim's idle clock). The IDs are kept, so references stay valid.
+  - Appendix A: 47 handed entries, 44 placed and 3 not runnable. The 3 entries that were partial for
+    want of a metric (the claims' first-chunk window and queue wait, a catch-up's first chunk, the
+    claimant with no credit, whose flood part stays among the not-runnable scenarios) are placed in
+    S4, and 9 T6.5 entries are added. Appendix B lists the two new histograms and
+    `bee_node_is_fully_synced`. This supersedes the counts of "(T6.3 docs) Handed items" and of the
+    round-1 verifier note.
+  - For the runbook, T6.5 closes the Follow-ups "(T6.3 docs) No flag for rangesync's fetch rate",
+    "(T6.3 docs) No `reason` on `bee_rangesync_peer_failures_total`", "(T6.3 docs) No metric for a
+    stripe job's queue wait and first-chunk latency…", "(T6.0) T6.3: no Prometheus metric exposes
+    `isFullySynced`…" (for the flag; `isFrozen` and the skipped rounds still have none) and "(T6.2
+    fix round 1) Operator-visible end of the reclaim".
+- **(T6.3 docs fix round 3) Checks.** The arithmetic: 0.35 C = 1,468,006; schedule A 16/s × 90,000 s
+  = 1,440,000; schedule B 30/s × 22,500 s + 11/s × 67,500 s = 1,417,500 (11.7/s would still fit);
+  depth 24 (2,880,000 ÷ 65,536 × 3 = 131.8 > 128; 5,400,000 ÷ 65,536 × 3 = 247.2 ≤ 256), seed depth
+  25 (10,066,330 ÷ 65,536 × 3 = 460.8 ≤ 512); expiries 360,000 and 675,000 per neighborhood; V_min
+  12 h: 1,468,006 ÷ 46,800 s = 31.4/s; the K2 residual 15/s × 600 s ÷ 4 = 2,250 per stripe. `bash -n`
+  passes on every bash block but the two templates with `<…>` placeholders (§1's checkout and §4.1's
+  start line). The Python block compiles; `rs_probe.py` was re-run against the API mock (20/s for
+  3 s: 61 uploads, per-prefix counters 29 + 32; a batch file of 64 non-hex characters and one with a
+  space each stop it with status 1 after `--max-errors`). The rotation loop and `amount` were run
+  against the stamps mock (with the step shortened to 3 s for the test: the batch file is written;
+  a refused creation logs and the loop goes on; amount 432,000,001 as before). PromQL: 105
+  expressions extracted (code blocks and inline), 101 parse with `promql/parser` v0.301.0 in the
+  scratch module outside the repository; the 4 failures are the two prose label lists and the
+  `[w]`/`[steady]` placeholders. Every `bee_*` metric name resolves to its definition at 53823b98
+  (`bee_process_*` through the process collector with namespace `bee`); every bee flag is in
+  `cmd/bee/cmd`; every API route in `pkg/api/router.go`; the `kind` and `reason` label values in
+  `pkg/rangesync/reconciler/metrics.go`; every log line grepped; the cited line numbers re-read;
+  table column counts consistent (23 tables). node_exporter's metrics and `timedatectl`/`chronyc`
+  are not bee's and were not checked here. Docs only: no `.go`, Makefile or `go.mod` change;
+  README not ticked.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2499,3 +2630,26 @@ _(sessions append here)_
      is bounded over a 26-h window while the cap is derived for 25 h (conservative); 4 of 98 PromQL
      expressions fail to parse (two prose label lists, the `[w]`/`[steady]` placeholders), not 2;
      the generator's "64-hex-digit" check is a length check only.
+- **(T6.3 docs fix round 3) The G7 decisions, updated after T6.5** (testnet-runbook.md §0;
+  supersedes the list in "(T6.3 docs fix round 1) The G7 decisions …" and its additions in "(T6.3
+  docs fix round 2) Additions …"):
+  1. G7-1: decided, nothing to choose. T6.5 part 1 fixed both production Mediums of T6.1 part 2;
+     the runs need a build at or after 53823b98. Their residuals are in the runbook's §11.1, and S10
+     runs once, at the reference load.
+  2. G7-2: the fetch cap for dual cohorts on constrained hosts: (a) provision ≈ 70 Mbit/s inbound
+     per dual node, (b) `--rangesync-fetch-rate` ≥ 250 on the dual nodes only (one build, the
+     rangesync-only cohort unchanged, so AC-V3/AC-V4 are not biased), or (c) `tc` on the dual hosts.
+  3. G7-3: one network with cohorts per sibling pair (r ≥ 3, ≈ 20.1M seeded chunks) or one network
+     per cohort (≈ 15.1M for three at r = 1); both need a private network (every node pinned; the
+     §4.8 joiners start unpinned at the network's r and are pinned after `t_synced` + 2 rounds).
+  4. G7-4: whether AC-V1 gates on testnet.
+  5. G7-5: the draft thresholds: AC-D2 1 %, AC-K2, AC-R4 5 %, AC-R7 1.0×, AC-R8 +64 MB, AC-N5
+     ±10 %, and T6.3's drafts: AC-D2 `late` = 0, AC-V5 150 B per peer per minute, AC-S4 10 %, the
+     ≤ 0.1 % below-radius allowance of rule 8, the Mores rule, the two cache triggers of §9.
+  6. G7-6: whether Phase 5 is in scope (AC-S6 is not measurable without it).
+  7. G7-7: the build commit, the same on every node, at or after 53823b98.
+  8. G7-8 (new): the load cap. Accept it (schedule A: ≤ 16 uploads/s per neighborhood around the
+     clock; schedule B: 30/s in one rotation period of four and ≤ 11/s in the others, for AC-B1 at
+     N ≥ 17, recorded at the median reached if the testnet shows no reference load), or deploy the
+     private network's postage contract with a lower `minimumValidityBlocks`, if the contract
+     allows it (V_min = 12 h raises the cap to 31.4/s).
