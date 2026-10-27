@@ -172,7 +172,9 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 				continue
 			}
 
-			if count < threshold(db.reserve.Capacity()) && db.syncer.IsReserveSynced(radius) && radius > db.reserveOptions.minimumRadius {
+			// Check from bin 0: bins below the radius only hold counts from just before
+			// unreserve raised it, and those must still block an immediate decrease.
+			if count < threshold(db.reserve.Capacity()) && db.syncer.IsReserveSynced(0) && radius > db.reserveOptions.minimumRadius {
 				radius--
 				if err := db.reserve.SetRadius(radius); err != nil {
 					db.logger.Error(err, "reserve set radius")
