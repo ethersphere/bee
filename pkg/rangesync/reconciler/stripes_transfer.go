@@ -1139,6 +1139,14 @@ type stripeJob struct {
 	cancel context.CancelFunc
 	run    context.Context
 	idle   *stripeClock
+	// queuedAt is when the job was queued (addStripeLocked), startedAt
+	// when the stripe worker took it and kind its kind then (jobKind);
+	// firstChunk is set at the first chunk it stored (jobStored). They time
+	// its queue wait and its first chunk (metrics StripeQueueWait,
+	// FirstChunk).
+	queuedAt, startedAt time.Time
+	kind                string
+	firstChunk          bool
 }
 
 // enqueueStripes registers the ranges the Striper of a session this node
@@ -1386,6 +1394,7 @@ func (r *Reconciler) registerStripeLocked(job *stripeJob) bool {
 // the own jobs queued before it, ahead of the claims, and a claim last.
 // r.mu must be held.
 func (r *Reconciler) addStripeLocked(job *stripeJob) {
+	job.queuedAt = r.now()
 	r.stripeRegistry = append(r.stripeRegistry, job)
 	i := len(r.stripeQueue)
 	if job.own {
@@ -1607,6 +1616,8 @@ func (r *Reconciler) stripeWorker() {
 				job.idle = newStripeClock(r.now, r.after, claimIdleTimeout, math.MaxInt64, func() { r.endIdleClaim(job, cancel) })
 			}
 			r.stripeRunning = job
+			job.startedAt, job.kind = r.now(), jobKind(job.own)
+			r.metrics.StripeQueueWait.WithLabelValues(job.kind).Observe(job.startedAt.Sub(job.queuedAt).Seconds())
 			// read under the lock: an own job that takes the claim over
 			// (adoptLocked) sets its marks meanwhile
 			rg, started, bootstrap := job.rg, job.started, job.bootstrap
@@ -1706,11 +1717,16 @@ func (r *Reconciler) nextJobLocked() *stripeJob {
 
 // jobStored records that job, in flight, stored chunks in its transfer or
 // its verification: an own job refills the own-job grace (SyncRate), and a
-// claim restarts its idle clock. It is called on the fetch's goroutine, as
-// the chunks are stored.
+// claim restarts its idle clock. The first time, it observes the job's
+// first-chunk latency. It is called on the fetch's goroutine, as the chunks
+// are stored.
 func (r *Reconciler) jobStored(job *stripeJob) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if !job.firstChunk {
+		job.firstChunk = true
+		r.metrics.FirstChunk.WithLabelValues(job.kind).Observe(r.now().Sub(job.startedAt).Seconds())
+	}
 	switch {
 	case job.own:
 		r.ownGrace.refill(r.now())

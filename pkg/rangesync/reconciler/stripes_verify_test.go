@@ -77,6 +77,9 @@ func TestVerifyStripesWithheld(t *testing.T) {
 	if got := h.r.VerificationDiffCount(); got != 1 {
 		t.Fatalf("verification_diff observations %d, want 1", got)
 	}
+	if got := h.r.PeerFailuresTotal("stripe_verification"); got != 1 {
+		t.Fatalf("peer_failures_total{reason=stripe_verification} %v, want 1", got)
+	}
 }
 
 // TestVerifyStripesHonest: a verification that finds nothing (or no more
@@ -175,6 +178,9 @@ func TestVerifyStripesLyingVerifier(t *testing.T) {
 	}
 	if got := h.r.Score(other); got != 1 {
 		t.Fatalf("verifier score %d, want 1", got)
+	}
+	if got := h.r.PeerFailuresTotal("verifier_withheld"); got != 1 {
+		t.Fatalf("peer_failures_total{reason=verifier_withheld} %v, want 1", got)
 	}
 }
 

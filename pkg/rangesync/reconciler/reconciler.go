@@ -456,9 +456,26 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 	if len(ids) == 0 {
 		return
 	}
-	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp, nil)
+	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp, r.catchUpProgress(catchUp))
 	if err != nil {
 		r.logger.Debug("fetch", "peer_address", peer, "error", err)
+	}
+}
+
+// catchUpProgress returns the progress of a fetch that starts now (fetchFrom)
+// of a session's wants or their retries: for a catch-up fetch, the first
+// call observes the fetch's first-chunk latency (metrics FirstChunk); for
+// another fetch, nil.
+func (r *Reconciler) catchUpProgress(catchUp bool) func() {
+	if !catchUp {
+		return nil
+	}
+	start := r.now()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.metrics.FirstChunk.WithLabelValues(jobCatchUp).Observe(r.now().Sub(start).Seconds())
+		})
 	}
 }
 
@@ -555,7 +572,7 @@ func idSet(lists ...[]storer.ChunkID) map[fingerprint.ID]struct{} {
 func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	k := peer.ByteString()
 	for {
-		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp, nil); err != nil {
+		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp, r.catchUpProgress(catchUp)); err != nil {
 			r.logger.Debug("fetch", "peer_address", peer, "error", err)
 		}
 		r.mu.Lock()
@@ -689,7 +706,7 @@ func (r *Reconciler) Fail(peer swarm.Address, reason error) {
 	defer r.mu.Unlock()
 	now := r.now()
 	r.scores[peer.ByteString()] = score{value: r.scoreLocked(peer, now) + 1, at: now}
-	r.metrics.Failures.Inc()
+	r.metrics.Failures.WithLabelValues(failureReason(reason)).Inc()
 	r.logger.Debug("peer failed", "peer_address", peer, "reason", reason)
 }
 

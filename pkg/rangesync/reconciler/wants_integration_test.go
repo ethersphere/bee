@@ -347,6 +347,9 @@ func TestSREPStallRetry(t *testing.T) {
 	if got := s.a.r.Score(s.b1.addr); got != 1 {
 		t.Fatalf("B1 score %d, want 1 (claim and stall)", got)
 	}
+	if got := s.a.r.PeerFailuresTotal("invalid_message"); got != 1 {
+		t.Fatalf("peer_failures_total{reason=invalid_message} %v, want 1 (claim and stall)", got)
+	}
 	if !s.a.rec.IsDisconnected(s.b1.addr) {
 		t.Fatal("B1 not disconnected")
 	}
@@ -485,6 +488,9 @@ func TestStripeBadSignaturesScored(t *testing.T) {
 	}
 	if got := a.r.Score(bAddr); got != 1 {
 		t.Fatalf("peer score %d, want 1", got)
+	}
+	if got := a.r.PeerFailuresTotal("fetch_shortfall"); got != 1 {
+		t.Fatalf("peer_failures_total{reason=fetch_shortfall} %v, want 1", got)
 	}
 	if a.rec.IsDisconnected(bAddr) {
 		t.Fatal("peer disconnected on a first offense")

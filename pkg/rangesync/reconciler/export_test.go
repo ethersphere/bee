@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync/fingerprint"
@@ -493,3 +494,32 @@ func (r *Reconciler) SourceIDs() int {
 
 // MaxPendingPasses is maxPendingPasses.
 const MaxPendingPasses = maxPendingPasses
+
+// PeerFailuresTotal returns the peer_failures_total counter of reason.
+func (r *Reconciler) PeerFailuresTotal(reason string) float64 {
+	m := new(dto.Metric)
+	if err := r.metrics.Failures.WithLabelValues(reason).Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetCounter().GetValue()
+}
+
+// StripeQueueWait returns the number and the sum, in seconds, of the
+// stripe_queue_wait_seconds observations of kind.
+func (r *Reconciler) StripeQueueWait(kind string) (uint64, float64) {
+	return histogramOf(r.metrics.StripeQueueWait, kind)
+}
+
+// FirstChunk returns the number and the sum, in seconds, of the
+// first_chunk_seconds observations of kind.
+func (r *Reconciler) FirstChunk(kind string) (uint64, float64) {
+	return histogramOf(r.metrics.FirstChunk, kind)
+}
+
+func histogramOf(v *prometheus.HistogramVec, label string) (uint64, float64) {
+	m := new(dto.Metric)
+	if err := v.WithLabelValues(label).(prometheus.Histogram).Write(m); err != nil {
+		panic(err)
+	}
+	return m.GetHistogram().GetSampleCount(), m.GetHistogram().GetSampleSum()
+}
