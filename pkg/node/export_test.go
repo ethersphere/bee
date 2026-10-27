@@ -52,3 +52,14 @@ func ResolveSyncWiring(full, boot, rs, pull bool) (addrIndex, registerRangesync,
 	a, r, p := syncWiring(m)
 	return a, r, p, nil
 }
+
+var (
+	ErrInvalidFetchRate = errInvalidFetchRate
+	ResolveFetchRate    = resolveFetchRate
+	NewMetrics          = newMetrics
+	GetMetrics          = getMetrics
+)
+
+// SetFullySynced sets the sync check that the is_fully_synced gauge of m
+// reads.
+func SetFullySynced(m nodeMetrics, fn func() bool) { m.setFullySynced(fn) }

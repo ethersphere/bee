@@ -5,6 +5,8 @@
 package node
 
 import (
+	"sync/atomic"
+
 	"github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -14,10 +16,38 @@ type nodeMetrics struct {
 	WarmupDuration prometheus.Histogram
 	// FullSyncDuration measures time in seconds for the full sync to complete
 	FullSyncDuration prometheus.Histogram
+	// IsFullySynced is 1 while the node passes the sync check that the
+	// storage incentives agent reads (isFullySynced), 0 otherwise, read
+	// when collected. It reads 0 until a full node sets the check
+	// (setFullySynced), and always on light and boot nodes, which have
+	// none.
+	IsFullySynced prometheus.GaugeFunc
+
+	// fullySynced is the sync check IsFullySynced reads.
+	fullySynced *syncCheck
+}
+
+// syncCheck holds the node's sync check, once set.
+type syncCheck struct {
+	fn atomic.Pointer[func() bool]
+}
+
+// value returns 1 when the check is set and passes, else 0.
+func (c *syncCheck) value() float64 {
+	if fn := c.fn.Load(); fn != nil && (*fn)() {
+		return 1
+	}
+	return 0
+}
+
+// setFullySynced sets the sync check that IsFullySynced reads.
+func (m nodeMetrics) setFullySynced(fn func() bool) {
+	m.fullySynced.fn.Store(&fn)
 }
 
 func newMetrics() nodeMetrics {
 	subsystem := "init"
+	fullySynced := new(syncCheck)
 
 	return nodeMetrics{
 		WarmupDuration: prometheus.NewHistogram(
@@ -44,6 +74,16 @@ func newMetrics() nodeMetrics {
 				},
 			},
 		),
+		IsFullySynced: prometheus.NewGaugeFunc(
+			prometheus.GaugeOpts{
+				Namespace: metrics.Namespace,
+				Subsystem: "node",
+				Name:      "is_fully_synced",
+				Help:      "1 while the node passes the sync check of the storage incentives agent (reserve at least half full, sync rate 0, topology stabilized), else 0; 0 on light and boot nodes.",
+			},
+			fullySynced.value,
+		),
+		fullySynced: fullySynced,
 	}
 }
 

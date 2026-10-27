@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
+	"github.com/ethersphere/bee/v2/pkg/rangesync"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
@@ -63,6 +64,7 @@ const (
 	optionNameFullNode                     = "full-node"
 	optionNameRangesyncEnable              = "rangesync-enable"
 	optionNamePullerEnable                 = "puller-enable"
+	optionNameRangesyncFetchRate           = "rangesync-fetch-rate"
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -368,6 +370,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().Bool(optionNameRangesyncEnable, false, "enable rangesync historical syncing (full nodes only; ignored with a warning on light and boot nodes)")
 	cmd.Flags().Bool(optionNamePullerEnable, true, "enable pulling via pullsync on full nodes; false only stops pulling, the pullsync protocol handlers stay registered")
+	cmd.Flags().Int(optionNameRangesyncFetchRate, rangesync.DefaultFetchRate, "most chunks per second that rangesync fetches (full nodes with --rangesync-enable only); it limits rangesync's fetches only, not pullsync, so a node with both enabled pulls up to pullsync's rate plus this")
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")

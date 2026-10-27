@@ -174,15 +174,102 @@ func TestRangesyncOptions(t *testing.T) {
 
 	r := reconciler.New(swarm.RandAddress(t), nil, nil, log.Noop, reconciler.Options{})
 	t.Cleanup(func() { _ = r.Close() })
-	o := node.RangesyncOptions(r)
+	o := node.RangesyncOptions(r, 250)
 	if o.Scorer != r || o.Striper == nil || o.Wants == nil {
 		t.Fatalf("options %+v, want the reconciler as scorer, striper and wants", o)
 	}
 	if _, ok := o.Striper(swarm.RandAddress(t)).(rangesync.TransferStriper); !ok {
 		t.Fatal("the served sessions' Striper is not a TransferStriper")
 	}
-	o.Scorer, o.Striper, o.Wants = nil, nil, nil
+	if o.FetchRate != 250 {
+		t.Fatalf("fetch rate %d, want the flag's 250", o.FetchRate)
+	}
+	o.Scorer, o.Striper, o.Wants, o.FetchRate = nil, nil, nil, 0
 	if !reflect.DeepEqual(o, rangesync.Options{}) {
-		t.Fatalf("options %+v set past the reconciler's", o)
+		t.Fatalf("options %+v set past the reconciler's and the fetch rate", o)
+	}
+}
+
+// TestResolveFetchRate (T6.5 part 2): --rangesync-fetch-rate must be above 0
+// on every node, and a value other than the default is ignored, with a
+// warning, where rangesync does not run: light and boot nodes, and full
+// nodes without --rangesync-enable.
+func TestResolveFetchRate(t *testing.T) {
+	t.Parallel()
+
+	const def = rangesync.DefaultFetchRate
+	for _, tc := range []struct {
+		name                 string
+		full, boot, rs, pull bool
+		rate                 int
+		ignored              bool
+		wantErr              error
+	}{
+		{name: "full defaults", full: true, pull: true, rate: def},
+		{name: "full pullsync only", full: true, pull: true, rate: 250, ignored: true},
+		{name: "full rangesync only", full: true, rs: true, rate: 250},
+		{name: "full both", full: true, rs: true, pull: true, rate: 2000},
+		{name: "full rangesync default", full: true, rs: true, rate: def},
+		{name: "light defaults", pull: true, rate: def},
+		{name: "light rangesync", rs: true, pull: true, rate: 250, ignored: true},
+		{name: "boot rangesync", full: true, boot: true, rs: true, pull: true, rate: 250, ignored: true},
+		{name: "zero", full: true, rs: true, rate: 0, wantErr: node.ErrInvalidFetchRate},
+		{name: "negative", full: true, pull: true, rate: -1, wantErr: node.ErrInvalidFetchRate},
+		{name: "zero on a light node", pull: true, rate: 0, wantErr: node.ErrInvalidFetchRate},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, err := node.ResolveSyncMode(tc.full, tc.boot, tc.rs, tc.pull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ignored, err := node.ResolveFetchRate(m, tc.rate)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got err %v, want %v", err, tc.wantErr)
+			}
+			if ignored != tc.ignored {
+				t.Fatalf("got ignored=%v, want %v", ignored, tc.ignored)
+			}
+		})
+	}
+}
+
+// TestRangesyncFetchRateWiring (T6.5 part 2): the --rangesync-fetch-rate value
+// reaches rangesync.Options.FetchRate on a full node that runs rangesync,
+// and no rangesync service is built elsewhere, so the value goes nowhere.
+func TestRangesyncFetchRateWiring(t *testing.T) {
+	t.Parallel()
+
+	r := reconciler.New(swarm.RandAddress(t), nil, nil, log.Noop, reconciler.Options{})
+	t.Cleanup(func() { _ = r.Close() })
+	for _, tc := range []struct {
+		name                 string
+		full, boot, rs, pull bool
+		register             bool
+	}{
+		{name: "full rangesync only", full: true, rs: true, register: true},
+		{name: "full both", full: true, rs: true, pull: true, register: true},
+		{name: "full pullsync only", full: true, pull: true},
+		{name: "light rangesync", rs: true, pull: true},
+		{name: "boot rangesync", full: true, boot: true, rs: true, pull: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, register, _, err := node.ResolveSyncWiring(tc.full, tc.boot, tc.rs, tc.pull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if register != tc.register {
+				t.Fatalf("rangesync built %v, want %v", register, tc.register)
+			}
+			if !register {
+				return
+			}
+			for _, rate := range []int{rangesync.DefaultFetchRate, 1, 250} {
+				if got := node.RangesyncOptions(r, rate).FetchRate; got != rate {
+					t.Fatalf("fetch rate %d, want %d", got, rate)
+				}
+			}
+		})
 	}
 }

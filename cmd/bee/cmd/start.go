@@ -327,6 +327,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		FullNodeMode:                  fullNode,
 		RangesyncEnable:               c.config.GetBool(optionNameRangesyncEnable),
 		PullerEnable:                  c.config.GetBool(optionNamePullerEnable),
+		RangesyncFetchRate:            c.config.GetInt(optionNameRangesyncFetchRate),
 		LightNodeLimit:                c.config.GetInt(optionNameLightNodeLimit),
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),

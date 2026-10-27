@@ -153,6 +153,7 @@ type Options struct {
 	BootnodeMode                  bool
 	RangesyncEnable               bool
 	PullerEnable                  bool
+	RangesyncFetchRate            int
 	Bootnodes                     []string
 	CacheCapacity                 uint64
 	AutoTLSCAEndpoint             string
@@ -325,6 +326,13 @@ func NewBee(
 	addrIndex, registerRangesync, buildPuller := syncWiring(syncMode)
 	if syncMode.RangesyncIgnored {
 		logger.Warning("rangesync is only available on full nodes; ignoring --rangesync-enable")
+	}
+	fetchRateIgnored, err := resolveFetchRate(syncMode, o.RangesyncFetchRate)
+	if err != nil {
+		return nil, err
+	}
+	if fetchRateIgnored {
+		logger.Warning("rangesync does not run on this node; ignoring --rangesync-fetch-rate")
 	}
 
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
@@ -1205,7 +1213,7 @@ func NewBee(
 	)
 	if registerRangesync {
 		reconcilerSvc = reconciler.New(swarmAddress, kad, nil, logger, reconciler.Options{})
-		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesyncOptions(reconcilerSvc))
+		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesyncOptions(reconcilerSvc, o.RangesyncFetchRate))
 		b.rangesyncCloser = rangesyncCloser{reconciler: reconcilerSvc, service: rangesyncService}
 		reconcilerSvc.SetService(rangesyncService)
 		if err := rangesyncService.Start(); err != nil {
@@ -1357,6 +1365,15 @@ func NewBee(
 			}()
 		}
 
+		// The sync check of the storage incentives agent (isFullySynced
+		// below), which the is_fully_synced gauge also reads, in every
+		// sync mode, with or without storage incentives.
+		incentivesReserveThreshold := reserveCapacity * 5 / 10
+		fullySynced := func() bool {
+			return localStore.ReserveSize() >= incentivesReserveThreshold && syncer.SyncRate() == 0 && detector.IsStabilized()
+		}
+		nodeMetrics.setFullySynced(fullySynced)
+
 		if o.EnableStorageIncentives {
 
 			redistributionContractAddress := chainCfg.RedistributionAddress
@@ -1370,9 +1387,8 @@ func NewBee(
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isFullySynced := func() bool {
-				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && syncer.SyncRate() == 0 && detector.IsStabilized()
+				return fullySynced()
 			}
 
 			agent, err = storageincentives.New(

@@ -15,7 +15,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 )
 
-var errNoSyncProtocol = errors.New("full node needs at least one of --rangesync-enable and --puller-enable")
+var (
+	errNoSyncProtocol   = errors.New("full node needs at least one of --rangesync-enable and --puller-enable")
+	errInvalidFetchRate = errors.New("--rangesync-fetch-rate must be above 0")
+)
 
 // syncMode is the historical-sync configuration of the node.
 type syncMode struct {
@@ -82,6 +85,18 @@ func (c *combinedSyncer) Start(ctx context.Context) {
 	}
 }
 
+// resolveFetchRate validates fetchRate (--rangesync-fetch-rate), which must
+// be above 0 on every node, and reports whether mode ignores it: a value
+// other than rangesync.DefaultFetchRate on a node that does not run
+// rangesync (a light or boot node, or a full node without
+// --rangesync-enable). Where rangesync runs, rangesyncOptions applies it.
+func resolveFetchRate(mode syncMode, fetchRate int) (ignored bool, err error) {
+	if fetchRate <= 0 {
+		return false, errInvalidFetchRate
+	}
+	return !mode.Rangesync && fetchRate != rangesync.DefaultFetchRate, nil
+}
+
 // syncWiring returns what NewBee applies for mode: whether the storer opens
 // the reserve address index, whether the rangesync service (with its
 // reconciler and protocol) is built and registered, and whether the puller
@@ -94,12 +109,16 @@ func syncWiring(mode syncMode) (addrIndex, registerRangesync, buildPuller bool) 
 // wired to its reconciler r: r scores the peers (Scorer), fetches the wants
 // of the sessions the node serves (Wants) and takes over the ranges those
 // sessions find the node far behind in (Striper, one per session, T4.7
-// part 1). The other options keep their defaults.
-func rangesyncOptions(r *reconciler.Reconciler) rangesync.Options {
+// part 1). fetchRate (--rangesync-fetch-rate, validated by
+// resolveFetchRate) is the node-wide fetch limit (FetchRate); its default,
+// rangesync.DefaultFetchRate, is the service's own. The other options keep
+// their defaults.
+func rangesyncOptions(r *reconciler.Reconciler, fetchRate int) rangesync.Options {
 	return rangesync.Options{
-		Scorer:  r,
-		Wants:   r.Wants,
-		Striper: r.ServedStriper,
+		Scorer:    r,
+		Wants:     r.Wants,
+		Striper:   r.ServedStriper,
+		FetchRate: fetchRate,
 	}
 }
 

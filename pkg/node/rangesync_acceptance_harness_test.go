@@ -628,7 +628,7 @@ func (h *accHarness) addNode(spec accNodeSpec) *accNode {
 		// LargeDiff is the one deviation from the node's wiring, and only
 		// where a scenario sets it
 		n.rec = reconciler.New(overlay, n.topo, nil, h.logger, reconciler.Options{LargeDiff: h.o.LargeDiff})
-		opts := node.RangesyncOptions(n.rec)
+		opts := node.RangesyncOptions(n.rec, rangesync.DefaultFetchRate)
 		opts.LargeDiff = h.o.LargeDiff
 		n.svc = rangesync.New(n.host, n.store, overlay, unwrap, gsoc, h.counting(i, accViaRangesync), h.logger, opts)
 		n.rsCloser = node.NewRangesyncCloser(n.rec, n.svc)

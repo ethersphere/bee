@@ -109,7 +109,7 @@ func startToggleNode(t *testing.T, dir string, overlay swarm.Address, full, rang
 	}
 	if registerRangesync {
 		r := reconciler.New(overlay, nil, nil, log.Noop, reconciler.Options{})
-		n.svc = rangesync.New(n.rec, db, overlay, nil, nil, acceptStamp, log.Noop, node.RangesyncOptions(r))
+		n.svc = rangesync.New(n.rec, db, overlay, nil, nil, acceptStamp, log.Noop, node.RangesyncOptions(r, rangesync.DefaultFetchRate))
 		n.closer = node.NewRangesyncCloser(r, n.svc)
 		r.SetService(n.svc)
 		if err := n.svc.Start(); err != nil {
