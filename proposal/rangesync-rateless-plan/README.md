@@ -183,7 +183,7 @@ the implementer (otherwise every task conflicts on this list).
 - [x] T6.2 Toggle-safety and upgrade/downgrade tests
 - [ ] T6.3 Testnet runbook, dashboards, comparison runs
 - [ ] T6.4 Acceptance criteria + exit report (input for the phase-out proposal)
-- [ ] T6.5 Pre-cluster fixes and observability (added 2026-10-26; before T6.3's cluster runs)
+- [x] T6.5 Pre-cluster fixes and observability (added 2026-10-26; before T6.3's cluster runs)
 
 **Follow-up (deferred)**
 - [ ] TF Fuzz targets for every `rangesync` peer-input decoder added since 2026-10-15 ([followup-fuzzing.md](followup-fuzzing.md))
