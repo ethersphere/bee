@@ -327,7 +327,7 @@ func NewBee(
 	if syncMode.RangesyncIgnored {
 		logger.Warning("rangesync is only available on full nodes; ignoring --rangesync-enable")
 	}
-	fetchRateIgnored, err := resolveFetchRate(syncMode, o.RangesyncFetchRate)
+	fetchRate, fetchRateIgnored, err := resolveFetchRate(syncMode, o.RangesyncFetchRate)
 	if err != nil {
 		return nil, err
 	}
@@ -1213,7 +1213,7 @@ func NewBee(
 	)
 	if registerRangesync {
 		reconcilerSvc = reconciler.New(swarmAddress, kad, nil, logger, reconciler.Options{})
-		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesyncOptions(reconcilerSvc, o.RangesyncFetchRate))
+		rangesyncService = rangesync.New(p2ps, localStore, swarmAddress, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, rangesyncOptions(reconcilerSvc, fetchRate))
 		b.rangesyncCloser = rangesyncCloser{reconciler: reconcilerSvc, service: rangesyncService}
 		reconcilerSvc.SetService(rangesyncService)
 		if err := rangesyncService.Start(); err != nil {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -1522,6 +1523,34 @@ func TestFetchInboundFullNotDisconnected(t *testing.T) {
 			t.Fatalf("neighbor %d after the streams freed up: stored %d, %v", i, res.Stored, err)
 		}
 		assertNoClaims(t, a, ids...)
+	}
+}
+
+// TestFetchInterval (T6.5 part 2 fix round 1): the node-wide fetch limiter's
+// interval is time.Second over Options.FetchRate, DefaultFetchRate's for zero
+// or less, and never 0: a rate above MaxFetchRate is capped to it, where
+// above 1e9 the interval was 0, which the limiter reads as no limit.
+func TestFetchInterval(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		rate int
+		want time.Duration
+	}{
+		{rate: 0, want: time.Millisecond},
+		{rate: -1, want: time.Millisecond},
+		{rate: rangesync.DefaultFetchRate, want: time.Millisecond},
+		{rate: 1, want: time.Second},
+		{rate: 250, want: 4 * time.Millisecond},
+		{rate: rangesync.MaxFetchRate, want: time.Microsecond},
+		{rate: rangesync.MaxFetchRate + 1, want: time.Microsecond},
+		{rate: 1 << 20, want: time.Microsecond}, // the sims' lifted limit
+		{rate: 2_000_000_000, want: time.Microsecond},
+		{rate: math.MaxInt, want: time.Microsecond},
+	} {
+		if got := rangesync.FetchInterval(tc.rate); got != tc.want {
+			t.Errorf("rate %d: interval %v, want %v", tc.rate, got, tc.want)
+		}
 	}
 }
 

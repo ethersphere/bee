@@ -140,7 +140,8 @@ type Options struct {
 	// Indexer configures the Indexer that keeps the index current.
 	Indexer IndexerOptions
 	// FetchRate is the node-wide limit of chunks requested per second by
-	// Fetch. Zero means DefaultFetchRate.
+	// Fetch. Zero means DefaultFetchRate; a value above MaxFetchRate means
+	// MaxFetchRate (fetchInterval).
 	FetchRate int
 	// FetchTimeout bounds the opening of a fetch stream, and one Want from
 	// its claims to the last Delivery; the fetch rate wait between the two
@@ -242,9 +243,6 @@ func New(
 	if o.FetchTimeout <= 0 || o.FetchTimeout >= ClaimDeadline {
 		o.FetchTimeout = ClaimDeadline / 2
 	}
-	if o.FetchRate <= 0 {
-		o.FetchRate = DefaultFetchRate
-	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
@@ -275,7 +273,7 @@ func New(
 		validStamp:       validStamp,
 		fetchTimeout:     o.FetchTimeout,
 		wantSet:          wantset.New(ClaimDeadline, RejectTTL),
-		fetchLimiter:     ratelimit.New(time.Second/time.Duration(o.FetchRate), MaxWantIDs),
+		fetchLimiter:     ratelimit.New(fetchInterval(o.FetchRate), MaxWantIDs),
 		deliveryLimiter:  ratelimit.New(handleRateLimit, MaxWantIDs),
 		sessionLimiter:   ratelimit.New(PeerSessionInterval, PeerSessionBurst),
 		statusLimiter:    ratelimit.New(PeerStatusInterval, PeerStatusBurst),
@@ -302,6 +300,17 @@ func New(
 	}
 	s.metrics = newMetrics(func() float64 { return float64(s.wantSet.RejectedLen()) })
 	return s
+}
+
+// fetchInterval returns the interval of the node-wide fetch limiter for
+// Options.FetchRate rate: DefaultFetchRate for zero or less, MaxFetchRate
+// for more, so that the interval is never 0, which ratelimit reads as no
+// limit.
+func fetchInterval(rate int) time.Duration {
+	if rate <= 0 {
+		rate = DefaultFetchRate
+	}
+	return time.Second / time.Duration(min(rate, MaxFetchRate))
 }
 
 // Start registers the Indexer as the reserve observer, together with the

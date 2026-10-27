@@ -190,32 +190,46 @@ func TestRangesyncOptions(t *testing.T) {
 	}
 }
 
-// TestResolveFetchRate (T6.5 part 2): --rangesync-fetch-rate must be above 0
-// on every node, and a value other than the default is ignored, with a
-// warning, where rangesync does not run: light and boot nodes, and full
-// nodes without --rangesync-enable.
+// TestResolveFetchRate (T6.5 part 2, fix round 1): --rangesync-fetch-rate is
+// validated on every node; zero, which a zero-valued Options holds, means
+// the default on every node (light nodes and NewBee embedders included), a
+// negative value or one above rangesync.MaxFetchRate is refused, and a value
+// other than zero and the default is ignored, with a warning, where
+// rangesync does not run: light and boot nodes, and full nodes without
+// --rangesync-enable.
 func TestResolveFetchRate(t *testing.T) {
 	t.Parallel()
 
 	const def = rangesync.DefaultFetchRate
+	zero := node.Options{}.RangesyncFetchRate
 	for _, tc := range []struct {
 		name                 string
 		full, boot, rs, pull bool
 		rate                 int
+		want                 int
 		ignored              bool
 		wantErr              error
 	}{
-		{name: "full defaults", full: true, pull: true, rate: def},
-		{name: "full pullsync only", full: true, pull: true, rate: 250, ignored: true},
-		{name: "full rangesync only", full: true, rs: true, rate: 250},
-		{name: "full both", full: true, rs: true, pull: true, rate: 2000},
-		{name: "full rangesync default", full: true, rs: true, rate: def},
-		{name: "light defaults", pull: true, rate: def},
-		{name: "light rangesync", rs: true, pull: true, rate: 250, ignored: true},
-		{name: "boot rangesync", full: true, boot: true, rs: true, pull: true, rate: 250, ignored: true},
-		{name: "zero", full: true, rs: true, rate: 0, wantErr: node.ErrInvalidFetchRate},
-		{name: "negative", full: true, pull: true, rate: -1, wantErr: node.ErrInvalidFetchRate},
-		{name: "zero on a light node", pull: true, rate: 0, wantErr: node.ErrInvalidFetchRate},
+		{name: "full defaults", full: true, pull: true, rate: def, want: def},
+		{name: "full pullsync only", full: true, pull: true, rate: 250, want: 250, ignored: true},
+		{name: "full rangesync only", full: true, rs: true, rate: 250, want: 250},
+		{name: "full both", full: true, rs: true, pull: true, rate: 2000, want: 2000},
+		{name: "full rangesync default", full: true, rs: true, rate: def, want: def},
+		{name: "full rangesync max", full: true, rs: true, rate: rangesync.MaxFetchRate, want: rangesync.MaxFetchRate},
+		{name: "light defaults", pull: true, rate: def, want: def},
+		{name: "light rangesync", rs: true, pull: true, rate: 250, want: 250, ignored: true},
+		{name: "boot rangesync", full: true, boot: true, rs: true, pull: true, rate: 250, want: 250, ignored: true},
+		{name: "zero options, full pullsync only", full: true, pull: true, rate: zero, want: def},
+		{name: "zero options, full rangesync only", full: true, rs: true, rate: zero, want: def},
+		{name: "zero options, full both", full: true, rs: true, pull: true, rate: zero, want: def},
+		{name: "zero options, light", pull: true, rate: zero, want: def},
+		{name: "zero options, light rangesync", rs: true, pull: true, rate: zero, want: def},
+		{name: "zero options, boot", full: true, boot: true, pull: true, rate: zero, want: def},
+		{name: "negative", full: true, rs: true, rate: -1, wantErr: node.ErrInvalidFetchRate},
+		{name: "negative pullsync only", full: true, pull: true, rate: -1, wantErr: node.ErrInvalidFetchRate},
+		{name: "negative on a light node", pull: true, rate: -1000, wantErr: node.ErrInvalidFetchRate},
+		{name: "above max", full: true, rs: true, rate: rangesync.MaxFetchRate + 1, wantErr: node.ErrInvalidFetchRate},
+		{name: "above 1e9", full: true, rs: true, rate: 2_000_000_000, wantErr: node.ErrInvalidFetchRate},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -223,9 +237,12 @@ func TestResolveFetchRate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ignored, err := node.ResolveFetchRate(m, tc.rate)
+			rate, ignored, err := node.ResolveFetchRate(m, tc.rate)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got err %v, want %v", err, tc.wantErr)
+			}
+			if rate != tc.want {
+				t.Fatalf("got rate %d, want %d", rate, tc.want)
 			}
 			if ignored != tc.ignored {
 				t.Fatalf("got ignored=%v, want %v", ignored, tc.ignored)
@@ -234,9 +251,11 @@ func TestResolveFetchRate(t *testing.T) {
 	}
 }
 
-// TestRangesyncFetchRateWiring (T6.5 part 2): the --rangesync-fetch-rate value
-// reaches rangesync.Options.FetchRate on a full node that runs rangesync,
-// and no rangesync service is built elsewhere, so the value goes nowhere.
+// TestRangesyncFetchRateWiring (T6.5 part 2, fix round 1): the
+// --rangesync-fetch-rate value, as NewBee resolves it, reaches
+// rangesync.Options.FetchRate on a full node that runs rangesync, the default
+// for a zero-valued Options, and no rangesync service is built elsewhere, so
+// the value goes nowhere.
 func TestRangesyncFetchRateWiring(t *testing.T) {
 	t.Parallel()
 
@@ -265,9 +284,22 @@ func TestRangesyncFetchRateWiring(t *testing.T) {
 			if !register {
 				return
 			}
-			for _, rate := range []int{rangesync.DefaultFetchRate, 1, 250} {
-				if got := node.RangesyncOptions(r, rate).FetchRate; got != rate {
-					t.Fatalf("fetch rate %d, want %d", got, rate)
+			m, err := node.ResolveSyncMode(tc.full, tc.boot, tc.rs, tc.pull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tr := range []struct{ rate, want int }{
+				{node.Options{}.RangesyncFetchRate, rangesync.DefaultFetchRate},
+				{rangesync.DefaultFetchRate, rangesync.DefaultFetchRate},
+				{1, 1},
+				{250, 250},
+			} {
+				rate, _, err := node.ResolveFetchRate(m, tr.rate)
+				if err != nil {
+					t.Fatalf("rate %d: %v", tr.rate, err)
+				}
+				if got := node.RangesyncOptions(r, rate).FetchRate; got != tr.want {
+					t.Fatalf("rate %d: fetch rate %d, want %d", tr.rate, got, tr.want)
 				}
 			}
 		})

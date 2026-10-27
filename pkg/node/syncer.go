@@ -7,6 +7,7 @@ package node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ethersphere/bee/v2/pkg/rangesync"
@@ -17,7 +18,7 @@ import (
 
 var (
 	errNoSyncProtocol   = errors.New("full node needs at least one of --rangesync-enable and --puller-enable")
-	errInvalidFetchRate = errors.New("--rangesync-fetch-rate must be above 0")
+	errInvalidFetchRate = fmt.Errorf("--rangesync-fetch-rate must be from 1 to %d, or 0 for the default (%d)", rangesync.MaxFetchRate, rangesync.DefaultFetchRate)
 )
 
 // syncMode is the historical-sync configuration of the node.
@@ -85,16 +86,22 @@ func (c *combinedSyncer) Start(ctx context.Context) {
 	}
 }
 
-// resolveFetchRate validates fetchRate (--rangesync-fetch-rate), which must
-// be above 0 on every node, and reports whether mode ignores it: a value
-// other than rangesync.DefaultFetchRate on a node that does not run
-// rangesync (a light or boot node, or a full node without
-// --rangesync-enable). Where rangesync runs, rangesyncOptions applies it.
-func resolveFetchRate(mode syncMode, fetchRate int) (ignored bool, err error) {
-	if fetchRate <= 0 {
-		return false, errInvalidFetchRate
+// resolveFetchRate validates fetchRate (--rangesync-fetch-rate) on every
+// node and returns the rate rangesyncOptions applies where rangesync runs:
+// zero, as in a zero-valued Options, means rangesync.DefaultFetchRate (as
+// in rangesync.Options), and a negative value or one above
+// rangesync.MaxFetchRate is refused. It also reports whether mode ignores
+// the value: one other than zero and the default on a node that does not
+// run rangesync (a light or boot node, or a full node without
+// --rangesync-enable).
+func resolveFetchRate(mode syncMode, fetchRate int) (rate int, ignored bool, err error) {
+	switch {
+	case fetchRate < 0, fetchRate > rangesync.MaxFetchRate:
+		return 0, false, fmt.Errorf("%w: got %d", errInvalidFetchRate, fetchRate)
+	case fetchRate == 0:
+		return rangesync.DefaultFetchRate, false, nil
 	}
-	return !mode.Rangesync && fetchRate != rangesync.DefaultFetchRate, nil
+	return fetchRate, !mode.Rangesync && fetchRate != rangesync.DefaultFetchRate, nil
 }
 
 // syncWiring returns what NewBee applies for mode: whether the storer opens
@@ -109,8 +116,8 @@ func syncWiring(mode syncMode) (addrIndex, registerRangesync, buildPuller bool) 
 // wired to its reconciler r: r scores the peers (Scorer), fetches the wants
 // of the sessions the node serves (Wants) and takes over the ranges those
 // sessions find the node far behind in (Striper, one per session, T4.7
-// part 1). fetchRate (--rangesync-fetch-rate, validated by
-// resolveFetchRate) is the node-wide fetch limit (FetchRate); its default,
+// part 1). fetchRate (--rangesync-fetch-rate, as resolveFetchRate returns
+// it) is the node-wide fetch limit (FetchRate); its default,
 // rangesync.DefaultFetchRate, is the service's own. The other options keep
 // their defaults.
 func rangesyncOptions(r *reconciler.Reconciler, fetchRate int) rangesync.Options {

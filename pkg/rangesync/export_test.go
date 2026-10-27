@@ -74,7 +74,10 @@ const (
 	MaxOpenBackoff      = maxOpenBackoff
 )
 
-var ErrFetchQueueFull = errFetchQueueFull
+var (
+	ErrFetchQueueFull = errFetchQueueFull
+	FetchInterval     = fetchInterval
+)
 
 // OpenOutcome is how a fetch stream open ended.
 type OpenOutcome = openOutcome

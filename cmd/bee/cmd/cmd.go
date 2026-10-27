@@ -370,7 +370,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().Bool(optionNameRangesyncEnable, false, "enable rangesync historical syncing (full nodes only; ignored with a warning on light and boot nodes)")
 	cmd.Flags().Bool(optionNamePullerEnable, true, "enable pulling via pullsync on full nodes; false only stops pulling, the pullsync protocol handlers stay registered")
-	cmd.Flags().Int(optionNameRangesyncFetchRate, rangesync.DefaultFetchRate, "most chunks per second that rangesync fetches (full nodes with --rangesync-enable only); it limits rangesync's fetches only, not pullsync, so a node with both enabled pulls up to pullsync's rate plus this")
+	cmd.Flags().Int(optionNameRangesyncFetchRate, rangesync.DefaultFetchRate, fmt.Sprintf("most chunks per second that rangesync fetches, 1 to %d or 0 for the default (full nodes with --rangesync-enable only); it limits rangesync's fetches only, not pullsync, so a node with both enabled pulls up to pullsync's rate plus this; keep it at 250 or more: a peer's stripe claim is ended when it stores nothing for 2 minutes, and its first request of up to %d chunks waits here behind those queued, up to 2 per peer fetched from (250 covers 60 peers)", rangesync.MaxFetchRate, rangesync.MaxWantIDs))
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")

@@ -73,13 +73,23 @@ type toggleNode struct {
 // startToggleNode opens the node's storer in dir with the flags
 // --rangesync-enable (rangesyncEnable) and --puller-enable (true), on a full
 // node or a light one, and builds and starts its rangesync service when the
-// flags enable it, waiting for its Index.
+// flags enable it, waiting for its Index. The fetch rate is resolved from a
+// zero-valued node.Options, as a NewBee embedder that does not set it passes
+// it (T6.5 part 2 fix round 1).
 func startToggleNode(t *testing.T, dir string, overlay swarm.Address, full, rangesyncEnable bool) *toggleNode {
 	t.Helper()
 
 	addrIndex, registerRangesync, _, err := node.ResolveSyncWiring(full, false, rangesyncEnable, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	mode, err := node.ResolveSyncMode(full, false, rangesyncEnable, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchRate, _, err := node.ResolveFetchRate(mode, node.Options{}.RangesyncFetchRate)
+	if err != nil {
+		t.Fatalf("zero-valued options: %v", err)
 	}
 	opts := &storer.Options{
 		Address:           overlay,
@@ -109,7 +119,7 @@ func startToggleNode(t *testing.T, dir string, overlay swarm.Address, full, rang
 	}
 	if registerRangesync {
 		r := reconciler.New(overlay, nil, nil, log.Noop, reconciler.Options{})
-		n.svc = rangesync.New(n.rec, db, overlay, nil, nil, acceptStamp, log.Noop, node.RangesyncOptions(r, rangesync.DefaultFetchRate))
+		n.svc = rangesync.New(n.rec, db, overlay, nil, nil, acceptStamp, log.Noop, node.RangesyncOptions(r, fetchRate))
 		n.closer = node.NewRangesyncCloser(r, n.svc)
 		r.SetService(n.svc)
 		if err := n.svc.Start(); err != nil {

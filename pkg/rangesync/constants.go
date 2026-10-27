@@ -175,6 +175,12 @@ const (
 
 	// DefaultFetchRate is the default global fetch limit in chunks per second.
 	DefaultFetchRate = 1000
+	// MaxFetchRate is the largest global fetch limit in chunks per second
+	// (Options.FetchRate), about 4 GB/s of chunk data. The limiter's
+	// interval, time.Second over the rate, is then at least 1 µs, which
+	// keeps the rate exact to 0.1 %; above 1e9 it would be 0, which the
+	// limiter reads as no limit.
+	MaxFetchRate = 1_000_000
 
 	// CatchUpMinDiff is the smallest resolved difference of a session for its
 	// fetches to count towards the catch-up sync rate.
