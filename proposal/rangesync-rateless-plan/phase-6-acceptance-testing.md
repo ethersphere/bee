@@ -2653,3 +2653,31 @@ _(sessions append here)_
      N ≥ 17, recorded at the median reached if the testnet shows no reference load), or deploy the
      private network's postage contract with a lower `minimumValidityBlocks`, if the contract
      allows it (V_min = 12 h raises the cap to 31.4/s).
+- **(T6.3 docs round-3 re-review; recorded by the orchestrator, 2026-10-26) Open findings after fix
+  round 3; not landed (three fix rounds used; the user decides).** No High. Round 3's fixes (M1 the
+  L/4 rotation and expiry guard, M2 unpinned joiners, M3 schedule B) and the T6.5 updates hold against
+  the code; checked: Run 2 gets ~16.5–19 h of clean windows, AC-B1 at N ≥ 17 gets 5.5 h in each of
+  Run 0 and Run 2, the timed events fit one period, unpinned joiners measure AC-N2 correctly and
+  re-pinning is safe, AC-B1 is like-for-like, rule 9's `.Upload.PendingUpload = 0` is a sound proxy.
+  1. **Medium: the AC-V1 probe breaks AC-C2 and AC-V5** (runbook ~L536, L1156, L1161, L1346). The
+     probe uploads every 30 s through all of Run 2, pauses included (one chunk per neighborhood every
+     ~4 min at r = 3, pushed to ~3 nodes), so sessions with n_Δ > 0 continue and AC-C2/AC-V5 fail
+     falsely; the "quiet" check (`rate(bee_pushsync_storer) ≈ 0`) does not catch it. Fix: stop the
+     probe and every other uploader for the pause, and leave the pause out of AC-V1.
+  2. **Medium: "every rotation is also an expiry" assumes a constant price** (~L459, table
+     ~L478–487). Redistribution adjusts the price oracle (contract outside this repo; check it on the
+     deployment): with more than 8 revealers per neighborhood the price falls every round to the
+     oracle floor — at 5-s blocks ~−9 % per L, so each expiry lands ~1.2 h after its rotation, inside
+     the pause and settle slots (mid-window with faster blocks). The guards keep the results valid,
+     but the period table and the "30 min after a rotation" rule stop working. Fix: watch
+     `currentPrice` in Run S; deploy the oracle paused or at its floor, or time pauses and events from
+     the expiry actually seen.
+  3. **Lows.** `bee_localstore_expired_count` moves only when a batch's eviction finishes
+     (pkg/storer/reserve.go ~L244), so B10 reads 0 until then and `/batches` no longer lists the
+     batch: start pauses/events only after B10 rose and fell back to 0. Under schedule B, §4.8, §4.11
+     and S10 (~L576, L668) don't say which period is "the reference load" (if they need the 30/s
+     period, once per 25 h, the plan grows by days). The drain never says to stop `rotate.sh`
+     (~L1351, "throughout" ~L1356): new empty load batches block Run 4's start rule, and S1's mutable
+     batch is missing from the drain's wait list. Run 5's "2 h" vs "each 30 min after a rotation"
+     (~L1349) is ambiguous. `POST /chunks` ignores `Swarm-Deferred-Upload`; an upload is deferred only
+     when `Swarm-Tag` is set (pkg/api/chunk.go ~L69–73) — say "no `Swarm-Tag`".
