@@ -1541,6 +1541,109 @@ _(sessions append here)_
   Radius|Churn 319 s with no race reassignment; AC-B2 unchanged) and reviewed: no High or Medium.
   The review's Lows are in the Follow-ups ("(T6.5 part 1 review; recorded by the orchestrator at
   landing)"); item 2 goes to T6.3's runbook. T6.5 is ticked after part 2.
+- **(T6.5 part 2) `--rangesync-fetch-rate`, as built.** An `Int` flag on `bee start`
+  (`cmd/bee/cmd/cmd.go`), default `rangesync.DefaultFetchRate` (1000 chunks/s, taken from the
+  constant), plumbed in `start.go` into `node.Options.RangesyncFetchRate`. `resolveFetchRate`
+  (`pkg/node/syncer.go`, next to `resolveSyncMode`) refuses a value ≤ 0 at start-up on every node
+  (`errInvalidFetchRate`), whatever the mode, so that a config stays valid when the node is
+  switched to rangesync; `rangesyncOptions(r, fetchRate)` puts it into `rangesync.Options.FetchRate`,
+  which only a full node with `--rangesync-enable` builds. Decided: a value other than the default
+  where rangesync does not run (light and boot nodes, full nodes without `--rangesync-enable`) is
+  ignored with a Warning, "rangesync does not run on this node; ignoring --rangesync-fetch-rate",
+  as `--rangesync-enable` is on light nodes; the default never warns. Defaults byte-identical: the
+  flag's 1000 is what `rangesync.New` substitutes for 0, so the fetch limiter is the same
+  (`time.Second/1000`, burst `MaxWantIDs`). Nothing else reads `FetchRate`, and nothing is derived
+  from it: the per-peer credit's parameters (`credit.go`: `creditInitial = MaxWantIDs`, `creditMax =
+  2 × maxFetchStreamsOut × MaxWantIDs`, `creditStoredRefund` 2, the pool of `32 × creditInitial` plus
+  `creditInitial` a minute, the 10-s probe) and the holders' 250/s per peer are fixed constants;
+  `wantset.MaxRejected` is sized as "10 s of `DefaultFetchRate`" in its comment only (Follow-ups).
+  T1.12 listed its flags nowhere else (no packaging config, env file or doc names
+  `--rangesync-enable`), so neither does this one. Tests: `TestRangesyncFetchRateFlag` (cmd: the
+  flag, its default, parsing, the config key), `TestResolveFetchRate`, `TestRangesyncFetchRateWiring`,
+  `TestRangesyncOptions` (now also `FetchRate`).
+- **(T6.5 part 2) `bee_node_is_fully_synced`, as built; the deliberate exception.** A `GaugeFunc` in
+  `nodeMetrics` (`pkg/node/metrics.go`, subsystem `node`: the existing node metrics are `init_*`),
+  registered with them (`getMetrics`, every node with an API). It reads the storage incentives
+  agent's predicate, the second `isFullySynced` closure of `node.go` (the one passed to
+  `storageincentives.New`: reserve ≥ capacity × 5/10, `SyncRate() == 0`, `detector.IsStabilized()`),
+  not the first (the full-sync-duration check in `OnStabilized`, which reads salud's health and
+  capacity >> 1). That predicate is now one closure, `fullySynced`, built in the full-node block in
+  every sync mode, with or without storage incentives; the gauge reads it (`setFullySynced`) and the
+  agent's `isFullySynced` wraps it, keeping its Debug line and its evaluation order, so the two
+  cannot drift and the gauge does not log. Light and boot nodes set no check: the gauge reads 0.
+  The gauge reads the predicate live when scraped; the agent samples it at each phase change
+  (`agent.go` ~L228), so `/redistributionstate`'s `isFullySynced` is the value at the phase's start
+  and can differ from the gauge within a phase. Deliberate exception to "defaults change nothing":
+  an additive metric in default mode (a pullsync-only node reports it too), no behaviour change; no
+  `pkg/storageincentives` change. Test: `TestIsFullySyncedGauge`. This closes "(T6.0) T6.3: no
+  Prometheus metric exposes `isFullySynced`" for the flag; rounds skipped as "not fully synced"
+  still have no metric (that one would be in `pkg/storageincentives`).
+- **(T6.5 part 2) `peer_failures_total{reason}`, as built.** Counted in one place,
+  `Reconciler.Fail`, by `failureReason(err)` (`pkg/rangesync/reconciler/metrics.go`), the most
+  specific sentinel first. Its callers, from the code: rangesync's `violation` (`stream.go`, the
+  responder side) and `initiatorViolation` (`reconcile.go`), whose errors wrap `ErrInvalidMessage`,
+  the blatant and repeated fetch shortfalls also `ErrFetchShortfall`; `judgeShortfall`'s scored first
+  offense (`shortfall.go`, `ErrFetchShortfall` alone); the stripe verification (`stripes_verify.go`,
+  `ErrVerifierWithheld`, `ErrStripeVerification`). The values: `stripe_verification`,
+  `verifier_withheld`, `fetch_shortfall` (scored or a violation), `invalid_message` (every other
+  violation: malformed messages, a fetch stalled or reset past its budget, an unsolicited delivery,
+  Status spam) and `other` (no caller today; it bounds the set). Not values, because nothing scores
+  them: `ErrStripeWithheld` (a stripe is reassigned, its peer not scored) and the stream limits
+  (`streamLimitExceeded` disconnects without `Fail`). All five series are created at 0 with the
+  metric, as the unlabeled counter was reported from the start, so `increase()` sees the first
+  failure; the sum over `reason` is the old value. Name kept, Help updated. Tests:
+  `TestPeerFailuresReason` (an error shaped like each caller's), `TestMetricsRegistered`, and one
+  assertion per path on a real failure: `TestVerifyStripesWithheld` (stripe_verification),
+  `TestVerifyStripesLyingVerifier` (verifier_withheld), `TestStripeBadSignaturesScored`
+  (fetch_shortfall, a real Service), `TestSREPStallRetry` (invalid_message, a real Service).
+- **(T6.5 part 2) Stripe-job and catch-up metrics, as built.** Two histograms in the reconciler's
+  `metrics` (registered through `Metrics()` like the others), buckets 0.1, 0.25, 0.5, 1, 2
+  (`catchUpGrace`), 5, 10, 30, 60, 120 (`claimIdleTimeout`), 300, 600 (10 min), 900
+  (`StripeTimeout`), 1800, 3600, 7200, 14400 s (4 h; a longer wait is in `+Inf`):
+  `bee_rangesync_stripe_queue_wait_seconds{kind=own|claim}`, from a job's registration
+  (`addStripeLocked`, each trimmed part on its own) to the stripe worker taking it (after
+  `nextJobLocked`), observed then; and `bee_rangesync_first_chunk_seconds{kind=own|claim|catch_up}`:
+  for a stripe job, from the worker taking it to its first stored chunk, in its transfer or its
+  verification (`jobStored`, once per job, under `r.mu`), labeled with the kind it started as; for a
+  catch-up fetch (`CatchUpMinDiff` wants or more), from the fetch's start (`fetchFrom`) to its first
+  stored chunk, once per fetch (`catchUpProgress`, passed as `fetchFrom`'s progress by `r.fetch`,
+  which runs a session's catch-up and its retries, and by `fetchServed`, per batch of a served
+  session's wants; `progress` was nil there and only drives that callback). A retry's wait for its
+  peer's retry lock is not counted (the fetch starts after it); the stripe jobs' own fetches are
+  counted only by their job. Not observed: a job dropped before it starts (preempted, Close), work
+  that stores nothing (`stripes_total{idle|timeout|…}` count those), and an own job that takes over a
+  claim in flight (`adoptLocked`: not registered; the job keeps the claim's start and kind). Every
+  kind's series is created at 0. Tests: `TestStripeJobMetrics` (a claim queued behind a stalled one
+  waits 3 min; a claim's and a bootstrap's first chunk 30 s and 45 s after start, observed once over
+  three and two chunks), `TestCatchUpFirstChunkMetric` (a served and a round catch-up, 1.5 s; a
+  fetch below `CatchUpMinDiff` observes nothing).
+- **(T6.5 part 2) The reclaim's Info line, as built.** `startAddrIndexDrop` (`pkg/storer/reserveaddr.go`)
+  logs "reclaimed the disabled reserve address index" at Info on `node/storer`, with `count` (the
+  entries dropped) and `duration` (from the drop's start to the end of the compaction), once
+  `compactAddrIndex` returns. It is logged also when the compaction failed (that error stays at
+  Debug; LevelDB's own compactions then reclaim the range) and on an in-memory store (no
+  compaction). Unchanged: the interrupted case's Debug ("… interrupted; it resumes at the next
+  start"), the failure Warning, and the Debug "dropped the disabled reserve address index", which
+  marks the drop's end before the compaction. One duration, as the task asks; the Debug line's
+  timestamp splits drop and compaction. Test: `TestReserveAddrIndexReclaimLog`.
+- **(T6.5 part 2) Other changes.** `rangesyncOptions` takes the fetch rate, so its two test callers
+  (`rangesync_toggle_test.go`, the acceptance harness) pass `rangesync.DefaultFetchRate`, which is
+  what `NewBee` passes with the flag unset. The export helper is `PeerFailuresTotal(reason)`
+  (`PeerFailures(peer)`, the FSM's backoff streak, already existed). No `pkg/pullsync`,
+  `pkg/puller`, `pkg/storageincentives`, `go.mod` or proto change; `pkg/node`, `cmd/bee` and
+  `pkg/storer` changes are additive (the one signature change, `rangesyncOptions`, is unexported);
+  no new parser of peer input (no `followup-fuzzing.md` line).
+- **(T6.5 part 2) Results and runs.** No `-race` (no C compiler); one test process at a time on
+  this 4-core host. TDD: each new test failed before its production change (the flag's lookup, the
+  undefined resolver and gauge, 0 observations of every new histogram, no reclaim line). `go test
+  ./pkg/pullsync/... ./pkg/puller/... ./pkg/storer/...`, `./pkg/node/...`, `./cmd/bee/...` and
+  `./pkg/rangesync/...`: pass. The new tests 20 times with `-cpu=1,2,4`, the reconciler package 3
+  times: pass. Default integration run (`go test -tags=integration ./pkg/node/ -count=1`): pass, 364
+  s. `make build`; `go vet` on the touched packages (`-tags=integration` for `pkg/node`, `-tags=sim`
+  for `pkg/rangesync`); `GOTOOLCHAIN=go1.26.1 make lint` and with `--build-tags sim
+  ./pkg/rangesync/...` and `--build-tags integration ./pkg/node/...`: 0 issues. Only the edited
+  files were formatted (gofumpt; gci's 0.14 regrouping of untouched import blocks was put back, the
+  linter checks gofmt only).
 
 ## Follow-ups
 _(sessions append here)_
@@ -1926,3 +2029,43 @@ _(sessions append here)_
      `RANGESYNC_ACCEPTANCE_REPRO`; since T6.5 part 1 it runs by default.
   6. The default integration run (401–507 s) uses 67–85 % of `make test-integration`'s 10-minute
      default; CI (`go.yml`) does not run the integration tag. The existing `-timeout` follow-up covers it.
+- **(T6.5 part 2 → T6.3, runbook) What the runbook can now read.** `testnet-runbook.md` §2.4
+  "Tuning knobs: none": `--rangesync-fetch-rate` (default 1000 chunks/s, full nodes with
+  `--rangesync-enable` only; a dual node pulls up to pullsync's 1000/s plus this; a non-default
+  value elsewhere is ignored with a Warning), so G7-2 needs no test build. §6 F1:
+  `sum by (cohort, node, reason) (increase(bee_rangesync_peer_failures_total[10m]))`, `reason` one
+  of `stripe_verification`, `verifier_withheld`, `fetch_shortfall`, `invalid_message`, `other`
+  (S10 reads `stripe_verification`; S7 `fetch_shortfall` and `invalid_message`). S4: claims' and own
+  jobs' queue wait from `bee_rangesync_stripe_queue_wait_seconds{kind}`, first-chunk latency from
+  `bee_rangesync_first_chunk_seconds{kind="own|claim|catch_up"}`, e.g. the share of claims whose
+  first chunk took longer than `claimIdleTimeout`: `1 - sum(increase(…_first_chunk_seconds_bucket{kind="claim",le="120"}[$__range])) / sum(increase(…_first_chunk_seconds_count{kind="claim"}[$__range]))`,
+  and for catch-ups the share above `catchUpGrace` with `le="2"`; work that stores nothing is not
+  in them (read `stripes_total{result="idle"}` alongside). H1: `bee_node_is_fully_synced` replaces
+  `runbook_is_fully_synced` (every cohort reports it, pullsync-only included); it reads the
+  predicate live, while `/redistributionstate`'s value is the agent's sample at the phase's start,
+  and the skipped-round count still comes from the Info line. "(T6.2 fix round 1) Operator-visible
+  end of the reclaim": the Info line "reclaimed the disabled reserve address index" (`count`,
+  `duration`) on `node/storer`.
+- **(T6.5 part 2) `invalid_message` lumps the violations that have no sentinel.** A fetch with no
+  delivery within the fetch timeout, fetch resets past their budget, an unsolicited delivery, Status
+  spam and malformed messages all wrap only `ErrInvalidMessage`, so the label cannot tell an honest
+  peer that stalls under load from junk; the Debug `invalid message from peer` line still can.
+  Sentinels for the fetch stall and the reset budget (`pkg/rangesync/fetch.go`) would allow two more
+  label values; not done (outside the reconciler).
+- **(T6.5 part 2) `wantset.MaxRejected` and a raised fetch rate.** The rejected cache (10,000 IDs) is
+  sized as ten seconds of `DefaultFetchRate`, so that the fetch rate bounds the refetches of a
+  rejected set larger than it. A `--rangesync-fetch-rate` well above 1000 shortens that window (5000
+  → 2 s); lowering the rate, the intended use for dual cohorts, only lengthens it. Revisit if a
+  cohort runs above the default.
+- **(T6.5 part 2, from "(T6.5 part 1 → T6.5 part 2 / T6.3) Tell uploads from withholding")** The
+  suggested histogram of `VerifyResult.Newer` (or `Stored − Newer`) was not added: it is not in part
+  2's list, and `peer_failures_total{reason="stripe_verification"}` is the withholding signal.
+  `verification_diff` still includes uploads since the listing.
+- **(T6.5 part 2) Tests to run with -race on CI.** They ran with `-count=20 -cpu=1,2,4` (no C
+  compiler here), and the whole reconciler package with `-count=3 -cpu=1,2,4`.
+  `pkg/rangesync/reconciler`: `TestStripeJobMetrics`, `TestCatchUpFirstChunkMetric` (new; the stripe
+  worker and `jobStored` set and read the job's timing fields under `r.mu`, on the worker and the
+  fetch goroutines), `TestPeerFailuresReason`, `TestMetricsRegistered` (new), and the changed
+  `TestVerifyStripesWithheld`, `TestVerifyStripesLyingVerifier`, `TestStripeBadSignaturesScored`,
+  `TestSREPStallRetry`. `pkg/node`: `TestIsFullySyncedGauge` (the gauge's check is an atomic pointer
+  read on the scrape goroutine). `pkg/storer`: `TestReserveAddrIndexReclaimLog`.
