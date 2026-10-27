@@ -1725,6 +1725,15 @@ _(sessions append here)_
   No `pkg/pullsync`, `pkg/puller`, `pkg/storageincentives`, `go.mod` or proto change; `pkg/node`,
   `cmd/bee` and `pkg/storer` changes stay additive (unexported signatures and an unexported test
   option); no new parser of peer input.
+- **(Orchestrator, T6.5 part 2 landing, 2026-10-26) Part 2 landed after one fix round; T6.5 done.**
+  Review: no High; one Medium in the records (the S4 claim first-chunk share) and four Lows (zero
+  fetch rate failing start-up for embedders and light nodes; unbounded rates; the reclaim Info line
+  on an interrupted compaction; stripe retries in the `catch_up` series), all fixed in fix round 1,
+  which verified clean (default integration run 410 s; no re-review: no High). For the T6.3 runbook:
+  `--rangesync-fetch-rate` (default 1000; keep it ≥ 250; > 1,000,000 refused), `bee_node_is_fully_synced`,
+  `bee_rangesync_peer_failures_total{reason}`, `bee_rangesync_stripe_queue_wait_seconds{kind}`,
+  `bee_rangesync_first_chunk_seconds{kind}`, the Info line "reclaimed the disabled reserve address
+  index", the corrected S4 query, and NTP / direct uploads / pusher backlog (T6.5 part 1 review Low 2).
 
 ## Follow-ups
 _(sessions append here)_
