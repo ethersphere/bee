@@ -2122,6 +2122,12 @@ _(sessions append here)_
   pause, floor and target are not in this repository: the −9 % per L and ≈ 1.2 h figures are the
   round-3 review's estimate, for the deployment to confirm. Docs only: no `.go`, Makefile or
   `go.mod` change; README not ticked.
+- **(Orchestrator, T6.3 docs landing, 2026-10-26) The documentation part of T6.3 landed with notes
+  after four fix rounds (user's decision: round 4, then land).** The runbook, the dashboard panel list
+  and the comparison-run plan are in [testnet-runbook.md](testnet-runbook.md); the runs remain (G7), so
+  T6.3 is not ticked. The round-4 re-review closed both round-3 Mediums and left one Medium and three
+  Lows, recorded in the Follow-ups and summarized in an "Open review notes" block at the top of the
+  runbook (the orchestrator's only edit to it), with the postage-contract warning in bold there.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2755,3 +2761,30 @@ _(sessions append here)_
   the oracle only, never the postage contract (bee's listener stops on its `Paused` event and the
   node shuts down). The oracle's pause, floor and target are outside this repository: check them
   on the deployment.
+- **(T6.3 docs round-4 re-review; recorded by the orchestrator at landing) Open notes.** No High.
+  Both round-3 Mediums are closed (Q-PUSH sees every uploader; every "30 min after a rotation" rule
+  keys off the observed expiry, the first L deliberately excepted); the schedule fits ~5.3–6 days.
+  1. **Medium: the B9 reserve guard trips at the planned load** (runbook ~L455–459, L1103 vs
+     L441–444). Guard 0.9 C = 3,774,874; planned peak = seed 0.6 C + live load ≈ 0.343 C ≈ 0.94 C
+     (schedule A 1.44M, B 1.4175M), so it trips in the second half of every rotation period and
+     "lower the rate" cuts the reference load C5 and AC-B1 at N ≥ 17 need; round 4 made this guard
+     the price-drift safeguard, so that safeguard cannot work, and the second guard's fixed 25-h
+     window misses a drifted L of ~26.2 h. Fix: first guard at the Peak row's 0.95 C (3,984,589;
+     the nominal 0.943 C passes, a −9 % per L drift, ~+0.017 C, trips it); measure the second guard
+     from the oldest live load batch's creation.
+  2. **Low (safety): the G7-9 warning is buried and understates the damage** (~L32; missing from
+     §4.5's price bullet ~L460–467). `processEvents` returns before `UpdateBlockNumber`
+     (listener.go ~L216–227), so every restart replays `Paused`: every node crash-loops even after an
+     unpause and the Run 3 joiners cannot sync past the event — the network must be redeployed. bee
+     has no oracle address in its config. Also warn against pausing Redistribution (stops rounds, so
+     AC-N5 can't be measured) or Staking. Fix: a bold standalone warning in §4.5 and in the G7-9
+     options column. (The orchestrator put this warning in the runbook's top notes block at landing.)
+  3. **Low: G7-9 (a)'s Run S check proves little** (~L465, L1414): the price moves only through
+     claims, and nodes skip rounds below C/2 for ~12 of Run S's 14 h. Require ≥ 1 claim (H3) with the
+     price unchanged, or confirm it in Run 0.
+  4. **Low: stale window wording:** C3 (~L1112) and Row D (~L1130) say "inside one rotation period",
+     but ~L500–501 lets schedule-A windows span a rotation.
+  5. Round-4 verifier Lows: the probe's "every 30 s" / "~4 min per neighborhood" figures (~L579,
+     L1228, L1417) assume `rs_probe.py --gap 30`, which the runbook never passes (default 5 s); the S1
+     row's "expired by the drain's end" (~L446) holds only if a rotation falls between S1's creation
+     and the drain start (the drain's wait list covers S1's batch either way).

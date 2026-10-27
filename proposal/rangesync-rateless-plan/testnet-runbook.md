@@ -11,6 +11,24 @@ fixes and observability). Every flag, metric, log line and API field named here 
 commit. What does not exist is marked **missing** and listed in the phase-6 Follow-ups ("(T6.3
 docs) …").
 
+> **Open review notes (landed with notes after fix round 4, 2026-10-26). Read before preparing the
+> runs.** Details: phase-6 Follow-ups, "(T6.3 docs round-4 re-review; recorded by the orchestrator at
+> landing)".
+>
+> - **Never pause the postage contract, nor Redistribution or Staking.** bee replays the postage
+>   contract's `Paused` event on every restart (`processEvents` returns before `UpdateBlockNumber`,
+>   pkg/postage/listener/listener.go ~L216–227), so every node crash-loops even after an unpause and
+>   new nodes cannot sync past it: the network has to be redeployed. G7-9 pauses only the price
+>   oracle, whose address is not in bee's config (find it in the deployment). Pausing Redistribution
+>   stops the rounds that AC-N5 measures.
+> - **The B9 reserve guard (0.9 C) trips at the planned peak (≈ 0.94 C)** (§4.5): set it at the Peak
+>   row's 0.95 C (3,984,589) and measure the second guard from the oldest live load batch's creation,
+>   not over a fixed 25 h.
+> - G7-9 (a)'s Run S check needs at least one claim (H3) with the price unchanged, or confirm it in
+>   Run 0. C3 and Row D still say "inside one rotation period", while schedule-A windows may span a
+>   rotation. The probe's figures assume `rs_probe.py --gap 30` (the default is 5 s). S1's batch has
+>   expired by the drain's end only if a rotation falls between S1's creation and the drain.
+
 Contents: 0 decisions before the runs · 1 build and inventory · 2 modes and flags · 3 cohort design
 · 4 procedures · 5 tooling · 6 dashboard · 7 criteria · 8 special items · 9 G6 confirmations ·
 10 run plan · 11 known issues · A handed items · B metric coverage.
