@@ -5,6 +5,7 @@
 package reconciler_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -325,5 +326,58 @@ func nextGatedFetch(t *testing.T, svc *pinService) gatedFetch {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a gated fetch")
 		return gatedFetch{}
+	}
+}
+
+// TestCatchUpFirstChunkStripeRetry (T6.5 part 2 fix round 1): the retry of
+// IDs a stripe's peer did not deliver, from another peer known to hold them,
+// is a catch-up fetch but belongs to the stripe's job: it observes no
+// catch_up first chunk. The retry of a session's catch-up fetch does
+// (TestWantSetCatchUpRetry).
+func TestCatchUpFirstChunkStripeRetry(t *testing.T) {
+	t.Parallel()
+
+	root := fingerprint.NewRange(swarm.ZeroAddress, 0)
+	x := testChunkID(1)
+	svc := newWantService(status(1))
+	svc.lists(higher, x)
+	svc.withholds(higher, x) // it lists x and does not deliver it
+	svc.lists(higher2, x)
+	// higher2 holds x but lists nothing in its sessions, so that the stripe,
+	// reassigned to it, does not fetch x: the retry does
+	svc.set(func() { svc.wantIDs[higher2.ByteString()] = nil })
+	claimed := svc.claimSignal(higher)
+	pause := make(chan struct{})
+	svc.pause[higher.ByteString()] = pause
+	h := newWantHarness(t, svc, higher, higher2)
+	h.r.SetStripeRetryInterval(time.Millisecond)
+	svc.set(func() { // equal digests: no round session
+		svc.remote[higher.ByteString()] = status(1)
+		svc.remote[higher2.ByteString()] = status(1)
+	})
+	h.r.Start(context.Background())
+	waitState(t, h.r, higher, reconciler.StateIdle)
+	waitState(t, h.r, higher2, reconciler.StateIdle)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.r.TransferStripes(context.Background(), []reconciler.Stripe{{Range: root, Peers: []swarm.Address{higher}}})
+	}()
+	waitClosed(t, "the stripe's fetch claimed x", claimed)
+	// a served session's fetch from higher2, below CatchUpMinDiff, is
+	// denied x, which records higher2 as its source
+	h.r.Wants(higher2, []storer.ChunkID{x})
+	waitFor(t, "higher2 recorded as a source", func() bool { return h.r.SourceIDs() == 1 })
+	close(pause) // the stripe's fetch ends with x undelivered: retried from higher2
+	waitDelivered(t, svc, x)
+	assertDelivered(t, svc, x, higher2)
+	waitClosed(t, "the stripe transfer", done)
+	settle()
+	if n := len(svc.fetchesFrom(higher2)); n != 2 {
+		t.Fatalf("%d fetches from higher2, want 2: the served session's and the retry", n)
+	}
+	if n, _ := h.r.FirstChunk("catch_up"); n != 0 {
+		t.Fatalf("%d catch_up first chunks of a stripe's retry, want 0", n)
 	}
 }

@@ -50,6 +50,38 @@ type progressFetcher interface {
 
 var _ progressFetcher = (*rangesync.Service)(nil)
 
+// fetchKind is what a fetch (fetchFrom) is for; the retries of its IDs
+// (retry) are fetches of the same kind.
+type fetchKind uint8
+
+const (
+	// fetchWants is a fetch of a session's wants, fewer than
+	// CatchUpMinDiff.
+	fetchWants fetchKind = iota + 1
+	// fetchCatchUp is a fetch of a session's catch-up wants (CatchUpMinDiff
+	// or more): its chunks count towards SyncRate, and each such fetch, a
+	// retry included, observes its first chunk (catchUpProgress).
+	fetchCatchUp
+	// fetchStripe is a fetch of a stripe's wants: its chunks count towards
+	// SyncRate; the first chunk is the stripe job's to observe (jobStored),
+	// so neither the stripe's fetches nor their retries observe one of
+	// their own.
+	fetchStripe
+)
+
+// catchUp reports whether the chunks of a fetch of kind k count towards
+// SyncRate (countCatchUp).
+func (k fetchKind) catchUp() bool { return k != fetchWants }
+
+// sessionFetch returns the kind of a fetch of a session's wants: a catch-up
+// (catchUp: CatchUpMinDiff wants or more) or not.
+func sessionFetch(catchUp bool) fetchKind {
+	if catchUp {
+		return fetchCatchUp
+	}
+	return fetchWants
+}
+
 // fetchOutcome is what one fetch from a peer achieved.
 type fetchOutcome struct {
 	stored int // chunks stored
@@ -75,12 +107,12 @@ type fetchOutcome struct {
 	stamps []uint64
 }
 
-// fetchFrom fetches ids from peer. With a resultFetcher it records peer as a
-// source of the IDs another fetch's claim held (the want set denied them),
-// and retries the IDs peer did not deliver, and those it was not asked for
-// because its fetch credit was spent (FetchResult.NoCredit), from their
-// other sources (retry).
-// The retries of a catch-up fetch are catch-up fetches. The fetch is
+// fetchFrom fetches ids from peer, a fetch of kind. With a resultFetcher it
+// records peer as a source of the IDs another fetch's claim held (the want
+// set denied them), and retries the IDs peer did not deliver, and those it
+// was not asked for because its fetch credit was spent
+// (FetchResult.NoCredit), from their other sources (retry).
+// The retries are fetches of the same kind. The fetch is
 // registered as running while it lasts, so that the sources recorded while
 // it holds its claims are kept until its result arrives (wantSources). The
 // chunks a catch-up fetch stores count towards SyncRate (countCatchUp), as
@@ -88,7 +120,8 @@ type fetchOutcome struct {
 // when the fetch stores chunks: for each chunk with a progressFetcher, else
 // once when the fetch returns with chunks stored (a stripe's inactivity
 // timeout, stripeClock).
-func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, catchUp bool, progress func()) (fetchOutcome, error) {
+func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []storer.ChunkID, kind fetchKind, progress func()) (fetchOutcome, error) {
+	catchUp := kind.catchUp()
 	stored := func(n int) {
 		if catchUp {
 			r.countCatchUp(n)
@@ -116,7 +149,7 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 		stored(res.Stored)
 	}
 	r.sources.add(r.now(), peer, res.Held)
-	r.retry(peer, append(slices.Clip(res.Undelivered), res.NoCredit...), catchUp)
+	r.retry(peer, append(slices.Clip(res.Undelivered), res.NoCredit...), kind)
 	pending := append(slices.Clip(res.Held), res.Deferred...)
 	return fetchOutcome{stored: res.Stored, undelivered: len(res.Undelivered), pending: pending, unverified: len(res.Unverified), outsideRoot: res.OutsideRoot, stamps: res.StampTimes}, err
 }
@@ -130,8 +163,9 @@ func (r *Reconciler) fetchFrom(ctx context.Context, peer swarm.Address, ids []st
 // of their own, one retry fetch per peer at a time, so that retries add at
 // most one fetch stream per peer. A retry's own undelivered IDs go to the
 // next source. IDs with no other source are left to the next round, which
-// lists them again.
-func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp bool) {
+// lists them again. The retries are fetches of kind, that of the failed
+// fetch.
+func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, kind fetchKind) {
 	if len(ids) == 0 {
 		return
 	}
@@ -145,7 +179,7 @@ func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp b
 		return ok && st.fsm.state != stateUnsupported
 	}
 	for _, b := range r.sources.take(r.now(), failed, ids, known) {
-		if catchUp {
+		if kind.catchUp() {
 			r.addCatchUpLocked(1) // the caller's fetch is still counted
 		}
 		r.wg.Add(1)
@@ -157,7 +191,7 @@ func (r *Reconciler) retry(failed swarm.Address, ids []storer.ChunkID, catchUp b
 			} else {
 				defer release()
 			}
-			r.fetch(b.peer, b.ids, catchUp)
+			r.fetch(b.peer, b.ids, kind)
 		}()
 	}
 }

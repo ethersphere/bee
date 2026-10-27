@@ -639,7 +639,7 @@ func (r *Reconciler) transferStripe(ctx context.Context, sr fingerprint.Range, p
 				queued.Add(-1)
 				continue // drain
 			}
-			out, err := r.fetchFrom(ctx, peer, ids, true, progress)
+			out, err := r.fetchFrom(ctx, peer, ids, fetchStripe, progress)
 			queued.Add(-1)
 			res.addFetch(out, r.now())
 			pending = append(pending, out.pending...)
@@ -796,7 +796,7 @@ func (r *Reconciler) resolvePending(ctx context.Context, clock *stripeClock, pro
 			return pending, unverified, nil
 		default:
 		}
-		out, err := r.fetchFrom(ctx, peer, pending, true, progress)
+		out, err := r.fetchFrom(ctx, peer, pending, fetchStripe, progress)
 		res.addFetch(out, r.now())
 		unverified += out.unverified
 		if err != nil {

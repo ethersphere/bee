@@ -661,7 +661,7 @@ func (r *Reconciler) session(peer swarm.Address, st *peerState, gen uint64, open
 		return
 	}
 	r.metrics.Sessions.WithLabelValues("ok").Inc()
-	r.fetch(peer, wants, catchUp)
+	r.fetch(peer, wants, sessionFetch(catchUp))
 	r.mu.Lock()
 	if r.currentLocked(peer, st, gen) {
 		r.fireLocked(st, eventFetched) // during a stripe session the peer stays Striped

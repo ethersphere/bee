@@ -47,16 +47,17 @@ type metrics struct {
 	// FirstChunk is the time from the start of catch-up work to the first
 	// chunk it stores, by kind: a stripe job (jobOwn, jobClaim, as it
 	// started), from the worker taking it, in its transfer or its
-	// verification, and a catch-up fetch (jobCatchUp), from the fetch's
-	// start. Observed once per job or fetch; work that stores nothing
-	// observes none.
+	// verification, and a session's catch-up fetch or its retry
+	// (jobCatchUp, fetchCatchUp), from the fetch's start. Observed once per
+	// job or fetch; work that stores nothing observes none, and neither do
+	// the retries of a stripe's IDs (fetchStripe), which are its job's.
 	FirstChunk *prometheus.HistogramVec
 }
 
 // The kinds of catch-up work (StripeQueueWait, FirstChunk): this node's own
 // stripe job (stripeJob.own: a bootstrap or a radius decrease's new half), a
 // peer's claim, and a catch-up fetch (CatchUpMinDiff wants or more) of a
-// session or its retries.
+// session or its retries (fetchCatchUp), not a stripe's retries.
 const (
 	jobOwn     = "own"
 	jobClaim   = "claim"
@@ -183,7 +184,7 @@ func newMetrics(syncRate, roundInterval func() float64, peers func() map[fsmStat
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "first_chunk_seconds",
-			Help:      "Time from the start of a stripe job (own, claim) or a catch-up fetch (catch_up) to the first chunk it stores.",
+			Help:      "Time from the start of a stripe job (own, claim) or of a session's catch-up fetch or its retry (catch_up; not a stripe's retries, which are its job's) to the first chunk it stores.",
 			Buckets:   waitBuckets,
 		}, []string{"kind"}),
 	}

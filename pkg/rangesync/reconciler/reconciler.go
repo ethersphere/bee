@@ -441,12 +441,12 @@ func isEligible(local, remote rangesync.Status) bool {
 	return err == nil
 }
 
-// fetch fetches ids from peer (fetchFrom: IDs the peer does not deliver are
-// retried from other peers known to hold them; the stored chunks count
-// towards SyncRate when catchUp). The caller counted a catch-up fetch in
-// flight (addCatchUpLocked), which fetch ends.
-func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
-	if catchUp {
+// fetch fetches ids from peer, a fetch of kind (fetchFrom: IDs the peer does
+// not deliver are retried from other peers known to hold them; the stored
+// chunks count towards SyncRate when kind.catchUp). The caller counted a
+// catch-up fetch in flight (addCatchUpLocked), which fetch ends.
+func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, kind fetchKind) {
+	if kind.catchUp() {
 		defer func() {
 			r.mu.Lock()
 			r.addCatchUpLocked(-1)
@@ -456,18 +456,19 @@ func (r *Reconciler) fetch(peer swarm.Address, ids []storer.ChunkID, catchUp boo
 	if len(ids) == 0 {
 		return
 	}
-	_, err := r.fetchFrom(r.ctx, peer, ids, catchUp, r.catchUpProgress(catchUp))
+	_, err := r.fetchFrom(r.ctx, peer, ids, kind, r.catchUpProgress(kind))
 	if err != nil {
 		r.logger.Debug("fetch", "peer_address", peer, "error", err)
 	}
 }
 
-// catchUpProgress returns the progress of a fetch that starts now (fetchFrom)
-// of a session's wants or their retries: for a catch-up fetch, the first
-// call observes the fetch's first-chunk latency (metrics FirstChunk); for
-// another fetch, nil.
-func (r *Reconciler) catchUpProgress(catchUp bool) func() {
-	if !catchUp {
+// catchUpProgress returns the progress of a fetch of kind that starts now
+// (fetchFrom) of a session's wants or their retries: for a catch-up fetch
+// (fetchCatchUp), the first call observes the fetch's first-chunk latency
+// (metrics FirstChunk); for another fetch, a stripe's retry included
+// (fetchStripe), nil.
+func (r *Reconciler) catchUpProgress(kind fetchKind) func() {
+	if kind != fetchCatchUp {
 		return nil
 	}
 	start := r.now()
@@ -572,7 +573,8 @@ func idSet(lists ...[]storer.ChunkID) map[fingerprint.ID]struct{} {
 func (r *Reconciler) fetchServed(peer swarm.Address, ids []storer.ChunkID, catchUp bool) {
 	k := peer.ByteString()
 	for {
-		if _, err := r.fetchFrom(r.ctx, peer, ids, catchUp, r.catchUpProgress(catchUp)); err != nil {
+		kind := sessionFetch(catchUp)
+		if _, err := r.fetchFrom(r.ctx, peer, ids, kind, r.catchUpProgress(kind)); err != nil {
 			r.logger.Debug("fetch", "peer_address", peer, "error", err)
 		}
 		r.mu.Lock()

@@ -548,6 +548,8 @@ func TestWantSetSourcesPruned(t *testing.T) {
 
 // TestWantSetCatchUpRetry: the retry of a catch-up fetch counts as a catch-up
 // fetch in flight: SyncRate stays at least StartupGuardRate until it ends.
+// It observes its first chunk under catch_up, as the session's catch-up
+// fetches do (a stripe's retry does not: TestCatchUpFirstChunkStripeRetry).
 func TestWantSetCatchUpRetry(t *testing.T) {
 	t.Parallel()
 
@@ -589,6 +591,10 @@ func TestWantSetCatchUpRetry(t *testing.T) {
 	close(release)
 	waitFor(t, "retry stored", func() bool { return len(svc.delivered(ids[0])) == 1 })
 	waitFor(t, "retry ended", func() bool { return h.r.SyncRate() < reconciler.StartupGuardRate })
+	// the session fetches stored nothing (B1 stalled, B2 was denied all)
+	if n, _ := h.r.FirstChunk("catch_up"); n != 1 {
+		t.Fatalf("%d catch_up first chunks, want the retry's", n)
+	}
 }
 
 // TestStripeWithheldUndeliveredOnly: a stripe is withheld only when its peer
