@@ -2058,6 +2058,70 @@ _(sessions append here)_
   table column counts consistent (23 tables). node_exporter's metrics and `timedatectl`/`chronyc`
   are not bee's and were not checked here. Docs only: no `.go`, Makefile or `go.mod` change;
   README not ticked.
+- **(T6.3 docs fix round 4) Round-3 re-review findings, fixed in [testnet-runbook.md](testnet-runbook.md)**
+  (the Follow-ups entry "(T6.3 docs round-3 re-review; recorded by the orchestrator, 2026-10-26)
+  Open findings after fix round 3 …"). This entry supersedes, in "(T6.3 docs fix round 3)
+  Round-2 re-review findings …", Medium 1's "inside one rotation period, from 30 min after its
+  rotation to 15 min before the next", "the upload pauses (§4.6) come 30 min after a rotation" and
+  "the timed events (§4.8, §4.11, Run 6) start 30 min after a rotation"; the rest stands.
+  - **Medium 1, the probe in the pauses** (§4.6, §5.3, AC-C2/AC-V1/AC-V5 rows, Run 2). Every
+    uploader stops for each pause, the AC-V1 probe included, and restarts after it; `t_pause` is
+    the last stop; AC-V1 reads no probe from a pause. The quiet check is exact: over
+    [`t_pause` + 1 min, the pause's end] `sum by (neighborhood) (increase(bee_pushsync_storer[…]))`
+    = 0 (pushsync's storer counter, `pkg/pushsync/pushsync.go` L264) and
+    `sum(increase(runbook_uploads_total[…]))` = 0, and on every uploader node
+    `bee_pusher_total_to_push` (every chunk the pusher pushes, direct or deferred,
+    `pkg/pusher/pusher.go` L154) does not move over a minute, read from `/metrics` with a 3-line
+    snippet. The probe writes no runbook counter, so the pusher check is the one that sees it; one
+    probe chunk per neighborhood every ~4 min is 0.004/s, which the old `rate(…[5m])` ≈ 0 passed.
+  - **Medium 2, the price** (§0 G7-9, §4.5 price and rotation, the windows, the period table,
+    §4.10, Run S, §10.2, §10.3). New G7-9: deploy the price oracle paused or at its floor
+    (preferred), or leave it running and accept expiries off their rotations; pause the oracle,
+    never the postage contract, whose `Paused` event stops bee's listener and shuts the node down
+    (`pkg/postage/listener/listener.go` L189–191, L367–380). `currentPrice` (`GET /chainstate`,
+    `pkg/api/postage.go` L427) is logged to `price.csv` every 10 min from Run S on (snippet), with
+    `bee_postage_listener_price_events` as the node's count of price updates. "Every rotation is
+    also an expiry" now holds "at a constant price". The windows start once the latest expiry is
+    over and end 15 min before the next (the smallest `batchTTL`); under schedule B they stay in one
+    rotation period (the rate changes there), under A they may span one. Pauses and timed events
+    start once the period's expiry is over, not 30 min after the rotation; the period table is the
+    nominal plan, its slots moving with a late expiry, and it now allows ≈ 40 min for the expiry
+    (the evictions plus B10's 30 min) instead of 30, so the nominal windows run ≈ 100 min – 6 h
+    (the 30/s period's ≈ 40 min – 6 h, ≈ 5 h 20 min).
+  - **Lows.** (1) "An expiry is over" = B10 rose for it and fell back to 0, from the code:
+    `bee_localstore_expired_count` is added only when a node's eviction of the batch has finished
+    (`pkg/storer/reserve.go` L244), while the batch store drops the batch from `GET /batches` at the
+    expiry (`cleanup`, `pkg/postage/batchstore/store.go` L298–343), so a B10 at 0 alone can be an
+    eviction still running; in the first L after `rotate.sh` starts no load batch is due, and 30 min
+    after the rotation with B10 at 0 still applies. §4.9's Method B start rule uses the same test
+    instead of "flat for 30 min". (2) Under schedule B, §4.8 (Run 3, with S10 and S21) runs in the
+    30/s period and §4.11 (Run 5) in an 11/s period (≈ 3300 and ≈ 9900 missed IDs). Cost: Runs 9,
+    3, 5 and 6 take one rotation period each under either schedule, and the four periods after
+    Run 2 hold one 30/s period, so B adds no day unless Run 3 is voided or missed (then L = 25 h to
+    the next 30/s period). The order reads S, 0, 1, 2, then 9, 3, 5, 6 in those four periods (Run 3
+    in the 30/s one under B), D/7, 4; Run 9 is "after Run 2", no longer "right after". (3) The drain
+    stops `rotate.sh` (a new load batch would expire during Run 4 and block its start rule) and
+    waits for S1's batch too; S1's batch is created with `amount 1` (V_min + 1 h), before the last
+    load batch, so it has expired by the drain's end; "rotate … throughout" reads "from Run 0 until
+    the drain". (4) Run 5: the 5-min stop, then the 15-min stop 30 min after the first node's
+    `t_union`, both in one rotation period, 2 h for both. (5) Direct uploads are `POST /chunks`
+    without `Swarm-Tag` (the handler defers only when `Swarm-Tag` is set and ignores
+    `Swarm-Deferred-Upload`, `pkg/api/chunk.go` L69–73); `rs_probe.py` no longer sends the ignored
+    header.
+- **(T6.3 docs fix round 4) Checks.** `bash -n` passes on every bash block but the two templates
+  with `<…>` placeholders (§1's checkout and §4.1's start line); the quiet-check and `price.csv`
+  snippets were run against file mocks (`curl file://`): equal counters print `quiet`, a counter
+  moved by one prints `UPLOADING`, the price line prints `<ts>,<price>`. The Python block compiles.
+  PromQL: 106 expressions extracted (code blocks and inline; `@ T0` set to a timestamp), 102 parse
+  with `promql/parser` v0.301.0 in the scratch module outside the repository; the 4 failures are the
+  same as round 3's (two prose label lists, the `[w]`/`[steady]` placeholders). Every `bee_*` metric
+  name resolves to its definition at 53823b98 (`bee_pushsync_storer`, `bee_pusher_total_to_push`,
+  `bee_postage_listener_price_events` among them; `bee_process_*` through the process collector);
+  the cited line numbers re-read; 23 tables, column counts consistent. Arithmetic: one probe chunk
+  per neighborhood per 240 s = 0.0042/s; 11/s × 300 s = 3300, × 900 s = 9900. The price oracle's
+  pause, floor and target are not in this repository: the −9 % per L and ≈ 1.2 h figures are the
+  round-3 review's estimate, for the deployment to confirm. Docs only: no `.go`, Makefile or
+  `go.mod` change; README not ticked.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2681,3 +2745,13 @@ _(sessions append here)_
      batch is missing from the drain's wait list. Run 5's "2 h" vs "each 30 min after a rotation"
      (~L1349) is ambiguous. `POST /chunks` ignores `Swarm-Deferred-Upload`; an upload is deferred only
      when `Swarm-Tag` is set (pkg/api/chunk.go ~L69–73) — say "no `Swarm-Tag`".
+- **(T6.3 docs fix round 4) Addition to the G7 decisions** ("(T6.3 docs fix round 3) The G7
+  decisions, updated after T6.5"): 9. G7-9 (new): the price oracle on the private network. (a)
+  Deploy it paused, or with its price at its floor (where more revealers than its target keep it),
+  so that `currentPrice` stays constant and every load-batch expiry falls on its rotation
+  (preferred); (b) leave it running and accept expiries that drift off their rotations (≈ 1.2 h
+  late at the round-3 review's estimate of a falling price). Either way the runbook records
+  `currentPrice` from Run S on and starts pauses and timed events from the expiry observed. Pause
+  the oracle only, never the postage contract (bee's listener stops on its `Paused` event and the
+  node shuts down). The oracle's pause, floor and target are outside this repository: check them
+  on the deployment.
