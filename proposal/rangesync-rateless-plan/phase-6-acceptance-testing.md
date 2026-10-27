@@ -1644,6 +1644,87 @@ _(sessions append here)_
   ./pkg/rangesync/...` and `--build-tags integration ./pkg/node/...`: 0 issues. Only the edited
   files were formatted (gofumpt; gci's 0.14 regrouping of untouched import blocks was put back, the
   linter checks gofmt only).
+- **(T6.5 part 2 fix round 1) A zero fetch rate means the default; validated in `pkg/node`.**
+  Corrects "(T6.5 part 2) `--rangesync-fetch-rate`, as built", which refused a value ≤ 0 on every
+  node, so a zero-valued `node.Options` (an out-of-tree `NewBee` embedder, any light node built that
+  way) failed at start-up. `resolveFetchRate` now returns the rate `NewBee` applies: 0 →
+  `rangesync.DefaultFetchRate` on every node, as `rangesync.Options` already reads it (and as
+  T1.12's `PullerEnable` zero value never broke a light node); a negative value or one above
+  `rangesync.MaxFetchRate` is refused with `errInvalidFetchRate` wrapped with the value ("must be
+  from 1 to 1000000, or 0 for the default (1000): got -1"). Chosen over validating in `cmd/bee`
+  only: `NewBee` is the one boundary every embedder passes, `cmd/bee` included, and a negative value
+  can only be a typo, which `rangesync.New` would silently turn into the default. A 0 on the command
+  line also means the default (the help says so) and, being the default, never draws the "ignoring
+  --rangesync-fetch-rate" Warning. The CLI default stays 1000. `rangesyncOptions` gets the resolved
+  rate, so `rangesync.Options.FetchRate` always holds the effective one. Tests: `TestResolveFetchRate`
+  (`node.Options{}.RangesyncFetchRate` on full pullsync-only, rangesync-only and dual nodes, light
+  nodes with and without `--rangesync-enable` and boot nodes: the default, no error, no warning;
+  negative on full and light nodes and above the maximum: refused), `TestRangesyncFetchRateWiring`
+  (a zero-valued rate reaches `FetchRate` as 1000), and `startToggleNode` resolves the rate from a
+  zero-valued `node.Options`, so `TestRangesyncToggle` and `TestRangesyncDefaultsNoIndex` start full
+  and light nodes with it.
+- **(T6.5 part 2 fix round 1) Fetch rate bounds: refused at start-up, capped in `rangesync.New`.**
+  `rangesync.MaxFetchRate` = 1,000,000 chunks/s (about 4 GB/s of chunk data): the limiter's interval,
+  `time.Second` over the rate, stays at 1 µs or more, so integer division keeps the rate exact to
+  0.1 %; above 1e9 the interval was 0, which `ratelimit` (`rate.Every(0)` = `rate.Inf`) reads as no
+  limit. Both: `pkg/node` refuses a larger flag value (above), and `rangesync.New` caps
+  `Options.FetchRate` to it (`fetchInterval`, which also holds the default for ≤ 0) for its other
+  callers; the sims' lifted `1 << 20` becomes 1e6, the same in effect. Test: `TestFetchInterval`
+  (0, −1, 1, 250, the default, the maximum, above it, `1 << 20`, 2e9 and `math.MaxInt`: never 0).
+- **(T6.5 part 2 fix round 1) The fetch rate's practical floor: 250 chunks/s, stated, not enforced.**
+  A Want waits for the node-wide limiter with its fetch stream open and before its claims (`want()`:
+  stream slot, open, limiter, claim), outside `FetchTimeout`, and `x/time/rate` serves reservations
+  in call order. At most `maxFetchStreamsOut` (2) Wants per peer hold a stream, so a claim's first
+  Want (up to `MaxWantIDs`, 250 IDs) waits behind at most 2 × P Wants of the P peers fetched from:
+  up to 2 × P × 250 / rate seconds. It has to store a chunk within `claimIdleTimeout` (120 s) or the
+  claim is ended (`endIdleClaim`), so rate ≥ 2 × 250 × P / 120 ≈ 4.2 × P chunks/s (the review's ~50
+  queued Wants, 25 peers: ~104/s). The help text says "keep it at 250 or more": one full Want a
+  second, 120 Wants in 2 minutes, i.e. 2 each for 60 peers fetched from, which no neighborhood
+  reaches. The limiter's burst (250) and the first delivery (the holder's 250/s) shift this by about
+  a second. Own jobs are not ended so (`ownJobGrace`), but they slow down the same way.
+  `claimIdleTimeout` unchanged.
+- **(T6.5 part 2 fix round 1) The reclaim's Info line only after a completed compaction.** Corrects
+  "(T6.5 part 2) The reclaim's Info line, as built", which logged it also when the compaction
+  failed. `compactAddrIndex` returns its error (both callers log it at Debug, "compact the reserve
+  address index range", as before); `startAddrIndexDrop` logs "reclaimed the disabled reserve
+  address index" only when the drop and the compaction both completed, and returns after the Debug
+  otherwise: `leveldb.ErrClosed` when `Close` waited `addrIndexStopTimeout` (5 s), warned "reserve
+  address index drop still running at shutdown" and closed the store, or any other compaction
+  error. The drop itself had finished, so the next start finds no entries, starts no drop and logs
+  no Info line for that reclaim; LevelDB's own compactions reclaim the range. An in-memory store
+  (nothing to compact) still logs it. Test hook: an unexported `Options.addrIndexCompactHook`, set
+  through `export_test.go` (`SetAddrIndexCompactHook`), as `reserveTestOptions` is. Test:
+  `TestReserveAddrIndexReclaimLogInterrupted` (the hook holds the compaction, `Close` times out
+  after 5 s and closes the store, the compaction then fails: the Warning, the Debug with "leveldb:
+  closed", no Info line); it fails with the Info line logged regardless.
+- **(T6.5 part 2 fix round 1) `first_chunk_seconds{kind="catch_up"}` no longer counts a stripe's
+  retries.** A stripe's fetches (`fetchFrom(…, catchUp=true)`, ~L642 and ~L799) retried the IDs
+  their peer did not deliver from other sources (`retry` → `fetch` → `catchUpProgress(true)`), and
+  each such retry observed a `catch_up` first chunk. A `fetchKind` (`wants.go`: `fetchWants`,
+  `fetchCatchUp`, `fetchStripe`) replaces the `catchUp` bool of `fetchFrom`, `retry` and `fetch`;
+  retries are fetches of the failed fetch's kind; `kind.catchUp()` (not `fetchWants`) keeps the
+  SyncRate accounting as it was, and `catchUpProgress` observes only `fetchCatchUp`. So `catch_up`
+  is a session's catch-up fetch (a round's, or a served session's batch) or its retry, each from its
+  own start; a stripe's retries observe nothing (their first chunk is the job's work; the job
+  observes its own through `jobStored`, which retries never called and still do not). Doc and Help
+  updated. Tests: `TestCatchUpFirstChunkStripeRetry` (a stripe's peer withholds x, a served session
+  is denied x and becomes its source, the retry stores x: no `catch_up` observation; with the old
+  semantics 1), and `TestWantSetCatchUpRetry` now checks that a session catch-up's retry observes 1.
+- **(T6.5 part 2 fix round 1) Results and runs.** No `-race` (no C compiler); one test process at a
+  time. TDD: `TestReserveAddrIndexReclaimLogInterrupted` and `TestCatchUpFirstChunkStripeRetry` fail
+  with their fix reverted (the latter deterministically once the reassigned stripe lists nothing
+  from the source peer); `TestFetchInterval` and the new `TestResolveFetchRate` rows did not compile
+  or failed before. `go test ./cmd/bee/... ./pkg/node/... ./pkg/storer/... ./pkg/rangesync/...
+  ./pkg/pullsync/... ./pkg/puller/... -count=1`: pass. The changed tests 10 times with
+  `-cpu=1,2,4`, the reconciler package 3 times: pass. `go build ./...`; `go vet` on `./cmd/bee/...
+  ./pkg/node/... ./pkg/storer/... ./pkg/rangesync/...`, `-tags=integration ./pkg/node/...`,
+  `-tags=sim ./pkg/rangesync/...`: clean; `GOTOOLCHAIN=go1.26.1 make lint` and with `--build-tags
+  sim ./pkg/rangesync/...` and `--build-tags integration ./pkg/node/...`: 0 issues. The integration
+  run was not repeated (the acceptance harness and the default fetch interval are unchanged). Only
+  the edited files were formatted; gci's regrouping of four untouched import blocks was put back.
+  No `pkg/pullsync`, `pkg/puller`, `pkg/storageincentives`, `go.mod` or proto change; `pkg/node`,
+  `cmd/bee` and `pkg/storer` changes stay additive (unexported signatures and an unexported test
+  option); no new parser of peer input.
 
 ## Follow-ups
 _(sessions append here)_
@@ -2069,3 +2150,42 @@ _(sessions append here)_
   `TestVerifyStripesWithheld`, `TestVerifyStripesLyingVerifier`, `TestStripeBadSignaturesScored`,
   `TestSREPStallRetry`. `pkg/node`: `TestIsFullySyncedGauge` (the gauge's check is an atomic pointer
   read on the scrape goroutine). `pkg/storer`: `TestReserveAddrIndexReclaimLog`.
+- **(T6.5 part 2 fix round 1 → T6.3, runbook; correction) The S4 share of slow claims.** The query
+  in "(T6.5 part 2 → T6.3, runbook) What the runbook can now read", the share of claims whose first
+  chunk took longer than `claimIdleTimeout` (`1 − bucket{le="120"} / count` on
+  `first_chunk_seconds{kind="claim"}`), always reads about 0: a claim with no chunk by 120 s is ended
+  by `endIdleClaim` and never observed; only a claim an own job adopted (`adoptLocked`, no longer
+  idled out) can observe more than 120 s. Use, over the panel's range,
+  `(idle + count − bucket{le="120"}) / (idle + count)`, with `idle =
+  sum(increase(bee_rangesync_stripes_total{result="idle"}[$__range]))`, `count =
+  sum(increase(bee_rangesync_first_chunk_seconds_count{kind="claim"}[$__range]))` and `bucket{le="120"}
+  = sum(increase(bee_rangesync_first_chunk_seconds_bucket{kind="claim",le="120"}[$__range]))`. A claim
+  that stored chunks and then went idle is in both `idle` and `count`, so this overstates the share a
+  little; an exact one would need a counter of claims ended before their first chunk. For the S4
+  panel.
+- **(T6.5 part 2 fix round 1 → T6.3, runbook) `--rangesync-fetch-rate` range and floor.** The flag
+  takes 1 to 1,000,000 chunks/s, or 0 for the default (1000); a negative or larger value stops the
+  node at start-up. Keep it at 250 or more: below about 4.2 × the peers a node fetches from, a
+  peer's claim can be ended as idle while its first Want waits for the fetch rate (decisions log,
+  "The fetch rate's practical floor"); a dual cohort that lowers it to share bandwidth with pullsync
+  should watch `stripes_total{result="idle"}` and `stripe_queue_wait_seconds{kind="claim"}`.
+- **(T6.5 part 2 fix round 1 → T6.3, runbook) What `first_chunk_seconds{kind="catch_up"}` measures.**
+  A session's catch-up fetch (`CatchUpMinDiff` wants or more: a round's, or a batch of a served
+  session's wants) or its retry from another source, each from its own start to its first stored
+  chunk, once. A stripe's fetches and their retries are not in it (`own`/`claim` are per job).
+  Several observations per session are normal (retries, served batches).
+- **(T6.5 part 2 fix round 1, Low) A stripe's retries do not refresh its job's idle clock.** The
+  chunks a claim's stripe gets through `retry` (IDs its peer did not deliver, fetched from other
+  sources) count towards SyncRate but never called the job's progress, so they neither refresh
+  `claimIdleTimeout` nor count as the job's first chunk; a claim whose peer withholds and whose
+  retries make the progress can still be ended as idle. Unchanged here (behaviour, not metrics);
+  revisit if T6.3 shows idle claims with retry traffic.
+- **(T6.5 part 2 fix round 1) Tests to run with -race on CI.** They ran with `-count=10 -cpu=1,2,4`
+  (no C compiler here), the reconciler package with `-count=3 -cpu=1,2,4`.
+  `pkg/rangesync/reconciler`: `TestCatchUpFirstChunkStripeRetry` (new: the retry goroutine, the
+  stripe transfer and the served fetcher race on the want set and the sources),
+  `TestWantSetCatchUpRetry` (changed). `pkg/rangesync`: `TestFetchInterval` (new). `pkg/storer`:
+  `TestReserveAddrIndexReclaimLogInterrupted` (new: the drop goroutine runs the compaction after
+  `Close` closed the store; 5 s each), `TestReserveAddrIndexReclaimLog`. `pkg/node`:
+  `TestResolveFetchRate`, `TestRangesyncFetchRateWiring` (changed), and `TestRangesyncToggle`,
+  `TestRangesyncDefaultsNoIndex` (their node builder changed).
