@@ -86,6 +86,78 @@ func TestIdentityAddress(t *testing.T) {
 	})
 }
 
+// TestChunkSumVectors pins the SWIP-101 checksum layout with fixed vectors
+// computed independently of this code (keccak256 over the concatenated
+// inputs, first 16 bytes), so that other clients can check for identical sums.
+func TestChunkSumVectors(t *testing.T) {
+	t.Parallel()
+
+	batchID := make([]byte, swarm.HashSize)
+	stampHash := make([]byte, swarm.HashSize)
+	for i := range swarm.HashSize {
+		batchID[i] = byte(i)
+		stampHash[i] = byte(swarm.HashSize + i)
+	}
+
+	// any fixed key except the replicas owner (key 0x01 followed by zeros)
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(append(make([]byte, 31), 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, swarm.HashSize)
+
+	newChunk := func(payload string) swarm.Chunk {
+		t.Helper()
+		ch, err := cac.New([]byte(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+	newSOC := func(payload string) swarm.Chunk {
+		t.Helper()
+		ch, err := soc.New(id, newChunk(payload)).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+
+	socFoo, socBar := newSOC("foo"), newSOC("bar")
+	if !socFoo.Address().Equal(socBar.Address()) {
+		t.Fatal("both single owner chunks must share the address")
+	}
+
+	for _, tc := range []struct {
+		name      string
+		chunk     swarm.Chunk
+		chunkType swarm.ChunkType
+		want      string
+	}{
+		// keccak256(batchID ‖ stampHash)[:16]
+		{"cac", newChunk("foo"), swarm.ChunkTypeContentAddressed, "002030bde3d4cf89919649775cd71875"},
+		// keccak256(batchID ‖ stampHash ‖ 2387e8e7…ea48)[:16], wrapping "foo"
+		{"soc wrapping foo", socFoo, swarm.ChunkTypeSingleOwner, "559bab483cef32e6cac28cfa400eb393"},
+		// keccak256(batchID ‖ stampHash ‖ b59a0deb…a838)[:16], wrapping "bar"
+		{"soc wrapping bar", socBar, swarm.ChunkTypeSingleOwner, "07e63ca829d5450273d911be921a87ad"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := storage.ChunkType(tc.chunk); got != tc.chunkType {
+				t.Fatalf("chunk type %v, want %v", got, tc.chunkType)
+			}
+			sum, err := storage.ChunkSumFromParts(batchID, stampHash, tc.chunk, tc.chunkType)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hex.EncodeToString(sum); got != tc.want {
+				t.Fatalf("sum %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestChunkSum(t *testing.T) {
 	t.Parallel()
 
