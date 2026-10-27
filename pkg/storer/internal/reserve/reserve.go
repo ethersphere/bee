@@ -461,7 +461,7 @@ func (r *Reserve) resolveStampIndexCollision(
 
 		err = errors.Join(
 			s.IndexStore().Delete(oldBatchRadiusItem),
-			deleteChunkBinItem(s.IndexStore(), oldBatchRadiusItem.Bin, oldBatchRadiusItem.BinID),
+			deleteChunkBinItem(s.IndexStore(), oldBatchRadiusItem),
 			stampindex.Delete(s.IndexStore(), reserveScope, oldStamp),
 			chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, oldStamp),
 		)
@@ -747,7 +747,7 @@ func (r *Reserve) resolveSOCDivergence(
 		}
 
 		// drop the bin and sum entries of the replaced chunk
-		if err := deleteChunkBinItem(s.IndexStore(), item.Bin, item.BinID); err != nil {
+		if err := deleteChunkBinItem(s.IndexStore(), item); err != nil {
 			return err
 		}
 
@@ -1039,11 +1039,12 @@ func (r *Reserve) removeChunk(
 	return RemoveChunkWithItem(ctx, trx, item)
 }
 
-// deleteChunkBinItem removes the ChunkBinItem identified by (bin, binID)
+// deleteChunkBinItem removes the ChunkBinItem at the (bin, binID) of item
 // together with its companion ChunkSumItem, keeping the pullsync sum index
-// consistent. It is a no-op if the ChunkBinItem does not exist.
-func deleteChunkBinItem(store storage.IndexStore, bin uint8, binID uint64) error {
-	cbi := &ChunkBinItem{Bin: bin, BinID: binID}
+// consistent. It is a no-op if the ChunkBinItem does not exist or belongs to
+// another entry.
+func deleteChunkBinItem(store storage.IndexStore, item *BatchRadiusItem) error {
+	cbi := &ChunkBinItem{Bin: item.Bin, BinID: item.BinID}
 	err := store.Get(cbi)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -1054,9 +1055,14 @@ func deleteChunkBinItem(store storage.IndexStore, bin uint8, binID uint64) error
 		// before it). Such a record cannot have a companion ChunkSumItem, so
 		// deleting by key alone is complete.
 		if errors.Is(err, errUnmarshalInvalidSize) {
-			return store.Delete(&ChunkBinItem{Bin: bin, BinID: binID})
+			return store.Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID})
 		}
 		return err
+	}
+	// In a corrupted reserve two entries can share a (bin, binID) key. The
+	// stored item then belongs to the other entry and must be kept.
+	if !cbi.Address.Equal(item.Address) || !bytes.Equal(cbi.StampHash, item.StampHash) {
+		return nil
 	}
 	return errors.Join(
 		store.Delete(cbi),
@@ -1143,7 +1149,7 @@ func removeChunkMetadata(store storage.IndexStore, item *BatchRadiusItem) error 
 
 	return errors.Join(errs,
 		store.Delete(item),
-		deleteChunkBinItem(store, item.Bin, item.BinID),
+		deleteChunkBinItem(store, item),
 	)
 }
 
@@ -1184,7 +1190,7 @@ func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Addre
 		stampindex.Delete(store, reserveScope, stamp),
 		chunkstamp.DeleteWithStamp(store, reserveScope, addr, stamp),
 		store.Delete(batchRadiusItem),
-		deleteChunkBinItem(store, bin, batchRadiusItem.BinID),
+		deleteChunkBinItem(store, batchRadiusItem),
 	)
 }
 
@@ -1285,7 +1291,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
 					s.IndexStore().Delete(item),
-					deleteChunkBinItem(s.IndexStore(), item.Bin, item.BinID),
+					deleteChunkBinItem(s.IndexStore(), item),
 				)
 			})
 		}))

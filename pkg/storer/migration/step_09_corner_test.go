@@ -5,6 +5,7 @@
 package migration_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -323,4 +325,76 @@ func TestStep09DuplicateBinIDRemoval(t *testing.T) {
 	if hasSum1 != hasBR1 || hasSum2 != hasBR2 {
 		t.Fatalf("ChunkSumItem presence must match BatchRadiusItem presence (no orphan): hasSum1=%v hasBR1=%v, hasSum2=%v hasBR2=%v", hasSum1, hasBR1, hasSum2, hasBR2)
 	}
+}
+
+// TestStep09DuplicateBinIDAcrossPages covers a duplicate (bin, binID) whose
+// survivor is backfilled in an earlier page than the duplicate. Removing the
+// duplicate must not delete the survivor's ChunkBinItem and ChunkSumItem,
+// which by then occupy the shared key.
+func TestStep09DuplicateBinIDAcrossPages(t *testing.T) {
+	t.Parallel()
+
+	st := newRealStorage(t)
+	baseAddr := swarm.RandAddress(t)
+
+	// BatchRadiusItems are paged in batch ID order: the survivor sorts first,
+	// the duplicate last, with more than a page of entries in between.
+	survivor := chunktest.GenerateTestRandomChunk().WithStamp(postagetesting.MustNewBatchStamp(bytes.Repeat([]byte{0x00}, swarm.HashSize)))
+	duplicate := chunktest.GenerateTestRandomChunk().WithStamp(postagetesting.MustNewBatchStamp(bytes.Repeat([]byte{0xff}, swarm.HashSize)))
+	survivorHash, err := survivor.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicateHash, err := duplicate.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const sharedBinID = 1_000_000
+	bin := swarm.Proximity(baseAddr.Bytes(), survivor.Address().Bytes())
+	seedLegacyEntry(t, st, bin, sharedBinID, survivor, survivorHash)
+	seedLegacyEntry(t, st, bin, sharedBinID, duplicate, duplicateHash)
+
+	binIDs := make(map[uint8]uint64)
+	for range 1200 {
+		ch := chunktest.GenerateTestRandomChunk()
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		chBin := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
+		binIDs[chBin]++
+		seedLegacyEntry(t, st, chBin, binIDs[chBin], ch, stampHash)
+	}
+
+	if err := localmigration.Step09(st, log.Noop)(); err != nil {
+		t.Fatal(err)
+	}
+
+	checkStoreHas := func(item storage.Item, want bool) {
+		t.Helper()
+		has, err := st.IndexStore().Has(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if has != want {
+			t.Fatalf("%s: got present=%v, want %v", item, has, want)
+		}
+	}
+
+	checkStoreHas(&reserve.BatchRadiusItem{Bin: bin, BatchID: survivor.Stamp().BatchID(), Address: survivor.Address(), StampHash: survivorHash}, true)
+	checkStoreHas(&reserve.BatchRadiusItem{Bin: bin, BatchID: duplicate.Stamp().BatchID(), Address: duplicate.Address(), StampHash: duplicateHash}, false)
+
+	cbi := &reserve.ChunkBinItem{Bin: bin, BinID: sharedBinID}
+	if err := st.IndexStore().Get(cbi); err != nil {
+		t.Fatalf("survivor chunk bin item: %v", err)
+	}
+	if !cbi.Address.Equal(survivor.Address()) {
+		t.Fatalf("chunk bin item address %s, want survivor %s", cbi.Address, survivor.Address())
+	}
+	sum, err := storage.ChunkSum(survivor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStoreHas(&reserve.ChunkSumItem{Address: survivor.Address(), Sum: sum}, true)
 }
