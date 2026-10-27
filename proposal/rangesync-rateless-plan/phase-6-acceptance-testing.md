@@ -1536,6 +1536,11 @@ _(sessions append here)_
     issues. Only the edited files were formatted (gofumpt, gci). No `pkg/pullsync`, `pkg/puller`,
     `pkg/storer`, `go.mod` or proto change; no new parser of peer input (no `followup-fuzzing.md`
     line).
+- **(Orchestrator, T6.5 part 1 landing, 2026-10-26) Part 1 landed with no fix round.** Verified
+  clean (each regression test fails with its fix reverted; default integration run 401 s; FULL
+  Radius|Churn 319 s with no race reassignment; AC-B2 unchanged) and reviewed: no High or Medium.
+  The review's Lows are in the Follow-ups ("(T6.5 part 1 review; recorded by the orchestrator at
+  landing)"); item 2 goes to T6.3's runbook. T6.5 is ticked after part 2.
 
 ## Follow-ups
 _(sessions append here)_
@@ -1898,3 +1903,26 @@ _(sessions append here)_
   "(T6.5 part 1) Results and runs"); a slower runner, or part 2's additions, can cross it. This adds
   weight to "(T6.1 part 2 fix round 1) `make test-integration` needs a `-timeout`"; alternatively the
   Churn sub-cases could share one harness setup (16–54 s each).
+- **(T6.5 part 1 review; recorded by the orchestrator at landing) Lows.**
+  1. **Correction: the verification residual scales with the stripe's upload rate, not its size.**
+     The unscored window is 10 minutes of uploads into the stripe, whatever the stripe's size: for a
+     striped catch-up near `LargeDiff` (65,536 IDs, ~73 min of uploads at 15/s) that is ~14 % of the
+     stripe, not the "~0.2 % of a 2^22/4 stripe" in "(T6.5 part 1)". Only the deterrent is lost there;
+     the verification still fetches the chunks. Read the residual as 10 min × the stripe's upload rate.
+  2. **→ T6.3 (runbook): clocks and upload paths.** If this node's clock is more than 10 minutes
+     behind, every fresh stamp falls past the future bound and counts, bringing the original false
+     positive back in full (`stripes_verify.go` ~L181, `stripes_transfer.go` ~L233); uploader clocks
+     skewed either way count too. Stamps are made when the API stores the chunk (`pkg/api/api.go`
+     ~L889), so deferred uploads with a pusher backlog over 10 minutes arrive "old". The runbook must
+     require NTP on every cohort node and on the load generators, use direct uploads, and watch the
+     pusher backlog.
+  3. **Correction: "future-dated stamps count" is overstated.** The upper bound is the verification's
+     fetch time + 10 minutes, so a colluding uploader can date chunks up to about the transfer's
+     length + 10 minutes ahead and they are still excused. Harmless (only the colluder's own chunks).
+  4. **Untested paths:** the root wait running out (30 retries → reassigned unscored; the peer can
+     still verify) and `ListedAt` across `runStripe` restarts and reassignments (only a retry within
+     one attempt is covered). Add tests when the reconciler is next touched.
+  5. **Stale text:** the T6.1 part 2 Churn design (~L942–943) still says the sub-case is skipped behind
+     `RANGESYNC_ACCEPTANCE_REPRO`; since T6.5 part 1 it runs by default.
+  6. The default integration run (401–507 s) uses 67–85 % of `make test-integration`'s 10-minute
+     default; CI (`go.yml`) does not run the integration tag. The existing `-timeout` follow-up covers it.
