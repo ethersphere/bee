@@ -29,6 +29,7 @@ Contents: 0 decisions before the runs · 1 build and inventory · 2 modes and fl
 | G7-6 | Phase 5 in scope? | yes or no | No `audit_mismatch` metric exists at this commit, so AC-S6 is not measurable. |
 | G7-7 | Build | one commit for every node, at or after 53823b98 (T6.5) | Same binary on every cohort; only the flags differ. |
 | G7-8 | Load cap (§4.5) | (a) accept it: schedule A (≤ 16 uploads/s per neighborhood around the clock) or B (30/s in one rotation period of four, ≤ 11/s in the others), and record AC-B1 at N ≥ 17 at the median reached if panel C5 shows no reference load; (b) a shorter V_min on the private network | The cap is 0.35 C ÷ L, L = V_min + 1 h. V_min is the postage contract's `minimumValidityBlocks` × the block time, read from the contract (`getProperty`, `pkg/postage/postagecontract/contract.go` L333), not set by bee. On the private network G7-3 requires, a deployment with a lower `minimumValidityBlocks` raises the cap (V_min = 12 h: 31.4/s around the clock), if the contract allows it; its conditions are not in this repository, so check it on the deployment. |
+| G7-9 | Price oracle on the private network (§4.5, price) | (a) deploy it paused, or with its price at its floor (where more revealers than its target keep it), so that `currentPrice` stays constant and every expiry falls on its rotation (preferred); (b) leave it running, and accept expiries that drift off their rotations | Redistribution adjusts the postage price through the price oracle, a contract outside this repository: check its pause and floor on the deployment. The round-3 review's estimate: with more revealers per round than the oracle's target, the price falls every round toward its floor, ≈ −9 % per L at 5-s blocks, which puts each expiry ≈ 1.2 h after its rotation, inside the pause and settle slots of §4.5. Under either option `currentPrice` is recorded from Run S on, and the pauses and timed events start from the expiry observed (§4.5), not from the clock. Pause the price oracle only, never the postage contract: on the postage contract's `Paused` event bee's listener stops and the node shuts down (`pkg/postage/listener/listener.go` L189–191 and L367–380). |
 
 ---
 
@@ -252,8 +253,10 @@ G7-2) is done.
      NTPSynchronized --value` prints `yes`, or `chronyc tracking` shows a system-time offset well
      under 1 s. On the dashboard (node_exporter's metrics, not bee's): `node_timex_sync_status` = 1
      and `abs(node_time_seconds - timestamp(node_time_seconds))` < 1 on every host.
-   - **Direct uploads only** (`Swarm-Deferred-Upload: false`, as `rs_probe.py` sends, the seed
-     included): the call returns once pushsync stored the chunk, so nothing waits on the uploader.
+   - **Direct uploads only**: `POST /chunks` without a `Swarm-Tag` header, as `rs_probe.py` sends,
+     the seed included. The handler defers a chunk only when `Swarm-Tag` is set and ignores
+     `Swarm-Deferred-Upload` (`pkg/api/chunk.go` L69–73); a direct upload returns once pushsync
+     stored the chunk, so nothing waits on the uploader.
    - **No pusher backlog**: on every uploader node `GET /debugstore` `.Upload.PendingUpload` is 0
      (the upload store's chunks not yet pushed, `pkg/storer/debug.go`; the call iterates the
      whole store, so once per run and before §4.8 and §4.9, not on a scrape). `pkg/pusher` has no
@@ -349,7 +352,7 @@ reserve chunk, measured in an upload pause once the drop and the compaction are 
 within 10 % (draft, T6.3) of a never-upgraded P node's, measured in the same pause (record the
 node's own B0 ÷ n0 of §4.2 too; its reserve has changed since); and `isFullySynced` returns after
 the puller's catch-up. The drill (Run 9, §10) runs on two dual nodes, D → P → D, so that rule 1
-holds throughout, right after Run 2 and before the drain.
+holds throughout, after Run 2 (§10.1 order) and before the drain.
 
 ### 4.4 Downgrade to a build without rangesync
 
@@ -394,7 +397,7 @@ From the corrected T6.2 paragraph ("(T6.2 fix round 1) T6.3, runbook …").
 
 Uploads go through an uploader node outside the measured neighborhoods (a node's own uploads sit
 in its upload store, which `HEAD /chunks` sees). `rs_probe.py load` (§5.3) posts random 4 KB
-chunks (`POST /chunks`, `Swarm-Deferred-Upload: false`: direct, rule 9) and counts the successful
+chunks (`POST /chunks` without `Swarm-Tag`: direct, rule 9) and counts the successful
 ones per inventory neighborhood (`runbook_uploads_total{neighborhood}`). Random addresses spread
 uniformly, so **each neighborhood gets the total rate ÷ 2^r** (r = storage radius): 15/s per
 neighborhood at r = 3 takes 120/s in total; past ~100/s use several uploaders, each with its own
@@ -411,6 +414,14 @@ neighborhood at r = 3 takes 120/s in total; past ~100/s use several uploaders, e
 
   Check C5; if it shows no reference load at those rates, record AC-B1 at the median reached
   (T6.4 judges it) rather than exceed the budget (G7-8).
+
+  Which period is "the reference load" for the timed events: under schedule A, any. Under B, the
+  30/s period for §4.8 (Run 3, and with it S10 and S21); §4.11 (Run 5) runs in an 11/s period
+  (≈ 3300 and ≈ 9900 missed IDs, still decoded in sessions; record the rate). The cost: Runs 9,
+  3, 5 and 6 take one rotation period each under either schedule (§10.1), and the four periods
+  after Run 2 hold one 30/s period, so under B Run 3 takes it and the others the three 11/s
+  periods. B adds no day as long as Run 3 holds; a Run 3 voided or missed waits L = 25 h for the
+  next 30/s period.
 - **Low load** (AC-B1b): ≤ 1 upload/s per neighborhood (median `pairwise_diff` ≤ 1).
 
 **Reserve budget per neighborhood** (C = 2²² = 4,194,304 chunks). The constraints, from the code:
@@ -431,8 +442,8 @@ neighborhood at r = 3 takes 120/s in total; past ~100/s use several uploaders, e
 | Load | immutable load batches, a new one every L/4 (the rotation, below), each created with V_min + 1 h of TTL: the uploads of any L-window are live at once | ≤ 0.35 C = 1,468,006 uploads per neighborhood in any L-window |
 | Rate | λ ≤ 0.35 C ÷ L | A: 16.3/s (17.0/s at L = 24 h). B repeats every L, so every L-window holds exactly one 30/s period's worth: 30/s × 6.25 h + 11/s × 18.75 h = 1,417,500 |
 | Peak | seed + live load ≤ 0.95 C | ≤ 3,984,589 |
-| Drain before Run 4 | the regular load stops; ≤ 1/s on a batch `D_low` that outlives Run 4; `B_drop`'s top-ups stop; wait until every load batch and `B_drop` have expired (≥ L after the last load batch's creation; `B_drop` ≤ ~36 h), then one reserve-worker tick (15 min) | ≈ 0.3 C + ≤ 0.03 C (`D_low`) ≈ 0.33 C < C/2; the merged pair then holds ≈ 0.66 C (≥ C/2, ≤ 0.95 C) |
-| S1 (Run 6; the regular load stops) | one mutable batch of depth 17: past its 2^(17−r) slots per neighborhood every upload overwrites; its own uploader `--name s1` | + 2^(17−r) per neighborhood (16,384 at r = 3) |
+| Drain before Run 4 | the regular load and `rotate.sh` stop (a new load batch would expire during Run 4 and block its start rule, §4.9); ≤ 1/s on a batch `D_low` that outlives Run 4; `B_drop`'s top-ups stop; wait until every load batch, `B_drop` and S1's batch have expired (≥ L after the last load batch's creation; `B_drop` ≤ ~36 h at the price of the drain's start), then one reserve-worker tick (15 min) | ≈ 0.3 C + ≤ 0.03 C (`D_low`) ≈ 0.33 C < C/2; the merged pair then holds ≈ 0.66 C (≥ C/2, ≤ 0.95 C) |
+| S1 (Run 6; the regular load stops) | one mutable batch of depth 17, created with `amount 1` (V_min + 1 h, before the last load batch, so it has expired by the drain's end): past its 2^(17−r) slots per neighborhood every upload overwrites; its own uploader `--name s1` | + 2^(17−r) per neighborhood (16,384 at r = 3) |
 
 - **`B_drop`'s expiry is scheduled, not forecast.** Create it with ~30 h of TTL; whenever its
   `batchTTL` (`GET /stamps/<id>`) falls below 24 h, top it up by 12 h:
@@ -444,8 +455,24 @@ neighborhood at r = 3 takes 120/s in total; past ~100/s use several uploaders, e
 - **Guards** (panel B9): every node's `bee_localstore_reserve_size` < 0.9 C (3,774,874); the uploads
   per neighborhood in the last 25 h (S1's and the seed's uploaders excluded) ≤ 0.35 C; the
   `batchTTL` of `B_keep` and `D_low` above the time left in the campaign. A price fall lengthens
-  every TTL, and with it the load batches' L (and it moves their expiries off the rotations, which
-  the measurement windows below catch): if the first guard trips, lower the rate.
+  every TTL, and with it the load batches' L (and it moves their expiries off the rotations: the
+  price, below): if the first guard trips, lower the rate.
+- **Price (G7-9).** A batch's `batchTTL` is its remaining balance at the current price, so every
+  expiry time in this section holds only while `currentPrice` holds, and redistribution moves it
+  through the price oracle (G7-9). Record `currentPrice` (`GET /chainstate`, `pkg/api/postage.go`
+  L427) from the start of Run S to the end of the campaign; `bee_postage_listener_price_events`
+  counts the price updates a node took from the chain (an update may repeat the price). Under G7-9
+  (a), check in Run S that it does not move, and record any change. When it moves, the expiries
+  leave their rotations: the windows, pauses and timed events below start from the expiry observed,
+  so the results stay valid, and the rotation period's table is the nominal plan.
+
+  ```bash
+  # price.csv: currentPrice every 10 min (a round is 152 blocks), from Run S on
+  while :; do
+    echo "$(date -u +%s),$(curl -fsS "$UPLOADER/chainstate" | jq -r .currentPrice)" >>price.csv
+    sleep 600
+  done
+  ```
 - **Batches.** Create them with `new_batch` below: it fails loudly and waits until `usable`. Seed
   and load batches are immutable (the API default): the node's stamper never reuses a slot of an
   immutable batch (it answers "bucket full" instead), so they make no overwrites. A bucket holds
@@ -453,37 +480,52 @@ neighborhood at r = 3 takes 120/s in total; past ~100/s use several uploaders, e
   3 × the batch's uploads ÷ 65536. At r = 3 a load batch takes one rotation period of uploads,
   2.88M at 16/s or 5.4M in a 30/s period (44 or 82 per bucket): depth 24 for both; `B_keep` and
   `B_drop` (10.1M each): depth 25. A mutable batch (`Immutable: false`) is for S1 only.
-- **Rotation.** Every L/4 (6 h 15 min at L = 25 h), on a fixed clock (`rotate.sh` below), create
-  the next load batch with V_min + 1 h of TTL and write its ID into the batch file once it is
-  usable. A batch then expires L after its creation, at the rotation four later (at a constant
-  price): every rotation is also an expiry. `--batch @batch.txt` re-reads the batch ID every 10 s
-  and refuses anything but a 64-hex-digit ID; the generator stops after `--max-errors` failed
-  uploads in a row (default 50). Under schedule B the rate changes at the rotation: restart the
-  generator with the new `--rate` (its counter starts again from 0, which `increase()` reads as a
-  counter reset).
+- **Rotation.** Every L/4 (6 h 15 min at L = 25 h), on a fixed clock (`rotate.sh` below), from
+  Run 0 until the drain stops it, create the next load batch with V_min + 1 h of TTL and write its
+  ID into the batch file once it is usable. At a constant price a batch then expires L after its
+  creation, at the rotation four later: every rotation is also an expiry. A price change moves the
+  expiries off the rotations (G7-9; a falling price makes them later). `--batch @batch.txt`
+  re-reads the batch ID every 10 s and refuses anything but a 64-hex-digit ID; the generator stops
+  after `--max-errors` failed uploads in a row (default 50). Under schedule B the rate changes at
+  the rotation: restart the generator with the new `--rate` (its counter starts again from 0,
+  which `increase()` reads as a counter reset).
 - **Measurement windows.** An expiry takes one rotation period's uploads out of the neighborhood
   (≈ 360,000 per neighborhood at 16/s; 675,000 for a 30/s period), and the neighbors evict at
   slightly different times (each when its chain listener sees the expiry), so sessions see
   differences that are not uploads and rangesync fetches IDs whose batch has expired (S6). Every
   window that §7 and §9 read (AC-B1, AC-B1b, AC-D3, AC-D5, AC-V2, AC-K2, AC-N1's steady clause,
-  STEADY), every upload pause (§4.6) and every timed event (§4.8, §4.11, Run 6) therefore:
-  - lies in one rotation period, from 30 min after its rotation to 15 min before the next;
+  STEADY) therefore:
+  - starts once the latest expiry is over (below), and ends 15 min before the next one (the
+    smallest `batchTTL` in `GET /batches`, read at the window's start);
+  - under schedule B, lies in one rotation period (the rate changes at the rotation); under A it
+    may span a rotation, which changes only the batch the uploads use;
   - starts 30 min after any upload pause or rate change in it, and ends at the next one;
   - contains no radius change;
   - passes the expiry guard: panel B10 reads 0 from its start to its end (no expiry in it or in
-    the 30 min before it). Before starting a pause or a timed event, check that the smallest
-    `batchTTL` in `GET /batches` exceeds the time to its end plus 15 min. Drop a window that fails
-    the guard (a price change moved an expiry).
+    the 30 min before it). Drop a window that fails the guard.
 
-  A rotation period in Run 2 (schedule B's 30/s period has no pause):
+  **An expiry is over** once panel B10 has risen for it on the neighborhood and fallen back to 0.
+  B10 at 0 alone does not show it: `bee_localstore_expired_count` grows only when a node's eviction
+  of the batch has finished (`pkg/storer/reserve.go` L244), while `GET /batches` drops the batch at
+  the expiry itself (`cleanup`, `pkg/postage/batchstore/store.go` L298–343), so in between neither
+  shows it. Every upload pause (§4.6) and timed event (§4.8, §4.11, Run 6) starts the same way:
+  once the expiry due near its rotation period's start (the batch of four rotations ago) is over,
+  and only if the smallest `batchTTL` in `GET /batches` exceeds the time to the event's end plus
+  15 min. In the first L after `rotate.sh` starts no load batch is due: there, 30 min after the
+  rotation, with B10 at 0.
 
-  | Offset | What |
+  A rotation period in Run 2, nominal: at a constant price, where the expiry comes with the
+  rotation (schedule B's 30/s period has no pause). When the expiry comes later (G7-9), the slots
+  from the second row on move with it; the windows still end 15 min before the next expiry, and
+  under schedule B at the next rotation.
+
+  | Nominal offset | What |
   |---|---|
-  | 0 | rotation: the new load batch; the batch of four rotations ago expires |
-  | 0–30 min | the expiry settles: no window |
-  | 30–60 min | upload pause (§4.6) |
-  | 60–90 min | the load settles: no window |
-  | 90 min – 6 h | windows (from 30 min in the 30/s period, which has no pause) |
+  | 0 | rotation: the new load batch; at a constant price the batch of four rotations ago expires |
+  | 0 – ≈ 40 min | the expiry: the nodes' evictions (minutes), then B10's 30 min back to 0: no window |
+  | ≈ 40–70 min | upload pause (§4.6) |
+  | ≈ 70–100 min | the load settles: no window |
+  | ≈ 100 min – 6 h | windows (from ≈ 40 min in the 30/s period, which has no pause) |
   | 6 h – 6 h 15 min | margin before the next expiry |
 
 - **Denominators.** AC-B1, AC-D3 and AC-D5 divide by the uploads into the neighborhood
@@ -533,12 +575,37 @@ python3 rs_probe.py load --uploader $UPLOADER --batch @batch.txt --rate 128 --du
 
 ### 4.6 Upload pause (AC-C2, AC-V5)
 
-Stop the load generator for 30 min, 30 min after a rotation (§4.5, the rotation period's table),
-once panel B10 reads 0 on the neighborhood, and only if the smallest `batchTTL` in `GET /batches` is
-more than 45 min away: an expiry inside the pause makes the neighbors differ while they evict, which
-AC-C2 would read as a failure. Void the pause if B10 rises during it. Check that the neighborhood is
-otherwise quiet (`rate(bee_pushsync_storer[5m])` ≈ 0 on its nodes; a public testnet may carry other
-uploads). `t_pause` = the generator's stop time.
+Stop **every uploader** for 30 min: the load generators, the AC-V1 probe (§5.3) and anything else
+that uploads. The probe runs through Run 2 (§5.3), and at r = 3 one probe chunk lands in each
+neighborhood about every 4 min, enough to keep sessions with n_Δ > 0 going and fail AC-C2 and AC-V5.
+`t_pause` = the time the last one stopped; restart them all at the pause's end (the probe appends to
+its `--out`). Start the pause once the period's expiry is over (§4.5: B10 rose for it and fell back
+to 0), and only if the smallest `batchTTL` in `GET /batches` is more than 45 min away: an expiry
+inside the pause makes the neighbors differ while they evict, which AC-C2 would read as a failure.
+Void the pause if B10 rises during it.
+
+**Quiet check**, over [`t_pause` + 1 min, the pause's end] (Grafana's range), each exactly 0: "≈ 0"
+is not enough, since one probe chunk in 4 min is a rate of 0.004/s.
+
+```promql
+# Q-PUSH, per neighborhood: chunks pushsync stored on its nodes (pkg/pushsync/pushsync.go L264)
+sum by (neighborhood) (increase(bee_pushsync_storer[$__range]))
+
+# Q-GEN: uploads the load generators counted (the probe writes no counter)
+sum(increase(runbook_uploads_total[$__range]))
+```
+
+And on every uploader node, during the pause, the pusher's count of chunks it pushed, direct or
+deferred (`bee_pusher_total_to_push`, `pkg/pusher/pusher.go` L154), stays put; it sees the probe,
+which no runbook counter does:
+
+```bash
+pushed() { curl -fsS "$1/metrics" | awk '$1 == "bee_pusher_total_to_push" {print $2}'; }
+a=$(pushed "$UPLOADER"); sleep 60; b=$(pushed "$UPLOADER")
+[ "$a" = "$b" ] && echo "quiet: $UPLOADER" || echo "UPLOADING through $UPLOADER: $a -> $b"
+```
+
+A count above 0 voids the pause: find the uploader, stop it, and take the next period's pause.
 
 ### 4.7 Reserve-equality probe (stands in for AC-C1; extends AC-N5's sample equality)
 
@@ -573,8 +640,9 @@ out of the nodes' own sample phases.
    `PendingUpload` 0 on every uploader).
 2. Start one new node in each at the same time (§4.1: empty data dir,
    `--target-neighborhood=<prefix>`, the cohort's flags, **no** `--minimum-storage-radius`: rule 8),
-   under the reference load, 30 min after a rotation with panel B10 at 0 (§4.5), so that `t_union`
-   comes before the next expiry.
+   under the reference load (under schedule B, the 30/s period: §4.5), once the period's expiry is
+   over (§4.5: B10 rose for it and fell back to 0) and with the smallest `batchTTL` more than 3 h
+   15 min away (step 6's 3 h and the margin), so that `t_union` comes before the next expiry.
 3. `t_start` = Info `node warmup complete…` on the joiner (sync starts after warm-up; also record the
    process start).
 4. `t_union` = first time the joiner's `bee_localstore_reserve_size` is within 0.1 % of the median of
@@ -600,10 +668,11 @@ every neighborhood alike. Run it after Runs 2, 9, 3, 5 and 6: from then on the n
 less than C/2 and are not "fully synced" (rule 8).
 
 - **Method B (the one this runbook times).** Every node is pinned at `--minimum-storage-radius=r`
-  from Run S on (rule 8), so the drain lowers no radius. Start when `bee_localstore_expired_count`
-  has been flat for 30 min on every node of the chosen pairs and `GET /batches` (`batchTTL` of
-  each) shows no batch that expires before Run 4 ends (only `B_keep`, `D_low` and batches of other
-  owners that outlive it). Then restart every node of one sibling pair per cohort, at the same
+  from Run S on (rule 8), so the drain lowers no radius. Start when the drain's last expiry is
+  over on the chosen pairs' neighborhoods (§4.5: B10 rose for it and fell back to 0; a flat
+  `bee_localstore_expired_count` alone can mean an eviction still running) and `GET /batches`
+  (`batchTTL` of each) shows no batch that expires before Run 4 ends (only `B_keep`, `D_low` and
+  batches of other owners that outlive it). Then restart every node of one sibling pair per cohort, at the same
   time, with `--minimum-storage-radius=r-1`. The stored radius stays r at start (`waitNetworkRFunc`,
   `pkg/node/node.go` L1182–1186, keeps a local radius above the minimum), and the first worker
   tick, ~15 min after the warm-up, lowers it to r − 1. Try it on one node first. The restart adds
@@ -655,21 +724,23 @@ less than C/2 and are not "fully synced" (rule 8).
 
 ### 4.10 Batch-expiry event (S6, S7)
 
-Every load batch expires about L after its creation, at the rotation four later (§4.5), taking its
-rotation period of uploads with it (≈ 360,000 per neighborhood at 16/s; 675,000 for a 30/s period):
-each expiry is an event for S6 and S7, and is kept out of every measurement window. `B_drop`'s expiry in
-the drain (0.3 C per neighborhood) is the large one. No batch can be made to expire sooner than
-V_min after its creation (§4.5), and a separate one counts in the budget. Watch ±30 min around
-each (`bee_localstore_expired_count` jumps): panels F1–F3 and D5. On a pinned network an expiry
-lowers no radius (§4.9).
+Every load batch expires about L after its creation, at the rotation four later at a constant
+price (§4.5, G7-9), taking its rotation period of uploads with it (≈ 360,000 per neighborhood at
+16/s; 675,000 for a 30/s period): each expiry is an event for S6 and S7, and is kept out of every
+measurement window. `B_drop`'s expiry in the drain (0.3 C per neighborhood) is the large one. No
+batch can be made to expire sooner than V_min after its creation (§4.5), and a separate one counts
+in the budget. Watch ±30 min around each (`bee_localstore_expired_count` jumps): panels F1–F3 and
+D5. On a pinned network an expiry lowers no radius (§4.9).
 
 ### 4.11 Node-away catch-up (S9)
 
-Under the reference load, stop one `rangesync`-only node for 5 min and, later, one for 15 min (at
-15 uploads/s per neighborhood ≈ 4500 and ≈ 13500 missed IDs: decoded in sessions, below
-`LargeDiff` 65536), each 30 min after a rotation with panel B10 at 0 (§4.5). Restart with the same
-flags. Time from the warm-up to `t_union`; read panels B4, B6, C4, E3, E4 and S4-F
-(`kind="catch_up"`).
+Under the load (schedule A; under schedule B an 11/s period, §4.5), stop one `rangesync`-only node
+for 5 min and then, 30 min after it is back at `t_union`, one for 15 min (at 15 uploads/s per
+neighborhood ≈ 4500 and ≈ 13500 missed IDs, at 11/s ≈ 3300 and ≈ 9900: decoded in sessions, below
+`LargeDiff` 65536). Both stops fall in one rotation period: start the first once the period's
+expiry is over (§4.5: B10 rose for it and fell back to 0), with the smallest `batchTTL` more than
+2 h 15 min away. Restart with the same flags. Time from the warm-up to `t_union`; read panels B4,
+B6, C4, E3, E4 and S4-F (`kind="catch_up"`).
 
 ---
 
@@ -776,13 +847,14 @@ neighborhood (a reference counts toward every inventory prefix it starts with) a
 generator starts again from 0, which `increase()` and `rate()` treat as a counter reset.
 
 The probe defines the T6.0 follow-up "a propagation probe for AC-V1 on testnet". It uploads a
-random chunk with `Swarm-Deferred-Upload: false` (the call returns once pushsync stored it), finds
+random chunk directly (no `Swarm-Tag`, rule 9: the call returns once pushsync stored it), finds
 the inventory nodes of the neighborhood the address falls in (prefix match on `neighborhood`), and
 polls `HEAD /chunks/<ref>` on each (a local check: `ChunkStore().Has`, no retrieval) until all have
 it or 120 s pass. It also reads `bee_rangesync_round_interval_seconds` from each node at the upload,
 for AC-V1's bound. Output rows: `ref,t0,node,cohort,neighborhood,latency_s,round_interval_max`;
 an empty latency means not seen within the timeout. After a radius decrease, set `neighborhood`
-to the new (shorter) prefix in the inventory.
+to the new (shorter) prefix in the inventory. The probe's uploads are in no runbook counter: stop it
+for every upload pause (§4.6) and start it again after; AC-V1 reads no probe from a pause.
 
 ```python
 #!/usr/bin/env python3
@@ -835,7 +907,6 @@ def upload(uploader, spec):
     req = urllib.request.Request(
         uploader.rstrip('/') + '/chunks', data=struct.pack('<Q', len(data)) + data,
         method='POST', headers={'Swarm-Postage-Batch-Id': batch,
-                                'Swarm-Deferred-Upload': 'false',
                                 'Content-Type': 'application/octet-stream'})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)['reference']
@@ -1153,12 +1224,12 @@ and in Run 2, which removes host differences.
 
 | Row | Segment | Read | Pass | Notes |
 |---|---|---|---|---|
-| AC-C2 quiescence | upload pause (§4.6, clear of expiries) | E4: sessions with n_Δ > 0 after `t_pause` + 120 s, `increase(bee_rangesync_pairwise_diff_count[w]) - ignoring(le) increase(bee_rangesync_pairwise_diff_bucket{le="0"}[w])`; B4 `result="ok"`; §4.7 | no session with n_Δ > 0 starts after `t_pause` + 120 s on any R/D node; one `/rchash` per neighborhood | With mixed radii nested-root sessions continue with n_Δ = 0 (K3): gate on n_Δ, report the session count |
-| AC-V1 2 × RoundInterval | Run 2, probe every 30 s | §5.3 summary | every probe ≤ min(2 × `round_interval_max`, 15 s) on R and D | gating per G7-4; P reported as the baseline; the sparse-load knife edge at 2 × 5 s (K8, T6.4 wording) |
+| AC-C2 quiescence | upload pause (§4.6: every uploader stopped, the probe included; quiet check 0; clear of expiries) | E4: sessions with n_Δ > 0 after `t_pause` + 120 s, `increase(bee_rangesync_pairwise_diff_count[w]) - ignoring(le) increase(bee_rangesync_pairwise_diff_bucket{le="0"}[w])`; B4 `result="ok"`; §4.7 | no session with n_Δ > 0 starts after `t_pause` + 120 s on any R/D node; one `/rchash` per neighborhood | With mixed radii nested-root sessions continue with n_Δ = 0 (K3): gate on n_Δ, report the session count |
+| AC-V1 2 × RoundInterval | Run 2 outside the upload pauses (the probe stops for each, §4.6), probe every 30 s | §5.3 summary | every probe ≤ min(2 × `round_interval_max`, 15 s) on R and D | gating per G7-4; P reported as the baseline; the sparse-load knife edge at 2 × 5 s (K8, T6.4 wording) |
 | AC-V2 round trips | Run 2 measurement windows (§4.5) that are steady (§9 STEADY: no stripes, no radius change, no expiry) | B6 | fraction ≤ 2 ≥ 0.5; fraction ≤ 4 ≥ 0.95 | `session_rounds` = Messages this side handled per completed session (≈ round trips); no label separates catch-ups, so use steady windows |
 | AC-V3 bootstrap | §4.8 | `t_union − t_start`, R vs P; also `t_synced`, `t_rate0` | R ÷ P ≤ 1.0 on `t_union` (margin: G7-5) | compare the time to the union, not to `sync_rate` 0: both rates read 0 10–20 min after their last chunk (K8) |
 | AC-V4 radius decrease | §4.9 | `t_union_half − t_dec`, R vs P; B7 `reassigned` | R ÷ P ≤ 1.0 | expected miss: uneven stripes (K5). The moved-root race is fixed (§11.1 K1); a `reassigned` right after `t_dec` is its residual (a peer without the new root after ~30 s): record it |
-| AC-V5 idle | upload pause, after AC-C2 | B4; §9 Q8 | `increase(bee_rangesync_sessions_total{result="ok"}[10m])` = 0 on single-radius neighborhoods; ≈ 100 B per rangesync peer per minute (one Status per `StatusMaxInterval` to every connected peer that speaks rangesync, not only to neighbors), flag > 150 B (draft, T6.3) | fails with mixed radii (K3: ~3–8 sessions per minute on a node with nested-root peers) |
+| AC-V5 idle | upload pause (§4.6, as AC-C2), after AC-C2 | B4; §9 Q8 | `increase(bee_rangesync_sessions_total{result="ok"}[10m])` = 0 on single-radius neighborhoods; ≈ 100 B per rangesync peer per minute (one Status per `StatusMaxInterval` to every connected peer that speaks rangesync, not only to neighbors), flag > 150 B (draft, T6.3) | fails with mixed radii (K3: ~3–8 sessions per minute on a node with nested-root peers) |
 | AC-B1 metadata ≤ 50 % | Run 2's measurement windows (§4.5) at the reference load: at N ≥ 17 only those of the 30/s periods (schedule B); the P baseline from Run 0's windows at the same rate (its 30/s periods under B). If C5 shows no reference load, record the median reached (G7-8) | C3: CQ-R of the R neighborhood ÷ CQ-P of the same neighborhood in Run 0 (or of a P neighborhood of the same N) | ≤ 0.50 at N ≥ 17, R cohort | D (informational): its CQ-R and CQ-R + CQ-P, each ÷ P; a dual node pays both protocols, so its sum cannot meet 0.50. In-process: N = 17 0.35–0.40 pass; N = 5 and 9 0.57–0.73 miss (re-basing is T6.4's, K6). On testnet each node also sends Statuses to its ~100+ non-neighbors, included here (it was outside the in-process clique) |
 | AC-B1b low load | low-load segment (its window from 30 min in, §4.5) | C3 | report | |
 | AC-B2 bootstrap metadata | §4.8 | joiner's `bee_rangesync_bytes_metadata{dir="in"}` at `t_union` (a new node starts at 0) minus the neighbors' mean `increase(…{dir="in"}[t_start, t_union])` | IDs ≤ 1.15 × 70 B × the joiner's `bee_localstore_reserve_size` at `t_union` | the 1 MB verification part cannot be separated under load (round sessions add ~7 KB/s per node at N = 9): report "not separable"; T6.1 measured 147–196 B |
@@ -1197,7 +1268,7 @@ modified (adversarial) node; T6.4 lists those as not exercised.
 
 | # | Item | Procedure | Read | Expected / decision |
 |---|---|---|---|---|
-| S1 | **Sustained overwrite stream** (phase-4 "(T4.6 part 3 fix round 2 → T6.3) A sustained overwrite stream") | One mutable batch, depth 17 (the API's minimum; 2 slots per bucket), uploads at stepped rates per neighborhood (the total is the rate × 2^r, §4.5): 10, 25, 50, 100, 200 IDs/s, each held 30 min (≥ one 10-min window aligned to Unix time, plus the rate's lag), then 30 min at 0; start 30 min after a rotation with B10 at 0, so the 3 h end before the next expiry (§4.5). Overwrites start once the neighborhood's 2^(17−r) slots are used. Note N and A6 per neighborhood | §9 Q1/Q2 per step; B1 (`sync_rate`), A3 (radius), H1 (`isFullySynced`), E4 | Crossing (G6): ~50–100 IDs/s per neighborhood at N = 17 with 8 slots, higher with the per-node cap, lower at N > 17. The lowest step where Q1 > 0 in steady windows and B1 stays > 0 is the crossing; record it. It decides how urgent the load-relative catch-up rule is (before mainnet). The pin costs an attacker only pushsync bandwidth (phase-4 note 7) |
+| S1 | **Sustained overwrite stream** (phase-4 "(T4.6 part 3 fix round 2 → T6.3) A sustained overwrite stream") | One mutable batch, depth 17 (the API's minimum; 2 slots per bucket), uploads at stepped rates per neighborhood (the total is the rate × 2^r, §4.5): 10, 25, 50, 100, 200 IDs/s, each held 30 min (≥ one 10-min window aligned to Unix time, plus the rate's lag), then 30 min at 0; start once the period's expiry is over (§4.5: B10 rose for it and fell back to 0), with the smallest `batchTTL` more than 3 h 15 min away, so the 3 h end before the next expiry. The batch: §4.5's S1 row. Overwrites start once the neighborhood's 2^(17−r) slots are used. Note N and A6 per neighborhood | §9 Q1/Q2 per step; B1 (`sync_rate`), A3 (radius), H1 (`isFullySynced`), E4 | Crossing (G6): ~50–100 IDs/s per neighborhood at N = 17 with 8 slots, higher with the per-node cap, lower at N > 17. The lowest step where Q1 > 0 in steady windows and B1 stays > 0 is the crossing; record it. It decides how urgent the load-relative catch-up rule is (before mainnet). The pin costs an attacker only pushsync bandwidth (phase-4 note 7) |
 | S2 | Ordinary-load `CatchUpMinDiff` check (Q9; phase-3 T3.5; phase-4 Q9 entries) | Run 2 | §9 Q1, Q2 | §9 rule |
 | S3 | **Initiated-session cap and the mixed-radius Busy breakdown** (phase-4 "(T4.7 part 2 → T6.3)", "(T4.7 part 2 fix round 1 → T6.3)", T4.7 part 2 gauge) | Run 2 per neighborhood size N; neighborhoods with mixed radii (after §4.9, or naturally) | S3-Q below the table, with A6 (cap), A3 (radius), A4 (N) | Harness, one radius: 1–3 % at N = 18, 3–6 % at N = 21, 5–10 % at N = 25 (~8 % at 33). If the deeper nodes' sessions draw most Busy answers: size the cap by the targets' peer counts. If Busy at N ≈ 20–24 runs above N = 25's: a steeper slope (two slots per peer past the tokens). AC-B1 at these N (S19) |
 | S4 | **Claims' first-chunk window and queue wait; a catch-up's first chunk** (phase-6 "(T4.7 part 3 → T6.1/T6.3)"; phase-4 T4.7 part 3/4 entries; catch-up first chunk, T4.5 part 2c; phase-6 T6.5 part 2 entries) | §4.8, §4.9, §4.11 and Run 2, Debug on `^node/rangesync` | S4-W (queue wait: own, claim), S4-F (first chunk: own, claim, catch_up), S4-C (claims with no chunk within 120 s), S4-G (catch-ups past 2 s), below the table; B7 `idle`; Debug `stripe claim ended: it stored nothing` | Measured since T6.5. Report medians and p95 per kind and event. Work that stores nothing is not in the histograms (read B7 `idle` alongside); `catch_up` excludes a stripe's retries, and a session can observe it several times (retries, served batches). Decide on them: `catchUpGrace` (2 s) if S4-G shows first chunks near or past it often (phase-4 "(T4.5 part 2c fix round 2 → T4.6)"); `claimIdleTimeout` (120 s) if honest claims idle out (S4-C). A claimant with no credit waits behind the other claims: S4-W `kind="claim"` (phase-4 "(T4.7 part 4 → T6.3)"). Idle claims while the node still stores chunks (B3) can be claims whose retries do the work unseen (phase-6 "(T6.5 part 2 fix round 1, Low) A stripe's retries…"): report them |
@@ -1206,7 +1277,7 @@ modified (adversarial) node; T6.4 lists those as not exercised.
 | S7 | **Shortfall offenses and violations** (phase-4 "(T4.5 part 2b → T6)", "(T4.5 part 2b fix round 1 → T6)") | §4.10 and §4.9 (radius changes), Debug on `^node/rangesync` | F1 `reason="fetch_shortfall"` and `"invalid_message"`; Debug `fetch shortfall, peer scored`; F2 `invalid_message_total` with the Debug `invalid message … requested ids not delivered` | Honest peers: none (`invalid_message` also counts an honest peer's stalls under load: read the Debug `error`). One around an expiry or a radius change calls for a wider excuse |
 | S8 | **Stall chains past the own-job grace; an honest claim with a stalling stripe peer** (phase-4 "(T4.7 part 3 fix round 1 → T6.3) Stall chains…", "(T4.7 part 3 → T6.3) An honest claim…") | Optional, on a non-staking node: during §4.8, `kill -STOP` one of the joiner's stripe peers for 20 min (> `StripeTimeout` 15 min), then `kill -CONT`. Which peers are stripe peers: `PlanStripes` makes 2^s ≥ k stripes and gives stripe i to peer i mod k, so every full peer whose root covers the joiner's serves at least one; its `rate(bee_rangesync_bytes_chunks{dir="out"}[1m])` rises after `t_start`. No log or metric names a stripe's peer before it fails (the Debug `stripe` line with `peer_address` comes only with an error) | B7 `timeout`, `reassigned`; B1 on the joiner; B2 | A stall chain reads 0 from 19 min (`ownJobGrace`) after the last own-job chunk. A stopped peer may also be dropped by the transport; record what happened. A verifier picked for most stripes stalling ((stripes − 1) × 15 min) is not reproducible this way |
 | S9 | **Large session decode on the real clock** (phase-6 "(T6.1 part 2 fix round 1 → T6.3 or a later harness run)") | §4.11 | B4, B6, C4 (Mores), E3 (exhausted by level), E4 (`pairwise_diff_half` ≥ 1024 buckets); time to `t_union` | sessions decode thousands of IDs: `SessionSymbolBudget` (16384) and `More` requests at work; one session's fetch of thousands of IDs at 250 chunks/s per holder |
-| S10 | **Stripe verification false positives** (K2, fixed by T6.5 part 1; phase-6 "(T6.1 part 2 → T4/T6.4, finding)", "→ before T6.3", "(T6.5 part 1 → T6.5 part 2 / T6.3)") | §4.8 once, at the reference load, with rule 9 checked | F1 `reason="stripe_verification"` on the joiner; Debug `peer failed` (`stripe incomplete at verification`); B7 `verification_diff` for context only | expected: 0 on honest bootstraps. One is withholding or a residual source (§11.1 K2: a clock more than 10 min off, a pusher backlog, re-uploads of old stamps): check the clocks and `PendingUpload`, and record which |
+| S10 | **Stripe verification false positives** (K2, fixed by T6.5 part 1; phase-6 "(T6.1 part 2 → T4/T6.4, finding)", "→ before T6.3", "(T6.5 part 1 → T6.5 part 2 / T6.3)") | §4.8 once, at the reference load (under schedule B, Run 3's 30/s period, §4.5), with rule 9 checked | F1 `reason="stripe_verification"` on the joiner; Debug `peer failed` (`stripe incomplete at verification`); B7 `verification_diff` for context only | expected: 0 on honest bootstraps. One is withholding or a residual source (§11.1 K2: a clock more than 10 min off, a pusher backlog, re-uploads of old stamps): check the clocks and `PendingUpload`, and record which |
 | S11 | Moved-root race at scale (K1, fixed by T6.5 part 1) | §4.9 | B7 `reassigned` within seconds of `t_dec`; Debug `stripe reassigned` right after `radius decreased`; S4-F `kind="own"` | expected: no reassignment. One whose `error` names `the peer lacks this node's current root` is the residual (a peer without the new root after ~30 s): count them |
 | S12 | In-sync nested roots (K3; phase-6 "(T6.1 part 2 → T4/T6.3, Low)") | Run 2 neighborhoods with mixed radii | B4 `result="ok"` per node during idle; E4 n_Δ = 0 sessions | report `sessions_total` per cohort with mixed radii |
 | S13 | AC-V1 propagation probe (T6.0) | §5.3 | §7 AC-V1 | |
@@ -1340,25 +1411,27 @@ Draft triggers above are T6.3's, for the team at G7-5.
 
 | Run | What | Duration | Covers |
 |---|---|---|---|
-| S | Seed per §4.5 (only where neighborhoods do not already hold 0.6 C), every node pinned at `--minimum-storage-radius=r` from its first start (rule 8): `B_keep` and `B_drop`, 0.3 C each per neighborhood, pullsync-only, several direct uploaders named `seed1`, `seed2`, … (rule 9; B9 leaves them out); one `B_drop` top-up as a test; then the rule-8 check | ≈ 20.1M chunks at r = 3: ≈ 14 h at 400/s | the precondition of AC-N5, `t_synced`, `t_union` and T(t) |
+| S | Seed per §4.5 (only where neighborhoods do not already hold 0.6 C), every node pinned at `--minimum-storage-radius=r` from its first start (rule 8): `B_keep` and `B_drop`, 0.3 C each per neighborhood, pullsync-only, several direct uploaders named `seed1`, `seed2`, … (rule 9; B9 leaves them out); one `B_drop` top-up as a test; `price.csv` from the start, and under G7-9 (a) a `currentPrice` that does not move (§4.5, price); then the rule-8 check | ≈ 20.1M chunks at r = 3: ≈ 14 h at 400/s | the precondition of AC-N5, `t_synced`, `t_union` and T(t) |
 | 0 | Every node pullsync-only (defaults), same build, the load schedule of Run 2 (no pauses) | from a rotation, ≥ L (four rotation periods, 25 h: one 30/s period under schedule B) | the before/after baseline per node: AC-B1 (same neighborhood), AC-R4, AC-R7–R9, AC-N5 history |
 | 1 | Upgrade per §4.2 (P pairs stay as they are) | ~½ day | AC-R3, AC-R5, AC-R6 (fill times), S16, S18 |
-| 2 | Steady state at the load of §4.5 (schedule A, or B for AC-B1 at N ≥ 17); one 30-min upload pause per rotation period, 30 min after its rotation (§4.6; none in a 30/s period); one 2-h low-load segment inside one period's windows; probe every 30 s; §4.7 once per day | from a rotation, ≥ max(L, the rounds for 10 selections per cohort: ~10 × 2^`committedDepth` rounds of 152 blocks) | AC-C2, AC-V1, AC-V2, AC-V5, AC-B1, AC-B1b, AC-D2, AC-D3, AC-D5, AC-K2–K5, AC-R1, AC-R4, AC-R7–R9, AC-N1, AC-N5; S2, S3, S12, S17, S19, §9 |
-| 3 | Bootstrap (§4.8), one unpinned joiner per cohort at once, 30 min after a rotation; then the joiners restart pinned | 3 h + 2 rounds | AC-V3, AC-B2, AC-N1, AC-N2, AC-R7 (bootstrap); S4, S5, S10, S21 |
+| 2 | Steady state at the load of §4.5 (schedule A, or B for AC-B1 at N ≥ 17); one 30-min upload pause per rotation period, once its expiry is over (§4.5, §4.6; none in a 30/s period); one 2-h low-load segment inside one period's windows; probe every 30 s, stopped in each pause with every other uploader (§4.6); §4.7 once per day | from a rotation, ≥ max(L, the rounds for 10 selections per cohort: ~10 × 2^`committedDepth` rounds of 152 blocks) | AC-C2, AC-V1, AC-V2, AC-V5, AC-B1, AC-B1b, AC-D2, AC-D3, AC-D5, AC-K2–K5, AC-R1, AC-R4, AC-R7–R9, AC-N1, AC-N5; S2, S3, S12, S17, S19, §9 |
+| 3 | Bootstrap (§4.8), one unpinned joiner per cohort at once, once the period's expiry is over (§4.5); under schedule B in the 30/s period; then the joiners restart pinned | 3 h + 2 rounds | AC-V3, AC-B2, AC-N1, AC-N2, AC-R7 (bootstrap); S4, S5, S10, S21 |
 | 4 | Radius decrease (§4.9), one sibling pair per cohort | ≥ 1.5 h after the restarts | AC-V4, AC-R2, AC-N1; S11, S20, S7 |
-| 5 | Node-away catch-up (§4.11): 5 min, then 15 min, each 30 min after a rotation | 2 h | S9, S4 |
-| 6 | Sustained overwrite stream (S1), 30 min after a rotation | 3 h (5 steps × 30 min + cool-down) | S1, S15 |
-| D, 7 | Drain (§4.5): the regular load stops, ≤ 1/s on `D_low`, `B_drop`'s top-ups stop; until every load batch and `B_drop` have expired, plus a 15-min tick; the expiries observed as §4.10 | ≥ L after the last load batch's creation, ≤ ~36 h | S6, S7; the precondition of Run 4 |
+| 5 | Node-away catch-up (§4.11): the 5-min stop, then the 15-min stop 30 min after the first node's `t_union`, both in one rotation period, from its expiry being over (§4.5); under schedule B an 11/s period | 2 h for both | S9, S4 |
+| 6 | Sustained overwrite stream (S1), once the period's expiry is over (§4.5) | 3 h (5 steps × 30 min + cool-down) | S1, S15 |
+| D, 7 | Drain (§4.5): the regular load and `rotate.sh` stop, ≤ 1/s on `D_low`, `B_drop`'s top-ups stop; until every load batch, `B_drop` and S1's batch have expired, plus a 15-min tick; the expiries observed as §4.10 | ≥ L after the last load batch's creation, ≤ ~36 h | S6, S7; the precondition of Run 4 |
 | 8 | Optional stall (S8) | during a Run 3 repeat | S8 |
-| 9 | Rollback drill on two dual nodes (D → P → D, §4.3) and a downgrade drill (§4.4, then back), right after Run 2 | 3 h | AC-S4 |
+| 9 | Rollback drill on two dual nodes (D → P → D, §4.3) and a downgrade drill (§4.4, then back), after Run 2 (§10.1 order) | 3 h | AC-S4 |
 
-Order: S, 0, 1, 2, 9, 3, 5, 6, D/7, 4; 8 where it fits. About 5–7 days of wall clock (Run S
-≈ 14 h, Runs 0 and 2 ≥ 25 h each, the drain 25–36 h). The load batches rotate every L/4 throughout
-(§4.5), and every window, pause and timed event sits inside one rotation period (§4.5, measurement
-windows).
-Runs 3 and 5 need the reference load running; Run 6 replaces the load, so keep it apart from the AC
-windows. Run 4 needs the drain first and ends AC-N5 for the neighborhoods it leaves below half:
-run it last.
+Order: S, 0, 1, 2, then 9, 3, 5 and 6 in the four rotation periods after Run 2, one each (under
+schedule B Run 3 in the 30/s period and the others in the 11/s periods, §4.5), D/7, 4; 8 where it
+fits. About 5–7 days of wall clock (Run S ≈ 14 h, Runs 0 and 2 ≥ 25 h each, the four periods
+25 h, the drain 25–36 h). The load batches rotate every L/4 from Run 0 until the drain stops
+`rotate.sh` (§4.5), and every pause and timed event sits inside one rotation period, from its
+expiry being over (§4.5, measurement windows).
+Runs 3 and 5 need the load running (Run 3 the reference load: under schedule B the 30/s period);
+Run 6 replaces the load, so keep it apart from the AC windows. Run 4 needs the drain first and ends
+AC-N5 for the neighborhoods it leaves below half: run it last.
 
 ### 10.2 Every run
 
@@ -1370,7 +1443,8 @@ run it last.
 - Every restart keeps the node's `--minimum-storage-radius` (§4.1), except the §4.8 joiners until
   they are synced.
 - Note the time of every event (restarts, rotations, expiries, pauses, rate changes, steps) in UTC:
-  the windows of §7 are cut from them, and panel B10 confirms each.
+  the windows of §7 are cut from them, and panel B10 confirms each. Keep `price.csv` running
+  (§4.5, price).
 
 ### 10.3 What to record in the phase-6 Decisions log
 
@@ -1381,7 +1455,8 @@ One entry per run, "(T6.3 run <n>, <date>)":
   - Setup: build <commit>, network <id>, hosts (CPU, RAM, disk, bandwidth), amd64 check, clock
     check (rule 9), flags per cohort, `--rangesync-fetch-rate` per cohort (G7-2) or the default,
     neighborhoods per cohort with N, radius, reserve size, `--minimum-storage-radius`, load schedule
-    (A or B) and rate per neighborhood (uploads/s), batch depth and TTL, rotation times.
+    (A or B) and rate per neighborhood (uploads/s), batch depth and TTL, rotation times, the price
+    oracle (G7-9) and `currentPrice` over the run.
   - Events: <UTC times>.
   - Results per row: | Row | R | D | P | threshold | verdict | (pass / fail / needs work / not measurable).
   - Special items: S<n>: numbers, decision taken or proposed.
