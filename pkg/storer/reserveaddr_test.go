@@ -14,10 +14,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -313,6 +316,67 @@ func TestReserveAddrIndexDropInterrupted(t *testing.T) {
 	db.WaitAddrIndexDrop()
 	if n := len(addrIndexSet(t, db)); n != 0 {
 		t.Fatalf("%d entries left", n)
+	}
+}
+
+// syncBuffer is a bytes.Buffer that a logger may write to concurrently.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestReserveAddrIndexReclaimLog (T6.5 part 2): once the background drop of
+// a disabled address index and the compaction of its key range are done, the
+// storer logs it at Info, with the entries dropped and the time it took, so
+// that an operator sees when the space is back.
+func TestReserveAddrIndexReclaimLog(t *testing.T) {
+	t.Parallel()
+
+	const chunks = 20
+	baseAddr := swarm.RandAddress(t)
+	dir := t.TempDir()
+	db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+	putReserveChunks(t, db, baseAddr, postagetesting.MustNewBatch().ID, chunks)
+	closeDB(t, db)
+
+	buf := new(syncBuffer)
+	opts := addrIndexTestOps(baseAddr, addrIndexOpts{})
+	opts.Logger = log.NewLogger("test", log.WithSink(buf), log.WithVerbosity(log.VerbosityInfo))
+	db, err := storer.New(context.Background(), dir, opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer closeDB(t, db)
+	if !db.AddrIndexDropStarted() {
+		t.Fatal("no background drop of the disabled index")
+	}
+	db.WaitAddrIndexDrop()
+
+	var lines []string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, `"msg"="reclaimed the disabled reserve address index"`) {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) != 1 {
+		t.Fatalf("%d reclaim lines, want 1:\n%s", len(lines), buf.String())
+	}
+	for _, want := range []string{`"level"="info"`, fmt.Sprintf(`"count"=%d`, chunks), `"duration"=`} {
+		if !strings.Contains(lines[0], want) {
+			t.Fatalf("reclaim line %q lacks %s", lines[0], want)
+		}
 	}
 }
 

@@ -116,7 +116,8 @@ func (db *DB) startAddrIndex(ctx context.Context, opts *Options) error {
 }
 
 // startAddrIndexDrop drops the entries of a disabled address index in the
-// background, then compacts their key range. Close stops it.
+// background, then compacts their key range, and logs at Info when both are
+// done. Close stops it.
 func (db *DB) startAddrIndexDrop() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -125,6 +126,7 @@ func (db *DB) startAddrIndexDrop() {
 
 	go func() {
 		defer close(done)
+		start := time.Now()
 		dropped, err := reserve.DropAddrIndex(ctx, db.storage)
 		switch {
 		case errors.Is(err, context.Canceled), errors.Is(err, leveldb.ErrClosed):
@@ -137,6 +139,7 @@ func (db *DB) startAddrIndexDrop() {
 		}
 		db.logger.Debug("dropped the disabled reserve address index", "count", dropped)
 		db.compactAddrIndex()
+		db.logger.Info("reclaimed the disabled reserve address index", "count", dropped, "duration", time.Since(start))
 	}()
 }
 
