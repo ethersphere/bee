@@ -115,8 +115,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	// When a winning SOC replaces the shared payload, refreshSiblingSums updates
 	// the sums of all co-resident entries under other stamps. This is called
 	// outside putChunk (after releasing the batch lock) to avoid multi-batch deadlocks.
+	// The payload is already committed, so the refresh must not be abandoned
+	// when the caller's context is canceled: the siblings would keep
+	// advertising sums of the replaced payload.
 	if socReplaced {
-		return r.refreshSiblingSums(ctx, chunk.Address())
+		return r.refreshSiblingSums(context.WithoutCancel(ctx), chunk.Address())
 	}
 	return nil
 }
@@ -194,11 +197,6 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 		shouldIncReserveSize, err = r.putCAC(ctx, chunk, sum, stampHash, bin)
 	}
 	if err != nil {
-		r.logger.Error(err, "put chunk",
-			"address", chunk.Address(), "batch_id", batchHex,
-			"stamp_hash", stampHashHex, "stamp_index", stampIndexHex,
-			"stamp_timestamp", stampTS, "chunk_type", chunkType,
-		)
 		return false, err
 	}
 	if shouldIncReserveSize {
@@ -326,11 +324,14 @@ func (r *Reserve) evaluateSOCDivergence(
 		return true, nil
 	}
 
-	bestStoredStamp, highestPrevTimestamp := highestTimestampStamp(
+	bestStoredStamp, highestPrevTimestamp, err := highestTimestampStamp(
 		s.IndexStore(),
 		incoming.Address(),
 		fallbackStamp,
 	)
+	if err != nil {
+		return false, err
+	}
 
 	storedWithStamp := stored.WithStamp(bestStoredStamp)
 	currTimestamp := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
@@ -420,13 +421,17 @@ func (r *Reserve) resolveStampIndexCollision(
 ) (sameAddr bool, err error) {
 	prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-	if prev > curr {
+	// A same-slot re-stamp of the same address must carry a strictly newer
+	// timestamp. An equal timestamp with a different stamp hash can be minted by
+	// anyone from an existing stamp (signature malleability), so it never wins.
+	sameAddr = oldStampIndex.ChunkAddress.Equal(chunk.Address())
+	if prev > curr || (prev == curr && sameAddr) {
 		return false, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 	}
 
 	// Same stamp index and timestamp, different chunk addresses: both
 	// claims are otherwise valid, so settle on the lower address.
-	if prev == curr && !oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
+	if prev == curr {
 		if bytes.Compare(chunk.Address().Bytes(), oldStampIndex.ChunkAddress.Bytes()) >= 0 {
 			return false, fmt.Errorf(
 				"stamp index collision chunk %s lost tie-break: %w",
@@ -436,28 +441,8 @@ func (r *Reserve) resolveStampIndexCollision(
 		}
 	}
 
-	// Branch 1: Same address re-stamped in the same slot.
-	if oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
-		if prev == curr {
-			if bytes.Equal(oldStampIndex.StampHash, stampHash) {
-				stored, err := s.ChunkStore().Get(ctx, chunk.Address())
-				if err != nil {
-					return false, err
-				}
-				wins, err := storage.DivergentSocChunkWins(stored, chunk)
-				if err != nil {
-					return false, err
-				}
-				if !wins {
-					return false, fmt.Errorf(
-						"diverging chunk %s lost tie-break: %w",
-						chunk.Address(),
-						storage.ErrDivergentChunkRejected,
-					)
-				}
-			}
-		}
-
+	// Branch 1: Same address re-stamped in the same slot with a newer timestamp.
+	if sameAddr {
 		// Prune previous slot metadata (BatchRadiusItem, ChunkBinItem, and stamp entries).
 		// Note: The payload in ChunkStore is NOT deleted here because it is either being
 		// updated or retained at this same address.
@@ -696,11 +681,14 @@ func (r *Reserve) resolveSOCDivergence(
 		stored = stored.WithStamp(stamp)
 
 		// Verify timestamp precedence across all active co-resident stamps.
-		bestStoredStamp, highestPrevTimestamp := highestTimestampStamp(
+		bestStoredStamp, highestPrevTimestamp, err := highestTimestampStamp(
 			s.IndexStore(),
 			chunk.Address(),
 			stamp,
 		)
+		if err != nil {
+			return err
+		}
 		stored = stored.WithStamp(bestStoredStamp)
 
 		currTimestamp := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
@@ -829,24 +817,33 @@ func (r *Reserve) resolveSOCDivergence(
 // stored-stamp precedence on every node instead of making the winning payload
 // depend on which stamp happened to be observed first. If addr has no indexed
 // stamps, fallback and its timestamp are returned.
-func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (swarm.Stamp, uint64) {
+func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (swarm.Stamp, uint64, error) {
 	var highestTimestamp uint64
 	var bestStamp swarm.Stamp
 
-	_ = chunkstamp.IterateAll(store, reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
+	err := chunkstamp.IterateAll(store, reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
 		timestamp := binary.BigEndian.Uint64(stamp.Timestamp())
 		if bestStamp == nil || timestamp > highestTimestamp {
 			highestTimestamp = timestamp
 			bestStamp = stamp
 		} else if timestamp == highestTimestamp {
-			bestHash, err1 := bestStamp.Hash()
-			currentHash, err2 := stamp.Hash()
-			if err1 == nil && err2 == nil && bytes.Compare(currentHash, bestHash) < 0 {
+			bestHash, err := bestStamp.Hash()
+			if err != nil {
+				return true, err
+			}
+			currentHash, err := stamp.Hash()
+			if err != nil {
+				return true, err
+			}
+			if bytes.Compare(currentHash, bestHash) < 0 {
 				bestStamp = stamp
 			}
 		}
 		return false, nil
 	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("iterate stamps of %s: %w", addr, err)
+	}
 	if bestStamp == nil {
 		bestStamp = fallback
 		if bestStamp != nil {
@@ -854,7 +851,7 @@ func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallbac
 		}
 	}
 
-	return bestStamp, highestTimestamp
+	return bestStamp, highestTimestamp, nil
 }
 
 // restoreEntrySum rewrites the sum recorded for an existing reserve entry and

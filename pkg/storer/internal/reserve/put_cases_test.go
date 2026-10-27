@@ -7,14 +7,19 @@ package reserve_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"math"
+	"math/big"
 	"testing"
+
+	"github.com/btcsuite/btcd/btcec/v2"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -457,12 +462,9 @@ func TestPutSOCMultiStampHighestTimestamp(t *testing.T) {
 
 // TestPutSOCSameSlotEqualTimestampDistinctSignatures covers a stamp index
 // collision where both chunks share the address, batch, index and timestamp
-// but carry different signatures, hence different stamp hashes. Since
-// f2d7856d the last write wins here (the earlier stamp-hash tie-break was
-// dropped). With deterministic signatures the case cannot arise from valid
-// stamps of one batch owner, so what matters is that the indexes stay
-// consistent: exactly one entry for the slot, serving the last payload, with a
-// fresh bin ID and a single sum row.
+// but carry different signatures, hence different stamp hashes. A same-slot
+// re-stamp must carry a strictly newer timestamp, so the stored entry is kept
+// and the second chunk is rejected without touching the indexes.
 func TestPutSOCSameSlotEqualTimestampDistinctSignatures(t *testing.T) {
 	t.Parallel()
 
@@ -483,32 +485,114 @@ func TestPutSOCSameSlotEqualTimestampDistinctSignatures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			h := newPutHarness(t)
-			earlier, last := tc.order[0], tc.order[1]
+			stored, rejected := tc.order[0], tc.order[1]
 
-			h.put(earlier)
-			_, cbi := h.entry(earlier)
-			earlierBinID := cbi.BinID
+			h.put(stored)
+			_, cbi := h.entry(stored)
+			storedBinID := cbi.BinID
 
-			h.put(last)
+			h.putErr(rejected, storage.ErrOverwriteNewerChunk)
 
 			h.expectSize(1)
 			h.expectSumCount(1)
-			h.expectPayload(last.Address(), last)
-			h.expectEntry(last, true)
-			h.expectEntry(earlier, false)
-			h.expectSumAgainst(last, last)
-			h.expectNoSum(earlier)
+			h.expectPayload(stored.Address(), stored)
+			h.expectEntry(stored, true)
+			h.expectEntry(rejected, false)
+			h.expectSumAgainst(stored, stored)
+			h.expectNoSum(rejected)
 
-			// the replaced slot gets a fresh bin id so peers past the old one
-			// are offered the replacement.
-			_, cbi = h.entry(last)
-			if cbi.BinID <= earlierBinID {
-				t.Fatalf("expected bin id to advance past %d, got %d", earlierBinID, cbi.BinID)
+			_, cbi = h.entry(stored)
+			if cbi.BinID != storedBinID {
+				t.Fatalf("expected bin id %d to be kept, got %d", storedBinID, cbi.BinID)
 			}
-			bin := swarm.Proximity(h.baseAddr.Bytes(), last.Address().Bytes())
-			checkStore(t, h.ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: earlierBinID}, true)
 		})
 	}
+}
+
+// TestPutSameSlotMalleatedStampRejected covers a stamp whose secp256k1
+// signature was malleated to (r, N-s, v^1). It recovers the same batch owner
+// and keeps the batch, index and timestamp, so anyone holding a stamp can mint
+// it. It must not replace the stored entry: neither roll a single owner chunk
+// back to an older payload nor re-index a chunk under a fresh bin ID.
+func TestPutSameSlotMalleatedStampRejected(t *testing.T) {
+	t.Parallel()
+
+	batchOwner := getSigner(t)
+	owner, err := batchOwner.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	batchID := bytes.Repeat([]byte{0xab}, swarm.HashSize)
+
+	signStamp := func(addr swarm.Address, ts uint64) *postage.Stamp {
+		t.Helper()
+		index := make([]byte, swarm.StampIndexSize)
+		timestamp := make([]byte, swarm.StampTimestampSize)
+		binary.BigEndian.PutUint64(timestamp, ts)
+		digest, err := postage.ToSignDigest(addr.Bytes(), batchID, index, timestamp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig, err := batchOwner.Sign(digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return postage.NewStamp(batchID, index, timestamp, sig)
+	}
+
+	malleate := func(addr swarm.Address, stamp *postage.Stamp) *postage.Stamp {
+		t.Helper()
+		sig := stamp.Sig()
+		s := new(big.Int).SetBytes(sig[32:64])
+		malleated := make([]byte, len(sig))
+		copy(malleated, sig[:32])
+		new(big.Int).Sub(btcec.S256().N, s).FillBytes(malleated[32:64])
+		malleated[64] = 27 + 28 - sig[64] // flip the recovery id
+		twin := postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), malleated)
+
+		signer, err := postage.RecoverBatchOwner(addr, twin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(signer, owner.Bytes()) {
+			t.Fatal("malleated stamp must recover the batch owner")
+		}
+		return twin
+	}
+
+	t.Run("cac", func(t *testing.T) {
+		t.Parallel()
+		h := newPutHarness(t)
+		ch := chunk.GenerateTestRandomChunk()
+		stamp := signStamp(ch.Address(), 5)
+
+		h.put(ch.WithStamp(stamp))
+		_, cbi := h.entry(ch.WithStamp(stamp))
+
+		h.putErr(ch.WithStamp(malleate(ch.Address(), stamp)), storage.ErrOverwriteNewerChunk)
+
+		h.expectSize(1)
+		_, after := h.entry(ch.WithStamp(stamp))
+		if after.BinID != cbi.BinID {
+			t.Fatalf("expected bin id %d to be kept, got %d", cbi.BinID, after.BinID)
+		}
+	})
+
+	t.Run("soc rollback", func(t *testing.T) {
+		t.Parallel()
+		h := newPutHarness(t)
+		socOwner := getSigner(t)
+		id := make([]byte, swarm.HashSize)
+		old := newTestSOC(t, socOwner, id, []byte("old payload"))
+		current := newTestSOC(t, socOwner, id, []byte("current payload"))
+		stamp := signStamp(current.Address(), 5)
+
+		h.put(current.WithStamp(stamp))
+		h.putErr(swarm.NewChunk(old.Address(), old.Data()).WithStamp(malleate(old.Address(), stamp)), storage.ErrOverwriteNewerChunk)
+
+		h.expectSize(1)
+		h.expectPayload(current.Address(), current.WithStamp(stamp))
+	})
 }
 
 // TestPutSOCSameSlotRestampRefreshesSumIndex covers a single owner chunk
