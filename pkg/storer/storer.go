@@ -722,6 +722,9 @@ type Options struct {
 	// reserveTestOptions are passed to reserve.New after the others (set by
 	// tests through export_test.go).
 	reserveTestOptions []reserve.Option
+	// addrIndexCompactHook, if not nil, is called before each compaction of
+	// the address index key range (set by tests through export_test.go).
+	addrIndexCompactHook func()
 }
 
 func defaultOptions() *Options {

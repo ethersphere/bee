@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/syndtr/goleveldb/leveldb"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
@@ -377,6 +379,63 @@ func TestReserveAddrIndexReclaimLog(t *testing.T) {
 		if !strings.Contains(lines[0], want) {
 			t.Fatalf("reclaim line %q lacks %s", lines[0], want)
 		}
+	}
+}
+
+// TestReserveAddrIndexReclaimLogInterrupted (T6.5 part 2 fix round 1): when
+// Close interrupts the compaction that follows the background drop (it times
+// out waiting for it, warns and closes the store, so the compaction fails
+// with leveldb.ErrClosed), the storer logs the failure at Debug and not the
+// Info line that the space was reclaimed.
+func TestReserveAddrIndexReclaimLogInterrupted(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	dir := t.TempDir()
+	db := openAddrIndexDB(t, dir, baseAddr, addrIndexOpts{enabled: true})
+	putReserveChunks(t, db, baseAddr, postagetesting.MustNewBatch().ID, 20)
+	closeDB(t, db)
+
+	buf := new(syncBuffer)
+	opts := addrIndexTestOps(baseAddr, addrIndexOpts{})
+	opts.Logger = log.NewLogger("test", log.WithSink(buf), log.WithVerbosity(log.VerbosityDebug))
+	compacting, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	storer.SetAddrIndexCompactHook(opts, func() {
+		once.Do(func() { close(compacting) })
+		<-release
+	})
+	db, err := storer.New(context.Background(), dir, opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if !db.AddrIndexDropStarted() {
+		t.Fatal("no background drop of the disabled index")
+	}
+	select {
+	case <-compacting: // the drop is done, the compaction about to run
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the compaction")
+	}
+	closeDB(t, db) // waits addrIndexStopTimeout, then closes the store
+	close(release)
+	db.WaitAddrIndexDrop()
+
+	out := buf.String()
+	if strings.Contains(out, "reclaimed the disabled reserve address index") {
+		t.Fatalf("reclaim logged after an interrupted compaction:\n%s", out)
+	}
+	var compactLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, `"msg"="compact the reserve address index range"`) {
+			compactLine = line
+		}
+	}
+	if compactLine == "" || !strings.Contains(compactLine, `"level"="debug"`) || !strings.Contains(compactLine, leveldb.ErrClosed.Error()) {
+		t.Fatalf("compaction failure line %q, want one at debug with %q:\n%s", compactLine, leveldb.ErrClosed, out)
+	}
+	if !strings.Contains(out, "reserve address index drop still running at shutdown") {
+		t.Fatalf("no shutdown warning:\n%s", out)
 	}
 }
 

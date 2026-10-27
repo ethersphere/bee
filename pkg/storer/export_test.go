@@ -85,6 +85,12 @@ func SetReserveTestOptions(o *Options, opts ...reserve.Option) {
 	o.reserveTestOptions = opts
 }
 
+// SetAddrIndexCompactHook sets a function New's DB calls before each
+// compaction of the address index key range.
+func SetAddrIndexCompactHook(o *Options, hook func()) {
+	o.addrIndexCompactHook = hook
+}
+
 // AddrIndexRangeSize returns the approximate size of the address index key
 // range in the leveldb tables (leveldb SizeOf; the memtable is not counted).
 func (db *DB) AddrIndexRangeSize() (int64, error) {

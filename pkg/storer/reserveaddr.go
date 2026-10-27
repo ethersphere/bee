@@ -62,6 +62,9 @@ type addrIndexState struct {
 	dropDone   chan struct{}
 	// fills counts the fills New ran (for tests).
 	fills int
+	// compactHook, if not nil, is called before each compaction of the
+	// index's key range (set by tests through Options).
+	compactHook func()
 }
 
 // active reports whether Close must take the ordered path.
@@ -74,6 +77,7 @@ func (s *addrIndexState) active() bool {
 // can write to the reserve.
 func (db *DB) startAddrIndex(ctx context.Context, opts *Options) error {
 	db.addrIndex.mode = addrIndexModeOf(opts)
+	db.addrIndex.compactHook = opts.addrIndexCompactHook
 
 	switch db.addrIndex.mode {
 	case addrIndexOn:
@@ -83,7 +87,9 @@ func (db *DB) startAddrIndex(ctx context.Context, opts *Options) error {
 		}
 		if dropped > 0 {
 			db.logger.Debug("dropped stale reserve address index", "count", dropped)
-			db.compactAddrIndex()
+			if err := db.compactAddrIndex(); err != nil {
+				db.logger.Debug("compact the reserve address index range", "error", err)
+			}
 		}
 		if !needsFill {
 			return nil
@@ -116,8 +122,10 @@ func (db *DB) startAddrIndex(ctx context.Context, opts *Options) error {
 }
 
 // startAddrIndexDrop drops the entries of a disabled address index in the
-// background, then compacts their key range, and logs at Info when both are
-// done. Close stops it.
+// background, then compacts their key range, and logs at Info when both
+// completed: not when Close interrupted either (Close timed out waiting and
+// closed the store), nor when the compaction failed otherwise. Close stops
+// it.
 func (db *DB) startAddrIndexDrop() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -138,24 +146,31 @@ func (db *DB) startAddrIndexDrop() {
 			return
 		}
 		db.logger.Debug("dropped the disabled reserve address index", "count", dropped)
-		db.compactAddrIndex()
+		if err := db.compactAddrIndex(); err != nil {
+			// leveldb.ErrClosed: Close timed out waiting and closed the
+			// store; LevelDB's own compactions reclaim the range later
+			db.logger.Debug("compact the reserve address index range", "error", err)
+			return
+		}
 		db.logger.Info("reclaimed the disabled reserve address index", "count", dropped, "duration", time.Since(start))
 	}()
 }
 
 // compactAddrIndex compacts the address index key range after a drop, so its
-// tombstones don't slow down later seeks into the range.
-func (db *DB) compactAddrIndex() {
+// tombstones don't slow down later seeks into the range. A store that is not
+// LevelDB (in-memory) has nothing to compact.
+func (db *DB) compactAddrIndex() error {
 	if db.pinIntegrity == nil {
-		return // in-memory store
+		return nil // in-memory store
 	}
 	ldb, ok := db.pinIntegrity.Store.(leveldbstore.Storer)
 	if !ok {
-		return
+		return nil
 	}
-	if err := ldb.DB().CompactRange(reserve.AddrIndexKeyRange()); err != nil {
-		db.logger.Debug("compact the reserve address index range", "error", err)
+	if db.addrIndex.compactHook != nil {
+		db.addrIndex.compactHook()
 	}
+	return ldb.DB().CompactRange(reserve.AddrIndexKeyRange())
 }
 
 // closeWithAddrIndex is Close with an enabled address index or a background
