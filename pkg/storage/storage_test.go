@@ -226,7 +226,7 @@ func FuzzChunkSum(f *testing.F) {
 		if err != nil {
 			t.Fatalf("sum computed but stamp hash failed: %v", err)
 		}
-		fromParts, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch)
+		fromParts, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch, storage.ChunkType(ch))
 		if err != nil {
 			t.Fatalf("sum computed but parts variant failed: %v", err)
 		}

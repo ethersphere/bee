@@ -90,7 +90,7 @@ func reserveFingerprint(t *testing.T, st transaction.Storage) string {
 			if err != nil {
 				return false, fmt.Errorf("bin entry %s has no payload: %w", cbi.Address, err)
 			}
-			want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch)
+			want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch, storage.ChunkType(ch))
 			if err != nil {
 				return false, err
 			}

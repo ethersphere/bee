@@ -1286,7 +1286,7 @@ func TestSOCSiblingSumRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	freshSumA, err := storage.ChunkSumFromParts(batchA.ID, stampHashA, chB)
+	freshSumA, err := storage.ChunkSumFromParts(batchA.ID, stampHashA, chB, storage.ChunkType(chB))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1316,7 +1316,7 @@ func TestSOCSiblingSumRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	freshSumB, err := storage.ChunkSumFromParts(batchB.ID, stampHashB, chA2)
+	freshSumB, err := storage.ChunkSumFromParts(batchB.ID, stampHashB, chA2, storage.ChunkType(chA2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1373,7 +1373,7 @@ func TestChunkSumIndexRandomOps(t *testing.T) {
 				if err != nil {
 					return false, fmt.Errorf("op %d: chunk missing for live index entry %s: %w", op, cbi.Address, err)
 				}
-				want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch)
+				want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch, storage.ChunkType(ch))
 				if err != nil {
 					return false, err
 				}

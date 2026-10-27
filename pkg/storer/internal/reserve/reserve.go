@@ -138,7 +138,7 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 		return false, fmt.Errorf("chunk type unspecified: %w", storage.ErrInvalidChunk)
 	}
 
-	sum, err := storage.ChunkSum(chunk)
+	sum, err := storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, chunk, chunkType)
 	if err != nil {
 		return false, err
 	}
@@ -177,13 +177,10 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 			"sum", sumHex,
 			"chunk_type", chunkType,
 		)
-		if err := r.resolveSOCDivergence(ctx, chunk, sum, stampHash, bin, chunkType); err != nil {
-			return false, err
-		}
-		// the tie-break winner replaced the shared payload, so co-resident
+		// when the tie-break winner replaced the shared payload, co-resident
 		// entries under other stamps need their sums refreshed like on any
 		// other single owner chunk replacement.
-		return true, nil
+		return r.resolveSOCDivergence(ctx, chunk, sum, stampHash, bin, chunkType)
 	}
 
 	// bin lock
@@ -261,14 +258,14 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		// so pullsync offers match the payload actually delivered to peers.
 		entrySum := sum
 		if has && !incomingWins {
-			entrySum, err = storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored)
+			entrySum, err = storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored, swarm.ChunkTypeSingleOwner)
 			if err != nil {
 				return fmt.Errorf("sum stored chunk %s: %w", chunk.Address(), err)
 			}
 		}
 
 		// Step 4: Index the reserve entries (BatchRadiusItem, ChunkBinItem, ChunkSumItem).
-		if err := r.storeReserveEntries(s, chunk, entrySum, stampHash, bin); err != nil {
+		if err := r.storeReserveEntries(s, chunk, swarm.ChunkTypeSingleOwner, entrySum, stampHash, bin); err != nil {
 			return err
 		}
 
@@ -383,11 +380,11 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 				return err
 			}
 			if sameAddr {
-				return r.storeReserveEntries(s, chunk, sum, stampHash, bin)
+				return r.storeReserveEntries(s, chunk, swarm.ChunkTypeContentAddressed, sum, stampHash, bin)
 			}
 		}
 
-		if err := r.storeReserveEntries(s, chunk, sum, stampHash, bin); err != nil {
+		if err := r.storeReserveEntries(s, chunk, swarm.ChunkTypeContentAddressed, sum, stampHash, bin); err != nil {
 			return err
 		}
 
@@ -500,8 +497,7 @@ func (r *Reserve) resolveStampIndexCollision(
 // storeReserveEntries writes the common set of reserve index entries for a
 // chunk: chunkstamp, BatchRadiusItem, ChunkBinItem and ChunkSumItem and allocates a fresh bin ID via IncBinID.
 // The stamp index is NOT written here because its lifecycle differs across call sites (LoadOrStore vs explicit Store after collision cleanup).
-func (r *Reserve) storeReserveEntries(s transaction.Store, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) error {
-	chunkType := storage.ChunkType(chunk)
+func (r *Reserve) storeReserveEntries(s transaction.Store, chunk swarm.Chunk, chunkType swarm.ChunkType, sum, stampHash []byte, bin uint8) error {
 	binID, err := r.IncBinID(s.IndexStore(), bin)
 	if err != nil {
 		return err
@@ -576,7 +572,7 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 					return err
 				}
 
-				sum, err := storage.ChunkSumFromParts(stamp.BatchID(), stampHash, chunk)
+				sum, err := storage.ChunkSumFromParts(stamp.BatchID(), stampHash, chunk, swarm.ChunkTypeSingleOwner)
 				if err != nil {
 					return err
 				}
@@ -647,6 +643,7 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 // offered the replacement, propagating the resolution outwards.
 //
 // The reserve size is unchanged either way: one chunk goes in, one comes out.
+// It reports whether the stored payload was replaced.
 func (r *Reserve) resolveSOCDivergence(
 	ctx context.Context,
 	chunk swarm.Chunk,
@@ -654,12 +651,12 @@ func (r *Reserve) resolveSOCDivergence(
 	stampHash []byte,
 	bin uint8,
 	chunkType swarm.ChunkType,
-) error {
+) (replaced bool, err error) {
 	// bin lock
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	return r.st.Run(ctx, func(s transaction.Store) error {
+	err = r.st.Run(ctx, func(s transaction.Store) error {
 		stored, err := s.ChunkStore().Get(ctx, chunk.Address())
 		if err != nil {
 			return fmt.Errorf("load diverging chunk %s: %w", chunk.Address(), err)
@@ -797,8 +794,10 @@ func (r *Reserve) resolveSOCDivergence(
 
 		// swap the payload without touching the reference count: the chunk
 		// store entry is reused, only its content changes.
+		replaced = true
 		return s.ChunkStore().Replace(ctx, chunk, false)
 	})
+	return replaced && err == nil, err
 }
 
 // highestTimestampStamp selects the stamp that represents the precedence of

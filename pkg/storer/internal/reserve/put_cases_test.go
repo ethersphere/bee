@@ -115,7 +115,7 @@ func (h *putHarness) entry(ch swarm.Chunk) (*reserve.BatchRadiusItem, *reserve.C
 // will deliver for that entry, and that the sum index agrees.
 func (h *putHarness) expectSumAgainst(ch, payload swarm.Chunk) {
 	h.t.Helper()
-	want, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), h.stampHash(ch), payload)
+	want, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), h.stampHash(ch), payload, storage.ChunkType(payload))
 	if err != nil {
 		h.t.Fatal(err)
 	}

@@ -125,7 +125,7 @@ func step_09(
 				var sum []byte
 				if !remove {
 					var err error
-					sum, err = storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
+					sum, err = storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk, chunkType)
 					if err != nil {
 						logger.Warning("invalid chunk sum during backfill, removing reserve entry", "address", item.Address, "error", err)
 						remove = true

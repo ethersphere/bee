@@ -19,7 +19,6 @@ import (
 	"resenje.org/singleflight"
 
 	"github.com/ethersphere/bee/v2/pkg/bitvector"
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
@@ -368,9 +367,19 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
+
+		// classify once: the type selects the checksum form below and the
+		// cac/soc handling after stamp validation.
+		chunkType := storage.ChunkType(newChunk)
+
 		// recompute the divergence checksum from the delivered chunk and stamp
 		// and match it against the outstanding (address, sum) want set.
-		sum, err := storage.ChunkSum(newChunk.WithStamp(stamp))
+		sum, err := storage.ChunkSumFromParts(stamp.BatchID(), stampHash, newChunk, chunkType)
 		if err != nil {
 			chunkErr = errors.Join(chunkErr, err)
 			continue
@@ -392,12 +401,19 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
-		if cac.Valid(chunk) {
+		switch chunkType {
+		case swarm.ChunkTypeContentAddressed:
 			go s.unwrap(chunk)
-		} else if sch, err := soc.FromChunkValidate(chunk); err == nil {
+		case swarm.ChunkTypeSingleOwner:
+			// validated by storage.ChunkType above, only parsed here
+			sch, err := soc.FromChunk(chunk)
+			if err != nil {
+				chunkErr = errors.Join(chunkErr, err)
+				continue
+			}
 			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", sch.WrappedChunk().Address())
 			s.gsocHandler(sch)
-		} else {
+		default:
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			s.metrics.ReceivedInvalidChunk.Inc()

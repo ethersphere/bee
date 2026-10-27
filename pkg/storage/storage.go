@@ -318,21 +318,20 @@ func ChunkSum(ch swarm.Chunk) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stamp hash: %w", err)
 	}
-	return ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch)
+	return ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch, ChunkType(ch))
 }
 
 // ChunkSumFromParts computes the pullsync divergence checksum from an already
-// known batch ID and stamp hash. It is equivalent to ChunkSum for a chunk
-// carrying a matching stamp, but spares callers that hold the parts in an
-// index item (migrations, repairs) from loading and rehashing the stamp. The
-// chunk is consulted only to fold in the wrapped CAC address for single owner
-// chunks.
-func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk) ([]byte, error) {
+// known batch ID, stamp hash and chunk type. It is equivalent to ChunkSum for a
+// chunk carrying a matching stamp, but spares callers that already hold these
+// parts from rehashing the stamp and revalidating the chunk. The chunk is
+// consulted only to fold in the wrapped CAC address for single owner chunks.
+func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk, chunkType swarm.ChunkType) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, _ = h.Write(batchID)
 	_, _ = h.Write(stampHash)
 
-	if soc.Valid(ch) {
+	if chunkType == swarm.ChunkTypeSingleOwner {
 		wrapped, err := soc.UnwrapCAC(ch)
 		if err != nil {
 			return nil, fmt.Errorf("unwrap cac: %w", err)

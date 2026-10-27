@@ -269,7 +269,7 @@ func ReserveRepairer(
 							return err
 						}
 
-						sum, err := storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
+						sum, err := storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk, chunkType)
 						if err != nil {
 							return err
 						}
