@@ -335,11 +335,10 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 
 			// do some paging (sub-optimal)
-			if to-from >= pageSize {
+			final := to-from < pageSize
+			if !final {
 				paged = true
 				to = from + pageSize - 1
-			} else {
-				closeOnce.Do(func() { synced <- nil })
 			}
 			l.metrics.BackendCalls.Inc()
 
@@ -360,6 +359,13 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			lastProgress = time.Now()
 			totalTimeMetric(l.metrics.PageProcessDuration, start)
 			l.metrics.PagesProcessed.Inc()
+
+			// Report the sync as done only once the final page is in the store,
+			// so a failure on it reaches the caller instead of being lost after
+			// an early signal.
+			if final {
+				closeOnce.Do(func() { synced <- nil })
+			}
 		}
 	})
 
