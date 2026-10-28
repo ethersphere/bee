@@ -5,6 +5,7 @@
 package storageincentives_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -35,14 +36,16 @@ func TestAgent(t *testing.T) {
 
 	bigBalance := big.NewInt(4_000_000_000)
 	tests := []struct {
-		name           string
-		blocksPerRound uint64
-		blocksPerPhase uint64
-		incrementBy    uint64
-		limit          uint64
-		expectedCalls  bool
-		balance        *big.Int
-		doubling       uint8
+		name            string
+		blocksPerRound  uint64
+		blocksPerPhase  uint64
+		incrementBy     uint64
+		limit           uint64
+		expectedCalls   bool
+		balance         *big.Int
+		doubling        uint8
+		isReserveSynced func(depth uint8) bool
+		sisterAnchor    bool // round anchor at PO radius from the overlay instead of within committed depth
 	}{
 		{
 			name:           "3 blocks per phase, same block number returns twice",
@@ -91,6 +94,49 @@ func TestAgent(t *testing.T) {
 			limit:          144,
 			balance:        big.NewInt(0),
 			doubling:       1,
+		}, {
+			name:           "expected calls - sub-depth syncing but reserve synced for committed depth",
+			blocksPerRound: 12,
+			blocksPerPhase: 4,
+			incrementBy:    2,
+			expectedCalls:  true,
+			limit:          144,
+			balance:        bigBalance,
+			doubling:       1,
+			// radius 8 + doubling 1 = committed depth 9
+			isReserveSynced: func(depth uint8) bool { return depth >= 9 },
+		}, {
+			name:            "no expected calls - reserve not synced at committed depth",
+			blocksPerRound:  12,
+			blocksPerPhase:  4,
+			incrementBy:     2,
+			expectedCalls:   false,
+			limit:           144,
+			balance:         bigBalance,
+			doubling:        1,
+			isReserveSynced: func(depth uint8) bool { return depth > 9 },
+		}, {
+			name:            "no expected calls - sister anchor with sub-depth syncing",
+			blocksPerRound:  12,
+			blocksPerPhase:  4,
+			incrementBy:     2,
+			expectedCalls:   false,
+			limit:           144,
+			balance:         bigBalance,
+			doubling:        1,
+			isReserveSynced: func(depth uint8) bool { return depth >= 9 },
+			sisterAnchor:    true,
+		}, {
+			name:            "expected calls - sister anchor with reserve synced at radius",
+			blocksPerRound:  12,
+			blocksPerPhase:  4,
+			incrementBy:     2,
+			expectedCalls:   true,
+			limit:           144,
+			balance:         bigBalance,
+			doubling:        1,
+			isReserveSynced: func(depth uint8) bool { return depth >= 8 },
+			sisterAnchor:    true,
 		},
 	}
 
@@ -113,8 +159,12 @@ func TestAgent(t *testing.T) {
 				var radius uint8 = 8
 
 				contract := &mockContract{t: t, expectedRadius: radius + tc.doubling}
+				if tc.sisterAnchor {
+					contract.anchor = bytes.Clone(addr.Bytes())
+					contract.anchor[radius/8] ^= 0x80 >> (radius % 8)
+				}
 
-				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling)
+				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.isReserveSynced)
 				testutil.CleanupCloser(t, service)
 
 				<-wait
@@ -459,6 +509,7 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+	isReserveSynced ...func(uint8) bool,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
@@ -476,6 +527,11 @@ func createService(
 		resMock.WithCapacityDoubling(int(doubling)),
 	)
 
+	syncedFunc := func(uint8) bool { return true }
+	if len(isReserveSynced) > 0 && isReserveSynced[0] != nil {
+		syncedFunc = isReserveSynced[0]
+	}
+
 	return storageincentives.New(
 		addr, common.Address{},
 		backend,
@@ -483,7 +539,7 @@ func createService(
 		postageContract,
 		stakingContract,
 		reserve,
-		func() bool { return true },
+		syncedFunc,
 		time.Millisecond*100,
 		blocksPerRound,
 		blocksPerPhase,
@@ -568,6 +624,7 @@ type mockContract struct {
 	isPlayingCount  int
 	beforeIsPlaying func()
 	beforeCommit    func()
+	anchor          []byte
 }
 
 // getCalls returns a snapshot of the calls list
@@ -599,7 +656,7 @@ func (m *mockContract) playingCount() int {
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
-	return nil, nil
+	return m.anchor, nil
 }
 
 func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {

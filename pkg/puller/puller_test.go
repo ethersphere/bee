@@ -93,6 +93,70 @@ func TestSyncOutsideDepth(t *testing.T) {
 	waitSyncCalledBins(t, pullsync, addr2, 0)
 }
 
+func TestSyncRates(t *testing.T) {
+	t.Parallel()
+
+	const radius = 2
+
+	// the peer bin is PO(peer, chunk); the rate must be recorded in our bin PO(base, chunk)
+	for _, tc := range []struct {
+		name     string
+		peerPO   uint8
+		bin      uint8
+		syncedAt uint8 // lowest depth reported as synced, 5 = none
+	}{
+		{name: "outer peer", peerPO: 1, bin: 1, syncedAt: 5},             // our bin unknown, >= radius
+		{name: "sister peer same bin", peerPO: 2, bin: 2, syncedAt: 5},   // our bin unknown, > 2
+		{name: "sister peer deeper bin", peerPO: 2, bin: 3, syncedAt: 3}, // our bin 2
+		{name: "neighbor shallower bin", peerPO: 4, bin: 2, syncedAt: 3}, // our bin 2
+		{name: "neighbor deeper bin", peerPO: 3, bin: 4, syncedAt: 4},    // our bin 3
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			addr := swarm.RandAddress(t)
+			p, _, kad, _ := newPuller(t, opts{
+				kad:      []kadMock.Option{kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: tc.peerPO})},
+				pullSync: []mockps.Option{mockps.WithCursors([]uint64{1000, 1000, 1000, 1000, 1000}, 0), mockps.WithReplies(mockps.SyncReply{Bin: tc.bin, Start: 1, Topmost: 1000, Count: 100, Peer: addr})},
+				bins:     5,
+				rs:       resMock.NewReserve(resMock.WithRadius(radius)),
+			})
+			if !p.IsReserveSynced(radius) {
+				t.Fatal("expected reserve to be synced before any syncing")
+			}
+			kad.Trigger()
+
+			err := spinlock.Wait(time.Second, func() bool {
+				return p.SyncRateWithinRadius() > 0
+			})
+			if err != nil {
+				t.Fatal("expected a non-zero sync rate within radius")
+			}
+			for depth := uint8(radius); depth < 5; depth++ {
+				if got, want := p.IsReserveSynced(depth), depth >= tc.syncedAt; got != want {
+					t.Fatalf("depth %d: got synced %v, want %v", depth, got, want)
+				}
+			}
+			if p.IsReserveSynced(5) {
+				t.Fatal("expected a depth beyond the tracked bins not to be synced")
+			}
+		})
+	}
+
+	t.Run("bins above max", func(t *testing.T) {
+		t.Parallel()
+
+		p, _, _, _ := newPuller(t, opts{bins: swarm.MaxBins + 8, rs: resMock.NewReserve(resMock.WithRadius(2))})
+		if !p.IsReserveSynced(swarm.MaxBins - 1) {
+			t.Fatal("expected the last bin to be tracked")
+		}
+		if p.IsReserveSynced(swarm.MaxBins) {
+			t.Fatal("expected bins to be capped at swarm.MaxBins")
+		}
+		_ = p.SyncRateWithinRadius()
+	})
+}
+
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
 

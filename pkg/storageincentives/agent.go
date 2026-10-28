@@ -66,7 +66,7 @@ type Agent struct {
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
 	store                  storer.Reserve
-	fullSyncedFunc         func() bool
+	reserveSyncedFunc      func(depth uint8) bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
@@ -85,7 +85,7 @@ func New(overlay swarm.Address,
 	batchExpirer postagecontract.PostageBatchExpirer,
 	redistributionStatuser staking.RedistributionStatuser,
 	store storer.Reserve,
-	fullSyncedFunc func() bool,
+	reserveSyncedFunc func(depth uint8) bool,
 	blockTime time.Duration,
 	blocksPerRound,
 	blocksPerPhase uint64,
@@ -104,7 +104,7 @@ func New(overlay swarm.Address,
 		contract:               contract,
 		batchExpirer:           batchExpirer,
 		store:                  store,
-		fullSyncedFunc:         fullSyncedFunc,
+		reserveSyncedFunc:      reserveSyncedFunc,
 		blocksPerRound:         blocksPerRound,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
@@ -225,7 +225,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 		a.state.SetCurrentEvent(currentPhase, round)
-		a.state.SetFullySynced(a.fullSyncedFunc())
+		a.state.SetFullySynced(a.reserveSyncedFunc(a.store.StorageRadius()))
 		a.state.SetHealthy(a.health.IsHealthy())
 		safe.Go(a.logger, "storageincentives-purge-stale-round-data", func() {
 			a.state.purgeStaleRoundData()
@@ -425,8 +425,15 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	a.metrics.NeighborhoodSelected.Inc()
 	a.logger.Info("neighbourhood chosen", "round", round)
 
-	if !a.state.IsFullySynced() {
-		a.logger.Info("skipping round because node is not fully synced")
+	salt, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to read ReserveSalt: %w", err)
+	}
+
+	// in a sister neighbourhood round the sample comes from our bin PO(overlay, anchor)
+	depth := min(committedDepth, swarm.Proximity(a.overlay.Bytes(), salt))
+	if !a.reserveSyncedFunc(depth) {
+		a.logger.Info("skipping round because reserve is not synced", "depth", depth, "round", round)
 		return false, nil
 	}
 
@@ -445,7 +452,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	now := time.Now()
-	sample, err := a.makeSample(ctx, committedDepth)
+	sample, err := a.makeSample(ctx, salt, committedDepth)
 	if err != nil {
 		return false, err
 	}
@@ -491,12 +498,7 @@ func (a *Agent) reserveSampleAndHash(ctx context.Context, anchor []byte, depth u
 	return res, err
 }
 
-func (a *Agent) makeSample(ctx context.Context, committedDepth uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
-	if err != nil {
-		return SampleData{}, err
-	}
-
+func (a *Agent) makeSample(ctx context.Context, salt []byte, committedDepth uint8) (SampleData, error) {
 	res, err := a.reserveSampleAndHash(ctx, salt, committedDepth)
 	if err != nil {
 		return SampleData{}, err
