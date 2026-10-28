@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,6 +42,7 @@ type flushStream struct {
 	unblock chan struct{} // closed by Reset or Close
 
 	reset, closed          chan struct{}
+	resets, closes         atomic.Int32 // every call, so that the test can tell the stream ended once
 	stallOnce, unblockOnce sync.Once
 	resetOnce, closedOnce  sync.Once
 }
@@ -76,12 +78,14 @@ func (s *flushStream) end() {
 }
 
 func (s *flushStream) Reset() error {
+	s.resets.Add(1)
 	s.resetOnce.Do(func() { close(s.reset) })
 	s.end()
 	return nil
 }
 
 func (s *flushStream) Close() error {
+	s.closes.Add(1)
 	s.closedOnce.Do(func() { close(s.closed) })
 	s.end()
 	return nil
