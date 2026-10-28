@@ -7,6 +7,7 @@ package api
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/gorilla/mux"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -181,3 +182,7 @@ func (s *Service) ChunkStreamOpenConnections() float64 {
 	}
 	return m.GetGauge().GetValue()
 }
+
+const RootPath = rootPath
+
+func (s *Service) Router() *mux.Router { return s.router }

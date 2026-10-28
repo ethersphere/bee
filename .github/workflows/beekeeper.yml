@@ -210,8 +210,34 @@ jobs:
       - name: Test feeds
         id: feeds
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
+      - name: Checkout OpenAPI specs
+        uses: actions/checkout@v7
+        with:
+          path: bee-src
+          ref: ${{ github.event.action == 'beekeeper' && github.event.client_payload.ref || '' }}
+          sparse-checkout: openapi
+      # Advisory: compares responses of a live node with the OpenAPI spec
+      # (GET only, valid inputs) and does not fail the job. /pins/check is
+      # excluded because it streams NDJSON with an application/json header.
+      - name: Test OpenAPI conformance
+        continue-on-error: true
+        run: |
+          node=$(beekeeper print nodes --cluster-name local-dns --log-verbosity 0 | grep -m1 -E '^bee-[0-9]+$')
+          timeout 10m pipx run --spec schemathesis==4.29.4 st run bee-src/openapi/Swarm.yaml \
+            --url "http://localhost" \
+            --header "Host: ${node}.localhost" \
+            --mode positive \
+            --include-method GET \
+            --exclude-path-regex '^/(chunks/stream|pss/subscribe|gsoc/subscribe|rchash|pins/check)' \
+            --phases examples,coverage,fuzzing \
+            --checks status_code_conformance,content_type_conformance,response_schema_conformance \
+            --max-examples 10 \
+            --request-timeout 30
       - name: Collect debug artifacts
         if: failure()
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns
           export FAILED='no-test'
@@ -233,13 +259,16 @@ jobs:
           if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
           if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
           if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - name: Create tunshell session for debug
         if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com

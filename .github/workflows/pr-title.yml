@@ -16,8 +16,8 @@ jobs:
         with:
           node-version: '20'
       - name: Install commitlint
-        run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+        run: npm install --ignore-scripts --save-dev @commitlint/cli @commitlint/config-conventional
       - name: PR title linting
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js
+        run: echo "$PR_TITLE" | ./node_modules/.bin/commitlint --config ./commitlint.config.js
