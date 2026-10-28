@@ -90,6 +90,9 @@ func (v *SamplingView) readAt(ctx context.Context, addr swarm.Address, loc shark
 // Len returns the number of addresses in the location table.
 func (v *SamplingView) Len() int { return v.table.Len() }
 
+// TableErr returns the error that cut the table short, if any.
+func (v *SamplingView) TableErr() error { return v.table.Err() }
+
 // Misses returns how many reads fell back to the retrieval index.
 func (v *SamplingView) Misses() int64 { return v.misses.Load() }
 

@@ -25,10 +25,13 @@ type LocationTable struct {
 	keys   [][swarm.HashSize]byte // ascending, as the index is ordered by address
 	locs   []sharky.Location
 	limits []uint32 // by shard, above every slot in locs
+	err    error    // what ended the scan before the end of the range, if anything
 }
 
 // BuildLocationTable scans the retrieval index over every address with
-// proximity of at least depth to anchor.
+// proximity of at least depth to anchor. A scan error other than context
+// cancellation ends the scan but keeps the entries read so far (see Err); an
+// address the table does not hold is read through the index by the caller.
 func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, depth uint8) (*LocationTable, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("chunk store: build location table: %w", err)
@@ -61,7 +64,10 @@ func BuildLocationTable(ctx context.Context, r storage.Reader, anchor []byte, de
 		return false, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("chunk store: build location table: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("chunk store: build location table: %w", err)
+		}
+		t.err = fmt.Errorf("chunk store: build location table: %w", err)
 	}
 	return t, nil
 }
@@ -93,6 +99,11 @@ func (t *LocationTable) Lookup(addr swarm.Address) (sharky.Location, bool) {
 // Len returns the number of addresses in the table.
 func (t *LocationTable) Len() int {
 	return len(t.keys)
+}
+
+// Err returns the error that ended the scan before the end of the range, if any.
+func (t *LocationTable) Err() error {
+	return t.err
 }
 
 // SlotLimits returns, indexed by shard, one more than the highest slot in the

@@ -121,6 +121,9 @@ func (db *DB) reserveSample(
 	defer view.Close()
 	allStats.LocationTableBuildDuration = time.Since(viewStart)
 	allStats.LocationTableSize = int64(view.Len())
+	if err := view.TableErr(); err != nil {
+		db.logger.Warning("location table scan ended early, the remaining chunks are read through the retrieval index", "error", err)
+	}
 
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 

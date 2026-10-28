@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +24,11 @@ import (
 	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
@@ -1138,6 +1142,71 @@ func TestReserveSamplerReplacedSOC(t *testing.T) {
 			}
 			if !item.TransformedAddress.Equal(want) {
 				t.Fatalf("transformed address %s does not match chunk data (want %s)", item.TransformedAddress, want)
+			}
+		})
+	}
+}
+
+// rawIndexItem stores arbitrary bytes under a retrieval index key.
+type rawIndexItem struct {
+	addr swarm.Address
+	data []byte
+}
+
+func (r *rawIndexItem) ID() string               { return r.addr.ByteString() }
+func (r *rawIndexItem) Namespace() string        { return (&chunkstore.RetrievalIndexItem{}).Namespace() }
+func (r *rawIndexItem) Marshal() ([]byte, error) { return r.data, nil }
+func (r *rawIndexItem) Unmarshal([]byte) error   { return nil }
+func (r *rawIndexItem) Clone() storage.Item {
+	return &rawIndexItem{addr: r.addr, data: slices.Clone(r.data)}
+}
+func (r *rawIndexItem) String() string { return r.addr.String() }
+
+// corruptIndexEntry writes a value of the wrong size under the retrieval
+// index key of addr.
+func corruptIndexEntry(t *testing.T, st *storer.DB, addr swarm.Address) {
+	t.Helper()
+	err := st.Storage().Run(context.Background(), func(s transaction.Store) error {
+		return s.IndexStore().Put(&rawIndexItem{addr: addr, data: make([]byte, 7)})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReserveSamplerUnreadableIndexEntry checks that a retrieval index entry
+// that cannot be unmarshaled ends the location table scan early and costs at
+// most the chunk it belongs to, never the sample.
+func TestReserveSamplerUnreadableIndexEntry(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := open(t, baseAddr)
+			chunks, anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+
+			// An entry in the neighborhood that belongs to no reserve chunk.
+			corruptIndexEntry(t, st, swarm.RandAddressAt(t, swarm.NewAddress(anchor), 5))
+			got, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSampleNoErrors(t, got)
+
+			// The entry of a sampled reserve chunk.
+			i := slices.IndexFunc(chunks, func(ch swarm.Chunk) bool {
+				return swarm.Proximity(ch.Address().Bytes(), anchor) >= 5
+			})
+			corruptIndexEntry(t, st, chunks[i].Address())
+			got, err = st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Stats.ChunkLoadFailed != 1 {
+				t.Fatalf("%d chunk loads failed, want 1", got.Stats.ChunkLoadFailed)
 			}
 		})
 	}

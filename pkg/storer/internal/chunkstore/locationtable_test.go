@@ -5,6 +5,7 @@
 package chunkstore_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -150,5 +151,120 @@ func TestLocationTableSlotLimits(t *testing.T) {
 	}
 	if got := table.SlotLimits(); !slices.Equal(got, want) {
 		t.Fatalf("slot limits: got %v, want %v", got, want)
+	}
+}
+
+// rawIndexItem stores arbitrary bytes under a retrieval index key.
+type rawIndexItem struct {
+	addr swarm.Address
+	data []byte
+}
+
+func (r *rawIndexItem) ID() string               { return r.addr.ByteString() }
+func (r *rawIndexItem) Namespace() string        { return (&chunkstore.RetrievalIndexItem{}).Namespace() }
+func (r *rawIndexItem) Marshal() ([]byte, error) { return r.data, nil }
+func (r *rawIndexItem) Unmarshal([]byte) error   { return nil }
+func (r *rawIndexItem) Clone() storage.Item {
+	return &rawIndexItem{addr: r.addr, data: slices.Clone(r.data)}
+}
+func (r *rawIndexItem) String() string { return r.addr.String() }
+
+// An unreadable entry ends the scan: the entries before it stay in the table
+// and the build still succeeds.
+func TestLocationTableStopsAtUnreadableEntry(t *testing.T) {
+	t.Parallel()
+
+	st := newTableIndex(t)
+	anchor := swarm.RandAddress(t)
+	good := make([]swarm.Address, 8)
+	for i := range good {
+		good[i] = swarm.RandAddressAt(t, anchor, 4)
+	}
+	locs := putRetrievalItems(t, st, good)
+	bad := swarm.RandAddressAt(t, anchor, 4)
+	if err := st.Put(&rawIndexItem{addr: bad, data: make([]byte, 7)}); err != nil {
+		t.Fatal(err)
+	}
+
+	table, err := chunkstore.BuildLocationTable(context.Background(), st, anchor.Bytes(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table.Err() == nil {
+		t.Fatal("scan error not reported")
+	}
+	want := 0
+	for _, a := range good {
+		if bytes.Compare(a.Bytes(), bad.Bytes()) < 0 {
+			want++
+			if loc, ok := table.Lookup(a); !ok || loc != locs[a.ByteString()] {
+				t.Fatalf("address %s: got %v %v, want %v", a, loc, ok, locs[a.ByteString()])
+			}
+		}
+	}
+	if table.Len() != want {
+		t.Fatalf("table size %d, want %d", table.Len(), want)
+	}
+	if loc, ok := table.Lookup(bad); ok {
+		t.Fatalf("unreadable entry found at %v", loc)
+	}
+}
+
+// failingReader ends an iteration with err once n entries have been delivered.
+type failingReader struct {
+	storage.Reader
+	n   int
+	err error
+}
+
+func (r *failingReader) Iterate(q storage.Query, fn storage.IterateFn) error {
+	seen := 0
+	err := r.Reader.Iterate(q, func(res storage.Result) (bool, error) {
+		if seen == r.n {
+			return true, nil
+		}
+		seen++
+		return fn(res)
+	})
+	if err != nil {
+		return err
+	}
+	return r.err
+}
+
+func TestLocationTableKeepsEntriesReadBeforeScanError(t *testing.T) {
+	t.Parallel()
+
+	st := newTableIndex(t)
+	addrs := make([]swarm.Address, 5)
+	for i := range addrs {
+		addrs[i] = swarm.RandAddress(t)
+	}
+	locs := putRetrievalItems(t, st, addrs)
+	scanErr := errors.New("scan")
+
+	table, err := chunkstore.BuildLocationTable(context.Background(), &failingReader{Reader: st, n: 3, err: scanErr}, swarm.ZeroAddress.Bytes(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(table.Err(), scanErr) {
+		t.Fatalf("scan error %v, want %v", table.Err(), scanErr)
+	}
+	if table.Len() != 3 {
+		t.Fatalf("table size %d, want 3", table.Len())
+	}
+	found := 0
+	for _, a := range addrs {
+		loc, ok := table.Lookup(a)
+		if !ok {
+			continue
+		}
+		found++
+		if loc != locs[a.ByteString()] {
+			t.Fatalf("address %s: location %v, want %v", a, loc, locs[a.ByteString()])
+		}
+	}
+	if found != 3 {
+		t.Fatalf("found %d addresses, want 3", found)
 	}
 }
