@@ -918,16 +918,20 @@ func TestSnapshotHandoffNoGap(t *testing.T) {
 
 	const maxBlock = uint64(5000)
 
-	// Newest log at maxBlock; a non-matching address makes the listener filter
-	// the events out, so it only advances the chain state per page.
+	// Newest log at maxBlock; empty topics make the listener filter the events
+	// out, so it only advances the chain state per page.
 	logs := []types.Log{
-		{BlockNumber: 10, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
-		{BlockNumber: maxBlock, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
+		{BlockNumber: 10, Topics: []common.Hash{}},
+		{BlockNumber: maxBlock, Topics: []common.Hash{}},
 	}
-	snap, err := snapshot.New(context.Background(), testLog, rawSnapshotGetter(gzipSnapshot(t, logs)), nil,
-		common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, 0)
+	snap, _, err := snapshot.Load(testLog, snapshot.Embedded(rawSnapshotGetter(gzipSnapshot(t, logs))), snapshot.Config{
+		ABI:             abi.ABI{},
+		BlockTime:       time.Second,
+		StallingTimeout: time.Minute,
+		BackoffTimeout:  time.Second,
+	})
 	if err != nil {
-		t.Fatalf("snapshot.New: %v", err)
+		t.Fatalf("snapshot.Load: %v", err)
 	}
 
 	s := mocks.NewStateStore()
@@ -1093,3 +1097,45 @@ func (h *hs) Sum(b []byte) []byte               { return []byte{h.ctr} }
 func (h *hs) Reset()                            {}
 func (h *hs) Size() int                         { panic("not implemented") }
 func (h *hs) BlockSize() int                    { panic("not implemented") }
+
+// DirtyShutdown follows the marker an unfinished transaction leaves in the
+// state store.
+func TestDirtyShutdown(t *testing.T) {
+	t.Parallel()
+
+	s := mocks.NewStateStore()
+
+	dirty, err := batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty {
+		t.Fatal("fresh state store reported as dirty")
+	}
+
+	svc, _, err := batchservice.New(context.Background(), s, mock.New(), testLog, newMockListener(), nil, nil, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TransactionStart(); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty {
+		t.Fatal("unfinished transaction not reported as dirty")
+	}
+
+	if err := svc.TransactionEnd(); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty {
+		t.Fatal("finished transaction still reported as dirty")
+	}
+}
