@@ -78,3 +78,43 @@ func TestWatchStop(t *testing.T) {
 		t.Fatalf("remaining watcher: got %v, want %v", kept, locs)
 	}
 }
+
+// TestWatchRunsBeforeSlotIsFreed shows that a Write cannot receive a released
+// slot until the watcher has returned.
+func TestWatchRunsBeforeSlotIsFreed(t *testing.T) {
+	t.Parallel()
+
+	s := openWatchStore(t)
+	loc := watchWrite(t, s)
+
+	entered := make(chan struct{})
+	gate := make(chan struct{})
+	stop := s.Watch(func(sharky.Location) {
+		close(entered)
+		<-gate
+	})
+	defer stop()
+
+	released := make(chan error, 1)
+	go func() { released <- s.Release(context.Background(), loc) }()
+	<-entered
+
+	// The shard holds one popped slot and the slot tracker offers the next one,
+	// so a freed slot reaches the third write after it. Six writes leave margin.
+	for i := range 6 {
+		if got := watchWrite(t, s); got.Slot == loc.Slot {
+			t.Fatalf("write %d received slot %d before the watcher returned", i, loc.Slot)
+		}
+	}
+
+	close(gate)
+	if err := <-released; err != nil {
+		t.Fatal(err)
+	}
+	for range 6 {
+		if got := watchWrite(t, s); got.Slot == loc.Slot {
+			return
+		}
+	}
+	t.Fatalf("slot %d was not reused after Release returned", loc.Slot)
+}
