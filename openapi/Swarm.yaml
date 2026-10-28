@@ -197,6 +197,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         default:
           description: Default response
     head:
@@ -272,6 +274,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "412":
           description: A conditional request header was not satisfied.
         "416":
@@ -462,6 +466,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -539,6 +545,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "412":
           description: A conditional request header was not satisfied.
         "416":
@@ -594,6 +602,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -934,7 +944,7 @@ paths:
         "200":
           description: NDJSON stream of integrity results, one object per line
           content:
-            application/json:
+            application/x-ndjson:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
         "429":
@@ -1534,6 +1544,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
