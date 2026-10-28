@@ -1097,3 +1097,45 @@ func (h *hs) Sum(b []byte) []byte               { return []byte{h.ctr} }
 func (h *hs) Reset()                            {}
 func (h *hs) Size() int                         { panic("not implemented") }
 func (h *hs) BlockSize() int                    { panic("not implemented") }
+
+// DirtyShutdown follows the marker an unfinished transaction leaves in the
+// state store.
+func TestDirtyShutdown(t *testing.T) {
+	t.Parallel()
+
+	s := mocks.NewStateStore()
+
+	dirty, err := batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty {
+		t.Fatal("fresh state store reported as dirty")
+	}
+
+	svc, _, err := batchservice.New(context.Background(), s, mock.New(), testLog, newMockListener(), nil, nil, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TransactionStart(); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty {
+		t.Fatal("unfinished transaction not reported as dirty")
+	}
+
+	if err := svc.TransactionEnd(); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = batchservice.DirtyShutdown(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty {
+		t.Fatal("finished transaction still reported as dirty")
+	}
+}

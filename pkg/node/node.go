@@ -392,6 +392,13 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: exists: %w", err)
 	}
+	// The batch service resets the store after a dirty shutdown, so a snapshot
+	// applies then just as it does on a resync.
+	dirtyShutdown, err := batchservice.DirtyShutdown(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: dirty shutdown: %w", err)
+	}
+	rebuildBatchStore := o.Resync || dirtyShutdown
 
 	addressbook := addressbook.New(stateStore)
 
@@ -915,7 +922,7 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	snapshotSource, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode)
+	snapshotSource, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, rebuildBatchStore, networkID, beeNodeMode)
 	if skipReason != "" {
 		logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", skipReason)
 	}
@@ -1713,12 +1720,14 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 }
 
 // snapshotSkipReason explains why a postage snapshot would not be replayed, or
-// returns an empty string when it would be.
-func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) string {
+// returns an empty string when it would be. rebuild reports that the batch
+// store is reset on start anyway (resync or dirty shutdown), so an existing
+// store is no reason to skip.
+func snapshotSkipReason(batchStoreExists, rebuild bool, mode api.BeeNodeMode) string {
 	switch {
 	case mode == api.UltraLightMode:
 		return "ultra-light node does not sync postage data"
-	case batchStoreExists && !resync:
+	case batchStoreExists && !rebuild:
 		return "batch store already exists; use --resync to rebuild it from the snapshot"
 	default:
 		return ""
@@ -1727,21 +1736,21 @@ func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) str
 
 // useEmbeddedSnapshot reports whether to rebuild the batch store from the
 // embedded snapshot: mainnet, full or light node, and the store will be built
-// from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
-func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
-	return !skip && snapshotSkipReason(batchStoreExists, resync, mode) == "" && networkID == mainnetNetworkID
+// from scratch (no store yet, or a rebuild wipes it), unless explicitly skipped.
+func useEmbeddedSnapshot(skip, batchStoreExists, rebuild bool, networkID uint64, mode api.BeeNodeMode) bool {
+	return !skip && snapshotSkipReason(batchStoreExists, rebuild, mode) == "" && networkID == mainnetNetworkID
 }
 
 // chooseSnapshotSource picks the snapshot source, if any. A file named by the
 // operator wins on any network; skipReason says why it will not be used.
-func chooseSnapshotSource(file string, skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, skipReason string) {
+func chooseSnapshotSource(file string, skip, batchStoreExists, rebuild bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, skipReason string) {
 	if file != "" {
-		if reason := snapshotSkipReason(batchStoreExists, resync, mode); reason != "" {
+		if reason := snapshotSkipReason(batchStoreExists, rebuild, mode); reason != "" {
 			return nil, reason
 		}
 		return snapshot.File(file), ""
 	}
-	if useEmbeddedSnapshot(skip, batchStoreExists, resync, networkID, mode) {
+	if useEmbeddedSnapshot(skip, batchStoreExists, rebuild, networkID, mode) {
 		return snapshot.Embedded(archive.Getter{}), ""
 	}
 	return nil, ""
