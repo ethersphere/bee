@@ -22,10 +22,7 @@ import (
 // arithmetic never panic on hostile input (e.g. malformed signatures, odd-length
 // nonces, or a StorageRadius chosen to probe the shallow-receipt threshold).
 func FuzzCheckReceipt(f *testing.F) {
-	const (
-		radius    uint8 = 8
-		tolerance uint8 = 2
-	)
+	const radius uint8 = 8
 
 	key, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
@@ -49,7 +46,7 @@ func FuzzCheckReceipt(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, address, signature, nonce []byte, storageRadius uint32) {
 		ps, _ := createPushSyncNodeWithRadius(
-			t, self, defaultPrices, nil, nil, fuzzSigner, radius, tolerance,
+			t, self, defaultPrices, nil, nil, fuzzSigner, radius,
 			mock.WithClosestPeerErr(topology.ErrWantSelf),
 		)
 
