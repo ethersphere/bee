@@ -191,6 +191,25 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 	}
 }
 
+func TestIsChainEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		mode node.NodeMode
+		want bool
+	}{
+		{mode: node.FullMode, want: true},
+		{mode: node.LightMode, want: true},
+		{mode: node.UltraLightMode, want: false},
+		{mode: "", want: false},
+		{mode: "unknown", want: false},
+	} {
+		if got := node.IsChainEnabled(&node.Options{NodeMode: tc.mode}, log.Noop); got != tc.want {
+			t.Errorf("node mode %q: got %t, want %t", tc.mode, got, tc.want)
+		}
+	}
+}
+
 // orderedCloser records its name in order when closed and returns err.
 type orderedCloser struct {
 	name  string
