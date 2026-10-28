@@ -696,6 +696,8 @@ FETCH:
 			}
 
 			jsonhttp.NotFound(w, "path address not found")
+		} else if errors.Is(err, topology.ErrNotFound) {
+			jsonhttp.ServiceUnavailable(w, "content could not be retrieved because no usable peer was available")
 		} else {
 			jsonhttp.NotFound(w, nil)
 		}
@@ -721,6 +723,12 @@ func (s *Service) serveManifestEntry(
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
+		// Files uploaded in a collection with an unknown extension are stored
+		// with an empty type and served without one. Leave those for the
+		// browser to sniff: with nosniff it would not load or render them.
+		if mimeType == "" {
+			w.Header().Del(xContentTypeOptionsHeader)
+		}
 	}
 
 	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)
@@ -733,8 +741,10 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool             `map:"Swarm-Cache"`
+		// The buffer is allocated eagerly, so it must be bounded: 4 MiB is 8x
+		// the largest default (largeFileBufferSize).
+		LookaheadBufferSize *int  `map:"Swarm-Lookahead-Buffer-Size" validate:"omitempty,gte=0,lte=4194304"`
+		Cache               *bool `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -768,10 +778,16 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
 	}
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
 			logger.Error(nil, err.Error())
 			jsonhttp.NotFound(w, nil)
+			return
+		}
+		if errors.Is(err, topology.ErrNotFound) {
+			logger.Debug("api download: no peers available", "address", reference, "error", err)
+			logger.Error(nil, err.Error())
+			jsonhttp.ServiceUnavailable(w, "content could not be retrieved because no usable peer was available")
 			return
 		}
 		logger.Debug("api download: unexpected error", "address", reference, "error", err)

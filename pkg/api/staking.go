@@ -61,8 +61,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
-		var minErr *staking.MinDepositError
-		if errors.As(err, &minErr) {
+		if minErr, ok := errors.AsType[*staking.MinDepositError](err); ok {
 			logger.Debug("insufficient stake amount", "minimum_deposit", minErr.Minimum, "error", err)
 			logger.Error(nil, "insufficient stake amount")
 			jsonhttp.BadRequest(w, stakeDepositErrorResponse{

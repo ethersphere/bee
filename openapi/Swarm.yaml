@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.1
+  version: 8.2.2
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -34,36 +34,12 @@ paths:
       tags:
         - ACT
       parameters:
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
-          required: true
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-          name: swarm-tag
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          name: swarm-pin
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-          name: swarm-deferred-upload
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
-          name: swarm-act-history-address
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         required: true
         content:
@@ -94,11 +70,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
           required: true
           description: Grantee list reference
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       responses:
         "200":
           description: OK
@@ -125,35 +97,16 @@ paths:
           required: true
           description: Grantee list reference
         - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
           name: swarm-act-history-address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
-          required: true
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-          name: swarm-tag
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          name: swarm-pin
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-          name: swarm-deferred-upload
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+          description: "ACT history reference address"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         required: true
         content:
@@ -242,6 +195,8 @@ paths:
                 format: binary
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
     head:
@@ -342,7 +297,7 @@ paths:
         - in: header
           name: swarm-postage-batch-id
           schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
       requestBody:
@@ -643,6 +598,99 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    head:
+      summary: Retrieve headers with content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
+      tags:
+        - BZZ
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: Swarm address of content
+        - in: path
+          name: path
+          schema:
+            type: string
+          required: true
+          description: Path to the file in the collection.
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+      responses:
+        "200":
+          description: Headers for the content at the reference.
+          headers:
+            Content-Type:
+              description: The MIME type of the resource.
+              schema:
+                type: string
+                example: application/octet-stream
+            Content-Length:
+              description: The size of the retrievable content in bytes.
+              schema:
+                type: integer
+                example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
+            Access-Control-Expose-Headers:
+              description: Headers exposed for CORS.
+              schema:
+                type: string
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/tags":
     get:
@@ -790,11 +838,7 @@ paths:
       tags:
         - Pinning
       parameters:
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       responses:
         "200":
           description: Pin already exists
@@ -893,6 +937,12 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
+        "429":
+          description: A check of all pins is already running. Only one such check can run at a time; checks of a single `ref` are not limited.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -998,9 +1048,10 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^[A-Fa-f0-9]{40}$"
           required: true
-          description: Ethereum address of the chunk owner
+          description: Ethereum address of the chunk owner (hex, without the `0x` prefix)
         - in: path
           name: id
           schema:
@@ -1016,7 +1067,7 @@ paths:
         - in: header
           name: swarm-postage-batch-id
           schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: false
           description: ID of the postage batch to use. Either this or `swarm-postage-stamp` must be supplied.
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
@@ -1063,9 +1114,10 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^[A-Fa-f0-9]{40}$"
           required: true
-          description: Ethereum address of the Owner of the SOC
+          description: Ethereum address of the Owner of the SOC (hex, without the `0x` prefix)
         - in: path
           name: id
           schema:
@@ -1092,6 +1144,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1106,7 +1160,8 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
           required: true
           description: Ethereum address of the feed owner
         - in: path
@@ -1125,11 +1180,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
           description: Redundancy level for the feed manifest upload pipeline and ACT encryption
       responses:
         "201":
@@ -1159,7 +1210,8 @@ paths:
         - in: path
           name: owner
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
           required: true
           description: Ethereum address of the feed owner
         - in: path
@@ -1230,11 +1282,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Root hash of content (can be of any type: collection, file, chunk)"
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       responses:
         "200":
           description: Returns if the content is retrievable
@@ -1259,17 +1307,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Re-uploads content for specified root hash (can be of any type: collection, file, chunk, etc.)"
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
-          required: true
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           description: Postage batch to use for re-upload. The chunks are re-stamped with this batch.
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       responses:
         "200":
           description: OK
@@ -1478,11 +1518,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of chunk
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
-          name: swarm-cache
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -1541,7 +1577,7 @@ paths:
         - in: header
           name: swarm-postage-batch-id
           schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
       responses:
         "201":
@@ -2511,7 +2547,8 @@ paths:
           name: address
           required: true
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+            type: string
+            pattern: "^(0x)?[A-Fa-f0-9]{40}$"
         - in: path
           name: coin
           required: true

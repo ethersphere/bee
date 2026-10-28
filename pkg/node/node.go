@@ -99,6 +99,7 @@ type Bee struct {
 	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
+	apiServiceCloser         io.Closer
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
@@ -631,6 +632,7 @@ func NewBee(
 				chequebookFactory,
 				o.SwapInitialDeposit,
 				erc20Service,
+				o.BlockTime,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("init chequebook service: %w", err)
@@ -979,7 +981,7 @@ func NewBee(
 				blockHeight uint64
 				blockErr    error
 			)
-			for i := 0; i < startupBlockHeightChecks; i++ {
+			for range startupBlockHeightChecks {
 				blockHeight, blockErr = chainBackend.BlockNumber(ctx)
 				if blockErr != nil || blockHeight >= cs.Block {
 					break
@@ -1456,11 +1458,17 @@ func NewBee(
 		if swapService != nil {
 			apiService.MustRegisterMetrics(swapService.Metrics()...)
 		}
+		if c, ok := chequebookService.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(c.Metrics()...)
+		}
 
 		apiService.Configure(signer, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 		}, extraOpts, chainID, erc20Service)
+		// Close needs what Configure sets up, so the service is only closed
+		// on shutdown once it has been configured.
+		b.apiServiceCloser = apiService
 
 		apiService.EnableFullAPI()
 
@@ -1551,6 +1559,9 @@ func (b *Bee) Shutdown() error {
 	}
 
 	tryClose(b.apiCloser, "api")
+	// Closing the server leaves hijacked websocket connections open; closing
+	// the service tells their handlers to send a close frame and return.
+	tryClose(b.apiServiceCloser, "api service")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
