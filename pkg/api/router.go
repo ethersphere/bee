@@ -302,8 +302,8 @@ func (s *Service) mountAPI() {
 
 	handle("/chunks/stream", jsonhttp.MethodHandler{
 		http.MethodGet: web.ChainHandlers(
-			s.newTracingHandler("chunks-stream-upload"),
-			web.FinalHandlerFunc(s.chunkUploadStreamHandler),
+			s.newTracingHandler("chunks-stream"),
+			web.FinalHandlerFunc(s.chunkStreamHandler),
 		),
 	})
 
