@@ -146,10 +146,11 @@ type Service struct {
 	metrics     metrics
 	logger      log.Logger
 
+	quit chan struct{} // closed by Close
+
 	mtx     sync.Mutex
 	cohorts map[string]*cohort        // by canonical spec
 	peers   map[string]map[string]int // peer overlay -> cohort key -> streams
-	closed  bool
 }
 
 // New returns a new bps Service. The blocklister may be nil.
@@ -160,6 +161,7 @@ func New(streamer p2p.Streamer, blocklister p2p.Blocklister, broker bool, logger
 		blocklister: blocklister,
 		opts:        o.withDefaults(),
 		metrics:     newMetrics(),
+		quit:        make(chan struct{}),
 		cohorts:     make(map[string]*cohort),
 		peers:       make(map[string]map[string]int),
 		logger:      logger.WithName(loggerName).Register(),
@@ -180,17 +182,24 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Close reclaims every cohort and resets their streams.
+// Close refuses every later join, forgets every cohort and asks every stream
+// in them to reset. A second call does nothing.
 func (s *Service) Close() error {
 	s.mtx.Lock()
-	s.closed = true
-	cohorts := s.cohorts
-	s.cohorts = make(map[string]*cohort)
-	s.mtx.Unlock()
-	for _, co := range cohorts {
-		for _, m := range co.shutdown() {
-			m.reset()
+	defer s.mtx.Unlock()
+	select {
+	case <-s.quit:
+		return nil
+	default:
+	}
+	close(s.quit)
+	for _, co := range s.cohorts {
+		co.mtx.Lock()
+		s.removeCohort(co)
+		for _, m := range co.members() {
+			m.requestReset()
 		}
+		co.mtx.Unlock()
 	}
 	return nil
 }
@@ -584,83 +593,170 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	// re-marshal so that the cohort key ignores fields BPS-lite does not define
 	join.Cohort = &pb.CohortSpec{Topic: join.Cohort.Topic, Binding: join.Cohort.Binding, Principal: join.Cohort.Principal}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	co, m, err := s.join(p.Address, &join, func() {
-		cancel()
-		_ = stream.Reset()
-	}, func() {
-		// closing, not resetting, lets the frames already written arrive
-		_ = stream.Close()
-		cancel()
-	})
+	co, m, leave, err := s.join(p.Address, &join)
 	if err != nil {
 		return s.refuse(ctx, w, stream, err)
 	}
 	// detach on every exit, normal or not
-	defer s.leave(p.Address, co, m)
+	defer leave()
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: m.challenge}); err != nil {
-		m.reset()
+		_ = stream.Reset()
 		return fmt.Errorf("write ack: %w", err)
 	}
+	return s.serve(ctx, p.Address, stream, w, r, co, m)
+}
 
-	// the writer side: deliveries to a receiving stream, and the roster a
-	// pending stream is named in
-	writerDone := make(chan struct{})
-	go func() {
-		defer close(writerDone)
-		for {
-			select {
-			case f := <-m.queue:
-				if err := w.WriteMsgWithContext(ctx, f); err != nil {
-					m.reset()
-					return
-				}
-			case <-m.ended:
-				// an EOS or a revocation: write what is queued — the EOS or the
-				// reduced roster last — then close; a peer that does not read
-				// within the flush deadline is reset
-				flushCtx, flushCancel := context.WithTimeout(ctx, s.opts.FlushTimeout)
-				defer flushCancel()
-				for {
-					select {
-					case f := <-m.queue:
-						if err := w.WriteMsgWithContext(flushCtx, f); err != nil {
-							m.reset()
-							return
-						}
-					default:
-						m.close()
-						return
-					}
-				}
-			case <-ctx.Done():
-				return
-			}
+// serve runs the two halves of an attached stream — the reader, handling the
+// peer's frames, and the writer, delivering the stream's queue — and is the
+// one place where the stream ends: it alone closes or resets it, on its own
+// deadlines and on the requests anyone else makes of the member. It returns
+// once both halves have stopped.
+func (s *Service) serve(ctx context.Context, peer swarm.Address, stream p2p.Stream, w protobuf.Writer, r protobuf.Reader, co *cohort, m *member) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// each half closes its done channel when it stops, the reason left in its
+	// err; flush is closed here, once: write what is queued, then stop
+	flush := make(chan struct{})
+	readDone, writeDone := make(chan struct{}), make(chan struct{})
+	var readErr, writeErr error
+	go func() { defer close(readDone); readErr = s.read(ctx, r, co, m) }()
+	go func() { defer close(writeDone); writeErr = write(ctx, w, m.queue, flush) }()
+	readC := readDone // nil once seen, so that the closed channel is not seen again
+
+	// the auth deadline of a stream admitted pending
+	var authC <-chan time.Time
+	if m.authDeadline {
+		t := time.NewTimer(s.opts.AuthWaitTimeout)
+		defer t.Stop()
+		authC = t.C
+	}
+	// the flush deadline, from the moment the stream is asked to close
+	var flushTimer *time.Timer
+	var flushC <-chan time.Time
+	defer func() {
+		if flushTimer != nil {
+			flushTimer.Stop()
 		}
 	}()
-	defer func() { <-writerDone }()
 
-	// the reader side: publications and authentications
+	// end closes or resets the stream and waits for both halves to stop
+	end := func(graceful bool) {
+		if graceful {
+			// closing, not resetting, lets the frames already written arrive
+			_ = stream.Close()
+		} else {
+			_ = stream.Reset()
+		}
+		cancel()
+		<-readDone
+		<-writeDone
+	}
+
+	for {
+		// a reset asked for takes precedence over everything else
+		select {
+		case <-m.resetReq:
+			end(false)
+			return nil
+		default:
+		}
+		select {
+		case <-m.resetReq:
+			end(false)
+			return nil
+
+		case <-m.closeReq:
+			// an EOS or a revocation: write the queue — the EOS or the reduced
+			// roster last — then close, within the flush deadline
+			if flushC == nil {
+				close(flush)
+				flushTimer = time.NewTimer(s.opts.FlushTimeout)
+				flushC = flushTimer.C
+			}
+
+		case <-flushC:
+			// the peer did not take its queue in time, the write in progress
+			// included: the timer is not the writer's, so a stuck write cannot
+			// hold it off
+			end(false)
+			return nil
+
+		case <-writeDone:
+			// the queue written after a close, or the writer failed
+			end(flushC != nil && writeErr == nil)
+			return nil
+
+		case <-readC:
+			readC = nil
+			if flushC != nil {
+				// closing: nothing more is read anyway, the flush decides
+				continue
+			}
+			violation := errors.Is(readErr, errViolation)
+			if violation && s.blocklister != nil {
+				if berr := s.blocklister.Blocklist(peer, s.opts.ProtoBreachBlocklistDuration, readErr.Error()); berr != nil {
+					s.logger.Debug("blocklist failed", "peer_address", peer, "error", berr)
+				}
+			}
+			// a violation, or the peer went away
+			end(false)
+			if violation {
+				return readErr
+			}
+			return nil
+
+		case <-authC:
+			authC = nil
+			if s.authExpired(peer, co, m) {
+				end(false)
+				return nil
+			}
+
+		case <-ctx.Done():
+			end(false)
+			return nil
+		}
+	}
+}
+
+// read handles the peer's frames until the stream ends, and returns why: a
+// violation, the peer going away, or ctx ending.
+func (s *Service) read(ctx context.Context, r protobuf.Reader, co *cohort, m *member) error {
 	for {
 		var f pb.Broadcast
 		if err := r.ReadMsgWithContext(ctx, &f); err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			m.reset()
-			return nil
+			return err
 		}
 		if err := s.handleFrame(co, m, &f); err != nil {
-			if errors.Is(err, errViolation) && s.blocklister != nil {
-				if berr := s.blocklister.Blocklist(p.Address, s.opts.ProtoBreachBlocklistDuration, err.Error()); berr != nil {
-					s.logger.Debug("blocklist failed", "peer_address", p.Address, "error", berr)
+			return err
+		}
+	}
+}
+
+// write delivers the stream's queue until ctx ends; once flush is closed, it
+// writes what is still queued and returns nil.
+func write(ctx context.Context, w protobuf.Writer, queue <-chan *pb.Broadcast, flush <-chan struct{}) error {
+	for {
+		select {
+		case f := <-queue:
+			if err := w.WriteMsgWithContext(ctx, f); err != nil {
+				return err
+			}
+		case <-flush:
+			for {
+				select {
+				case f := <-queue:
+					if err := w.WriteMsgWithContext(ctx, f); err != nil {
+						return err
+					}
+				default:
+					return nil
 				}
 			}
-			m.reset()
-			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
@@ -683,22 +779,11 @@ func (s *Service) refuse(ctx context.Context, w protobuf.Writer, stream p2p.Stre
 }
 
 // handleFrame validates a Broadcast arriving at the broker per SWIP-74 and
-// SWIP-87 and accepts, drops or punishes it. A returned error resets the stream.
+// SWIP-87 and accepts, drops or punishes it. A returned error is a violation.
 func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	principal := co.spec.Principal
 	admin := bytes.Equal(m.identity, principal)
-
-	co.mtx.Lock()
-	role := m.role
-	named, cued := co.rostered(m.identity), m.cued
-	var cursor uint64
-	switch f.Kind {
-	case pb.Kind_DATA:
-		cursor = co.cursors[string(m.identity)]
-	case pb.Kind_ROSTER:
-		cursor = co.rosterCursor
-	}
-	co.mtx.Unlock()
+	role, named, cued, cursor := co.view(m, f.Kind)
 
 	// 0. a stream being closed — revoked, or ended by an EOS — is not read: what
 	// it still sends was sent before it read the roster or the EOS
@@ -710,6 +795,8 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	// roster no longer names, raced its revocation: the stream is closed, the
 	// AUTH dropped, nothing punished
 	if role == roleSpectator && f.Kind == pb.Kind_AUTH && !named && cued {
+		co.mtx.Lock()
+		defer co.mtx.Unlock()
 		s.revokeSpectator(co, m)
 		return nil
 	}
@@ -739,7 +826,8 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 	}
 	// 5. the chunk must be its owner's at the id derived from the frame: the
 	// stream's identity for DATA and AUTH, the principal for the service kinds;
-	// an AUTH or EOS is moreover the empty chunk at index 0
+	// an AUTH or EOS is moreover the empty chunk at index 0. The signature check
+	// runs outside the lock, which is why the frame is applied in a second step.
 	owner := m.identity
 	if service(f.Kind) {
 		owner = principal
@@ -757,26 +845,32 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 			return nil
 		}
 	}
+	s.apply(co, m, f, roster)
+	return nil
+}
 
-	var resets, evicted, closes []*member
+// apply applies a validated frame to the cohort. Every stream it ends, it ends
+// by a request to the stream's handler, which never blocks, so it all runs
+// under one lock.
+func (s *Service) apply(co *cohort, m *member, f *pb.Broadcast, roster [][]byte) {
 	co.mtx.Lock()
+	defer co.mtx.Unlock()
+
 	// a roster revoking the identity, or an EOS, was accepted since the checks
 	if r := m.role; r == roleRevoked || r == roleEnded {
-		co.mtx.Unlock()
 		s.dropClosing(co, r)
-		return nil
+		return
 	}
 	switch f.Kind {
 	case pb.Kind_AUTH:
 		switch {
 		case m.role == roleSpectator && !co.rostered(m.identity):
 			// revoked since the checks
-			co.mtx.Unlock()
 			s.revokeSpectator(co, m)
-			return nil
+			return
 		case m.role != rolePublisher:
 			// the auth of a pending stream or of a spectator a roster names
-			resets, evicted = co.upgrade(m, s.opts.MaxPublisherStreams)
+			s.countQueueResets(co, co.upgrade(m, s.opts.MaxPublisherStreams))
 		}
 		// on a publisher stream, a heartbeat
 		co.inactiveSince = time.Now()
@@ -786,59 +880,38 @@ func (s *Service) handleFrame(co *cohort, m *member, f *pb.Broadcast) error {
 		if f.Index < co.cursors[k] {
 			// raced with another publisher stream of the same identity
 			s.count(&co.counters.retransmit, "retransmit")
-			break
+			return
 		}
 		co.cursors[k] = f.Index + 1
 		co.inactiveSince = time.Now()
 		s.metrics.Delivered.Inc()
-		resets = co.deliver(f, m)
+		s.countQueueResets(co, co.deliver(f, m))
 
 	case pb.Kind_ROSTER:
 		if f.Index < co.rosterCursor {
 			s.count(&co.counters.retransmit, "retransmit")
-			break
+			return
 		}
 		co.rosterCursor = f.Index + 1
 		co.inactiveSince = time.Now()
-		resets, closes = co.applyRoster(f, roster, m)
+		s.countQueueResets(co, co.applyRoster(f, roster, m))
 
 	case pb.Kind_EOS:
 		// the channel is ended: every stream is told — pending ones too — and
-		// closed, and nothing more is read from any of them
+		// closed, and nothing more is read from any of them; the cohort is
+		// forgotten when the last of them has left, and a Join meanwhile
+		// creates a fresh one
 		co.ended = true
-		resets = co.deliver(f, m)
-		for o := range co.members {
-			if o.role == rolePending && !o.enqueue(f) {
-				resets = append(resets, o)
-			}
-		}
-		closes = co.end()
-		for _, o := range closes {
-			if o.authTimer != nil {
-				o.authTimer.Stop()
+		overflow := co.deliver(f, m)
+		for _, o := range co.members() {
+			if o.role == rolePending && !o.enqueue(f) && o.requestReset() {
+				overflow++
 			}
 			o.role = roleEnded
+			o.requestClose()
 		}
+		s.countQueueResets(co, overflow)
 	}
-	co.mtx.Unlock()
-
-	// the resets of the overflowed streams, outside the lock (see deliver)
-	for _, r := range resets {
-		s.count(&co.counters.queueReset, "queue_reset")
-		r.reset()
-	}
-	for _, r := range evicted {
-		r.reset()
-	}
-	if f.Kind == pb.Kind_EOS {
-		s.endCohort(co, closes)
-		return nil
-	}
-	// the revoked streams are closed once the roster is written to them
-	for _, r := range closes {
-		r.end()
-	}
-	return nil
 }
 
 // mayEmit reports whether a stream of the role may send a frame of the kind
@@ -865,55 +938,49 @@ func (s *Service) dropClosing(co *cohort, r role) {
 	s.count(&co.counters.revoked, "revoked")
 }
 
+// countQueueResets counts the streams reset because their queue was full.
+func (s *Service) countQueueResets(co *cohort, n int) {
+	for range n {
+		s.count(&co.counters.queueReset, "queue_reset")
+	}
+}
+
 // revokeSpectator closes a spectator whose AUTH raced the roster revoking it.
+// Must be called with co.mtx held.
 func (s *Service) revokeSpectator(co *cohort, m *member) {
-	co.mtx.Lock()
 	if m.role == roleSpectator {
 		m.role = roleRevoked
 		co.spectators--
 	}
-	co.mtx.Unlock()
 	s.count(&co.counters.revoked, "revoked")
-	m.end()
+	m.requestClose()
 }
 
-// endCohort forgets a cohort ended by its admin's EOS and closes its streams
-// once their queues — the EOS last — are written.
-func (s *Service) endCohort(co *cohort, ms []*member) {
-	s.mtx.Lock()
-	if s.cohorts[co.key] == co {
-		co.mtx.Lock()
-		s.removeCohort(co)
-		co.mtx.Unlock()
-	}
-	s.mtx.Unlock()
-	for _, m := range ms {
-		m.end()
-	}
-}
-
-// join attaches a stream to the cohort named by the spec, creating the
-// cohort if no live one has it. An error wrapping errFull means a capacity
-// bound was hit. reset ends the stream abruptly, close after its queue.
-func (s *Service) join(peer swarm.Address, join *pb.Join, reset, closeFn func()) (*cohort, *member, error) {
+// join attaches a stream to the cohort named by the spec, creating the cohort
+// if no live one has it, and returns leave, which detaches the stream again:
+// the stream's handler calls it once, when it returns. An error wrapping
+// errFull means a capacity bound was hit.
+func (s *Service) join(peer swarm.Address, join *pb.Join) (co *cohort, m *member, leave func(), err error) {
 	key, err := join.Cohort.Marshal()
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal cohort spec: %w", err)
+		return nil, nil, nil, fmt.Errorf("marshal cohort spec: %w", err)
 	}
-	k := string(key)
+	k, pk := string(key), peer.ByteString()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	if s.closed {
-		return nil, nil, errSessionClosed
+	select {
+	case <-s.quit:
+		return nil, nil, nil, errSessionClosed
+	default:
 	}
 
-	pc := s.peers[peer.ByteString()]
+	pc := s.peers[pk]
 	if pc[k] == 0 && len(pc) >= s.opts.MaxCohortsPerConnection {
-		return nil, nil, fmt.Errorf("too many cohorts per peer: %w", errFull)
+		return nil, nil, nil, fmt.Errorf("too many cohorts per peer: %w", errFull)
 	}
 	if pc[k] >= s.opts.MaxPeerStreamsPerCohort {
-		return nil, nil, fmt.Errorf("too many streams per peer per cohort: %w", errFull)
+		return nil, nil, nil, fmt.Errorf("too many streams per peer per cohort: %w", errFull)
 	}
 
 	co, ok := s.cohorts[k]
@@ -929,15 +996,9 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset, closeFn func())
 	}
 	if !ok {
 		if len(s.cohorts) >= s.opts.MaxBrokerCohorts {
-			return nil, nil, fmt.Errorf("too many cohorts per broker: %w", errFull)
+			return nil, nil, nil, fmt.Errorf("too many cohorts per broker: %w", errFull)
 		}
-		co = &cohort{
-			key:           k,
-			spec:          join.Cohort,
-			members:       make(map[*member]struct{}),
-			cursors:       make(map[string]uint64),
-			inactiveSince: time.Now(),
-		}
+		co = newCohort(k, join.Cohort)
 		co.inactivity = time.AfterFunc(s.opts.InactiveTimeout, func() { s.reclaim(co) })
 		s.cohorts[k] = co
 		s.metrics.Cohorts.Set(float64(len(s.cohorts)))
@@ -957,39 +1018,21 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset, closeFn func())
 		role = rolePending
 	}
 	if role == roleSpectator && full {
-		if len(co.members) == 0 {
+		if len(co.attached) == 0 {
 			s.removeCohort(co)
 		}
-		return nil, nil, fmt.Errorf("too many subscribers per cohort: %w", errFull)
+		return nil, nil, nil, fmt.Errorf("too many subscribers per cohort: %w", errFull)
 	}
 
 	challenge := make([]byte, ChallengeSize)
 	if _, err := rand.Read(challenge); err != nil {
-		if len(co.members) == 0 {
+		if len(co.attached) == 0 {
 			s.removeCohort(co)
 		}
-		return nil, nil, fmt.Errorf("challenge: %w", err)
+		return nil, nil, nil, fmt.Errorf("challenge: %w", err)
 	}
-	m := &member{
-		role:      role,
-		identity:  join.Identity,
-		challenge: challenge,
-		queue:     make(chan *pb.Broadcast, s.opts.QueueCap),
-		ended:     make(chan struct{}),
-	}
-	var once, endOnce sync.Once
-	m.reset = func() { once.Do(reset) }
-	m.close = func() { once.Do(closeFn) }
-	// a stream being closed has the flush deadline to take its queue, the write
-	// in progress included; then it is reset, unless it closed in time
-	m.end = func() {
-		endOnce.Do(func() {
-			close(m.ended)
-			time.AfterFunc(s.opts.FlushTimeout, m.reset)
-		})
-	}
+	m = newMember(role, join.Identity, challenge, s.opts.QueueCap)
 	if role == rolePending {
-		m.authTimer = time.AfterFunc(s.opts.AuthWaitTimeout, func() { s.authTimeout(peer, co, m) })
 		// a rostered identity receives the roster that names it at once: its cue
 		if !bytes.Equal(join.Identity, join.Cohort.Principal) {
 			m.queue <- co.rosterFrame
@@ -1004,45 +1047,39 @@ func (s *Service) join(peer swarm.Address, join *pb.Join, reset, closeFn func())
 			m.cued = co.rostered(join.Identity)
 		}
 	}
-	co.members[m] = struct{}{}
+	co.attached[m] = struct{}{}
 
 	if pc == nil {
 		pc = make(map[string]int)
-		s.peers[peer.ByteString()] = pc
+		s.peers[pk] = pc
 	}
 	pc[k]++
-	return co, m, nil
-}
 
-// leave detaches a stream. A cohort with no attached streams is reclaimed at once.
-func (s *Service) leave(peer swarm.Address, co *cohort, m *member) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	if pc := s.peers[peer.ByteString()]; pc != nil {
-		if pc[co.key]--; pc[co.key] <= 0 {
-			delete(pc, co.key)
+	// leave detaches the stream: the peer's stream count, the member, and the
+	// cohort, once no stream is attached to it
+	leave = func() {
+		s.mtx.Lock()
+		defer s.mtx.Unlock()
+		if pc := s.peers[pk]; pc != nil {
+			if pc[k]--; pc[k] <= 0 {
+				delete(pc, k)
+			}
+			if len(pc) == 0 {
+				delete(s.peers, pk)
+			}
 		}
-		if len(pc) == 0 {
-			delete(s.peers, peer.ByteString())
+
+		co.mtx.Lock()
+		defer co.mtx.Unlock()
+		delete(co.attached, m)
+		if m.role == roleSpectator {
+			co.spectators--
+		}
+		if len(co.attached) == 0 && s.cohorts[k] == co {
+			s.removeCohort(co)
 		}
 	}
-
-	co.mtx.Lock()
-	defer co.mtx.Unlock()
-	if _, ok := co.members[m]; !ok {
-		return
-	}
-	delete(co.members, m)
-	if m.authTimer != nil {
-		m.authTimer.Stop()
-	}
-	if m.role == roleSpectator {
-		co.spectators--
-	}
-	if len(co.members) == 0 && s.cohorts[co.key] == co {
-		s.removeCohort(co)
-	}
+	return co, m, leave, nil
 }
 
 // removeCohort forgets the cohort. Must be called with s.mtx and co.mtx held.
@@ -1053,41 +1090,33 @@ func (s *Service) removeCohort(co *cohort) {
 }
 
 // reclaim forgets a cohort on which no frame was accepted for the inactivity
-// deadline, and resets every stream in it.
+// deadline, and asks every stream in it to reset.
 func (s *Service) reclaim(co *cohort) {
 	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if s.cohorts[co.key] != co {
-		s.mtx.Unlock()
 		return
 	}
+
 	co.mtx.Lock()
+	defer co.mtx.Unlock()
 	if idle := time.Since(co.inactiveSince); idle < s.opts.InactiveTimeout {
 		co.inactivity.Reset(s.opts.InactiveTimeout - idle)
-		co.mtx.Unlock()
-		s.mtx.Unlock()
 		return
 	}
 	s.removeCohort(co)
-	co.mtx.Unlock()
-	s.mtx.Unlock()
-
-	s.logger.Debug("cohort reclaimed", "error", errCohortReclaimed)
-	for _, m := range co.shutdown() {
-		m.reset()
+	for _, m := range co.members() {
+		m.requestReset()
 	}
+	s.logger.Debug("cohort reclaimed", "error", errCohortReclaimed)
 }
 
-// authTimeout disconnects a pending stream that has not authenticated in time.
-func (s *Service) authTimeout(peer swarm.Address, co *cohort, m *member) {
-	co.mtx.Lock()
-	pending := m.role == rolePending
-	if pending {
-		// an AUTH that arrives now is not accepted
-		m.role = roleRevoked
-	}
-	co.mtx.Unlock()
-	if !pending {
-		return
+// authExpired ends a stream still pending at its auth deadline, and reports
+// whether it was: a stream that authenticated, or began closing, before the
+// deadline is left alone.
+func (s *Service) authExpired(peer swarm.Address, co *cohort, m *member) bool {
+	if !co.expire(m) {
+		return false
 	}
 	s.count(&co.counters.authTimeout, "auth_timeout")
 	// a rostered identity admitted past a full fan-out set that does not
@@ -1097,7 +1126,7 @@ func (s *Service) authTimeout(peer swarm.Address, co *cohort, m *member) {
 			s.logger.Debug("blocklist failed", "peer_address", peer, "error", err)
 		}
 	}
-	m.reset()
+	return true
 }
 
 // Counters returns the counters of the live cohort named by the spec.
@@ -1125,6 +1154,9 @@ const (
 	roleEnded                     // a stream of a cohort its admin's EOS ended: being closed, not read
 )
 
+// receives reports whether deliveries are enqueued on a stream of the role.
+func (r role) receives() bool { return r == roleSpectator || r == rolePublisher }
+
 type cohort struct {
 	key        string
 	spec       *pb.CohortSpec
@@ -1137,10 +1169,32 @@ type cohort struct {
 	rosterCursor  uint64            // the lowest ROSTER index accepted next
 	rosterFrame   *pb.Broadcast     // the latest accepted ROSTER frame: the first delivery
 	inactiveSince time.Time
-	members       map[*member]struct{}
-	spectators    int    // the fan-out set
-	authSeq       uint64 // orders publisher streams by their auth
-	ended         bool   // the admin's EOS was accepted
+	attached      map[*member]struct{} // the streams attached to the cohort
+	spectators    int                  // the fan-out set
+	authSeq       uint64               // orders publisher streams by their auth
+	ended         bool                 // the admin's EOS was accepted
+}
+
+// newCohort returns an empty cohort for the spec, keyed by its canonical
+// serialisation. The caller arms its inactivity timer.
+func newCohort(key string, spec *pb.CohortSpec) *cohort {
+	return &cohort{
+		key:           key,
+		spec:          spec,
+		attached:      make(map[*member]struct{}),
+		cursors:       make(map[string]uint64),
+		inactiveSince: time.Now(),
+	}
+}
+
+// members returns the streams attached to the cohort. Must be called with
+// co.mtx held.
+func (co *cohort) members() []*member {
+	ms := make([]*member, 0, len(co.attached))
+	for m := range co.attached {
+		ms = append(ms, m)
+	}
+	return ms
 }
 
 // rostered reports whether the latest roster names the address. Must be
@@ -1149,43 +1203,63 @@ func (co *cohort) rostered(a []byte) bool {
 	return contains(co.roster, a)
 }
 
-// receives reports whether deliveries are enqueued on a stream of the role.
-func (r role) receives() bool { return r == roleSpectator || r == rolePublisher }
+// view returns what the checks before the signature need of a stream: its
+// role, whether the roster names its identity, whether a roster naming it was
+// enqueued on it, and the cursor of the feed a frame of the kind is on.
+func (co *cohort) view(m *member, kind pb.Kind) (r role, named, cued bool, cursor uint64) {
+	co.mtx.Lock()
+	defer co.mtx.Unlock()
+	switch kind {
+	case pb.Kind_DATA:
+		cursor = co.cursors[string(m.identity)]
+	case pb.Kind_ROSTER:
+		cursor = co.rosterCursor
+	}
+	return m.role, co.rostered(m.identity), m.cued, cursor
+}
+
+// expire marks a stream still pending at its auth deadline as ending, so that
+// an AUTH arriving now is not accepted, and reports whether it was pending.
+func (co *cohort) expire(m *member) bool {
+	co.mtx.Lock()
+	defer co.mtx.Unlock()
+	if m.role != rolePending {
+		return false
+	}
+	m.role = roleRevoked
+	return true
+}
 
 // deliver enqueues an accepted frame on every receiving stream — for DATA,
-// every one not bound to the sender's identity — and returns the streams whose
-// queue was full. A ROSTER or EOS reaches the sender too: where it sits in the
-// sender's stream is where it took effect, and every receiver, the admin
-// included, admits by the rosters it receives. The send is
-// non-blocking, so that one slow receiver cannot stall the cohort; a stream
-// whose queue is full is returned and reset by the caller after co.mtx is
-// released — reset ends the stream, whose handler then calls leave, which
-// takes s.mtx and co.mtx, so resetting under the lock would deadlock. Must be
-// called with co.mtx held.
-func (co *cohort) deliver(f *pb.Broadcast, sender *member) []*member {
-	var overflow []*member
-	for m := range co.members {
-		if !m.role.receives() || f.Kind == pb.Kind_DATA && bytes.Equal(m.identity, sender.identity) {
+// every one not bound to the sender's identity — and returns how many streams
+// were asked to reset because their queue was full. A ROSTER or EOS reaches
+// the sender too: where it sits in the sender's stream is where it took
+// effect, and every receiver, the admin included, admits by the rosters it
+// receives. The send is non-blocking, so that one slow receiver cannot stall
+// the cohort. Must be called with co.mtx held.
+func (co *cohort) deliver(f *pb.Broadcast, sender *member) (overflow int) {
+	for m := range co.attached {
+		if !m.role.receives() || m.resetting || f.Kind == pb.Kind_DATA && bytes.Equal(m.identity, sender.identity) {
 			continue
 		}
-		if !m.enqueue(f) {
-			overflow = append(overflow, m)
+		if !m.enqueue(f) && m.requestReset() {
+			overflow++
 		}
 	}
 	return overflow
 }
 
 // upgrade makes a pending stream, or a spectator stream a roster names, a
-// publisher stream, and returns the streams to reset: one whose queue was
-// full, and the oldest publisher streams of the identity beyond the bound.
-// Must be called with co.mtx held.
-func (co *cohort) upgrade(m *member, maxStreams int) (resets, evicted []*member) {
+// publisher stream; beyond the bound on the publisher streams one address may
+// hold, the oldest of them is asked to reset. It returns 1 if the stream's
+// queue could not take the latest roster, and 0 otherwise. Must be called with
+// co.mtx held.
+func (co *cohort) upgrade(m *member, maxStreams int) (overflow int) {
 	if m.role == rolePending {
-		m.authTimer.Stop()
 		// a stream that starts receiving gets the latest roster first, unless
 		// it was given it as its cue
-		if co.rosterFrame != nil && m.given != co.rosterFrame && !m.enqueue(co.rosterFrame) {
-			resets = append(resets, m)
+		if co.rosterFrame != nil && m.given != co.rosterFrame && !m.enqueue(co.rosterFrame) && m.requestReset() {
+			overflow++
 		}
 	} else {
 		// a spectator leaves the fan-out set; it has the roster already
@@ -1196,8 +1270,8 @@ func (co *cohort) upgrade(m *member, maxStreams int) (resets, evicted []*member)
 	m.authSeq = co.authSeq
 
 	var same []*member
-	for o := range co.members {
-		if o.role == rolePublisher && bytes.Equal(o.identity, m.identity) {
+	for o := range co.attached {
+		if o.role == rolePublisher && !o.resetting && bytes.Equal(o.identity, m.identity) {
 			same = append(same, o)
 		}
 	}
@@ -1208,24 +1282,24 @@ func (co *cohort) upgrade(m *member, maxStreams int) (resets, evicted []*member)
 				oldest = i
 			}
 		}
-		evicted = append(evicted, same[oldest])
+		same[oldest].requestReset()
 		same = append(same[:oldest], same[oldest+1:]...)
 	}
-	return resets, evicted
+	return overflow
 }
 
 // applyRoster makes an accepted roster the cohort's: it is delivered — to its
 // sender too — and every publisher stream of an identity it drops is revoked:
 // written the roster, then closed, what it sends meanwhile dropped; the
 // cursors of dropped identities are forgotten. A spectator it names may send
-// its AUTH. It returns the streams to reset for a full queue and the revoked
-// streams to close. Must be called with co.mtx held.
-func (co *cohort) applyRoster(f *pb.Broadcast, roster [][]byte, sender *member) (resets, closes []*member) {
+// its AUTH. It returns how many streams were asked to reset because their
+// queue was full. Must be called with co.mtx held.
+func (co *cohort) applyRoster(f *pb.Broadcast, roster [][]byte, sender *member) (overflow int) {
 	principal := co.spec.Principal
 	co.roster = roster
 	co.rosterFrame = f
-	resets = co.deliver(f, sender)
-	for m := range co.members {
+	overflow = co.deliver(f, sender)
+	for m := range co.attached {
 		if bytes.Equal(m.identity, principal) {
 			continue
 		}
@@ -1236,23 +1310,24 @@ func (co *cohort) applyRoster(f *pb.Broadcast, roster [][]byte, sender *member) 
 		case m.role == rolePending && co.rostered(m.identity):
 			// a rostered pending stream is given the latest roster
 			m.given = f
-			if !m.enqueue(f) {
-				resets = append(resets, m)
+			if !m.enqueue(f) && m.requestReset() {
+				overflow++
 			}
 		case m.role == rolePending:
 			// revoked before its auth: told, then closed
-			m.authTimer.Stop()
 			m.role = roleRevoked
 			if !m.enqueue(f) {
-				resets = append(resets, m)
+				if m.requestReset() {
+					overflow++
+				}
 				continue
 			}
-			closes = append(closes, m)
+			m.requestClose()
 		case m.role == rolePublisher && !co.rostered(m.identity):
 			// revoked: it was delivered this roster above; closed once that
 			// is written
 			m.role = roleRevoked
-			closes = append(closes, m)
+			m.requestClose()
 		}
 	}
 	for k := range co.cursors {
@@ -1260,41 +1335,66 @@ func (co *cohort) applyRoster(f *pb.Broadcast, roster [][]byte, sender *member) 
 			delete(co.cursors, k)
 		}
 	}
-	return resets, closes
+	return overflow
 }
 
-// end returns the cohort's streams for an EOS to close. Must be called with
-// co.mtx held.
-func (co *cohort) end() []*member {
-	ms := make([]*member, 0, len(co.members))
-	for m := range co.members {
-		ms = append(ms, m)
-	}
-	return ms
-}
-
-// shutdown returns the cohort's streams, for the caller to reset.
-func (co *cohort) shutdown() []*member {
-	co.mtx.Lock()
-	defer co.mtx.Unlock()
-	return co.end()
-}
-
-// member is one stream attached to a cohort. role and authSeq are guarded by
+// member is one stream attached to a cohort. Its handler owns the stream and
+// is the only one that closes or resets it; anyone else asks, by
+// requestClose or requestReset. The fields after the requests are guarded by
 // cohort.mtx.
 type member struct {
+	identity     []byte
+	challenge    []byte
+	authDeadline bool // admitted pending: the auth deadline applies
+	queue        chan *pb.Broadcast
+	closeReq     chan struct{} // one slot: write the queue, then close
+	resetReq     chan struct{} // one slot: reset at once; takes precedence
+
 	role      role
-	identity  []byte
-	challenge []byte
-	queue     chan *pb.Broadcast
-	ended     chan struct{} // closed by an EOS: write the queue, then close
-	reset     func()
-	close     func()
-	end       func()
-	authTimer *time.Timer
 	authSeq   uint64
 	cued      bool          // a roster naming the identity was enqueued on this spectator stream
 	given     *pb.Broadcast // the roster last enqueued on a rostered pending stream
+	resetting bool          // a reset was asked for: nothing more is enqueued
+}
+
+// newMember returns the member of a stream joining in the role, with its
+// outbound queue and its two requests.
+func newMember(r role, identity, challenge []byte, queueCap int) *member {
+	return &member{
+		identity:     identity,
+		challenge:    challenge,
+		authDeadline: r == rolePending,
+		queue:        make(chan *pb.Broadcast, queueCap),
+		closeReq:     make(chan struct{}, 1),
+		resetReq:     make(chan struct{}, 1),
+		role:         r,
+	}
+}
+
+// requestClose asks the stream's handler to write what is queued, then close
+// the stream, within the flush deadline. It never blocks, and asking again
+// changes nothing.
+func (m *member) requestClose() { request(m.closeReq) }
+
+// requestReset asks the stream's handler to reset the stream at once, and
+// keeps anything more from being enqueued on it. It never blocks; it reports
+// whether this was the first ask. Must be called with cohort.mtx held.
+func (m *member) requestReset() bool {
+	if m.resetting {
+		return false
+	}
+	m.resetting = true
+	request(m.resetReq)
+	return true
+}
+
+// request fills a one-slot request channel, unless it is full already. The
+// channel is never closed, so no ask can panic, however often it is made.
+func request(c chan struct{}) {
+	select {
+	case c <- struct{}{}:
+	default:
+	}
 }
 
 // enqueue adds a frame to the stream's outbound queue, and reports false if
