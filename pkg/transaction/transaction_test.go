@@ -1508,3 +1508,170 @@ func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
 		})
 	}
 }
+
+func TestTransactionSendAndWait(t *testing.T) {
+	t.Parallel()
+
+	sender := common.HexToAddress("0xddff")
+	recipient := common.HexToAddress("0xabcd")
+	chainID := big.NewInt(5)
+
+	// newService estimates every call at estimatedGas, records the gas limit
+	// of every sent transaction and delivers receipts[nonce] to whoever
+	// watches a transaction: both the caller of WaitForReceipt and the
+	// pending-transaction watcher that Send starts in the background.
+	newService := func(t *testing.T, estimatedGas uint64, receipts []types.Receipt) (transaction.Service, *[]uint64) {
+		t.Helper()
+		var sentGas []uint64
+		store := storemock.NewStateStore()
+		testutil.CleanupCloser(t, store)
+
+		service, err := transaction.NewService(log.Noop, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					sentGas = append(sentGas, tx.Gas())
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
+					return estimatedGas, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return uint64(len(sentGas)), nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return baseFee, minimumTip, nil
+				}),
+			),
+			signermock.New(
+				signermock.WithSignTxFunc(func(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					return tx, nil
+				}),
+				signermock.WithEthereumAddressFunc(func() (common.Address, error) {
+					return sender, nil
+				}),
+			),
+			store,
+			chainID,
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					if nonce >= uint64(len(receipts)) {
+						return nil, nil, fmt.Errorf("no receipt prepared for nonce %d", nonce)
+					}
+					receipt := receipts[nonce]
+					receipt.TxHash = txHash
+					receiptC := make(chan types.Receipt, 1)
+					receiptC <- receipt
+					return receiptC, nil, nil
+				}),
+			),
+			0,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, service)
+		return service, &sentGas
+	}
+
+	const estimatedGas = uint64(300_000)
+	bufferedGas := estimatedGas + estimatedGas*transaction.GasBufferPercent/100
+	request := func() *transaction.TxRequest {
+		return &transaction.TxRequest{To: &recipient, Data: []byte{1, 2, 3}, Value: big.NewInt(0), Description: "call"}
+	}
+
+	t.Run("retries once with a doubled limit when the estimated limit ran out", func(t *testing.T) {
+		t.Parallel()
+		service, sentGas := newService(t, estimatedGas, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: bufferedGas},
+			{Status: types.ReceiptStatusSuccessful},
+		})
+
+		receipt, err := service.SendAndWait(context.Background(), request(), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receipt.Status != types.ReceiptStatusSuccessful {
+			t.Fatal("expected the receipt of the successful retry")
+		}
+		if want := []uint64{bufferedGas, 2 * bufferedGas}; !equalGas(*sentGas, want) {
+			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
+		}
+	})
+
+	t.Run("does not retry a revert that left gas unused", func(t *testing.T) {
+		t.Parallel()
+		service, sentGas := newService(t, estimatedGas, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: bufferedGas - 1},
+		})
+
+		_, err := service.SendAndWait(context.Background(), request(), 0)
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
+			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
+		}
+		if len(*sentGas) != 1 {
+			t.Fatalf("got %d sends, want 1", len(*sentGas))
+		}
+	})
+
+	t.Run("gives up after one retry", func(t *testing.T) {
+		t.Parallel()
+		service, sentGas := newService(t, estimatedGas, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: bufferedGas},
+			{Status: types.ReceiptStatusFailed, GasUsed: 2 * bufferedGas},
+		})
+
+		_, err := service.SendAndWait(context.Background(), request(), 0)
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
+			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
+		}
+		if len(*sentGas) != 2 {
+			t.Fatalf("got %d sends, want 2", len(*sentGas))
+		}
+	})
+
+	t.Run("does not retry a gas limit chosen by the caller", func(t *testing.T) {
+		t.Parallel()
+		service, sentGas := newService(t, estimatedGas, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: bufferedGas},
+		})
+
+		req := request()
+		req.GasLimit = bufferedGas
+		_, err := service.SendAndWait(context.Background(), req, 0)
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
+			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
+		}
+		if want := []uint64{bufferedGas}; !equalGas(*sentGas, want) {
+			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
+		}
+	})
+
+	t.Run("caps the retry limit", func(t *testing.T) {
+		t.Parallel()
+		const bigEstimate = uint64(6_000_000)
+		bigBuffered := bigEstimate + bigEstimate*transaction.GasBufferPercent/100
+		service, sentGas := newService(t, bigEstimate, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: bigBuffered},
+			{Status: types.ReceiptStatusSuccessful},
+		})
+
+		if _, err := service.SendAndWait(context.Background(), request(), 0); err != nil {
+			t.Fatal(err)
+		}
+		if want := []uint64{bigBuffered, transaction.MaxGasLimit}; !equalGas(*sentGas, want) {
+			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
+		}
+	})
+}
+
+func equalGas(got, want []uint64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
