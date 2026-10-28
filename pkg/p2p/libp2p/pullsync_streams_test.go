@@ -109,24 +109,25 @@ func TestPullsyncAbandonedStreams(t *testing.T) {
 			defer func() { <-sem }()
 
 			reqCtx, cancel := context.WithCancel(ctx)
-			done := make(chan error, 1)
+			done := make(chan struct{})
+			var syncErr error
 			go func() {
-				_, _, err := clientSyncer.Sync(reqCtx, serverOverlay, 0, start)
-				done <- err
+				defer close(done)
+				_, _, syncErr = clientSyncer.Sync(reqCtx, serverOverlay, 0, start)
 			}()
 
 			select {
 			case <-reserve.subscription(start):
-			case err := <-done:
+			case <-done:
 				cancel()
 				select {
-				case errC <- err:
+				case errC <- syncErr:
 				default:
 				}
 				return
 			}
 			cancel()
-			<-done
+			<-done // wait for the abandoned request to end; its error is the cancellation
 		})
 	}
 	wg.Wait()
