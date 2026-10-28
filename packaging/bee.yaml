@@ -133,6 +133,8 @@ password-file: "/var/lib/bee/password"
 # transaction-debug-mode: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
+## add caller file:line to log lines (development only)
+# log-caller: false
 ## maximum node warmup duration; proceeds when stable or after this time
 # warmup-time: 5m0s
 ## send a welcome message string during handshakes
