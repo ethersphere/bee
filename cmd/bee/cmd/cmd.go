@@ -62,6 +62,7 @@ const (
 	optionNameChequebookVerification       = "chequebook-verification"
 	optionNameChequebookMinBalance         = "chequebook-min-balance"
 	optionNameFullNode                     = "full-node"
+	optionNameBpsBroker                    = "bps-broker"
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -365,6 +366,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
 	cmd.Flags().String(optionNameChequebookMinBalance, "110000000000000000", "minimum chequebook token balance required for verification, in token small units (default 11 BZZ)")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
+	cmd.Flags().Bool(optionNameBpsBroker, false, "enable the bps broker (requires full node)")
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
