@@ -6,6 +6,7 @@ package depth
 
 import (
 	"context"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -110,3 +111,16 @@ func StopWorker(pr Provider) {
 	p.cancel()
 	<-p.done
 }
+
+func SetClock(pr Provider, now func() time.Time) {
+	p := asProvider(pr)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.now = now
+}
+
+func LastUpdateAgeGauge(pr Provider) prometheus.Metric { return asProvider(pr).metrics.LastUpdateAge }
+
+// NeedsHistoryCheck exposes the worker's decision for the given claim-round knowledge:
+// unknown or zero or nonzero.
+func NeedsHistoryCheck(pr Provider) bool { return asProvider(pr).needsHistoryCheck() }

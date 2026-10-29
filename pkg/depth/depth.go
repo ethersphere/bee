@@ -51,6 +51,15 @@ func (s State) String() string {
 	return "unknown"
 }
 
+// claimRound is what the last successful currentClaimRound call returned.
+type claimRound uint8
+
+const (
+	claimUnknown claimRound = iota
+	claimZero
+	claimNonzero
+)
+
 var allStates = []State{StateNoData, StateNoHistory, StateKnown}
 
 // ChainBackend is the subset of transaction.Backend the provider needs.
@@ -81,15 +90,17 @@ type provider struct {
 	logger         log.Logger
 	metrics        metrics
 
-	mu             sync.Mutex
-	est            *estimator
-	state          State
-	lastUpdate     time.Time
-	lastBlock      uint64
-	backfilled     bool
-	claimRoundZero bool
-	ready          chan struct{}
-	readyClosed    bool
+	mu          sync.Mutex
+	est         *estimator
+	state       State
+	lastUpdate  time.Time
+	lastBlock   uint64
+	backfilled  bool
+	claim       claimRound
+	ready       chan struct{}
+	readyClosed bool
+
+	now func() time.Time
 
 	cancel    context.CancelFunc
 	closing   chan struct{}
@@ -109,7 +120,7 @@ func New(backend ChainBackend, address common.Address, contractABI abi.ABI, bloc
 		blockTime:      blockTime,
 		blocksPerRound: blocksPerRound,
 		logger:         logger.WithName("depth").Register(),
-		metrics:        newMetrics(),
+		now:            time.Now,
 		est:            newEstimator(),
 		state:          StateNoData,
 		ready:          make(chan struct{}),
@@ -117,6 +128,7 @@ func New(backend ChainBackend, address common.Address, contractABI abi.ABI, bloc
 		closing:        make(chan struct{}),
 		done:           make(chan struct{}),
 	}
+	p.metrics = newMetrics(p.lastUpdateAge)
 	p.setStateGaugesLocked()
 
 	go p.worker(ctx)
@@ -138,30 +150,41 @@ func (p *provider) Depth() (uint8, State) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if !p.lastUpdate.IsZero() {
-		p.metrics.LastUpdateAge.Set(time.Since(p.lastUpdate).Seconds())
-	}
 	d, _ := p.est.depth()
 	return d, p.state
 }
 
 func (p *provider) Wait(ctx context.Context) (uint8, State, error) {
-	select {
-	case <-p.ready:
-		d, s := p.Depth()
-		return d, s, nil
-	default:
-	}
+	for {
+		p.mu.Lock()
+		ready, ch := p.readyClosed, p.ready
+		d, _ := p.est.depth()
+		state := p.state
+		p.mu.Unlock()
 
-	select {
-	case <-p.ready:
-		d, s := p.Depth()
-		return d, s, nil
-	case <-ctx.Done():
-		return 0, 0, ctx.Err()
-	case <-p.closing:
-		return 0, 0, ErrClosed
+		if ready {
+			return d, state, nil
+		}
+
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return 0, 0, ctx.Err()
+		case <-p.closing:
+			return 0, 0, ErrClosed
+		}
 	}
+}
+
+// lastUpdateAge returns the seconds since the last successful chain poll, 0 before the first.
+func (p *provider) lastUpdateAge() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.lastUpdate.IsZero() {
+		return 0
+	}
+	return p.now().Sub(p.lastUpdate).Seconds()
 }
 
 func (p *provider) SetComparison(source string, depth uint8) {
@@ -188,7 +211,7 @@ func (p *provider) worker(ctx context.Context) {
 	if !p.backfillWithRetry(ctx) {
 		return
 	}
-	if p.needsHistoryCheck(true) {
+	if p.needsHistoryCheck() {
 		if err := p.checkHistory(ctx); err != nil && ctx.Err() == nil {
 			p.logger.Warning("depth: check history failed", "error", err)
 		}
@@ -204,7 +227,7 @@ func (p *provider) worker(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		if p.needsHistoryCheck(false) {
+		if p.needsHistoryCheck() {
 			if err := p.checkHistory(ctx); err != nil && ctx.Err() == nil {
 				p.logger.Warning("depth: check history failed", "error", err)
 			}
@@ -215,16 +238,16 @@ func (p *provider) worker(ctx context.Context) {
 	}
 }
 
-// needsHistoryCheck reports whether checkHistory should run: only while the value is not
-// known, and, after the first check, only while the last result was a zero claim round.
-func (p *provider) needsHistoryCheck(first bool) bool {
+// needsHistoryCheck reports whether checkHistory should run: while the value is not known
+// and no successful check has seen a nonzero claim round.
+func (p *provider) needsHistoryCheck() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.state == StateKnown {
 		return false
 	}
-	return first || p.claimRoundZero
+	return p.claim != claimNonzero
 }
 
 // backfillWithRetry retries backfill with a doubling backoff until it succeeds. It returns
@@ -339,7 +362,11 @@ func (p *provider) checkHistory(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.claimRoundZero = round == 0
+	if round == 0 {
+		p.claim = claimZero
+	} else {
+		p.claim = claimNonzero
+	}
 	p.evaluateTooFewLocked()
 
 	return nil
@@ -417,8 +444,7 @@ func (p *provider) applyLocked(head uint64) {
 		p.evaluateTooFewLocked()
 	}
 
-	p.lastUpdate = time.Now()
-	p.metrics.LastUpdateAge.Set(0)
+	p.lastUpdate = p.now()
 	p.metrics.WindowSamples.Set(float64(p.est.size()))
 	if d, ok := p.est.depth(); ok {
 		p.metrics.Network.WithLabelValues("truth_mode").Set(float64(d))
@@ -433,7 +459,7 @@ func (p *provider) evaluateTooFewLocked() {
 	if p.state == StateKnown {
 		return
 	}
-	if p.claimRoundZero && p.est.size() < minSamples {
+	if p.claim == claimZero && p.est.size() < minSamples {
 		p.setStateLocked(StateNoHistory)
 		return
 	}
@@ -447,9 +473,14 @@ func (p *provider) setStateLocked(s State) {
 	p.state = s
 	p.setStateGaugesLocked()
 
-	if s != StateNoData && !p.readyClosed {
+	switch {
+	case s != StateNoData && !p.readyClosed:
 		p.readyClosed = true
 		close(p.ready)
+	case s == StateNoData && p.readyClosed:
+		// no_history ended with the first claim; Wait must block again until known.
+		p.ready = make(chan struct{})
+		p.readyClosed = false
 	}
 }
 

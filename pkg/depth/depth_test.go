@@ -500,3 +500,122 @@ func TestSetComparison(t *testing.T) {
 		t.Fatalf("got %v, want 9", got)
 	}
 }
+
+func TestCheckHistoryErrorThenNoHistory(t *testing.T) {
+	t.Parallel()
+
+	f := newBackend(t)
+	f.set(func(f *fakeChain) { f.callErr = errRPC })
+	p := newProvider(t, f)
+	ctx := context.Background()
+
+	if err := depth.Backfill(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := depth.CheckHistory(p, ctx); !errors.Is(err, errRPC) {
+		t.Fatalf("check history: got %v, want rpc error", err)
+	}
+	assertDepth(t, p, 0, depth.StateNoData)
+	if !depth.NeedsHistoryCheck(p) {
+		t.Fatal("a failed check must be retried")
+	}
+
+	f.set(func(f *fakeChain) {
+		f.callErr = nil
+		f.claimRound = 0
+	})
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 0, depth.StateNoHistory)
+
+	wctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if _, s, err := p.Wait(wctx); err != nil || s != depth.StateNoHistory {
+		t.Fatalf("wait: got (%s, %v)", s, err)
+	}
+}
+
+func TestNoHistoryRevertsToNoDataAndWaitBlocks(t *testing.T) {
+	t.Parallel()
+
+	f := newBackend(t)
+	f.set(func(f *fakeChain) { f.claimRound = 0 })
+	p := newProvider(t, f)
+	ctx := context.Background()
+
+	if err := depth.Backfill(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 0, depth.StateNoHistory)
+
+	f.set(func(f *fakeChain) { f.claimRound = 1 })
+	f.addLogs(10, 10100, 10200)
+	f.set(func(f *fakeChain) { f.head = 10300 })
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := depth.Poll(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 0, depth.StateNoData)
+
+	wctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	if _, _, err := p.Wait(wctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait: got %v, want deadline exceeded", err)
+	}
+	if got := value(t, depth.StateGauge(p, depth.StateNoData)); got != 1 {
+		t.Fatalf("no_data gauge: got %v, want 1", got)
+	}
+	if got := value(t, depth.StateGauge(p, depth.StateNoHistory)); got != 0 {
+		t.Fatalf("no_history gauge: got %v, want 0", got)
+	}
+}
+
+func TestLastUpdateAgeWithoutDepthCalls(t *testing.T) {
+	t.Parallel()
+
+	f := knownAt10(t)
+	p := newProvider(t, f)
+
+	now := time.Unix(1000, 0)
+	depth.SetClock(p, func() time.Time { return now })
+
+	if err := depth.Backfill(p, context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(90 * time.Second)
+	if got := value(t, depth.LastUpdateAgeGauge(p)); got != 90 {
+		t.Fatalf("age: got %v, want 90", got)
+	}
+}
+
+func TestNeedsHistoryCheck(t *testing.T) {
+	t.Parallel()
+
+	f := newBackend(t)
+	f.set(func(f *fakeChain) { f.claimRound = 0 })
+	p := newProvider(t, f)
+	ctx := context.Background()
+
+	if !depth.NeedsHistoryCheck(p) {
+		t.Fatal("unknown: want keep checking")
+	}
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !depth.NeedsHistoryCheck(p) {
+		t.Fatal("zero: want keep checking")
+	}
+	f.set(func(f *fakeChain) { f.claimRound = 3 })
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if depth.NeedsHistoryCheck(p) {
+		t.Fatal("nonzero: want stop")
+	}
+}

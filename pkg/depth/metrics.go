@@ -13,12 +13,12 @@ type metrics struct {
 	Network           *prometheus.GaugeVec
 	StateGauge        *prometheus.GaugeVec
 	WindowSamples     prometheus.Gauge
-	LastUpdateAge     prometheus.Gauge
+	LastUpdateAge     prometheus.GaugeFunc
 	RPCErrors         prometheus.Counter
 	CandidateRejected *prometheus.CounterVec
 }
 
-func newMetrics() metrics {
+func newMetrics(lastUpdateAge func() float64) metrics {
 	subsystem := "depth"
 
 	return metrics{
@@ -40,12 +40,12 @@ func newMetrics() metrics {
 			Name:      "window_samples",
 			Help:      "Number of samples in the estimator window.",
 		}),
-		LastUpdateAge: prometheus.NewGauge(prometheus.GaugeOpts{
+		LastUpdateAge: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "last_update_age_seconds",
 			Help:      "Seconds since the last successful chain poll.",
-		}),
+		}, lastUpdateAge),
 		RPCErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
