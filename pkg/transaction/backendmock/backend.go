@@ -31,6 +31,7 @@ type backendMock struct {
 	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	nonceAt            func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
+	filterLogs         func(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 }
 
 func (m *backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
@@ -68,7 +69,10 @@ func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction
 	return ErrNotImplemented
 }
 
-func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+func (m *backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	if m.filterLogs != nil {
+		return m.filterLogs(ctx, query)
+	}
 	return nil, ErrNotImplemented
 }
 
@@ -208,6 +212,12 @@ func WithSendTransactionFunc(f func(ctx context.Context, tx *types.Transaction) 
 func WithBlockNumberFunc(f func(context.Context) (uint64, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.blockNumber = f
+	})
+}
+
+func WithFilterLogsFunc(f func(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.filterLogs = f
 	})
 }
 
