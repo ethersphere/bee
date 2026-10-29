@@ -326,67 +326,45 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 		return nil, fmt.Errorf("challenge length %d: %w", len(ack.Challenge), errProtocolError)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	sess := &session{
-		ctx:       ctx,
-		cancel:    cancel,
-		w:         w,
-		challenge: ack.Challenge,
-		spec:      req.Spec,
-		identity:  req.Identity,
-		pos:       req.Position.clone(),
-		granted:   make(chan struct{}),
-		rx:        make(chan Message),
-		done:      make(chan struct{}),
-	}
-	if bytes.Equal(req.Identity, req.Spec.Principal) {
-		sess.grant()
-	}
-
-	// a broker that forwards what it should have refused is avoided for long
-	sess.forged = func(err error) {
-		if s.blocklister == nil {
-			return
-		}
-		if berr := s.blocklister.Blocklist(req.Broker, ForgingBrokerBlocklistDuration, err.Error()); berr != nil {
-			s.logger.Debug("blocklist broker failed", "broker", req.Broker, "error", berr)
-		}
-	}
-
-	go sess.readLoop(stream, r, req.Spec)
+	sess := newSession(s, req, w, ack.Challenge)
+	go sess.readLoop(stream, r)
 
 	return sess, nil
 }
 
-// readLoop delivers the broker's frames until the stream ends.
-func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader, spec CohortSpec) {
-	var readErr error
-	defer func() {
-		s.finish(readErr)
-		if readErr != nil && !errors.Is(readErr, errEndOfStream) && s.ctx.Err() == nil {
-			_ = stream.Reset()
-		} else {
-			_ = stream.FullClose()
-		}
-	}()
-	go func() {
-		<-s.ctx.Done()
+// readLoop runs the session until its stream ends, and is the one place where
+// the session ends: as it returns, it alone sets the reason, closes Messages
+// and Done and ends the stream — closed after an EOS or a Close, reset on
+// anything else. Close only asks, by cancelling the context, which stops a
+// read or a delivery in progress.
+func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
+	defer s.cancel()
+	err := s.read(r)
+	s.err = err
+	close(s.rx)
+	close(s.done)
+	if err != nil && !errors.Is(err, errEndOfStream) && s.ctx.Err() == nil {
 		_ = stream.Reset()
-	}()
+		return
+	}
+	_ = stream.FullClose()
+}
 
+// read delivers the broker's frames until the stream fails, an EOS arrives, a
+// delivery does not verify or the session is closed, and returns why.
+func (s *session) read(r protobuf.Reader) error {
 	for {
 		var f pb.Broadcast
 		if err := r.ReadMsgWithContext(s.ctx, &f); err != nil {
-			readErr = err
-			return
+			return err
 		}
-		msg, ok, err := s.accept(&f, spec)
+		msg, ok, err := s.accept(&f, s.spec)
 		if err != nil {
 			// a broker that forwards a chunk not valid for the spec, or by an
 			// owner the roster does not admit, is misbehaving: the stream is ended
-			readErr = fmt.Errorf("%w: %w", errInvalidDelivery, err)
-			s.forged(readErr)
-			return
+			err = fmt.Errorf("%w: %w", errInvalidDelivery, err)
+			s.forged(err)
+			return err
 		}
 		if !ok {
 			continue
@@ -394,11 +372,10 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader, spec CohortSpec
 		select {
 		case s.rx <- msg:
 		case <-s.ctx.Done():
-			return
+			return nil
 		}
 		if msg.Kind == KindEOS {
-			readErr = errEndOfStream
-			return
+			return errEndOfStream
 		}
 	}
 }
@@ -479,24 +456,48 @@ func contains(set [][]byte, a []byte) bool {
 	return false
 }
 
-// session is the concrete Session implementation.
+// session is the concrete Session implementation. Its read loop owns its end
+// (see readLoop).
 type session struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wmtx        sync.Mutex
-	w           protobuf.Writer
-	challenge   []byte
-	spec        CohortSpec
-	identity    []byte
-	forged      func(error) // called on a delivery the broker should have refused
-	mtx         sync.Mutex
-	pos         Position
-	granted     chan struct{}
-	grantedOnce sync.Once
-	rx          chan Message
-	done        chan struct{}
-	err         error
-	once        sync.Once
+	svc       *Service
+	broker    swarm.Address
+	ctx       context.Context
+	cancel    context.CancelFunc // asks the read loop to stop
+	wmtx      sync.Mutex
+	w         protobuf.Writer
+	challenge []byte
+	spec      CohortSpec
+	identity  []byte
+	mtx       sync.Mutex
+	pos       Position
+	granted   chan struct{} // closed at the cue, by the read loop; at once for the principal
+	rx        chan Message  // closed by the read loop as it returns
+	done      chan struct{} // closed by the read loop as it returns
+	err       error         // set by the read loop before done is closed
+}
+
+// newSession returns the session of a stream joined at the broker; the
+// principal's may authenticate at once.
+func newSession(svc *Service, req JoinRequest, w protobuf.Writer, challenge []byte) *session {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &session{
+		svc:       svc,
+		broker:    req.Broker,
+		ctx:       ctx,
+		cancel:    cancel,
+		w:         w,
+		challenge: challenge,
+		spec:      req.Spec,
+		identity:  req.Identity,
+		pos:       req.Position.clone(),
+		granted:   make(chan struct{}),
+		rx:        make(chan Message),
+		done:      make(chan struct{}),
+	}
+	if bytes.Equal(req.Identity, req.Spec.Principal) {
+		close(s.granted)
+	}
+	return s
 }
 
 func (s *session) Challenge() []byte        { return s.challenge }
@@ -504,6 +505,9 @@ func (s *session) Messages() <-chan Message { return s.rx }
 func (s *session) Granted() <-chan struct{} { return s.granted }
 func (s *session) Done() <-chan struct{}    { return s.done }
 func (s *session) Err() error               { return s.err }
+
+// Close asks the read loop to end the session. It never blocks, and may be
+// called any number of times, from any goroutine.
 func (s *session) Close() error {
 	s.cancel()
 	return nil
@@ -515,7 +519,26 @@ func (s *session) Position() Position {
 	return s.pos.clone()
 }
 
-func (s *session) grant() { s.grantedOnce.Do(func() { close(s.granted) }) }
+// grant closes granted, the cue to authenticate, unless it is closed already.
+// Only the read loop calls it, so that the check and the close cannot race.
+func (s *session) grant() {
+	select {
+	case <-s.granted:
+	default:
+		close(s.granted)
+	}
+}
+
+// forged avoids, for long, a broker that forwarded a delivery it should have
+// refused.
+func (s *session) forged(err error) {
+	if s.svc.blocklister == nil {
+		return
+	}
+	if berr := s.svc.blocklister.Blocklist(s.broker, ForgingBrokerBlocklistDuration, err.Error()); berr != nil {
+		s.svc.logger.Debug("blocklist broker failed", "broker", s.broker, "error", berr)
+	}
+}
 
 func (s *session) Publish(ctx context.Context, kind Kind, index uint64, soc []byte) error {
 	principal := bytes.Equal(s.identity, s.spec.Principal)
@@ -544,15 +567,6 @@ func (s *session) Publish(ctx context.Context, kind Kind, index uint64, soc []by
 	// a roster or an EOS the admin publishes is delivered back to it, and it
 	// admits by it from where it lands in its stream
 	return nil
-}
-
-// finish records the terminal error and signals stream completion exactly once.
-func (s *session) finish(err error) {
-	s.once.Do(func() {
-		s.err = err
-		close(s.rx)
-		close(s.done)
-	})
 }
 
 // validateJoin rejects a Join whose spec has a value outside SWIP-74 or whose
