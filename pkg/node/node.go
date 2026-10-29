@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/depth"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
@@ -121,6 +122,7 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	saludCloser              io.Closer
+	depthCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
 	retrievalCloser          io.Closer
@@ -580,6 +582,8 @@ func NewBee(
 
 	chainCfg, knownChain := config.GetByChainID(chainID)
 
+	var redistributionContractAddress common.Address
+
 	bzzTokenAddress := chainCfg.TokenContractAddress
 	if o.BzzTokenAddress != (common.Address{}) {
 		bzzTokenAddress = o.BzzTokenAddress
@@ -591,6 +595,11 @@ func NewBee(
 		}
 		logger.Info("using bzz token address", "address", bzzTokenAddress)
 		erc20Service = erc20.New(transactionService, bzzTokenAddress)
+
+		redistributionContractAddress, err = resolveRedistributionAddress(chainCfg.RedistributionAddress, o.RedistributionContractAddress)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if o.SwapEnable {
@@ -1125,6 +1134,12 @@ func NewBee(
 	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
 	b.saludCloser = saludService
 
+	var depthProvider depth.Provider
+	if chainEnabled {
+		depthProvider = depth.New(chainBackend, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.BlockTime, storageincentives.DefaultBlocksPerRound, logger)
+		b.depthCloser = depthProvider
+	}
+
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
 	initialRadiusC := make(chan struct{})
 	var networkR atomic.Uint32
@@ -1134,6 +1149,17 @@ func NewBee(
 		for {
 			select {
 			case r := <-rC:
+				if depthProvider != nil {
+					depthProvider.SetComparison("salud", r)
+					if done, _ := syncStatusFn(); done {
+						c, err := batchStore.Commitment()
+						if err != nil {
+							logger.Debug("batchstore commitment for depth ceiling", "error", err)
+						} else {
+							depthProvider.SetComparison("batchstore_ceiling", depth.Ceiling(c, storer.DefaultReserveCapacity))
+						}
+					}
+				}
 				prev := networkR.Load()
 				networkR.Store(uint32(r))
 				if prev == uint32(swarm.MaxBins) {
@@ -1316,14 +1342,6 @@ func NewBee(
 
 		if o.EnableStorageIncentives {
 
-			redistributionContractAddress := chainCfg.RedistributionAddress
-			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
-				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
-			}
-
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isFullySynced := func() bool {
@@ -1400,6 +1418,9 @@ func NewBee(
 		apiService.MustRegisterMetrics(localStore.Metrics()...)
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
+		if depthProvider != nil {
+			apiService.MustRegisterMetrics(depthProvider.Metrics()...)
+		}
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
 		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
@@ -1495,6 +1516,7 @@ func (b *Bee) shutdownClosers() []namedCloser {
 		{b.retrievalCloser, "retrieval"},
 		{b.hiveCloser, "hive"},
 		{b.saludCloser, "salud"},
+		{b.depthCloser, "depth"},
 	}
 }
 

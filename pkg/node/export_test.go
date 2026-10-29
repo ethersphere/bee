@@ -13,6 +13,8 @@ import (
 var (
 	ValidatePublicAddress = validatePublicAddress
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
+
+	ResolveRedistributionAddress = resolveRedistributionAddress
 )
 
 // NewTestBeeWithClosers builds a Bee with only the push-sync and retrieval

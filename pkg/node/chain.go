@@ -371,3 +371,20 @@ func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCh
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
+
+// resolveRedistributionAddress returns the redistribution contract address for a
+// chain-enabled node: override when set, otherwise the chain config value. It returns an
+// error for a malformed override and for a zero result.
+func resolveRedistributionAddress(cfgAddress common.Address, override string) (common.Address, error) {
+	address := cfgAddress
+	if override != "" {
+		if !common.IsHexAddress(override) {
+			return common.Address{}, errors.New("malformed redistribution contract address")
+		}
+		address = common.HexToAddress(override)
+	}
+	if address == (common.Address{}) {
+		return common.Address{}, errors.New("no known redistribution contract address for this network; provide --redistribution-address")
+	}
+	return address, nil
+}
