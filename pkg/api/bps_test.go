@@ -60,25 +60,25 @@ type fakeSession struct {
 	granted   chan struct{}
 	done      chan struct{}
 	published chan published
-	closed    chan struct{}
+	closed    <-chan struct{}    // closed by Close
+	cancel    context.CancelFunc // Close, as the session's: a request, any number of times
 
 	publishErr error
-
-	doneOnce  sync.Once
-	closeOnce sync.Once
-	err       error
+	err        error
 }
 
 func newFakeSession() *fakeSession {
 	challenge := make([]byte, 32)
 	copy(challenge, "bps-test-challenge")
+	ctx, cancel := context.WithCancel(context.Background())
 	return &fakeSession{
 		challenge: challenge,
 		msgs:      make(chan bps.Message),
 		granted:   closedChan(),
 		done:      make(chan struct{}),
 		published: make(chan published, 8),
-		closed:    make(chan struct{}),
+		closed:    ctx.Done(),
+		cancel:    cancel,
 	}
 }
 
@@ -104,16 +104,14 @@ func (f *fakeSession) Publish(_ context.Context, kind bps.Kind, index uint64, b 
 }
 
 func (f *fakeSession) Close() error {
-	f.closeOnce.Do(func() { close(f.closed) })
+	f.cancel()
 	return nil
 }
 
-// end simulates the broker stream ending with err.
+// end simulates the broker stream ending with err; a test calls it once.
 func (f *fakeSession) end(err error) {
-	f.doneOnce.Do(func() {
-		f.err = err
-		close(f.done)
-	})
+	f.err = err
+	close(f.done)
 }
 
 type bpsFixture struct {

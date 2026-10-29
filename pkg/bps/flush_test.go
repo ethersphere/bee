@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,24 +26,23 @@ import (
 
 var errFlushStreamReset = errors.New("flush stream reset")
 
-// flushStream is a broker-side stream whose peer is driven by the test: the
-// peer's frames are written into a pipe the broker reads, and the broker's
-// writes land in a buffer — or, once stalled, block as on a transport whose
-// peer has stopped reading, until the stream is reset or closed.
+// flushStream is a stream whose far end the test drives: the far end's frames
+// are written into a pipe this end reads, and this end's writes land in a
+// buffer — or, once stalled, block as on a transport whose far end has stopped
+// reading, until the stream is reset or closed. It counts every Reset and
+// Close, so that a test can tell the stream ended once.
 type flushStream struct {
 	r  *io.PipeReader
 	pw *io.PipeWriter
 
-	mu      sync.Mutex
-	out     bytes.Buffer
-	stall   bool
-	stalled chan struct{} // closed when a write blocks
-	unblock chan struct{} // closed by Reset or Close
-
-	reset, closed          chan struct{}
-	resets, closes         atomic.Int32 // every call, so that the test can tell the stream ended once
-	stallOnce, unblockOnce sync.Once
-	resetOnce, closedOnce  sync.Once
+	mu             sync.Mutex
+	out            bytes.Buffer
+	stall          bool
+	blocked        int           // writes that blocked
+	stalled        chan struct{} // closed when the first write blocks
+	resets, closes int
+	reset, closed  chan struct{} // closed at the first Reset, the first Close
+	unblock        chan struct{} // closed when the stream first ends, either way
 }
 
 func newFlushStream() *flushStream {
@@ -52,9 +50,9 @@ func newFlushStream() *flushStream {
 	return &flushStream{
 		r: r, pw: pw,
 		stalled: make(chan struct{}),
-		unblock: make(chan struct{}),
 		reset:   make(chan struct{}),
 		closed:  make(chan struct{}),
+		unblock: make(chan struct{}),
 	}
 }
 
@@ -66,29 +64,51 @@ func (s *flushStream) Write(p []byte) (int, error) {
 		defer s.mu.Unlock()
 		return s.out.Write(p)
 	}
+	s.blocked++
+	if s.blocked == 1 {
+		close(s.stalled)
+	}
 	s.mu.Unlock()
-	s.stallOnce.Do(func() { close(s.stalled) })
 	<-s.unblock
 	return 0, errFlushStreamReset
 }
 
-func (s *flushStream) end() {
-	s.unblockOnce.Do(func() { close(s.unblock) })
-	_ = s.r.Close()
-}
-
 func (s *flushStream) Reset() error {
-	s.resets.Add(1)
-	s.resetOnce.Do(func() { close(s.reset) })
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resets++
+	if s.resets == 1 {
+		close(s.reset)
+	}
 	s.end()
 	return nil
 }
 
 func (s *flushStream) Close() error {
-	s.closes.Add(1)
-	s.closedOnce.Do(func() { close(s.closed) })
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closes++
+	if s.closes == 1 {
+		close(s.closed)
+	}
 	s.end()
 	return nil
+}
+
+// end unblocks writes and reads when the stream first ends. Must be called
+// with s.mu held.
+func (s *flushStream) end() {
+	if s.resets+s.closes == 1 {
+		close(s.unblock)
+		_ = s.r.Close()
+	}
+}
+
+// ended reports how many times the stream was reset and closed.
+func (s *flushStream) ended() (resets, closes int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.resets, s.closes
 }
 
 func (s *flushStream) FullClose() error                  { return s.Close() }
