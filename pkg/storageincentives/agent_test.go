@@ -28,6 +28,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestAgent(t *testing.T) {
@@ -434,6 +436,44 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
+func TestAgentSkipsRoundWhenUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	const (
+		blocksPerRound = uint64(9)
+		blocksPerPhase = uint64(3)
+	)
+
+	synctest.Test(t, func(t *testing.T) {
+		wait := make(chan struct{}, 1)
+		backend := &mockchainBackend{
+			limit: 108,
+			limitCallback: func() {
+				wait <- struct{}{}
+			},
+			incrementBy: 1,
+			block:       blocksPerRound,
+			balance:     big.NewInt(4_000_000_000),
+		}
+		contract := &mockContract{t: t, expectedRadius: 8}
+		service, err := createServiceWithHealth(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, &mockHealth{unhealthy: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, service)
+
+		<-wait
+		synctest.Wait()
+
+		if got := value(t, service.RoundSkippedCounter("unhealthy")); got < 1 {
+			t.Fatalf("round skipped counter: got %v, want at least 1", got)
+		}
+		if got := contract.countCalls(commitCall); got != 0 {
+			t.Fatalf("expected no commit calls, got %d", got)
+		}
+	})
+}
+
 func waitUntilStatus(t *testing.T, agent *storageincentives.Agent, pred func(*storageincentives.Status) bool) {
 	t.Helper()
 
@@ -459,6 +499,22 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+) (*storageincentives.Agent, error) {
+	t.Helper()
+
+	return createServiceWithHealth(t, addr, backend, contract, blocksPerRound, blocksPerPhase, radius, doubling, &mockHealth{})
+}
+
+func createServiceWithHealth(
+	t *testing.T,
+	addr swarm.Address,
+	backend storageincentives.ChainBackend,
+	contract redistribution.Contract,
+	blocksPerRound uint64,
+	blocksPerPhase uint64,
+	radius uint8,
+	doubling uint8,
+	health *mockHealth,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
@@ -491,7 +547,7 @@ func createService(
 		&postage.NoOpBatchStore{},
 		erc20mock.New(),
 		transactionmock.New(),
-		&mockHealth{},
+		health,
 		log.Noop,
 	)
 }
@@ -651,6 +707,20 @@ func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (c
 	return common.Hash{}, nil
 }
 
-type mockHealth struct{}
+type mockHealth struct {
+	unhealthy bool
+}
 
-func (m *mockHealth) IsHealthy() bool { return true }
+func (m *mockHealth) IsHealthy() bool { return !m.unhealthy }
+
+// value reads the current value of a counter. The prometheus testutil package is
+// not used because it needs an additional module in go.mod.
+func value(t *testing.T, c prometheus.Metric) float64 {
+	t.Helper()
+
+	var m dto.Metric
+	if err := c.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetCounter().GetValue()
+}

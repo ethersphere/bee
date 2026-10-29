@@ -250,6 +250,11 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 	}
 
 	s.isSelfHealthy.Store(selfHealth)
+	if selfHealth {
+		s.metrics.SelfHealthy.Set(1)
+	} else {
+		s.metrics.SelfHealthy.Set(0)
+	}
 
 	s.publishRadius(networkRadius)
 }

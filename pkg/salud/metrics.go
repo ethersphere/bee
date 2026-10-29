@@ -21,6 +21,7 @@ type metrics struct {
 	Unhealthy             prometheus.Counter
 	NeighborhoodAvgDur    prometheus.Gauge
 	NeighborCount         prometheus.Gauge
+	SelfHealthy           prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -93,6 +94,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "neighbors",
 			Help:      "Number of neighborhood peers.",
+		}),
+		SelfHealthy: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "self_healthy",
+			Help:      "Whether the node considers itself healthy (1) or not (0).",
 		}),
 	}
 }

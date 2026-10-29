@@ -21,6 +21,7 @@ type metrics struct {
 	Round                   prometheus.Gauge
 	Enabled                 prometheus.Gauge
 	InsufficientFundsToPlay prometheus.Counter
+	RoundSkipped            *prometheus.CounterVec
 
 	// total calls to chain backend
 	BackendCalls  prometheus.Counter
@@ -138,6 +139,15 @@ func newMetrics() metrics {
 			Name:      "win_phase_errors",
 			Help:      "total win phase while processing",
 		}),
+		RoundSkipped: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "round_skipped_total",
+				Help:      "Total rounds skipped, by reason.",
+			},
+			[]string{"reason"},
+		),
 		ErrCheckIsPlaying: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

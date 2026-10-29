@@ -19,6 +19,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	topMock "github.com/ethersphere/bee/v2/pkg/topology/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 type peer struct {
@@ -90,6 +92,9 @@ func TestSalud(t *testing.T) {
 	if !service.IsHealthy() {
 		t.Fatalf("self should be healthy")
 	}
+	if got := value(t, service.SelfHealthyGauge()); got != 1 {
+		t.Fatalf("self healthy gauge: got %v, want 1", got)
+	}
 
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
@@ -132,6 +137,9 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 	if service.IsHealthy() {
 		t.Fatalf("self should NOT be healthy")
 	}
+	if got := value(t, service.SelfHealthyGauge()); got != 0 {
+		t.Fatalf("self healthy gauge: got %v, want 0", got)
+	}
 }
 
 func TestSelfHealthyCapacityDoubling(t *testing.T) {
@@ -169,6 +177,9 @@ func TestSelfHealthyCapacityDoubling(t *testing.T) {
 
 	if !service.IsHealthy() {
 		t.Fatalf("self should be healthy")
+	}
+	if got := value(t, service.SelfHealthyGauge()); got != 1 {
+		t.Fatalf("self healthy gauge: got %v, want 1", got)
 	}
 }
 
@@ -243,4 +254,16 @@ func (p *statusMock) PeerSnapshot(ctx context.Context, peer swarm.Address) (*sta
 		return peer.status, nil
 	}
 	return nil, errors.New("peer not found")
+}
+
+// value reads the current value of a gauge. The prometheus testutil package is
+// not used because it needs an additional module in go.mod.
+func value(t *testing.T, c prometheus.Metric) float64 {
+	t.Helper()
+
+	var m dto.Metric
+	if err := c.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetGauge().GetValue()
 }
