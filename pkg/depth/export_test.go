@@ -4,6 +4,12 @@
 
 package depth
 
+import (
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+)
+
 type Sample struct {
 	Block    uint64
 	TxIndex  uint
@@ -40,4 +46,12 @@ func (e *estimator) Blocks() []uint64 {
 		b = append(b, s.block)
 	}
 	return b
+}
+
+func DecodeTruthSelected(a *abi.ABI, topic common.Hash, l types.Log) (Sample, error) {
+	s, err := decodeTruthSelected(a, topic, l)
+	if err != nil {
+		return Sample{}, err
+	}
+	return Sample{Block: s.block, TxIndex: s.txIndex, LogIndex: s.logIndex, Depth: s.depth}, nil
 }
