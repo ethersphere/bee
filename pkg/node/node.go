@@ -1136,7 +1136,10 @@ func NewBee(
 
 	var depthProvider depth.Provider
 	if chainEnabled {
-		depthProvider = depth.New(chainBackend, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.BlockTime, storageincentives.DefaultBlocksPerRound, logger)
+		depthProvider, err = depth.New(chainBackend, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.BlockTime, storageincentives.DefaultBlocksPerRound, o.PostageSyncBlockRange, logger)
+		if err != nil {
+			return nil, fmt.Errorf("depth provider: %w", err)
+		}
 		b.depthCloser = depthProvider
 	}
 

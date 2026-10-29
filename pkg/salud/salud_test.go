@@ -76,6 +76,10 @@ func TestSalud(t *testing.T) {
 
 	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 
+	if got := value(t, service.SelfHealthyGauge()); got != 1 {
+		t.Fatalf("self healthy gauge before the first cycle: got %v, want 1", got)
+	}
+
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
 	})

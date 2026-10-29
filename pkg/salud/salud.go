@@ -79,6 +79,8 @@ func New(
 		reserve:       reserve,
 	}
 
+	metrics.SelfHealthy.Set(1)
+
 	s.wg.Add(1)
 	go s.worker(startupStabilizer, mode, durPercentile, connsPercentile)
 

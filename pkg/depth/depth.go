@@ -24,11 +24,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// pageSize is the maximum number of blocks in one FilterLogs query.
-const pageSize = 1000
+// defaultBlockPage is the maximum number of blocks in one FilterLogs query when New gets none.
+const defaultBlockPage = 1000
+
+// confirmationTail is how many blocks behind the chain head the provider reads, so a reorg
+// cannot move a log it already counted. It matches tailSize in the postage listener.
+const confirmationTail = 4
 
 // ErrClosed is returned by Wait when the provider is closed before a value is available.
 var ErrClosed = errors.New("depth: provider closed")
+
+// ErrInvalidInterval is returned by New when the block time or the blocks per round is zero.
+var ErrInvalidInterval = errors.New("depth: block time and blocks per round must be positive")
 
 // State is the availability of the depth value.
 type State uint8
@@ -87,6 +94,7 @@ type provider struct {
 	topic          common.Hash
 	blockTime      time.Duration
 	blocksPerRound uint64
+	blockPage      uint64
 	logger         log.Logger
 	metrics        metrics
 
@@ -109,8 +117,15 @@ type provider struct {
 }
 
 // New builds the provider and starts its worker. address is the resolved redistribution
-// contract address. blockTime and blocksPerRound size every interval.
-func New(backend ChainBackend, address common.Address, contractABI abi.ABI, blockTime time.Duration, blocksPerRound uint64, logger log.Logger) Provider {
+// contract address. blockTime and blocksPerRound size every interval. blockPage is the
+// maximum number of blocks in one log query, 1000 when zero.
+func New(backend ChainBackend, address common.Address, contractABI abi.ABI, blockTime time.Duration, blocksPerRound, blockPage uint64, logger log.Logger) (Provider, error) {
+	if blockTime <= 0 || blocksPerRound == 0 {
+		return nil, ErrInvalidInterval
+	}
+	if blockPage == 0 {
+		blockPage = defaultBlockPage
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &provider{
 		backend:        backend,
@@ -119,6 +134,7 @@ func New(backend ChainBackend, address common.Address, contractABI abi.ABI, bloc
 		topic:          contractABI.Events["TruthSelected"].ID,
 		blockTime:      blockTime,
 		blocksPerRound: blocksPerRound,
+		blockPage:      blockPage,
 		logger:         logger.WithName("depth").Register(),
 		now:            time.Now,
 		est:            newEstimator(),
@@ -133,7 +149,7 @@ func New(backend ChainBackend, address common.Address, contractABI abi.ABI, bloc
 
 	go p.worker(ctx)
 
-	return p
+	return p, nil
 }
 
 // Ceiling returns ceil(log2(commitment / capacity)), or 0 when commitment <= capacity.
@@ -169,9 +185,11 @@ func (p *provider) Wait(ctx context.Context) (uint8, State, error) {
 		select {
 		case <-ch:
 		case <-ctx.Done():
-			return 0, 0, ctx.Err()
+			d, state := p.Depth()
+			return d, state, ctx.Err()
 		case <-p.closing:
-			return 0, 0, ErrClosed
+			d, state := p.Depth()
+			return d, state, ErrClosed
 		}
 	}
 }
@@ -213,7 +231,7 @@ func (p *provider) worker(ctx context.Context) {
 	}
 	if p.needsHistoryCheck() {
 		if err := p.checkHistory(ctx); err != nil && ctx.Err() == nil {
-			p.logger.Warning("depth: check history failed", "error", err)
+			p.logger.Warning("check history failed", "error", err)
 		}
 	}
 
@@ -229,11 +247,11 @@ func (p *provider) worker(ctx context.Context) {
 
 		if p.needsHistoryCheck() {
 			if err := p.checkHistory(ctx); err != nil && ctx.Err() == nil {
-				p.logger.Warning("depth: check history failed", "error", err)
+				p.logger.Warning("check history failed", "error", err)
 			}
 		}
 		if err := p.poll(ctx); err != nil && ctx.Err() == nil {
-			p.logger.Warning("depth: poll failed", "error", err)
+			p.logger.Warning("poll failed", "error", err)
 		}
 	}
 }
@@ -263,7 +281,7 @@ func (p *provider) backfillWithRetry(ctx context.Context) bool {
 		if ctx.Err() != nil {
 			return false
 		}
-		p.logger.Warning("depth: backfill failed", "error", err, "retry_in", backoff)
+		p.logger.Warning("backfill failed", "error", err, "retry_in", backoff)
 
 		t := time.NewTimer(backoff)
 		select {
@@ -287,14 +305,15 @@ func (p *provider) backfill(ctx context.Context) error {
 	if span := windowRounds * p.blocksPerRound; head > span {
 		from = head - span
 	}
-	if err := p.fetch(ctx, from, head); err != nil {
+	tip := confirmed(head)
+	if err := p.fetch(ctx, from, tip); err != nil {
 		return err
 	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.lastBlock = head
+	p.lastBlock = tip
 	p.backfilled = true
 	p.applyLocked(head)
 
@@ -315,13 +334,14 @@ func (p *provider) poll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if head < last {
+	tip := confirmed(head)
+	if tip < last {
 		// the node behind us answered with an older head; keep what we have
 		p.logger.Debug("head behind last processed block", "head", head, "last_block", last)
 		return nil
 	}
-	if head > last {
-		if err := p.fetch(ctx, last+1, head); err != nil {
+	if tip > last {
+		if err := p.fetch(ctx, last+1, tip); err != nil {
 			return err
 		}
 	}
@@ -329,7 +349,7 @@ func (p *provider) poll(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.lastBlock = head
+	p.lastBlock = tip
 	p.applyLocked(head)
 
 	return nil
@@ -372,6 +392,14 @@ func (p *provider) checkHistory(ctx context.Context) error {
 	return nil
 }
 
+// confirmed returns the newest block the provider reads for the given head.
+func confirmed(head uint64) uint64 {
+	if head < confirmationTail {
+		return 0
+	}
+	return head - confirmationTail
+}
+
 func (p *provider) blockNumber(ctx context.Context) (uint64, error) {
 	head, err := p.backend.BlockNumber(ctx)
 	if err != nil {
@@ -391,7 +419,7 @@ func (p *provider) rpcError(ctx context.Context) {
 // fetch loads the logs of [from, to] in pages and feeds them to the estimator.
 func (p *provider) fetch(ctx context.Context, from, to uint64) error {
 	for start := from; start <= to; {
-		end := min(start+pageSize-1, to)
+		end := min(start+p.blockPage-1, to)
 
 		logs, err := p.backend.FilterLogs(ctx, ethereum.FilterQuery{
 			FromBlock: new(big.Int).SetUint64(start),
@@ -427,7 +455,10 @@ func (p *provider) addLogs(logs []types.Log) {
 			p.metrics.CandidateRejected.WithLabelValues("above_max_po").Inc()
 			continue
 		}
-		p.est.add(s)
+		if p.est.add(s) {
+			// a log proves a claim happened, whatever currentClaimRound last said
+			p.claim = claimNonzero
+		}
 	}
 }
 

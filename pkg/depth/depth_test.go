@@ -128,8 +128,16 @@ func (f *fakeChain) resetQueries() {
 func newProvider(t *testing.T, f *fakeChain) depth.Provider {
 	t.Helper()
 
-	a := f.abi
-	p := depth.New(f.Backend(), common.HexToAddress("0x01"), a, testBlockTime, testBlocksPerRound, log.Noop)
+	return newProviderPage(t, f, 0)
+}
+
+func newProviderPage(t *testing.T, f *fakeChain, blockPage uint64) depth.Provider {
+	t.Helper()
+
+	p, err := depth.New(f.Backend(), common.HexToAddress("0x01"), f.abi, testBlockTime, testBlocksPerRound, blockPage, log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = p.Close() })
 	depth.StopWorker(p)
 	f.resetQueries()
@@ -205,8 +213,8 @@ func TestBackfillKnown(t *testing.T) {
 	if got := qs[0].FromBlock.Uint64(); got != 6960 {
 		t.Fatalf("first from block: got %d, want 6960", got)
 	}
-	if got := qs[len(qs)-1].ToBlock.Uint64(); got != 10000 {
-		t.Fatalf("last to block: got %d, want 10000", got)
+	if got := qs[len(qs)-1].ToBlock.Uint64(); got != 9996 {
+		t.Fatalf("last to block: got %d, want 9996", got)
 	}
 	for i, q := range qs {
 		from, to := q.FromBlock.Uint64(), q.ToBlock.Uint64()
@@ -216,6 +224,60 @@ func TestBackfillKnown(t *testing.T) {
 		if i > 0 && from != qs[i-1].ToBlock.Uint64()+1 {
 			t.Fatalf("query %d not contiguous: from %d after %d", i, from, qs[i-1].ToBlock.Uint64())
 		}
+	}
+}
+
+func TestBackfillHonorsBlockPage(t *testing.T) {
+	t.Parallel()
+
+	f := knownAt10(t)
+	p := newProviderPage(t, f, 300)
+
+	if err := depth.Backfill(p, context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 10, depth.StateKnown)
+
+	qs := f.queriesCopy()
+	if len(qs) < 2 {
+		t.Fatalf("got %d queries, want several pages", len(qs))
+	}
+	for i, q := range qs {
+		from, to := q.FromBlock.Uint64(), q.ToBlock.Uint64()
+		if to-from+1 > 300 {
+			t.Fatalf("query %d spans %d blocks", i, to-from+1)
+		}
+		if i > 0 && from != qs[i-1].ToBlock.Uint64()+1 {
+			t.Fatalf("query %d not contiguous: from %d after %d", i, from, qs[i-1].ToBlock.Uint64())
+		}
+	}
+	if got := qs[len(qs)-1].ToBlock.Uint64(); got != 9996 {
+		t.Fatalf("last to block: got %d, want 9996", got)
+	}
+}
+
+func TestNewRejectsZeroIntervals(t *testing.T) {
+	t.Parallel()
+
+	f := newBackend(t)
+	for name, tc := range map[string]struct {
+		blockTime      time.Duration
+		blocksPerRound uint64
+	}{
+		"zero block time":       {0, testBlocksPerRound},
+		"zero blocks per round": {testBlockTime, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			p, err := depth.New(f.Backend(), common.HexToAddress("0x01"), f.abi, tc.blockTime, tc.blocksPerRound, 0, log.Noop)
+			if !errors.Is(err, depth.ErrInvalidInterval) {
+				t.Fatalf("got %v, want ErrInvalidInterval", err)
+			}
+			if p != nil {
+				t.Fatal("provider must be nil on error")
+			}
+		})
 	}
 }
 
@@ -301,6 +363,40 @@ func TestNoDataWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 0, depth.StateNoData)
+
+	wctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	if _, s, err := p.Wait(wctx); !errors.Is(err, context.DeadlineExceeded) || s != depth.StateNoData {
+		t.Fatalf("wait: got (%s, %v), want (no_data, deadline exceeded)", s, err)
+	}
+}
+
+func TestNoHistoryEndsWhenSampleArrives(t *testing.T) {
+	t.Parallel()
+
+	f := newBackend(t)
+	f.set(func(f *fakeChain) { f.claimRound = 0 })
+	p := newProvider(t, f)
+	ctx := context.Background()
+
+	if err := depth.Backfill(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := depth.CheckHistory(p, ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDepth(t, p, 0, depth.StateNoHistory)
+
+	// only the log carries the information from here on
+	f.addLogs(10, 10100)
+	f.set(func(f *fakeChain) {
+		f.head = 10300
+		f.callErr = errRPC
+	})
+	if err := depth.Poll(p, ctx); err != nil {
 		t.Fatal(err)
 	}
 	assertDepth(t, p, 0, depth.StateNoData)
@@ -427,7 +523,10 @@ func TestCloseThenWait(t *testing.T) {
 	t.Parallel()
 
 	f := newBackend(t)
-	p := depth.New(f.Backend(), common.HexToAddress("0x01"), f.abi, testBlockTime, testBlocksPerRound, log.Noop)
+	p, err := depth.New(f.Backend(), common.HexToAddress("0x01"), f.abi, testBlockTime, testBlocksPerRound, 0, log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -437,8 +536,8 @@ func TestCloseThenWait(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if _, _, err := p.Wait(ctx); !errors.Is(err, depth.ErrClosed) {
-		t.Fatalf("wait: got %v, want ErrClosed", err)
+	if _, s, err := p.Wait(ctx); !errors.Is(err, depth.ErrClosed) || s != depth.StateNoData {
+		t.Fatalf("wait: got (%s, %v), want (no_data, ErrClosed)", s, err)
 	}
 }
 

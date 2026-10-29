@@ -5,6 +5,7 @@
 package depth_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/depth"
@@ -94,6 +95,34 @@ func TestEstimatorDedupe(t *testing.T) {
 	}
 	if e.Size() != 1 {
 		t.Fatalf("size: got %d want 1", e.Size())
+	}
+}
+
+func TestEstimatorInsertsOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	e := depth.NewEstimator()
+	for _, b := range []uint64{5, 3, 4} {
+		if !e.Add(depth.Sample{Block: b, Depth: 10}) {
+			t.Fatalf("add block %d returned false", b)
+		}
+	}
+	if got := e.Blocks(); !slices.Equal(got, []uint64{3, 4, 5}) {
+		t.Fatalf("blocks: got %v, want [3 4 5]", got)
+	}
+
+	if !e.Add(depth.Sample{Block: 3, TxIndex: 1, Depth: 10}) {
+		t.Fatal("add block 3 tx 1 returned false")
+	}
+	if got := e.Blocks(); !slices.Equal(got, []uint64{3, 3, 4, 5}) {
+		t.Fatalf("blocks: got %v, want [3 3 4 5]", got)
+	}
+	// the second block 3 sits right after the first, so the tx-0 sample stays first
+	if !e.Add(depth.Sample{Block: 3, TxIndex: 0, LogIndex: 1, Depth: 10}) {
+		t.Fatal("add block 3 tx 0 log 1 returned false")
+	}
+	if got := e.Blocks(); !slices.Equal(got, []uint64{3, 3, 3, 4, 5}) {
+		t.Fatalf("blocks: got %v, want [3 3 3 4 5]", got)
 	}
 }
 
