@@ -35,6 +35,10 @@ var (
 	// ErrMissingReference is returned when the reference for the manifest file
 	// is missing.
 	ErrMissingReference = errors.New("manifest: missing reference")
+
+	// ErrStopWalk can be returned by a WalkEntryFunc to terminate an entry
+	// walk early without the walk itself reporting an error.
+	ErrStopWalk = errors.New("manifest: stop walk")
 )
 
 // StoreSizeFunc is a callback on every content size that will be stored by
@@ -66,6 +70,41 @@ type Entry interface {
 	Reference() swarm.Address
 	// Metadata returns the metadata of the file.
 	Metadata() map[string]string
+}
+
+// WalkEntryFunc is the type of the function called for each manifest entry
+// visited by an EntryWalker. Entries are visited in deterministic
+// (lexicographic) path order. entry is nil when path is a common prefix (see
+// WalkEntryOptions.Delimiter). Returning ErrStopWalk terminates the walk
+// cleanly; any other error aborts the walk and is propagated.
+type WalkEntryFunc func(path string, entry Entry) error
+
+// WalkEntryOptions narrows a walk by an EntryWalker.
+type WalkEntryOptions struct {
+	// After, when set, limits the walk to paths that sort strictly after it.
+	// Subtrees that lie wholly at or before After are not loaded, so a walk
+	// resumed from a continuation marker costs the depth of the trie, not
+	// every entry before the marker.
+	After string
+	// Delimiter, when set, stops the walk at its first occurrence past the
+	// prefix: fn is called once, with a nil entry, for the common prefix up
+	// to and including the delimiter, and the subtree below it is not
+	// loaded. A common prefix sorts before the paths below it, so an After
+	// equal to one, or below one, resumes past every path below it.
+	Delimiter string
+}
+
+// EntryWalker is an optional interface implemented by manifests that can
+// enumerate their entries server-side. It powers manifest listing without
+// forcing every Interface implementation to support traversal, and without
+// exposing the underlying trie representation to callers.
+type EntryWalker interface {
+	// WalkEntry visits every value entry whose path is at or below prefix,
+	// in lexicographic order, calling fn for each. A prefix of "" (or
+	// RootPath) walks the whole manifest. Entries without a reference, such
+	// as the manifest-level metadata kept at RootPath, are not files and are
+	// not visited.
+	WalkEntry(ctx context.Context, prefix string, opts WalkEntryOptions, fn WalkEntryFunc) error
 }
 
 // NewDefaultManifest creates a new manifest with default type.
