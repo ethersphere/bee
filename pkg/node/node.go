@@ -1149,6 +1149,14 @@ func NewBee(
 		for {
 			select {
 			case r := <-rC:
+				prev := networkR.Load()
+				networkR.Store(uint32(r))
+				if prev == uint32(swarm.MaxBins) {
+					close(initialRadiusC)
+				}
+				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
+					kad.SetStorageRadius(r)
+				}
 				if depthProvider != nil {
 					depthProvider.SetComparison("salud", r)
 					if done, _ := syncStatusFn(); done {
@@ -1159,14 +1167,6 @@ func NewBee(
 							depthProvider.SetComparison("batchstore_ceiling", depth.Ceiling(c, storer.DefaultReserveCapacity))
 						}
 					}
-				}
-				prev := networkR.Load()
-				networkR.Store(uint32(r))
-				if prev == uint32(swarm.MaxBins) {
-					close(initialRadiusC)
-				}
-				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
-					kad.SetStorageRadius(r)
 				}
 			case <-ctx.Done():
 				unsub()
