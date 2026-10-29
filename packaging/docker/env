@@ -103,7 +103,7 @@
 # BEE_REDISTRIBUTION_ADDRESS=
 ## reserve capacity doubling (default 0)
 # BEE_RESERVE_CAPACITY_DOUBLING=0
-## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url (default [])
+## ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry (default [])
 # BEE_RESOLVER_OPTIONS=[]
 ## forces the node to resync postage contract data (default false)
 # BEE_RESYNC=false
