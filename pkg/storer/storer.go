@@ -691,7 +691,7 @@ func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func(cont
 }
 
 // StorageRadiusReady returns a channel that is closed once the reserve has
-// its first storage radius, after the first successful SetRadius.
+// its first storage radius, after the first SetRadius call, whether or not persisting it succeeded.
 func (db *DB) StorageRadiusReady() <-chan struct{} {
 	return db.radiusReady
 }

@@ -85,8 +85,10 @@ func (db *DB) startReserveWorkers(
 		db.logger.Error(err, "reserve set radius")
 	} else {
 		db.metrics.StorageRadius.Set(float64(r))
-		db.radiusReadyOnce.Do(func() { close(db.radiusReady) })
 	}
+	// SetRadius updates the in-memory radius and kademlia before it persists,
+	// so the radius is usable even when persisting failed.
+	db.radiusReadyOnce.Do(func() { close(db.radiusReady) })
 
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)

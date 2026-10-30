@@ -1006,12 +1006,12 @@ func TestReserveWorkerInitialRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		called := make(chan struct{})
+		returned := make(chan struct{})
 		db.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), func(context.Context) (uint8, error) {
-			close(called)
+			defer close(returned)
 			return 0, context.Canceled
 		}, nil)
-		waitClosed(t, called)
+		waitClosed(t, returned)
 		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
