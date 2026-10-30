@@ -1124,6 +1124,77 @@ func TestMultiplexOffWhenDepthUnknown(t *testing.T) {
 	}
 }
 
+// TestHandlerStoreGateUnknownDepth checks that a forwarder with an unknown
+// network depth does not store a chunk it receives as within its area of
+// responsibility and forwards it instead. With a known radius of 0 the same
+// forwarder stores the chunk itself.
+func TestHandlerStoreGateUnknownDepth(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		radiusFunc    func(context.Context) (uint8, error)
+		wantForwarded bool
+	}{
+		{
+			name:       "known",
+			radiusFunc: func(context.Context) (uint8, error) { return 0, nil },
+		},
+		{
+			name:          "unknown",
+			radiusFunc:    func(context.Context) (uint8, error) { return 0, depth.ErrUnknown },
+			wantForwarded: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chunk := testingc.FixtureChunk("7000")
+
+			triggerPeer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+			pivotPeer := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+			closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+
+			psClosestPeer, storerClosestPeer, _ := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+			pivotRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
+			psPivot, storerPivot := createPushSyncNodeWithRadiusFunc(t, pivotPeer, defaultPrices, pivotRecorder, nil, defaultSigner(chunk), tc.radiusFunc, 0, mock.WithPeers(closestPeer))
+
+			triggerRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
+			psTriggerPeer, _, _ := createPushSyncNode(t, triggerPeer, defaultPrices, triggerRecorder, nil, defaultSigner(chunk), mock.WithPeers(pivotPeer))
+
+			receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !chunk.Address().Equal(receipt.Address) {
+				t.Fatal("invalid receipt")
+			}
+
+			// the pivot received the chunk from the trigger and sent back a receipt
+			waitOnRecordAndTest(t, pivotPeer, triggerRecorder, chunk.Address(), chunk.Data())
+			waitOnRecordAndTest(t, pivotPeer, triggerRecorder, chunk.Address(), nil)
+
+			if got, want := storerPivot.hasChunk(t, chunk.Address()), !tc.wantForwarded; got != want {
+				t.Fatalf("pivot stored the chunk: got %v, want %v", got, want)
+			}
+
+			if !tc.wantForwarded {
+				if _, err := pivotRecorder.Records(closestPeer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName); !errors.Is(err, streamtest.ErrRecordsNotFound) {
+					t.Fatalf("closest peer: got %v, want %v", err, streamtest.ErrRecordsNotFound)
+				}
+				return
+			}
+
+			waitOnRecordAndTest(t, closestPeer, pivotRecorder, chunk.Address(), chunk.Data())
+			waitOnRecordAndTest(t, closestPeer, pivotRecorder, chunk.Address(), nil)
+			if !storerClosestPeer.hasChunk(t, chunk.Address()) {
+				t.Fatal("closest peer did not store the forwarded chunk")
+			}
+		})
+	}
+}
+
 func counterValue(t *testing.T, c prometheus.Counter) float64 {
 	t.Helper()
 
