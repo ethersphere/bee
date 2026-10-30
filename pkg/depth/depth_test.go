@@ -718,3 +718,120 @@ func TestNeedsHistoryCheck(t *testing.T) {
 		t.Fatal("nonzero: want stop")
 	}
 }
+
+func TestSubscribe(t *testing.T) {
+	t.Parallel()
+
+	// knownAt5 returns a provider known at depth 5 and the chain behind it.
+	knownAt5 := func(t *testing.T) (depth.Provider, *fakeChain) {
+		t.Helper()
+
+		f := newBackend(t)
+		f.addLogs(5, blocks(8500, 8900, 100)...)
+		p := newProvider(t, f)
+		if err := depth.Backfill(p, context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		assertDepth(t, p, 5, depth.StateKnown)
+		return p, f
+	}
+	// moveTo adds ten logs at d and advances the head, so the next poll steps towards d.
+	moveTo := func(f *fakeChain, d uint8) {
+		f.addLogs(d, blocks(10100, 11000, 100)...)
+		f.set(func(f *fakeChain) { f.head = 10000 + 3040 })
+	}
+	expect := func(t *testing.T, ch <-chan uint8, want uint8) {
+		t.Helper()
+
+		select {
+		case v := <-ch:
+			if v != want {
+				t.Fatalf("got depth %d, want %d", v, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timeout waiting for depth")
+		}
+	}
+	silent := func(t *testing.T, ch <-chan uint8) {
+		t.Helper()
+
+		select {
+		case v := <-ch:
+			t.Fatalf("unexpected depth %d", v)
+		default:
+		}
+	}
+
+	t.Run("current value on subscribe when known", func(t *testing.T) {
+		t.Parallel()
+
+		p, _ := knownAt5(t)
+		ch, unsub := p.Subscribe()
+		defer unsub()
+
+		expect(t, ch, 5)
+	})
+
+	t.Run("value on change", func(t *testing.T) {
+		t.Parallel()
+
+		p, f := knownAt5(t)
+		ch, unsub := p.Subscribe()
+		defer unsub()
+		expect(t, ch, 5)
+
+		moveTo(f, 6)
+		if err := depth.Poll(p, context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		expect(t, ch, 6)
+		silent(t, ch)
+	})
+
+	t.Run("latest wins when not drained", func(t *testing.T) {
+		t.Parallel()
+
+		p, f := knownAt5(t)
+		ch, unsub := p.Subscribe()
+		defer unsub()
+
+		moveTo(f, 7)
+		for range 2 {
+			if err := depth.Poll(p, context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		assertDepth(t, p, 7, depth.StateKnown)
+
+		expect(t, ch, 7)
+		silent(t, ch)
+	})
+
+	t.Run("nothing while unknown", func(t *testing.T) {
+		t.Parallel()
+
+		p := newProvider(t, newBackend(t))
+		ch, unsub := p.Subscribe()
+		defer unsub()
+
+		assertDepth(t, p, 0, depth.StateNoData)
+		silent(t, ch)
+	})
+
+	t.Run("unsubscribe stops delivery", func(t *testing.T) {
+		t.Parallel()
+
+		p, f := knownAt5(t)
+		ch, unsub := p.Subscribe()
+		expect(t, ch, 5)
+
+		unsub()
+		unsub()
+
+		moveTo(f, 6)
+		if err := depth.Poll(p, context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		silent(t, ch)
+	})
+}

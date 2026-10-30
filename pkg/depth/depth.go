@@ -34,6 +34,9 @@ const confirmationTail = 4
 // ErrClosed is returned by Wait when the provider is closed before a value is available.
 var ErrClosed = errors.New("depth: provider closed")
 
+// ErrUnknown is returned by consumers of the provider when the network depth is not known.
+var ErrUnknown = errors.New("depth: network depth unknown")
+
 // ErrInvalidInterval is returned by New when the block time or the blocks per round is zero.
 var ErrInvalidInterval = errors.New("depth: block time and blocks per round must be positive")
 
@@ -84,6 +87,11 @@ type Provider interface {
 	// itself ("salud", "batchstore_ceiling").
 	SetComparison(source string, depth uint8)
 	Metrics() []prometheus.Collector
+	// Subscribe returns a channel with capacity 1 and a func that removes the subscription.
+	// When the depth is known it is sent at once, afterwards every change of it. A pending
+	// value is replaced by a newer one. The func is safe to call twice. Close does not close
+	// the channel.
+	Subscribe() (<-chan uint8, func())
 	io.Closer
 }
 
@@ -107,6 +115,9 @@ type provider struct {
 	claim       claimRound
 	ready       chan struct{}
 	readyClosed bool
+	subs        map[chan uint8]struct{}
+	lastSent    uint8
+	sentOnce    bool
 
 	now func() time.Time
 
@@ -140,6 +151,7 @@ func New(backend ChainBackend, address common.Address, contractABI abi.ABI, bloc
 		est:            newEstimator(),
 		state:          StateNoData,
 		ready:          make(chan struct{}),
+		subs:           make(map[chan uint8]struct{}),
 		cancel:         cancel,
 		closing:        make(chan struct{}),
 		done:           make(chan struct{}),
@@ -192,6 +204,35 @@ func (p *provider) Wait(ctx context.Context) (uint8, State, error) {
 			return d, state, ErrClosed
 		}
 	}
+}
+
+func (p *provider) Subscribe() (<-chan uint8, func()) {
+	ch := make(chan uint8, 1)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.subs[ch] = struct{}{}
+	if p.state == StateKnown {
+		d, _ := p.est.depth()
+		send(ch, d)
+	}
+
+	return ch, func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		delete(p.subs, ch)
+	}
+}
+
+// send puts d on ch, replacing a pending value. It never blocks.
+func send(ch chan uint8, d uint8) {
+	select {
+	case <-ch:
+	default:
+	}
+	ch <- d
 }
 
 // lastUpdateAge returns the seconds since the last successful chain poll, 0 before the first.
@@ -473,6 +514,13 @@ func (p *provider) applyLocked(head uint64) {
 		p.metrics.CandidateRejected.WithLabelValues("no_majority").Inc()
 	case updateTooFew:
 		p.evaluateTooFewLocked()
+	}
+
+	if d, ok := p.est.depth(); ok && p.state == StateKnown && (!p.sentOnce || d != p.lastSent) {
+		p.lastSent, p.sentOnce = d, true
+		for ch := range p.subs {
+			send(ch, d)
+		}
 	}
 
 	p.lastUpdate = p.now()
