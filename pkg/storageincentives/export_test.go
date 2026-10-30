@@ -15,3 +15,7 @@ var (
 func (a *Agent) RoundSkippedCounter(reason string) prometheus.Counter {
 	return a.metrics.RoundSkipped.WithLabelValues(reason)
 }
+
+func (a *Agent) RoundPlayedUnknownCounter(state string) prometheus.Counter {
+	return a.metrics.RoundPlayedUnknown.WithLabelValues(state)
+}

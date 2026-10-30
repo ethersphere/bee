@@ -22,6 +22,7 @@ type metrics struct {
 	Enabled                 prometheus.Gauge
 	InsufficientFundsToPlay prometheus.Counter
 	RoundSkipped            *prometheus.CounterVec
+	RoundPlayedUnknown      *prometheus.CounterVec
 
 	// total calls to chain backend
 	BackendCalls  prometheus.Counter
@@ -147,6 +148,15 @@ func newMetrics() metrics {
 				Help:      "Total rounds skipped, by reason.",
 			},
 			[]string{"reason"},
+		),
+		RoundPlayedUnknown: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "round_played_unknown_total",
+				Help:      "Total rounds played while the network depth was not known, by depth state.",
+			},
+			[]string{"state"},
 		),
 		ErrCheckIsPlaying: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

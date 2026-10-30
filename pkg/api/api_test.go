@@ -30,6 +30,8 @@ import (
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/depth"
+	depthmock "github.com/ethersphere/bee/v2/pkg/depth/mock"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -720,7 +722,7 @@ func createRedistributionAgentService(
 		chainStateGetter,
 		erc20Service,
 		tranService,
-		&mockHealth{},
+		depthmock.New(depthmock.WithState(depth.StateNoHistory)),
 		log.Noop,
 	)
 }
@@ -796,10 +798,6 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
 }
-
-type mockHealth struct{}
-
-func (m *mockHealth) IsHealthy() bool { return true }
 
 func newTestPostService() postage.Service {
 	return mockpost.New(

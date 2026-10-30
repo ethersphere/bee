@@ -20,6 +20,7 @@ import (
 	"resenje.org/singleflight"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/depth"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
@@ -53,10 +54,6 @@ type ChainBackend interface {
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
 }
 
-type Health interface {
-	IsHealthy() bool
-}
-
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
@@ -73,7 +70,7 @@ type Agent struct {
 	state                  *RedistributionState
 	chainStateGetter       postage.ChainStateGetter
 	commitLock             sync.Mutex
-	health                 Health
+	depth                  depth.Provider
 	sampleFlight           singleflight.Group[string, sampleResult]
 	disabled               atomic.Bool
 }
@@ -93,7 +90,7 @@ func New(overlay swarm.Address,
 	chainStateGetter postage.ChainStateGetter,
 	erc20Service erc20.Service,
 	tranService transaction.Service,
-	health Health,
+	depthProvider depth.Provider,
 	logger log.Logger,
 ) (*Agent, error) {
 	a := &Agent{
@@ -108,7 +105,7 @@ func New(overlay swarm.Address,
 		blocksPerRound:         blocksPerRound,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		health:                 health,
+		depth:                  depthProvider,
 		chainStateGetter:       chainStateGetter,
 	}
 
@@ -226,7 +223,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
-		a.state.SetHealthy(a.health.IsHealthy())
+		d, state := a.depth.Depth()
+		a.state.SetHealthy(state != depth.StateKnown || d == a.store.CommittedDepth())
 		safe.Go(a.logger, "storageincentives-purge-stale-round-data", func() {
 			a.state.purgeStaleRoundData()
 		})
@@ -430,11 +428,31 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	if !a.state.IsHealthy() {
-		a.metrics.RoundSkipped.WithLabelValues("unhealthy").Inc()
-		a.logger.Info("skipping round because node is unhealthy", "round", round)
+	skip := func(reason string) (bool, error) {
+		a.metrics.RoundSkipped.WithLabelValues(reason).Inc()
+		a.state.SetHealthy(false)
+		a.logger.Info("skipping round", "reason", reason, "round", round)
 		return false, nil
 	}
+
+	d, state := a.depth.Depth()
+	if state == depth.StateKnown {
+		if committedDepth != d {
+			return skip("depth_mismatch")
+		}
+	} else {
+		a.metrics.RoundPlayedUnknown.WithLabelValues(state.String()).Inc()
+	}
+
+	minDepth, err := a.contract.CurrentMinimumDepth(ctx)
+	if err != nil {
+		return skip("rpc_error")
+	}
+	if committedDepth+1 < minDepth {
+		return skip("below_minimum")
+	}
+
+	a.state.SetHealthy(true)
 
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {

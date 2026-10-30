@@ -1369,7 +1369,7 @@ func NewBee(
 				batchStore,
 				erc20Service,
 				transactionService,
-				saludService,
+				depthProvider,
 				logger,
 			)
 			if err != nil {

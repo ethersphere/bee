@@ -15,6 +15,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/depth"
+	depthmock "github.com/ethersphere/bee/v2/pkg/depth/mock"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
@@ -436,18 +438,26 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
-func TestAgentSkipsRoundWhenUnhealthy(t *testing.T) {
+func TestAgentDepthChecks(t *testing.T) {
 	t.Parallel()
 
 	const (
 		blocksPerRound = uint64(9)
 		blocksPerPhase = uint64(3)
+		// The agent starts at block 9 and stops at block 20: one sample phase
+		// (block 15) and the commit phase that follows it (block 18).
+		limit = uint64(21)
+		// committed depth from the reserve mock is radius + doubling = 2
+		radius   = uint8(2)
+		doubling = uint8(0)
 	)
 
-	synctest.Test(t, func(t *testing.T) {
+	run := func(t *testing.T, provider depth.Provider, contract *mockContract) *storageincentives.Agent {
+		t.Helper()
+
 		wait := make(chan struct{}, 1)
 		backend := &mockchainBackend{
-			limit: 108,
+			limit: limit,
 			limitCallback: func() {
 				wait <- struct{}{}
 			},
@@ -455,8 +465,7 @@ func TestAgentSkipsRoundWhenUnhealthy(t *testing.T) {
 			block:       blocksPerRound,
 			balance:     big.NewInt(4_000_000_000),
 		}
-		contract := &mockContract{t: t, expectedRadius: 8}
-		service, err := createServiceWithHealth(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, &mockHealth{unhealthy: true})
+		service, err := createServiceWithDepth(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, radius, doubling, provider)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -465,12 +474,140 @@ func TestAgentSkipsRoundWhenUnhealthy(t *testing.T) {
 		<-wait
 		synctest.Wait()
 
-		if got := value(t, service.RoundSkippedCounter("unhealthy")); got < 1 {
-			t.Fatalf("round skipped counter: got %v, want at least 1", got)
+		return service
+	}
+
+	assertHealthy := func(t *testing.T, service *storageincentives.Agent, want bool) {
+		t.Helper()
+
+		status, err := service.Status()
+		if err != nil {
+			t.Fatal(err)
 		}
-		if got := contract.countCalls(commitCall); got != 0 {
-			t.Fatalf("expected no commit calls, got %d", got)
+		if status.IsHealthy != want {
+			t.Fatalf("is healthy: got %v, want %v", status.IsHealthy, want)
 		}
+	}
+
+	t.Run("depth mismatch skips", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling}
+			provider := depthmock.New(depthmock.WithDepth(3), depthmock.WithState(depth.StateKnown))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundSkippedCounter("depth_mismatch")); got != 1 {
+				t.Fatalf("round skipped depth_mismatch: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 0 {
+				t.Fatalf("expected no commit calls, got %d", got)
+			}
+			assertHealthy(t, service, false)
+		})
+	})
+
+	t.Run("rpc error skips", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling, minDepthErr: errors.New("rpc down")}
+			provider := depthmock.New(depthmock.WithDepth(2), depthmock.WithState(depth.StateKnown))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundSkippedCounter("rpc_error")); got != 1 {
+				t.Fatalf("round skipped rpc_error: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 0 {
+				t.Fatalf("expected no commit calls, got %d", got)
+			}
+		})
+	})
+
+	t.Run("below minimum skips", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling, minDepth: 4}
+			provider := depthmock.New(depthmock.WithDepth(2), depthmock.WithState(depth.StateKnown))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundSkippedCounter("below_minimum")); got != 1 {
+				t.Fatalf("round skipped below_minimum: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 0 {
+				t.Fatalf("expected no commit calls, got %d", got)
+			}
+		})
+	})
+
+	t.Run("one level of slack plays", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling, minDepth: 3}
+			provider := depthmock.New(depthmock.WithDepth(2), depthmock.WithState(depth.StateKnown))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundSkippedCounter("below_minimum")); got != 0 {
+				t.Fatalf("round skipped below_minimum: got %v, want 0", got)
+			}
+			if got := contract.countCalls(commitCall); got != 1 {
+				t.Fatalf("expected one commit call, got %d", got)
+			}
+			assertHealthy(t, service, true)
+		})
+	})
+
+	t.Run("plays in no_history", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling}
+			provider := depthmock.New(depthmock.WithState(depth.StateNoHistory))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundPlayedUnknownCounter("no_history")); got != 1 {
+				t.Fatalf("round played unknown no_history: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 1 {
+				t.Fatalf("expected one commit call, got %d", got)
+			}
+		})
+	})
+
+	t.Run("plays in no_data", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling}
+			provider := depthmock.New(depthmock.WithState(depth.StateNoData))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundPlayedUnknownCounter("no_data")); got != 1 {
+				t.Fatalf("round played unknown no_data: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 1 {
+				t.Fatalf("expected one commit call, got %d", got)
+			}
+		})
+	})
+
+	t.Run("no_data still honors the minimum", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			contract := &mockContract{t: t, expectedRadius: radius + doubling, minDepth: 4}
+			provider := depthmock.New(depthmock.WithState(depth.StateNoData))
+			service := run(t, provider, contract)
+
+			if got := value(t, service.RoundSkippedCounter("below_minimum")); got != 1 {
+				t.Fatalf("round skipped below_minimum: got %v, want 1", got)
+			}
+			if got := contract.countCalls(commitCall); got != 0 {
+				t.Fatalf("expected no commit calls, got %d", got)
+			}
+		})
 	})
 }
 
@@ -502,10 +639,10 @@ func createService(
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
-	return createServiceWithHealth(t, addr, backend, contract, blocksPerRound, blocksPerPhase, radius, doubling, &mockHealth{})
+	return createServiceWithDepth(t, addr, backend, contract, blocksPerRound, blocksPerPhase, radius, doubling, depthmock.New(depthmock.WithState(depth.StateNoHistory)))
 }
 
-func createServiceWithHealth(
+func createServiceWithDepth(
 	t *testing.T,
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
@@ -514,7 +651,7 @@ func createServiceWithHealth(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
-	health *mockHealth,
+	provider depth.Provider,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
@@ -547,7 +684,7 @@ func createServiceWithHealth(
 		&postage.NoOpBatchStore{},
 		erc20mock.New(),
 		transactionmock.New(),
-		health,
+		provider,
 		log.Noop,
 	)
 }
@@ -712,12 +849,6 @@ func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (c
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
 }
-
-type mockHealth struct {
-	unhealthy bool
-}
-
-func (m *mockHealth) IsHealthy() bool { return !m.unhealthy }
 
 // value reads the current value of a counter. The prometheus testutil package is
 // not used because it needs an additional module in go.mod.
