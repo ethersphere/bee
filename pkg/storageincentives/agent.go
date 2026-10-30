@@ -449,9 +449,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.state.SetHealthy(true)
-	if state != depth.StateKnown {
-		a.metrics.RoundPlayedUnknown.WithLabelValues(state.String()).Inc()
-	}
 
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
@@ -473,6 +470,9 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round)
 
 	a.state.SetSampleData(round, sample, dur)
+	if state != depth.StateKnown {
+		a.metrics.RoundPlayedUnknown.WithLabelValues(state.String()).Inc()
+	}
 
 	return true, nil
 }
