@@ -616,7 +616,7 @@ func (ps *PushSync) checkReceipt(ctx context.Context, receipt *pb.Receipt) error
 	if shallow {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
-		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
+		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r, "network_depth_known", known)
 		return ErrShallowReceipt
 	}
 
@@ -637,7 +637,9 @@ func (ps *PushSync) networkRadius(ctx context.Context) (rad uint8, known bool, e
 	if err != nil {
 		return 0, false, err
 	}
-	ps.depthUnknownWarned.Store(false)
+	if ps.depthUnknownWarned.Load() {
+		ps.depthUnknownWarned.Store(false)
+	}
 	return rad, true, nil
 }
 
