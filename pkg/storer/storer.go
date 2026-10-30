@@ -433,6 +433,8 @@ type DB struct {
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
 	quit                chan struct{}
+	radiusReady         chan struct{}
+	radiusReadyOnce     sync.Once
 	cacheLimiter        cacheLimiter
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
@@ -526,16 +528,17 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
-		metrics:    metrics,
-		storage:    st,
-		logger:     logger,
-		tracer:     opts.Tracer,
-		baseAddr:   opts.Address,
-		multex:     lock,
-		cacheObj:   cacheObj,
-		retrieval:  noopRetrieval{},
-		pusherFeed: make(chan *pusher.Op),
-		quit:       make(chan struct{}),
+		metrics:     metrics,
+		storage:     st,
+		logger:      logger,
+		tracer:      opts.Tracer,
+		baseAddr:    opts.Address,
+		multex:      lock,
+		cacheObj:    cacheObj,
+		retrieval:   noopRetrieval{},
+		pusherFeed:  make(chan *pusher.Op),
+		quit:        make(chan struct{}),
+		radiusReady: make(chan struct{}),
 		cacheLimiter: cacheLimiter{
 			sem:    make(chan struct{}, defaultBgCacheWorkers),
 			ctx:    clCtx,
@@ -680,11 +683,17 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 
 // StartReserveWorker starts the reserve worker. It takes an optional ready channel that is closed whenever the reserve
 // worker has finished starting, as this synchronization is needed for some tests. The channel is not used for writing anywhere.
-func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error), ready chan<- struct{}) {
+func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func(context.Context) (uint8, error), ready chan<- struct{}) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
 		go db.startReserveWorkers(ctx, radius, ready)
 	})
+}
+
+// StorageRadiusReady returns a channel that is closed once the reserve has
+// its first storage radius, after the first successful SetRadius.
+func (db *DB) StorageRadiusReady() <-chan struct{} {
+	return db.radiusReady
 }
 
 type noopRetrieval struct{}

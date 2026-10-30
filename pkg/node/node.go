@@ -1309,7 +1309,7 @@ func NewBee(
 		b.pullerCloser = pullerService
 
 		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
-		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, nil)
+		localStore.StartReserveWorker(ctx, pullerService, func(context.Context) (uint8, error) { return waitNetworkRFunc() }, nil)
 		nodeStatus.SetSync(pullerService)
 
 		// measure full sync duration

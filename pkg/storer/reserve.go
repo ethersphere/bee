@@ -46,7 +46,7 @@ func threshold(capacity int) int { return capacity * 5 / 10 }
 
 func (db *DB) startReserveWorkers(
 	ctx context.Context,
-	radius func() (uint8, error),
+	radius func(context.Context) (uint8, error),
 	ready chan<- struct{},
 ) {
 	ctx, cancel := context.WithCancel(ctx)
@@ -68,17 +68,24 @@ func (db *DB) startReserveWorkers(
 		return
 	}
 
-	r, err := radius()
-	if err != nil {
-		db.logger.Error(err, "reserve worker initial radius")
-		return // node shutdown
+	// A node with a persisted radius above the minimum is established and
+	// keeps it; a fresh node asks the radius function for its first radius.
+	r := db.reserve.Radius()
+	if r <= db.reserveOptions.minimumRadius {
+		var err error
+		r, err = radius(ctx)
+		if err != nil {
+			db.logger.Error(err, "reserve worker initial radius")
+			return // node shutdown
+		}
 	}
 
-	err = db.reserve.SetRadius(r)
+	err := db.reserve.SetRadius(r)
 	if err != nil {
 		db.logger.Error(err, "reserve set radius")
 	} else {
 		db.metrics.StorageRadius.Set(float64(r))
+		db.radiusReadyOnce.Do(func() { close(db.radiusReady) })
 	}
 
 	// syncing can now begin now that the reserver worker is running

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -902,6 +903,122 @@ func BenchmarkReservePutter(b *testing.B) {
 	storagetest.BenchmarkChunkStoreWriteSequential(b, storer.ReservePutter())
 }
 
-func networkRadiusFunc(r uint8) func() (uint8, error) {
-	return func() (uint8, error) { return r, nil }
+func networkRadiusFunc(r uint8) func(context.Context) (uint8, error) {
+	return func(context.Context) (uint8, error) { return r, nil }
+}
+
+type radiusRecorder struct{ r atomic.Uint32 }
+
+func (x *radiusRecorder) SetStorageRadius(r uint8) { x.r.Store(uint32(r)) }
+
+func TestReserveWorkerInitialRadius(t *testing.T) {
+	t.Parallel()
+
+	waitClosed := func(t *testing.T, ch <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for channel")
+		}
+	}
+
+	// startAndClose runs a worker with radius function r on a fresh disk
+	// store in dir and closes the store, leaving a persisted radius behind.
+	startAndClose := func(t *testing.T, dir string, baseAddr swarm.Address, r uint8) {
+		t.Helper()
+		db, err := storer.New(context.Background(), dir, dbTestOps(baseAddr, 10, nil, nil, time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		db.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(r), nil)
+		waitClosed(t, db.StorageRadiusReady())
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("fresh node uses the radius function", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := diskStorer(t, dbTestOps(swarm.RandAddress(t), 10, nil, nil, time.Minute))()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var calls atomic.Int32
+		db.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), func(context.Context) (uint8, error) {
+			calls.Add(1)
+			return 3, nil
+		}, nil)
+		waitClosed(t, db.StorageRadiusReady())
+		if got := db.StorageRadius(); got != 3 {
+			t.Fatalf("want radius 3, got %d", got)
+		}
+		if got := calls.Load(); got != 1 {
+			t.Fatalf("want 1 radius function call, got %d", got)
+		}
+	})
+
+	t.Run("established node skips the radius function", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		baseAddr := swarm.RandAddress(t)
+		startAndClose(t, dir, baseAddr, 3)
+
+		db, err := newStorer(t, dir, dbTestOps(baseAddr, 10, nil, nil, time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := db.StorageRadius(); got != 3 {
+			t.Fatalf("want radius 3 right after reopen, got %d", got)
+		}
+		db.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), func(context.Context) (uint8, error) {
+			t.Error("radius function must not be called for an established node")
+			return 0, errors.New("unexpected call")
+		}, nil)
+		waitClosed(t, db.StorageRadiusReady())
+		if got := db.StorageRadius(); got != 3 {
+			t.Fatalf("want radius 3, got %d", got)
+		}
+	})
+
+	t.Run("persisted radius goes into kademlia at open", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		baseAddr := swarm.RandAddress(t)
+		startAndClose(t, dir, baseAddr, 3)
+
+		rec := &radiusRecorder{}
+		if _, err := newStorer(t, dir, dbTestOps(baseAddr, 10, nil, rec, time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		if got := rec.r.Load(); got != 3 {
+			t.Fatalf("want recorder radius 3 before the worker starts, got %d", got)
+		}
+	})
+
+	t.Run("radius function error leaves the ready channel open", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := storer.New(context.Background(), t.TempDir(), dbTestOps(swarm.RandAddress(t), 10, nil, nil, time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		called := make(chan struct{})
+		db.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), func(context.Context) (uint8, error) {
+			close(called)
+			return 0, context.Canceled
+		}, nil)
+		waitClosed(t, called)
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-db.StorageRadiusReady():
+			t.Fatal("StorageRadiusReady must stay open when the radius function fails")
+		default:
+		}
+	})
 }

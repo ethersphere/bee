@@ -67,6 +67,9 @@ func New(
 			return err
 		}
 		rs.radius.Store(uint32(rItem.Radius))
+		if rItem.Radius > 0 {
+			radiusSetter.SetStorageRadius(rItem.Radius)
+		}
 
 		epochItem := &EpochItem{}
 		err = s.IndexStore().Get(epochItem)
