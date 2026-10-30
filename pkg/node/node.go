@@ -1208,19 +1208,22 @@ func NewBee(
 	default:
 		waitNetworkRFunc = newLightRadiusFunc(depthProvider, roundLength, time.Now)
 
-		// light and bootnodes do not have a reserve worker to set the radius.
-		depthC, unsubDepth := depthProvider.Subscribe()
-		go func() {
-			defer unsubDepth()
-			for {
-				select {
-				case d := <-depthC:
-					kad.SetStorageRadius(d)
-				case <-ctx.Done():
-					return
+		// light nodes do not have a reserve worker to set the radius; bootnodes
+		// keep the default kademlia radius.
+		if !o.FullNodeMode {
+			depthC, unsubDepth := depthProvider.Subscribe()
+			go func() {
+				defer unsubDepth()
+				for {
+					select {
+					case d := <-depthC:
+						kad.SetStorageRadius(d)
+					case <-ctx.Done():
+						return
+					}
 				}
-			}
-		}()
+			}()
+		}
 	}
 
 	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
