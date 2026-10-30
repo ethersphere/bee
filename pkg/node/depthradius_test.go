@@ -147,15 +147,33 @@ func TestInitialRadiusFunc(t *testing.T) {
 		}
 	})
 
-	t.Run("commitment error", func(t *testing.T) {
+	t.Run("commitment error is retried", func(t *testing.T) {
 		t.Parallel()
 
-		errCommitment := errors.New("commitment")
+		var calls atomic.Int32
+		commitment := func() (uint64, error) {
+			if calls.Add(1) == 1 {
+				return 0, errors.New("commitment")
+			}
+			return 4 * storer.DefaultReserveCapacity, nil
+		}
 		p := depthmock.New()
-		f := node.NewInitialRadiusFunc(p, 0, 0, testRoundLength, func() (uint64, error) { return 0, errCommitment }, syncDone, log.Noop)
+		f := node.NewInitialRadiusFunc(p, 0, 0, testRoundLength, commitment, syncDone, log.Noop)
 
-		if _, err := f(context.Background()); !errors.Is(err, errCommitment) {
-			t.Fatalf("got error %v, want %v", err, errCommitment)
+		start := time.Now()
+		got, err := f(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Ceiling(4 × capacity) is 2, no doubling.
+		if got != 2 {
+			t.Fatalf("got radius %d, want 2", got)
+		}
+		if n := calls.Load(); n != 2 {
+			t.Fatalf("commitment read %d times, want 2", n)
+		}
+		if want, elapsed := testDeadline+testRoundLength, time.Since(start); elapsed < want {
+			t.Fatalf("fallback after %v, want not before %v", elapsed, want)
 		}
 	})
 

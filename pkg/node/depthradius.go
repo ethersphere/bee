@@ -20,8 +20,9 @@ import (
 // a fresh full node. A known depth gives the depth minus the doubling, no
 // history gives the minimum. While there is no data it waits on the provider
 // until two round lengths after its first call, then, once batch sync is done,
-// falls back to the batchstore ceiling minus the doubling. The result is never
-// below the minimum.
+// falls back to the batchstore ceiling minus the doubling. A commitment read
+// error is logged and both the provider and the commitment are tried again one
+// round length later. The result is never below the minimum.
 func newInitialRadiusFunc(p depth.Provider, doubling, minimum uint8, roundLength time.Duration, commitment func() (uint64, error), syncDone func() bool, logger log.Logger) func(context.Context) (uint8, error) {
 	var (
 		once     sync.Once
@@ -48,20 +49,21 @@ func newInitialRadiusFunc(p depth.Provider, doubling, minimum uint8, roundLength
 				return minimum, nil
 			}
 
-			if syncDone() {
-				break
-			}
 			timeout = roundLength
-		}
+			if !syncDone() {
+				continue
+			}
 
-		c, err := commitment()
-		if err != nil {
-			return 0, fmt.Errorf("batchstore commitment: %w", err)
+			c, err := commitment()
+			if err != nil {
+				logger.Warning("batchstore commitment for the initial radius fallback", "error", err)
+				continue
+			}
+			ceiling := depth.Ceiling(c, storer.DefaultReserveCapacity)
+			r := max(subClamped(ceiling, doubling), minimum)
+			logger.Warning("network depth unknown, initial storage radius from the batchstore ceiling", "reason", "depth_unknown_fallback", "ceiling", ceiling, "radius", r)
+			return r, nil
 		}
-		ceiling := depth.Ceiling(c, storer.DefaultReserveCapacity)
-		r := max(subClamped(ceiling, doubling), minimum)
-		logger.Warning("network depth unknown, initial storage radius from the batchstore ceiling", "reason", "depth_unknown_fallback", "ceiling", ceiling, "radius", r)
-		return r, nil
 	}
 }
 
