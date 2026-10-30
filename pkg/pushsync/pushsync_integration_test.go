@@ -56,7 +56,7 @@ func TestPushSyncIntegration(t *testing.T) {
 		common.HexToHash("0x1").Bytes(),
 		server, // Use libp2p service as streamer
 		serverStorer,
-		func() (uint8, error) { return 0, nil },
+		func(context.Context) (uint8, error) { return 0, nil },
 		topologymock.NewTopologyDriver(), // No peers needed for server in this test
 		true,
 		func(swarm.Chunk) {}, // unwrap
@@ -92,7 +92,7 @@ func TestPushSyncIntegration(t *testing.T) {
 		common.HexToHash("0x1").Bytes(),
 		client, // Use libp2p service as streamer
 		clientStorer,
-		func() (uint8, error) { return 0, nil },
+		func(context.Context) (uint8, error) { return 0, nil },
 		clientTopology,
 		true,
 		func(swarm.Chunk) {}, // unwrap

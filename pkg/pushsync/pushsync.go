@@ -11,11 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/depth"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
@@ -81,7 +83,7 @@ type Storer interface {
 type PushSync struct {
 	address        swarm.Address
 	networkID      uint64
-	radius         func() (uint8, error)
+	radius         func(context.Context) (uint8, error)
 	nonce          []byte
 	streamer       p2p.StreamerDisconnecter
 	store          Storer
@@ -101,6 +103,10 @@ type PushSync struct {
 
 	shallowReceiptTolerance uint8
 	overDraftRefreshLimiter *rate.Limiter
+
+	// depthUnknownWarned is set when the receipt check first runs without the
+	// network depth and cleared when the network depth is known again.
+	depthUnknownWarned atomic.Bool
 }
 
 type receiptResult struct {
@@ -116,7 +122,7 @@ func New(
 	nonce []byte,
 	streamer p2p.StreamerDisconnecter,
 	store Storer,
-	radius func() (uint8, error),
+	radius func(context.Context) (uint8, error),
 	topology topology.Driver,
 	fullNode bool,
 	unwrap func(swarm.Chunk),
@@ -255,7 +261,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	price := ps.pricer.Price(chunkAddress)
 
-	rad, err := ps.radius()
+	rad, known, err := ps.networkRadius(ctx)
 	if err != nil {
 		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
@@ -295,7 +301,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
+	if known && ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
 		stored, reason = true, "is within AOR"
 		return store(ctx)
 	}
@@ -396,7 +402,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	retry()
 
-	rad, err := ps.radius()
+	rad, known, err := ps.networkRadius(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("pushsync: storage radius: %w", err)
 	}
@@ -460,7 +466,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// since we can reach into the neighborhood of the chunk
 			// act as the multiplexer and push the chunk in parallel to multiple peers
-			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= rad {
+			if known && swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= rad {
 				for ; parallelForwards > 0; parallelForwards-- {
 					retry()
 					sentErrorsLeft++
@@ -493,7 +499,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return result.receipt, nil
 				}
 
-				switch err := ps.checkReceipt(result.receipt); {
+				switch err := ps.checkReceipt(ctx, result.receipt); {
 				case err == nil:
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
@@ -573,7 +579,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	err = action.Apply()
 }
 
-func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
+func (ps *PushSync) checkReceipt(ctx context.Context, receipt *pb.Receipt) error {
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
@@ -588,17 +594,26 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
-	r, err := ps.radius()
+	r, known, err := ps.networkRadius(ctx)
 	if err != nil {
 		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	var tolerance uint8
-	if r >= ps.shallowReceiptTolerance { // check for underflow of uint8
-		tolerance = r - ps.shallowReceiptTolerance
+	shallow := uint32(po) < receipt.StorageRadius
+	if known {
+		var tolerance uint8
+		if r >= ps.shallowReceiptTolerance { // check for underflow of uint8
+			tolerance = r - ps.shallowReceiptTolerance
+		}
+		shallow = shallow || po < tolerance
+	} else {
+		ps.metrics.ReceiptNetworkCheckSkipped.Inc()
+		if ps.depthUnknownWarned.CompareAndSwap(false, true) {
+			ps.logger.Warning("network depth unknown, receipt check uses the storer radius only")
+		}
 	}
 
-	if po < tolerance || uint32(po) < receipt.StorageRadius {
+	if shallow {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
 		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
@@ -609,6 +624,21 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 
 	return nil
+}
+
+// networkRadius returns the radius for the decisions that depend on the network
+// depth. known is false when the network depth is not known yet; any other
+// radius error is returned.
+func (ps *PushSync) networkRadius(ctx context.Context) (rad uint8, known bool, err error) {
+	rad, err = ps.radius(ctx)
+	if errors.Is(err, depth.ErrUnknown) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	ps.depthUnknownWarned.Store(false)
+	return rad, true, nil
 }
 
 func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (receipt *pb.Receipt, err error) {

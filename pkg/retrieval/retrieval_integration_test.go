@@ -54,7 +54,7 @@ func TestRetrievalIntegration(t *testing.T) {
 
 	serverRetrieval := retrieval.New(
 		serverAddr,
-		func() (uint8, error) { return swarm.MaxBins, nil },
+		func(context.Context) (uint8, error) { return swarm.MaxBins, nil },
 		serverStorer,
 		server,                           // Use libp2p service as streamer
 		topologymock.NewTopologyDriver(), // No peers needed for server in this test
@@ -79,7 +79,7 @@ func TestRetrievalIntegration(t *testing.T) {
 
 	clientRetrieval := retrieval.New(
 		clientAddr,
-		func() (uint8, error) { return swarm.MaxBins, nil },
+		func(context.Context) (uint8, error) { return swarm.MaxBins, nil },
 		clientStorer,
 		client, // Use libp2p service as streamer
 		clientTopology,

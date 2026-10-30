@@ -12,24 +12,25 @@ import (
 const statusLabel = "status"
 
 type metrics struct {
-	TotalSent               prometheus.Counter
-	TotalReceived           prometheus.Counter
-	TotalHandlerErrors      prometheus.Counter
-	TotalRequests           prometheus.Counter
-	TotalSendAttempts       prometheus.Counter
-	TotalFailedSendAttempts prometheus.Counter
-	TotalOutgoing           prometheus.Counter
-	TotalOutgoingErrors     prometheus.Counter
-	InvalidStampErrors      prometheus.Counter
-	StampValidationTime     *prometheus.HistogramVec
-	Forwarder               prometheus.Counter
-	Storer                  prometheus.Counter
-	TotalHandlerTime        *prometheus.HistogramVec
-	PushToPeerTime          *prometheus.HistogramVec
-	ReceiptDepth            *prometheus.CounterVec
-	ShallowReceiptDepth     *prometheus.CounterVec
-	ShallowReceipt          prometheus.Counter
-	OverdraftRefresh        prometheus.Counter
+	TotalSent                  prometheus.Counter
+	TotalReceived              prometheus.Counter
+	TotalHandlerErrors         prometheus.Counter
+	TotalRequests              prometheus.Counter
+	TotalSendAttempts          prometheus.Counter
+	TotalFailedSendAttempts    prometheus.Counter
+	TotalOutgoing              prometheus.Counter
+	TotalOutgoingErrors        prometheus.Counter
+	InvalidStampErrors         prometheus.Counter
+	StampValidationTime        *prometheus.HistogramVec
+	Forwarder                  prometheus.Counter
+	Storer                     prometheus.Counter
+	TotalHandlerTime           *prometheus.HistogramVec
+	PushToPeerTime             *prometheus.HistogramVec
+	ReceiptDepth               *prometheus.CounterVec
+	ShallowReceiptDepth        *prometheus.CounterVec
+	ShallowReceipt             prometheus.Counter
+	ReceiptNetworkCheckSkipped prometheus.Counter
+	OverdraftRefresh           prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -138,6 +139,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "shallow_receipt",
 			Help:      "Total shallow receipts.",
+		}),
+		ReceiptNetworkCheckSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "receipt_network_check_skipped_total",
+			Help:      "Total receipts checked against the storer radius only because the network depth was unknown.",
 		}),
 		ReceiptDepth: prometheus.NewCounterVec(
 			prometheus.CounterOpts{

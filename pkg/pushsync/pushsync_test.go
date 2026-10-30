@@ -19,6 +19,7 @@ import (
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	cryptomock "github.com/ethersphere/bee/v2/pkg/crypto/mock"
+	"github.com/ethersphere/bee/v2/pkg/depth"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
@@ -34,6 +35,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 const (
@@ -997,6 +1000,140 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	}
 }
 
+// TestShallowReceiptUnknownDepth checks that an origin node with an unknown
+// network depth checks a receipt only against the radius the storer reports.
+func TestShallowReceiptUnknownDepth(t *testing.T) {
+	t.Parallel()
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(key)
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	storerAddr, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := testingc.GenerateValidRandomChunkAt(t, storerAddr, 2)
+	po := swarm.Proximity(chunk.Address().Bytes(), storerAddr.Bytes())
+	if po >= swarm.MaxPO {
+		t.Fatalf("chunk proximity %d leaves no room below the network radius %d", po, swarm.MaxPO)
+	}
+	signature, err := signer.Sign(chunk.Address().Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := func(storageRadius uint32) *pb.Receipt {
+		return &pb.Receipt{
+			Address:       chunk.Address().Bytes(),
+			Signature:     signature,
+			Nonce:         blockHash.Bytes(),
+			StorageRadius: storageRadius,
+		}
+	}
+
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+
+	psKnown, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, nil, nil, nil, swarm.MaxPO, 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	if err := psKnown.CheckReceipt(receipt(uint32(po))); !errors.Is(err, pushsync.ErrShallowReceipt) {
+		t.Fatalf("known radius: got %v, want %v", err, pushsync.ErrShallowReceipt)
+	}
+
+	unknownRadius := func(context.Context) (uint8, error) { return 0, depth.ErrUnknown }
+	psPivot, _ := createPushSyncNodeWithRadiusFunc(t, pivotNode, defaultPrices, nil, nil, nil, unknownRadius, 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	// the storer reports a radius deeper than the chunk's proximity
+	if err := psPivot.CheckReceipt(receipt(uint32(po) + 1)); !errors.Is(err, pushsync.ErrShallowReceipt) {
+		t.Fatalf("storer radius above proximity: got %v, want %v", err, pushsync.ErrShallowReceipt)
+	}
+
+	// the network radius would reject this receipt, the storer radius accepts it
+	if err := psPivot.CheckReceipt(receipt(uint32(po))); err != nil {
+		t.Fatalf("storer radius at proximity: got %v, want nil", err)
+	}
+
+	if got := counterValue(t, psPivot.ReceiptNetworkCheckSkipped()); got != 2 {
+		t.Fatalf("receipt_network_check_skipped_total: got %v, want 2", got)
+	}
+	if got := counterValue(t, psKnown.ReceiptNetworkCheckSkipped()); got != 0 {
+		t.Fatalf("receipt_network_check_skipped_total with a known radius: got %v, want 0", got)
+	}
+}
+
+// TestMultiplexOffWhenDepthUnknown checks that an origin node with an unknown
+// network depth pushes to the closest peer only. TestMultiplePushesAsForwarder
+// is the same setup with a known radius, where all three peers receive the chunk.
+func TestMultiplexOffWhenDepthUnknown(t *testing.T) {
+	t.Parallel()
+
+	chunk := testingc.FixtureChunk("7000")
+
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+
+	peer1 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer2 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
+	peer3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer1, storerPeer1, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer2, storerPeer2, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer3, storerPeer3, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	recorder := streamtest.New(
+		streamtest.WithPeerProtocols(
+			map[string]p2p.ProtocolSpec{
+				peer1.String(): psPeer1.Protocol(),
+				peer2.String(): psPeer2.Protocol(),
+				peer3.String(): psPeer3.Protocol(),
+			},
+		),
+		streamtest.WithBaseAddr(pivotNode),
+	)
+
+	unknownRadius := func(context.Context) (uint8, error) { return 0, depth.ErrUnknown }
+	psPivot, _ := createPushSyncNodeWithRadiusFunc(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), unknownRadius, 0, mock.WithPeers(peer1, peer2, peer3))
+
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), nil)
+
+	// without the multiplex retries no other push was started before the
+	// receipt returned, and the canceled push context starts none after it
+	for _, peer := range []swarm.Address{peer2, peer3} {
+		if _, err := recorder.Records(peer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName); !errors.Is(err, streamtest.ErrRecordsNotFound) {
+			t.Fatalf("peer %s: got %v, want %v", peer, err, streamtest.ErrRecordsNotFound)
+		}
+	}
+
+	if !storerPeer1.hasChunk(t, chunk.Address()) {
+		t.Fatal("closest peer did not store the chunk")
+	}
+	if storerPeer2.hasChunk(t, chunk.Address()) || storerPeer3.hasChunk(t, chunk.Address()) {
+		t.Fatal("chunk stored by a peer other than the closest")
+	}
+}
+
+func counterValue(t *testing.T, c prometheus.Counter) float64 {
+	t.Helper()
+
+	var m dto.Metric
+	if err := c.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetCounter().GetValue()
+}
+
 type testStorer struct {
 	chunksMu       sync.Mutex
 	chunksPut      map[string]swarm.Chunk
@@ -1100,6 +1237,22 @@ func createPushSyncNodeWithRadius(
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()
+	radiusFunc := func(context.Context) (uint8, error) { return radius, nil }
+	return createPushSyncNodeWithRadiusFunc(t, addr, prices, recorder, unwrap, signer, radiusFunc, shallowReceiptTolerance, mockOpts...)
+}
+
+func createPushSyncNodeWithRadiusFunc(
+	t *testing.T,
+	addr swarm.Address,
+	prices pricerParameters,
+	recorder *streamtest.Recorder,
+	unwrap func(swarm.Chunk),
+	signer crypto.Signer,
+	radiusFunc func(context.Context) (uint8, error),
+	shallowReceiptTolerance uint8,
+	mockOpts ...mock.Option,
+) (*pushsync.PushSync, *testStorer) {
+	t.Helper()
 	storer := &testStorer{
 		chunksPut:      make(map[string]swarm.Chunk),
 		chunksReported: make(map[string]int),
@@ -1116,8 +1269,6 @@ func createPushSyncNodeWithRadius(
 	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
 		return ch, nil
 	}
-
-	radiusFunc := func() (uint8, error) { return radius, nil }
 
 	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, stabilmock.NewSubscriber(true), shallowReceiptTolerance)
 	t.Cleanup(func() { ps.Close() })
@@ -1158,7 +1309,7 @@ func createPushSyncNodeWithAccounting(
 		return ch, nil
 	}
 
-	radiusFunc := func() (uint8, error) { return 0, nil }
+	radiusFunc := func(context.Context) (uint8, error) { return 0, nil }
 
 	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, stabilmock.NewSubscriber(true), 0)
 	t.Cleanup(func() { ps.Close() })

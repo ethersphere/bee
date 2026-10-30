@@ -66,7 +66,7 @@ type Storer interface {
 
 type Service struct {
 	addr          swarm.Address
-	radiusFunc    func() (uint8, error)
+	radiusFunc    func(context.Context) (uint8, error)
 	streamer      p2p.Streamer
 	peerSuggester topology.ClosestPeerer
 	storer        Storer
@@ -82,7 +82,7 @@ type Service struct {
 
 func New(
 	addr swarm.Address,
-	radiusFunc func() (uint8, error),
+	radiusFunc func(context.Context) (uint8, error),
 	storer Storer,
 	streamer p2p.Streamer,
 	chunkPeerer topology.ClosestPeerer,
@@ -241,7 +241,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				// act as the multiplexer and push the chunk in parallel to multiple peers.
 				// neighbor peers will also have multiple retries, which means almost the entire neighborhood
 				// will be scanned for the chunk, starting from the closest to the furthest peer in the neighborhood.
-				if radius, err := s.radiusFunc(); err == nil && swarm.Proximity(peer.Bytes(), chunkAddr.Bytes()) >= radius {
+				if radius, err := s.radiusFunc(ctx); err == nil && swarm.Proximity(peer.Bytes(), chunkAddr.Bytes()) >= radius {
 					for ; forwards > 0; forwards-- {
 						retry()
 						errorsLeft++

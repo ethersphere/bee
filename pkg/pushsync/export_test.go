@@ -4,7 +4,12 @@
 
 package pushsync
 
-import "github.com/ethersphere/bee/v2/pkg/pushsync/pb"
+import (
+	"context"
+
+	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var (
 	ProtocolName    = protocolName
@@ -15,5 +20,11 @@ var (
 // CheckReceipt exposes the unexported receipt verification (signature recovery,
 // overlay derivation, proximity and shallow-receipt logic) for fuzzing.
 func (ps *PushSync) CheckReceipt(receipt *pb.Receipt) error {
-	return ps.checkReceipt(receipt)
+	return ps.checkReceipt(context.Background(), receipt)
+}
+
+// ReceiptNetworkCheckSkipped exposes the counter of receipts checked without
+// the network radius.
+func (ps *PushSync) ReceiptNetworkCheckSkipped() prometheus.Counter {
+	return ps.metrics.ReceiptNetworkCheckSkipped
 }
