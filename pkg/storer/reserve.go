@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/depth"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
@@ -75,9 +76,15 @@ func (db *DB) startReserveWorkers(
 		var err error
 		r, err = radius(ctx)
 		if err != nil {
-			db.logger.Error(err, "reserve worker initial radius")
+			if ctx.Err() != nil || errors.Is(err, depth.ErrClosed) {
+				db.logger.Debug("reserve worker initial radius", "error", err)
+			} else {
+				db.logger.Error(err, "reserve worker initial radius")
+			}
 			return // node shutdown
 		}
+	} else {
+		db.logger.Info("initial storage radius", "reason", "persisted", "radius", r)
 	}
 
 	err := db.reserve.SetRadius(r)
