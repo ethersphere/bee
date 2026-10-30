@@ -428,31 +428,30 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	skip := func(reason string) (bool, error) {
+	skip := func(reason string, keysAndValues ...any) (bool, error) {
 		a.metrics.RoundSkipped.WithLabelValues(reason).Inc()
 		a.state.SetHealthy(false)
-		a.logger.Info("skipping round", "reason", reason, "round", round)
+		a.logger.Info("skipping round", append([]any{"reason", reason, "round", round}, keysAndValues...)...)
 		return false, nil
 	}
 
 	d, state := a.depth.Depth()
-	if state == depth.StateKnown {
-		if committedDepth != d {
-			return skip("depth_mismatch")
-		}
-	} else {
-		a.metrics.RoundPlayedUnknown.WithLabelValues(state.String()).Inc()
+	if state == depth.StateKnown && committedDepth != d {
+		return skip("depth_mismatch")
 	}
 
 	minDepth, err := a.contract.CurrentMinimumDepth(ctx)
 	if err != nil {
-		return skip("rpc_error")
+		return skip("rpc_error", "error", err)
 	}
 	if committedDepth+1 < minDepth {
 		return skip("below_minimum")
 	}
 
 	a.state.SetHealthy(true)
+	if state != depth.StateKnown {
+		a.metrics.RoundPlayedUnknown.WithLabelValues(state.String()).Inc()
+	}
 
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {

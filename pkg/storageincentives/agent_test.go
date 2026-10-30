@@ -604,6 +604,9 @@ func TestAgentDepthChecks(t *testing.T) {
 			if got := value(t, service.RoundSkippedCounter("below_minimum")); got != 1 {
 				t.Fatalf("round skipped below_minimum: got %v, want 1", got)
 			}
+			if got := value(t, service.RoundPlayedUnknownCounter("no_data")); got != 0 {
+				t.Fatalf("round played unknown no_data: got %v, want 0", got)
+			}
 			if got := contract.countCalls(commitCall); got != 0 {
 				t.Fatalf("expected no commit calls, got %d", got)
 			}
