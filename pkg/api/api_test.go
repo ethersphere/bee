@@ -765,6 +765,10 @@ func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
 	return true, nil
 }
 
+func (m *mockContract) CurrentMinimumDepth(context.Context) (uint8, error) {
+	return 0, nil
+}
+
 func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

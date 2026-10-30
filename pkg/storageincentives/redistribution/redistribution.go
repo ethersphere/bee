@@ -26,6 +26,7 @@ type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
+	CurrentMinimumDepth(context.Context) (uint8, error)
 	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
@@ -79,6 +80,26 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	}
 
 	return results[0].(bool), nil
+}
+
+// CurrentMinimumDepth returns the minimum depth a node must have to play in the current round.
+func (c *contract) CurrentMinimumDepth(ctx context.Context) (uint8, error) {
+	callData, err := c.incentivesContractABI.Pack("currentMinimumDepth")
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := c.callTx(ctx, callData)
+	if err != nil {
+		return 0, fmt.Errorf("CurrentMinimumDepth: %w", err)
+	}
+
+	results, err := c.incentivesContractABI.Unpack("currentMinimumDepth", result)
+	if err != nil {
+		return 0, fmt.Errorf("CurrentMinimumDepth: results %v: %w", results, err)
+	}
+
+	return results[0].(uint8), nil
 }
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.

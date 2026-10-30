@@ -451,3 +451,73 @@ func TestRedistribution(t *testing.T) {
 		}
 	})
 }
+
+func TestCurrentMinimumDepth(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	contractAddress := common.HexToAddress("ffff")
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		expectedCallData, err := redistributionContractABI.Pack("currentMinimumDepth")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := redistribution.New(
+			overlay,
+			owner,
+			log.Noop,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+					if *request.To != contractAddress {
+						return nil, errors.New("unexpected call")
+					}
+					if !bytes.Equal(expectedCallData, request.Data) {
+						return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+					}
+					return big.NewInt(7).FillBytes(make([]byte, 32)), nil
+				}),
+			),
+			contractAddress,
+			redistributionContractABI,
+			0,
+		)
+
+		depth, err := contract.CurrentMinimumDepth(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if depth != 7 {
+			t.Fatalf("got depth %d, want 7", depth)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		t.Parallel()
+
+		cause := errors.New("some error")
+		contract := redistribution.New(
+			overlay,
+			owner,
+			log.Noop,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+					return nil, cause
+				}),
+			),
+			contractAddress,
+			redistributionContractABI,
+			0,
+		)
+
+		_, err := contract.CurrentMinimumDepth(ctx)
+		if !errors.Is(err, cause) {
+			t.Fatalf("got error %v, want %v", err, cause)
+		}
+	})
+}

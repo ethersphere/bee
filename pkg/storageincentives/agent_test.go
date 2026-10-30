@@ -624,6 +624,8 @@ type mockContract struct {
 	isPlayingCount  int
 	beforeIsPlaying func()
 	beforeCommit    func()
+	minDepth        uint8
+	minDepthErr     error
 }
 
 // getCalls returns a snapshot of the calls list
@@ -669,6 +671,10 @@ func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {
 	m.isPlayingCount++
 	m.mtx.Unlock()
 	return true, nil
+}
+
+func (m *mockContract) CurrentMinimumDepth(context.Context) (uint8, error) {
+	return m.minDepth, m.minDepthErr
 }
 
 func (m *mockContract) IsWinner(context.Context) (bool, error) {
