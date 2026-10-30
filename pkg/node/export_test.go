@@ -15,6 +15,10 @@ var (
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
 
 	ResolveRedistributionAddress = resolveRedistributionAddress
+
+	NewInitialRadiusFunc = newInitialRadiusFunc
+	NewLightRadiusFunc   = newLightRadiusFunc
+	NewFullRadiusFunc    = newFullRadiusFunc
 )
 
 // NewTestBeeWithClosers builds a Bee with only the push-sync and retrieval

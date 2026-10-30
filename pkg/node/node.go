@@ -1143,6 +1143,11 @@ func NewBee(
 		b.depthCloser = depthProvider
 	}
 
+	roundLength := o.BlockTime * time.Duration(storageincentives.DefaultBlocksPerRound)
+	minimumRadius := uint8(o.MinimumStorageRadius)
+
+	// On ultra-light nodes salud is the network radius source; on chain-enabled
+	// nodes it only feeds the depth provider comparison gauges.
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
 	initialRadiusC := make(chan struct{})
 	var networkR atomic.Uint32
@@ -1152,23 +1157,22 @@ func NewBee(
 		for {
 			select {
 			case r := <-rC:
-				prev := networkR.Load()
-				networkR.Store(uint32(r))
-				if prev == uint32(swarm.MaxBins) {
-					close(initialRadiusC)
+				if !chainEnabled {
+					prev := networkR.Load()
+					networkR.Store(uint32(r))
+					if prev == uint32(swarm.MaxBins) {
+						close(initialRadiusC)
+					}
+					kad.SetStorageRadius(r) // ultra-light nodes do not have a reserve worker to set the radius.
+					continue
 				}
-				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
-					kad.SetStorageRadius(r)
-				}
-				if depthProvider != nil {
-					depthProvider.SetComparison("salud", r)
-					if done, _ := syncStatusFn(); done {
-						c, err := batchStore.Commitment()
-						if err != nil {
-							logger.Debug("batchstore commitment for depth ceiling", "error", err)
-						} else {
-							depthProvider.SetComparison("batchstore_ceiling", depth.Ceiling(c, storer.DefaultReserveCapacity))
-						}
+				depthProvider.SetComparison("salud", r)
+				if done, _ := syncStatusFn(); done {
+					c, err := batchStore.Commitment()
+					if err != nil {
+						logger.Debug("batchstore commitment for depth ceiling", "error", err)
+					} else {
+						depthProvider.SetComparison("batchstore_ceiling", depth.Ceiling(c, storer.DefaultReserveCapacity))
 					}
 				}
 			case <-ctx.Done():
@@ -1178,30 +1182,54 @@ func NewBee(
 		}
 	}()
 
-	waitNetworkRFunc := func() (uint8, error) {
-		if networkR.Load() == uint32(swarm.MaxBins) {
-			select {
-			case <-initialRadiusC:
-			case <-ctx.Done():
-				return 0, ctx.Err()
+	var waitNetworkRFunc func(context.Context) (uint8, error)
+	switch {
+	case !chainEnabled:
+		waitNetworkRFunc = func(reqCtx context.Context) (uint8, error) {
+			if networkR.Load() == uint32(swarm.MaxBins) {
+				select {
+				case <-initialRadiusC:
+				case <-reqCtx.Done():
+					return 0, reqCtx.Err()
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				}
+			}
+
+			local, network := localStore.StorageRadius(), uint8(networkR.Load())
+			if local <= minimumRadius {
+				return max(network, minimumRadius), nil
+			} else {
+				return local, nil
 			}
 		}
+	case o.FullNodeMode && !o.BootnodeMode:
+		waitNetworkRFunc = newFullRadiusFunc(localStore.StorageRadiusReady(), localStore.StorageRadius, minimumRadius)
+	default:
+		waitNetworkRFunc = newLightRadiusFunc(depthProvider, roundLength, time.Now)
 
-		local, network := localStore.StorageRadius(), uint8(networkR.Load())
-		if local <= uint8(o.MinimumStorageRadius) {
-			return max(network, uint8(o.MinimumStorageRadius)), nil
-		} else {
-			return local, nil
-		}
+		// light and bootnodes do not have a reserve worker to set the radius.
+		depthC, unsubDepth := depthProvider.Subscribe()
+		go func() {
+			defer unsubDepth()
+			for {
+				select {
+				case d := <-depthC:
+					kad.SetStorageRadius(d)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, func(context.Context) (uint8, error) { return waitNetworkRFunc() }, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	retrieval := retrieval.New(swarmAddress, func(context.Context) (uint8, error) { return waitNetworkRFunc() }, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	b.retrievalCloser = retrieval
 	localStore.SetRetrievalService(retrieval)
 
@@ -1309,7 +1337,8 @@ func NewBee(
 		b.pullerCloser = pullerService
 
 		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
-		localStore.StartReserveWorker(ctx, pullerService, func(context.Context) (uint8, error) { return waitNetworkRFunc() }, nil)
+		initialRadius := newInitialRadiusFunc(depthProvider, uint8(o.ReserveCapacityDoubling), minimumRadius, roundLength, batchStore.Commitment, func() bool { done, _ := syncStatusFn(); return done }, logger)
+		localStore.StartReserveWorker(ctx, pullerService, initialRadius, nil)
 		nodeStatus.SetSync(pullerService)
 
 		// measure full sync duration
