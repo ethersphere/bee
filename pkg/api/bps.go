@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,41 +29,49 @@ import (
 
 const (
 	bpsCloseInvalidSOC     = 4001 // a chunk that does not validate under the session challenge
-	bpsCloseInvalidMessage = 4002 // frame violates the endpoint protocol
+	bpsCloseInvalidMessage = 4002 // a frame violates the endpoint protocol
 	bpsCloseBrokerGone     = 4003 // the p2p stream to the broker ended
 	bpsCloseEndOfStream    = 4004 // the owner ended the channel with an EOS
+	bpsCloseAuthTimeout    = 4005 // the owner's AUTH did not arrive in time
 
 	bpsMaxCloseReason = 123   // websocket control frame payload limit minus the code
 	bpsFrameHeader    = 1 + 8 // publish frame header: kind | index (big-endian)
-	bpsMaxSOCSize     = swarm.HashSize + swarm.SocSignatureSize + swarm.SpanSize + swarm.ChunkSize
-	bpsMaxFrameSize   = bpsFrameHeader + bpsMaxSOCSize
+	bpsMaxFrameSize   = bpsFrameHeader + swarm.SocMaxChunkSize
 	// delivery frame header: kind | owner | challenge | index (big-endian)
 	bpsDeliveryHeader = 1 + common.AddressLength + bps.ChallengeSize + 8
+
+	// bpsGranted is the text frame that tells a stream a roster naming its
+	// identity has reached it: it may now send its AUTH.
+	bpsGranted = "granted"
 )
 
-// bpsAuthTimeout bounds how long a publisher may take to send its AUTH. For the
-// owner it is counted from before the join and is shorter than the broker's
-// auth deadline, so that the broker never blocklists this node for a slow
-// dApp; for a seat it is counted from the grant.
+// bpsAuthTimeout bounds how long the owner may take to send its AUTH. It is
+// counted from before the join and is shorter than the broker's auth deadline,
+// so that the broker never blocklists this node for a slow dApp.
 var bpsAuthTimeout = 25 * time.Second
 
-var errBPSBrokerGone = errors.New("broker stream closed")
+// errBPSInvalidRoster is a roster query parameter that does not parse.
+var errBPSInvalidRoster = errors.New("invalid roster")
+
+// The reasons a socket ends that are the bridge's own; bpsCloseCode maps them,
+// and the session's, to close codes.
+var (
+	errBPSInvalidMessage = errors.New("invalid message")
+	errBPSAuthTimeout    = errors.New("auth timeout")
+	errBPSBrokerGone     = errors.New("broker stream closed")
+	errBPSClientGone     = errors.New("client gone")
+	errBPSShutdown       = errors.New("node shutting down")
+)
 
 type bpsRequest struct {
 	owner    common.Address
 	topic    []byte
 	broker   swarm.Address
 	identity []byte
-	position bps.Position // the subscriber's place on the channel: cursor, roster, rosterCursor
+	position bps.Position // the place on the channel: cursor, roster, rosterCursor
 }
 
-// bpsGrantedMessage tells a seat's dApp that a roster naming its identity has
-// reached the stream: it may now send its AUTH.
-type bpsGrantedMessage struct {
-	Type string `json:"type"`
-}
-
-type bpsChallengeMessage struct {
+type bpsChallengeMsg struct {
 	Type        string `json:"type"`
 	Challenge   string `json:"challenge"`
 	Broker      string `json:"broker"`
@@ -70,6 +79,32 @@ type bpsChallengeMessage struct {
 	AuthTopic   string `json:"authTopic"`
 	RosterTopic string `json:"rosterTopic,omitempty"` // the owner's only
 	EOSTopic    string `json:"eosTopic,omitempty"`    // the owner's only
+}
+
+// newBPSChallengeMsg returns what a dApp needs to sign under the stream's
+// challenge: the session topics of the kinds its identity may publish.
+func newBPSChallengeMsg(req bpsRequest, challenge []byte, isOwner bool) (bpsChallengeMsg, error) {
+	msg := bpsChallengeMsg{
+		Type:      "challenge",
+		Challenge: hex.EncodeToString(challenge),
+		Broker:    req.broker.String(),
+	}
+	type sessionTopic struct {
+		kind bps.Kind
+		dst  *string
+	}
+	topics := []sessionTopic{{bps.KindData, &msg.DataTopic}, {bps.KindAuth, &msg.AuthTopic}}
+	if isOwner {
+		topics = append(topics, sessionTopic{bps.KindRoster, &msg.RosterTopic}, sessionTopic{bps.KindEOS, &msg.EOSTopic})
+	}
+	for _, t := range topics {
+		topic, err := bps.SessionTopic(t.kind, req.topic, challenge)
+		if err != nil {
+			return bpsChallengeMsg{}, fmt.Errorf("session topic: %w", err)
+		}
+		*t.dst = hex.EncodeToString(topic)
+	}
+	return msg, nil
 }
 
 // bpsDeliveryFrame encodes a delivery for the dApp: kind | owner | challenge |
@@ -83,30 +118,10 @@ func bpsDeliveryFrame(msg bps.Message) []byte {
 	return append(data, msg.SOC...)
 }
 
-// bpsSessionEnded closes the socket for a session whose stream ended: with
-// 4004 after an EOS, 4003 otherwise.
-func (s *Service) bpsSessionEnded(conn *websocket.Conn, sess bps.Session) {
-	if err := sess.Err(); errors.Is(err, bps.ErrEndOfStream) {
-		s.bpsClose(conn, bpsCloseEndOfStream, "end of stream")
-		return
-	}
-	s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(sess.Err()))
-}
-
-func (s *Service) bpsSubscribeWsHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("bps_subscribe").Build()
+func (s *Service) bpsWsHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("bps").Build()
 	req, ok := s.bpsParseRequest(w, r, logger)
 	if !ok {
-		return
-	}
-	if len(req.identity) == 0 {
-		jsonhttp.BadRequest(w, "missing identity")
-		return
-	}
-	// a stream declaring the owner is a pending publisher stream at the broker: it
-	// would receive nothing and be blocklisted at the auth deadline
-	if bytes.Equal(req.identity, req.owner.Bytes()) {
-		jsonhttp.BadRequest(w, "identity is the owner: use publish")
 		return
 	}
 	conn, ok := s.bpsUpgrade(w, r, logger)
@@ -114,25 +129,7 @@ func (s *Service) bpsSubscribeWsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.wsWg.Add(1)
-	go s.bpsSubscribeWs(conn, req, logger)
-}
-
-func (s *Service) bpsPublishWsHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("bps_publish").Build()
-	req, ok := s.bpsParseRequest(w, r, logger)
-	if !ok {
-		return
-	}
-	// the owner publishes by default; a seat names its own address
-	if len(req.identity) == 0 {
-		req.identity = req.owner.Bytes()
-	}
-	conn, ok := s.bpsUpgrade(w, r, logger)
-	if !ok {
-		return
-	}
-	s.wsWg.Add(1)
-	go s.bpsPublishWs(conn, req, logger)
+	go s.bpsRun(conn, req, logger)
 }
 
 // bpsParseRequest validates the request before the websocket upgrade.
@@ -175,6 +172,10 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 		jsonhttp.BadRequest(w, "broker cannot be this node")
 		return bpsRequest{}, false
 	}
+	if len(queries.Identity) == 0 {
+		jsonhttp.BadRequest(w, "missing identity")
+		return bpsRequest{}, false
+	}
 
 	pos, err := bpsPosition(paths.Owner.Bytes(), queries.Cursor, queries.Roster, queries.RosterCursor)
 	if err != nil {
@@ -191,16 +192,11 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 	}, true
 }
 
-// bpsMaxRoster is the most addresses a roster can name: what fits in one chunk.
-const bpsMaxRoster = 186
-
-var errBPSInvalidRoster = errors.New("invalid roster")
-
-// bpsPosition builds the subscriber's place on the channel from the query: the
-// owner's cursor, and the roster as address:cursor pairs — the grantees it
-// names, each with the lowest index of its updates to deliver — at the roster
-// cursor, the lowest roster index to accept. A dApp keeps them from the
-// deliveries it received and passes them back when it reconnects.
+// bpsPosition builds the place on the channel from the query: the owner's
+// cursor, and the roster as address:cursor pairs — the grantees it names, each
+// with the lowest index of its updates to deliver — at the roster cursor, the
+// lowest roster index to accept. A dApp keeps them from the deliveries it
+// received and passes them back when it reconnects.
 func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64) (bps.Position, error) {
 	pos := bps.Position{
 		Cursors:      map[string]uint64{string(owner): cursor},
@@ -210,8 +206,8 @@ func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64
 		return pos, nil
 	}
 	entries := strings.Split(roster, ",")
-	if len(entries) > bpsMaxRoster {
-		return pos, fmt.Errorf("%w: more than %d addresses", errBPSInvalidRoster, bpsMaxRoster)
+	if len(entries) > bps.MaxRosterSize {
+		return pos, fmt.Errorf("%w: more than %d addresses", errBPSInvalidRoster, bps.MaxRosterSize)
 	}
 	for _, e := range entries {
 		addr, index, ok := strings.Cut(e, ":")
@@ -223,7 +219,7 @@ func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64
 			return pos, fmt.Errorf("%w: address %q", errBPSInvalidRoster, addr)
 		}
 		if bytes.Equal(a, owner) {
-			return pos, fmt.Errorf("%w: the owner is not on its roster", errBPSInvalidRoster)
+			return pos, fmt.Errorf("%w: the owner must not be on the roster", errBPSInvalidRoster)
 		}
 		n, err := strconv.ParseUint(index, 10, 64)
 		if err != nil {
@@ -271,68 +267,76 @@ func (s *Service) bpsWriteJSON(conn *websocket.Conn, v any) error {
 	return s.bpsWrite(conn, websocket.TextMessage, b)
 }
 
-// bpsClose sends a close frame with code and reason. Errors are ignored
-// since the connection is torn down right after.
-func (s *Service) bpsClose(conn *websocket.Conn, code int, reason string) {
+// bpsCloseCode maps the reason a socket ends to its close code.
+func bpsCloseCode(err error) int {
+	switch {
+	case errors.Is(err, bps.ErrEndOfStream):
+		return bpsCloseEndOfStream
+	case errors.Is(err, bps.ErrInvalidSOC):
+		return bpsCloseInvalidSOC
+	case errors.Is(err, errBPSInvalidMessage),
+		errors.Is(err, bps.ErrInvalidMessage),
+		errors.Is(err, bps.ErrInvalidRoster),
+		errors.Is(err, bps.ErrNotPublisher):
+		return bpsCloseInvalidMessage
+	case errors.Is(err, errBPSAuthTimeout):
+		return bpsCloseAuthTimeout
+	case errors.Is(err, errBPSShutdown):
+		return websocket.CloseGoingAway
+	default:
+		return bpsCloseBrokerGone
+	}
+}
+
+// bpsClose sends a close frame with the code and the text of err. It may run
+// while the inbox writes. Errors are ignored since the connection is torn down
+// right after.
+func bpsClose(conn *websocket.Conn, err error) {
+	reason := err.Error()
 	if len(reason) > bpsMaxCloseReason {
 		reason = strings.ToValidUTF8(reason[:bpsMaxCloseReason], "")
 	}
-	_ = s.bpsWrite(conn, websocket.CloseMessage, websocket.FormatCloseMessage(code, reason))
+	_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(bpsCloseCode(err), reason), time.Now().Add(writeDeadline))
 }
 
-func bpsErrReason(err error) string {
-	if err == nil {
-		return errBPSBrokerGone.Error()
+// bpsParseFrame splits a frame the dApp sent into kind | index | soc. Whether
+// the stream may send it, and whether the chunk is valid, is the session's to say.
+func bpsParseFrame(typ int, data []byte) (bps.Kind, uint64, []byte, error) {
+	if typ != websocket.BinaryMessage {
+		return 0, 0, nil, fmt.Errorf("%w: expected a binary frame", errBPSInvalidMessage)
 	}
-	return err.Error()
+	if len(data) < bpsFrameHeader {
+		return 0, 0, nil, fmt.Errorf("%w: short frame", errBPSInvalidMessage)
+	}
+	return bps.Kind(data[0]), binary.BigEndian.Uint64(data[1:bpsFrameHeader]), data[bpsFrameHeader:], nil
 }
 
-type bpsFrame struct {
-	typ  int
-	data []byte
-}
-
-// bpsReadFrames reads client frames until the connection errors or quit is
-// closed. The returned gone channel is closed when reading stops.
-func bpsReadFrames(conn *websocket.Conn, quit <-chan struct{}) (<-chan bpsFrame, <-chan struct{}) {
-	frames := make(chan bpsFrame)
-	gone := make(chan struct{})
-	go func() {
-		defer close(gone)
-		for {
-			typ, data, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
-			select {
-			case frames <- bpsFrame{typ: typ, data: data}:
-			case <-quit:
-				return
-			}
-		}
-	}()
-	return frames, gone
-}
-
-func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger log.Logger) {
+// bpsRun bridges a dApp's socket and its stream to the broker. The identity
+// settles what the stream is, as it does on the wire: the owner's publishes once
+// it has sent its AUTH, which is due within bpsAuthTimeout; any other listens,
+// for as long as it likes, and may send its AUTH once told it is granted. The
+// outbox and the inbox run until either ends, or the node shuts down; the first
+// reason to stop decides how the socket closes.
+func (s *Service) bpsRun(conn *websocket.Conn, req bpsRequest, logger log.Logger) {
 	defer s.wsWg.Done()
+	defer func() { _ = conn.Close() }()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, stop := context.WithCancelCause(context.Background())
+	defer stop(nil)
 	go func() {
 		select {
 		case <-s.quit:
-			cancel()
+			stop(errBPSShutdown)
 		case <-ctx.Done():
 		}
 	}()
-	quit := make(chan struct{})
-	ticker := time.NewTicker(s.WsPingPeriod)
-	defer func() {
-		ticker.Stop()
-		close(quit)
-		cancel()
-		_ = conn.Close()
-	}()
+
+	isOwner := bytes.Equal(req.identity, req.owner.Bytes())
+	authTimer := time.NewTimer(bpsAuthTimeout)
+	defer authTimer.Stop()
+	if !isOwner {
+		authTimer.Stop()
+	}
 
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
 		Broker:   req.broker,
@@ -342,229 +346,95 @@ func (s *Service) bpsSubscribeWs(conn *websocket.Conn, req bpsRequest, logger lo
 	})
 	if err != nil {
 		logger.Debug("join failed", "broker", req.broker, "error", err)
-		s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
+		stop(fmt.Errorf("%w: %w", errBPSBrokerGone, err))
+		bpsClose(conn, context.Cause(ctx))
 		return
 	}
 	defer sess.Close()
 
-	frames, gone := bpsReadFrames(conn, quit)
-
-	for {
-		select {
-		case msg, ok := <-sess.Messages():
-			if !ok {
-				s.bpsSessionEnded(conn, sess)
-				return
-			}
-			if err := s.bpsWrite(conn, websocket.BinaryMessage, bpsDeliveryFrame(msg)); err != nil {
-				logger.Debug("write broadcast failed", "error", err)
-				return
-			}
-		case <-frames:
-			s.bpsClose(conn, bpsCloseInvalidMessage, "subscribe endpoint is read-only")
-			return
-		case <-sess.Done():
-			s.bpsSessionEnded(conn, sess)
-			return
-		case <-gone:
-			return
-		case <-s.quit:
-			_ = s.bpsWrite(conn, websocket.CloseMessage, []byte{})
-			return
-		case <-ticker.C:
-			if err := s.bpsWrite(conn, websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
-	}
-}
-
-// bpsParseFrame checks a publish frame kind | index | soc the same way, and in
-// the same order, as the broker will, or returns a close code and reason.
-func bpsParseFrame(f bpsFrame, req bpsRequest, challenge []byte, authenticated bool) (bps.Kind, uint64, []byte, int, string) {
-	if f.typ != websocket.BinaryMessage {
-		return 0, 0, nil, bpsCloseInvalidMessage, "expected binary frame"
-	}
-	if len(f.data) < bpsFrameHeader {
-		return 0, 0, nil, bpsCloseInvalidMessage, "short frame"
-	}
-	kind := bps.Kind(f.data[0])
-	// a pending stream may send nothing but its AUTH; the broker would reset it
-	if !authenticated && kind != bps.KindAuth {
-		return 0, 0, nil, bpsCloseInvalidMessage, "expected auth"
-	}
-	owner := req.identity
-	switch kind {
-	case bps.KindData, bps.KindAuth:
-	case bps.KindRoster, bps.KindEOS:
-		// the service feeds are the owner's alone
-		if !bytes.Equal(req.identity, req.owner.Bytes()) {
-			return 0, 0, nil, bpsCloseInvalidMessage, "roster and eos are the owner's"
-		}
-		owner = req.owner.Bytes()
-	default:
-		return 0, 0, nil, bpsCloseInvalidMessage, "unknown kind"
-	}
-	index := binary.BigEndian.Uint64(f.data[1:bpsFrameHeader])
-	chunk := f.data[bpsFrameHeader:]
-	if err := bps.Verify(kind, challenge, index, chunk, req.topic, owner); err != nil {
-		return 0, 0, nil, bpsCloseInvalidSOC, "invalid soc"
-	}
-	// the broker drops a roster that does not decode without a word
-	if kind == bps.KindRoster {
-		if _, err := bps.ParseRoster(chunk); err != nil {
-			return 0, 0, nil, bpsCloseInvalidMessage, "invalid roster"
-		}
-	}
-	return kind, index, chunk, 0, ""
-}
-
-func (s *Service) bpsPublishWs(conn *websocket.Conn, req bpsRequest, logger log.Logger) {
-	defer s.wsWg.Done()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		select {
-		case <-s.quit:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	quit := make(chan struct{})
-	ticker := time.NewTicker(s.WsPingPeriod)
-	defer func() {
-		ticker.Stop()
-		close(quit)
-		cancel()
-		_ = conn.Close()
-	}()
-
-	authTimer := time.NewTimer(bpsAuthTimeout)
-	defer authTimer.Stop()
-
-	// the publisher declares its identity — the owner's, or a seat the owner's
-	// roster names — and authenticates with its AUTH: the owner at once, a
-	// seat once a roster naming it has reached the stream, which upgrades it
-	// in place
-	owner := bytes.Equal(req.identity, req.owner.Bytes())
-	sess, err := s.bps.Join(ctx, bps.JoinRequest{
-		Broker:   req.broker,
-		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
-		Identity: req.identity,
-	})
+	msg, err := newBPSChallengeMsg(req, sess.Challenge(), isOwner)
 	if err != nil {
-		logger.Debug("join failed", "broker", req.broker, "error", err)
-		s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
+		logger.Debug("challenge message failed", "error", err)
+		bpsClose(conn, fmt.Errorf("%w: %w", errBPSBrokerGone, err))
 		return
-	}
-	defer sess.Close()
-
-	// a seat listens until it is granted; its auth deadline starts then
-	granted := owner
-	var grantedC <-chan struct{}
-	if !owner {
-		authTimer.Stop()
-		grantedC = sess.Granted()
-	}
-
-	challenge := sess.Challenge()
-	if len(challenge) != bps.ChallengeSize {
-		logger.Debug("invalid challenge length", "broker", req.broker, "length", len(challenge))
-		s.bpsClose(conn, bpsCloseBrokerGone, "invalid challenge")
-		return
-	}
-	dataTopic, err := bps.SessionTopic(bps.KindData, req.topic, challenge)
-	if err != nil {
-		s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
-		return
-	}
-	authTopic, err := bps.SessionTopic(bps.KindAuth, req.topic, challenge)
-	if err != nil {
-		s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
-		return
-	}
-	msg := bpsChallengeMessage{
-		Type:      "challenge",
-		Challenge: hex.EncodeToString(challenge),
-		Broker:    req.broker.String(),
-		DataTopic: hex.EncodeToString(dataTopic),
-		AuthTopic: hex.EncodeToString(authTopic),
-	}
-	if owner {
-		rosterTopic, err := bps.SessionTopic(bps.KindRoster, req.topic, challenge)
-		if err != nil {
-			s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
-			return
-		}
-		eosTopic, err := bps.SessionTopic(bps.KindEOS, req.topic, challenge)
-		if err != nil {
-			s.bpsClose(conn, bpsCloseBrokerGone, "session topic")
-			return
-		}
-		msg.RosterTopic, msg.EOSTopic = hex.EncodeToString(rosterTopic), hex.EncodeToString(eosTopic)
 	}
 	if err := s.bpsWriteJSON(conn, msg); err != nil {
-		logger.Debug("write challenge failed", "error", err)
+		logger.Debug("ws write failed", "error", err)
 		return
 	}
 
-	frames, gone := bpsReadFrames(conn, quit)
-	authenticated := false
+	var wg sync.WaitGroup
+	wg.Go(func() { stop(bpsHandleOutbox(ctx, conn, sess, authTimer)) })
+	wg.Go(func() { stop(s.bpsHandleInbox(ctx, conn, sess, isOwner, authTimer.C, logger)) })
+
+	<-ctx.Done()
+	if err := context.Cause(ctx); !errors.Is(err, errBPSClientGone) {
+		bpsClose(conn, err)
+	}
+	// ends the outbox's read
+	_ = conn.Close()
+	wg.Wait()
+}
+
+// bpsHandleOutbox takes what the dApp sends out through the session, until the
+// socket fails or the session refuses a frame, and returns why it stopped. It
+// runs even while the stream may send nothing: only reading sees a client
+// that has gone, and a frame sent too early is refused by the session.
+func bpsHandleOutbox(ctx context.Context, conn *websocket.Conn, sess bps.Session, authTimer *time.Timer) error {
+	for {
+		typ, data, err := conn.ReadMessage()
+		if err != nil {
+			return errBPSClientGone
+		}
+		kind, index, chunk, err := bpsParseFrame(typ, data)
+		if err != nil {
+			return err
+		}
+		if err := sess.Publish(ctx, kind, index, chunk); err != nil {
+			return err
+		}
+		if kind == bps.KindAuth {
+			authTimer.Stop()
+		}
+	}
+}
+
+// bpsHandleInbox brings what the stream receives in to the dApp, until the
+// stream or the socket ends or the owner's AUTH is overdue, and returns why it
+// stopped. It is the only writer of frames to the socket but the closing one.
+func (s *Service) bpsHandleInbox(ctx context.Context, conn *websocket.Conn, sess bps.Session, isOwner bool, authC <-chan time.Time, logger log.Logger) error {
+	ticker := time.NewTicker(s.WsPingPeriod)
+	defer ticker.Stop()
+
+	// the owner needs no cue; any other stream is told of its
+	var granted <-chan struct{}
+	if !isOwner {
+		granted = sess.Granted()
+	}
 
 	for {
+		var err error
 		select {
-		case <-grantedC:
-			grantedC, granted = nil, true
-			authTimer.Reset(bpsAuthTimeout)
-			if err := s.bpsWriteJSON(conn, bpsGrantedMessage{Type: "granted"}); err != nil {
-				logger.Debug("write granted failed", "error", err)
-				return
-			}
-		case f := <-frames:
-			// a seat sends nothing before a roster names it
-			if !granted {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "not granted")
-				return
-			}
-			kind, index, chunk, code, reason := bpsParseFrame(f, req, challenge, authenticated)
-			if code != 0 {
-				s.bpsClose(conn, code, reason)
-				return
-			}
-			if err := sess.Publish(ctx, kind, index, chunk); err != nil {
-				s.bpsClose(conn, bpsCloseBrokerGone, bpsErrReason(err))
-				return
-			}
-			if !authenticated {
-				authenticated = true
-				authTimer.Stop()
-			}
-		case msg, ok := <-sess.Messages():
-			if !ok {
-				s.bpsSessionEnded(conn, sess)
-				return
-			}
-			if err := s.bpsWrite(conn, websocket.BinaryMessage, bpsDeliveryFrame(msg)); err != nil {
-				logger.Debug("write broadcast failed", "error", err)
-				return
-			}
-		case <-authTimer.C:
-			if !authenticated {
-				s.bpsClose(conn, bpsCloseInvalidMessage, "auth timeout")
-				return
-			}
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-sess.Done():
-			s.bpsSessionEnded(conn, sess)
-			return
-		case <-gone:
-			return
-		case <-s.quit:
-			_ = s.bpsWrite(conn, websocket.CloseMessage, []byte{})
-			return
-		case <-ticker.C:
-			if err := s.bpsWrite(conn, websocket.PingMessage, nil); err != nil {
-				return
+			if err := sess.Err(); err != nil {
+				return err
 			}
+			return errBPSBrokerGone
+		case <-authC:
+			return errBPSAuthTimeout
+		case <-granted:
+			granted = nil
+			err = s.bpsWrite(conn, websocket.TextMessage, []byte(bpsGranted))
+		case msg := <-sess.Messages():
+			err = s.bpsWrite(conn, websocket.BinaryMessage, bpsDeliveryFrame(msg))
+		case <-ticker.C:
+			err = s.bpsWrite(conn, websocket.PingMessage, nil)
+		}
+		if err != nil {
+			logger.Debug("ws write failed", "error", err)
+			return errBPSClientGone
 		}
 	}
 }

@@ -45,6 +45,10 @@ func (f *fakeBPS) Join(_ context.Context, req bps.JoinRequest) (bps.Session, err
 	if f.joinErr != nil {
 		return nil, f.joinErr
 	}
+	// as the session does: the principal needs no cue
+	if bytes.Equal(req.Identity, req.Spec.Principal) {
+		close(f.sess.granted)
+	}
 	return f.sess, nil
 }
 
@@ -74,7 +78,7 @@ func newFakeSession() *fakeSession {
 	return &fakeSession{
 		challenge: challenge,
 		msgs:      make(chan bps.Message),
-		granted:   closedChan(),
+		granted:   make(chan struct{}),
 		done:      make(chan struct{}),
 		published: make(chan published, 8),
 		closed:    ctx.Done(),
@@ -86,16 +90,17 @@ func (f *fakeSession) Challenge() []byte            { return f.challenge }
 func (f *fakeSession) Messages() <-chan bps.Message { return f.msgs }
 func (f *fakeSession) Position() bps.Position       { return bps.Position{} }
 func (f *fakeSession) Granted() <-chan struct{}     { return f.granted }
+func (f *fakeSession) Done() <-chan struct{}        { return f.done }
+func (f *fakeSession) Err() error                   { return f.err }
 
-func closedChan() chan struct{} {
-	c := make(chan struct{})
-	close(c)
-	return c
-}
-func (f *fakeSession) Done() <-chan struct{} { return f.done }
-func (f *fakeSession) Err() error            { return f.err }
-
+// Publish refuses, as the session does, what comes before the grant. The rest
+// of what the session refuses is told by publishErr.
 func (f *fakeSession) Publish(_ context.Context, kind bps.Kind, index uint64, b []byte) error {
+	select {
+	case <-f.granted:
+	default:
+		return bps.ErrNotPublisher
+	}
 	if f.publishErr != nil {
 		return f.publishErr
 	}
@@ -161,27 +166,27 @@ func newBPSFixture(t *testing.T) *bpsFixture {
 	return f
 }
 
-func (f *bpsFixture) path(endpoint string) string {
-	return fmt.Sprintf("/bps/%s/%s/%s", endpoint, hex.EncodeToString(f.owner), hex.EncodeToString(f.topic))
+func (f *bpsFixture) path() string {
+	return fmt.Sprintf("/bps/%s/%s", hex.EncodeToString(f.owner), hex.EncodeToString(f.topic))
 }
 
-// dial opens the endpoint: subscribe as the fixture's identity, publish as
-// the owner.
-func (f *bpsFixture) dial(t *testing.T, endpoint string) *websocket.Conn {
+// dial opens the socket as the fixture's identity, which listens.
+func (f *bpsFixture) dial(t *testing.T) *websocket.Conn {
 	t.Helper()
-	if endpoint == "subscribe" {
-		return f.dialAs(t, endpoint, f.identity)
-	}
-	return f.dialAs(t, endpoint, nil)
+	return f.dialQuery(t, f.identity, "")
 }
 
-func (f *bpsFixture) dialAs(t *testing.T, endpoint string, identity []byte) *websocket.Conn {
+// dialOwner opens the socket as the owner.
+func (f *bpsFixture) dialOwner(t *testing.T) *websocket.Conn {
 	t.Helper()
-	q := "broker=" + f.broker.String()
-	if identity != nil {
-		q += "&identity=" + hex.EncodeToString(identity)
-	}
-	u := url.URL{Scheme: "ws", Host: f.listener, Path: f.path(endpoint), RawQuery: q}
+	return f.dialQuery(t, f.owner, "")
+}
+
+// dialQuery opens the socket as identity, with more query parameters.
+func (f *bpsFixture) dialQuery(t *testing.T, identity []byte, query string) *websocket.Conn {
+	t.Helper()
+	q := "broker=" + f.broker.String() + "&identity=" + hex.EncodeToString(identity) + query
+	u := url.URL{Scheme: "ws", Host: f.listener, Path: f.path(), RawQuery: q}
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		t.Fatalf("dial %s: %v", u.String(), err)
@@ -247,128 +252,30 @@ func expectClose(t *testing.T, conn *websocket.Conn, code int) {
 	}
 }
 
-func TestBPSPreUpgrade(t *testing.T) {
-	t.Parallel()
-
-	f := newBPSFixture(t)
-	nilClient, _, _, _, _ := newTestServer(t, testServerOptions{})
-	owner := hex.EncodeToString(f.owner)
-	topic := hex.EncodeToString(f.topic)
-
-	for _, endpoint := range []string{"subscribe", "publish"} {
-		t.Run(endpoint, func(t *testing.T) {
-			t.Parallel()
-			base := fmt.Sprintf("/bps/%s/%s/%s", endpoint, owner, topic)
-
-			jsonhttptest.Request(t, f.client, http.MethodGet, base, http.StatusBadRequest,
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Code: http.StatusBadRequest, Message: "missing broker",
-				}),
-			)
-			jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker=zz", http.StatusBadRequest)
-			jsonhttptest.Request(t, f.client, http.MethodGet,
-				fmt.Sprintf("/bps/%s/%s/%s?broker=%s", endpoint, "zz", topic, f.broker), http.StatusBadRequest)
-			jsonhttptest.Request(t, f.client, http.MethodGet,
-				fmt.Sprintf("/bps/%s/%s/%s?broker=%s", endpoint, owner, "abcd", f.broker), http.StatusBadRequest)
-			jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker=abcd", http.StatusBadRequest,
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Code: http.StatusBadRequest, Message: "invalid broker",
-				}),
-			)
-			jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker="+f.self.String(), http.StatusBadRequest,
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Code: http.StatusBadRequest, Message: "broker cannot be this node",
-				}),
-			)
-			jsonhttptest.Request(t, nilClient, http.MethodGet, base+"?broker="+f.broker.String(), http.StatusServiceUnavailable)
-		})
+// deliver hands the bridge a delivery, as the session does.
+func deliver(t *testing.T, f *bpsFixture, msg bps.Message) {
+	t.Helper()
+	select {
+	case f.sess.msgs <- msg:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the bridge takes no delivery")
 	}
 }
 
-func TestBPSSubscribe(t *testing.T) {
-	t.Parallel()
-
-	t.Run("forwards delivery", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		conn := f.dial(t, "subscribe")
-		chunk := f.signedSOC(t, f.signer, bps.KindData, f.sess.challenge, 7, []byte("hello cohort"))
-		f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: chunk, Challenge: f.sess.challenge, Index: 7}
-		typ, got, err := conn.ReadMessage()
+// expectOpen checks that the socket stays open for d: a delivery still arrives.
+func expectOpen(t *testing.T, f *bpsFixture, conn *websocket.Conn, d time.Duration) {
+	t.Helper()
+	time.Sleep(d)
+	deliver(t, f, bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: []byte("soc"), Challenge: f.sess.challenge, Index: 1})
+	for {
+		typ, _, err := conn.ReadMessage()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("socket closed: %v", err)
 		}
-		want := append([]byte{byte(bps.KindData)}, f.owner...)
-		want = append(want, f.sess.challenge...)
-		want = append(want, 0, 0, 0, 0, 0, 0, 0, 7)
-		want = append(want, chunk...)
-		if typ != websocket.BinaryMessage || !bytes.Equal(got, want) {
-			t.Fatalf("got type %d %x, want binary %x", typ, got, want)
+		if typ == websocket.BinaryMessage {
+			return
 		}
-		f.bps.mu.Lock()
-		req := f.bps.req
-		f.bps.mu.Unlock()
-		if !req.Broker.Equal(f.broker) || !bytes.Equal(req.Spec.Principal, f.owner) || !bytes.Equal(req.Identity, f.identity) || !bytes.Equal(req.Spec.Topic, f.topic) {
-			t.Fatalf("unexpected join request %+v", req)
-		}
-	})
-
-	t.Run("missing identity", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		jsonhttptest.Request(t, f.client, http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String(), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code: http.StatusBadRequest, Message: "missing identity",
-			}),
-		)
-	})
-
-	t.Run("identity is the owner", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		jsonhttptest.Request(t, f.client, http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String()+"&identity="+hex.EncodeToString(f.owner), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code: http.StatusBadRequest, Message: "identity is the owner: use publish",
-			}),
-		)
-	})
-
-	t.Run("client frame closes 4002", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		conn := f.dial(t, "subscribe")
-		if err := conn.WriteMessage(websocket.BinaryMessage, []byte("nope")); err != nil {
-			t.Fatal(err)
-		}
-		expectClose(t, conn, api.BPSCloseInvalidMessage)
-		<-f.sess.closed
-	})
-
-	t.Run("broker gone closes 4003", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		conn := f.dial(t, "subscribe")
-		f.sess.end(errors.New("stream reset"))
-		expectClose(t, conn, api.BPSCloseBrokerGone)
-		<-f.sess.closed
-	})
-
-	t.Run("join error closes 4003", func(t *testing.T) {
-		t.Parallel()
-		f := newBPSFixture(t)
-		f.bps.joinErr = errors.New("broker unreachable")
-		conn := f.dial(t, "subscribe")
-		expectClose(t, conn, api.BPSCloseBrokerGone)
-	})
-}
-
-func TestBPSSubscribeMessagesClosed(t *testing.T) {
-	t.Parallel()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "subscribe")
-	close(f.sess.msgs)
-	expectClose(t, conn, api.BPSCloseBrokerGone)
-	<-f.sess.closed
+	}
 }
 
 // waitSessionClosed fails the test if the session is not closed in time.
@@ -381,16 +288,21 @@ func waitSessionClosed(t *testing.T, f *bpsFixture) {
 	}
 }
 
-// readChallenge reads the challenge frame and checks its fields.
-func readChallenge(t *testing.T, f *bpsFixture, conn *websocket.Conn) []byte {
+// bpsChallenge is the challenge message as a dApp reads it.
+type bpsChallenge struct {
+	Type        string `json:"type"`
+	Challenge   string `json:"challenge"`
+	Broker      string `json:"broker"`
+	DataTopic   string `json:"dataTopic"`
+	AuthTopic   string `json:"authTopic"`
+	RosterTopic string `json:"rosterTopic"`
+	EOSTopic    string `json:"eosTopic"`
+}
+
+// readChallenge reads the challenge frame and checks the fields every stream gets.
+func readChallenge(t *testing.T, f *bpsFixture, conn *websocket.Conn) bpsChallenge {
 	t.Helper()
-	var m struct {
-		Type      string `json:"type"`
-		Challenge string `json:"challenge"`
-		Broker    string `json:"broker"`
-		DataTopic string `json:"dataTopic"`
-		AuthTopic string `json:"authTopic"`
-	}
+	var m bpsChallenge
 	if err := conn.ReadJSON(&m); err != nil {
 		t.Fatal(err)
 	}
@@ -400,11 +312,10 @@ func readChallenge(t *testing.T, f *bpsFixture, conn *websocket.Conn) []byte {
 		m.DataTopic != hex.EncodeToString(dataTopic) || m.AuthTopic != hex.EncodeToString(authTopic) {
 		t.Fatalf("unexpected challenge message %+v", m)
 	}
-	challenge, err := hex.DecodeString(m.Challenge)
-	if err != nil || !bytes.Equal(challenge, f.sess.challenge) {
+	if m.Challenge != hex.EncodeToString(f.sess.challenge) {
 		t.Fatalf("challenge %q, want %x", m.Challenge, f.sess.challenge)
 	}
-	return challenge
+	return m
 }
 
 func expectPublished(t *testing.T, f *bpsFixture, kind bps.Kind, index uint64, chunk []byte) {
@@ -419,244 +330,193 @@ func expectPublished(t *testing.T, f *bpsFixture, kind bps.Kind, index uint64, c
 	}
 }
 
-func TestBPSPublish(t *testing.T) {
-	t.Parallel()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
-	challenge := readChallenge(t, f, conn)
-
+func joinRequest(f *bpsFixture) bps.JoinRequest {
 	f.bps.mu.Lock()
-	req := f.bps.req
-	f.bps.mu.Unlock()
-	if !bytes.Equal(req.Identity, f.owner) {
-		t.Fatalf("publisher joined as %x, want the principal %x", req.Identity, f.owner)
-	}
-
-	auth := f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
-		t.Fatal(err)
-	}
-	expectPublished(t, f, bps.KindAuth, 0, auth)
-
-	data := f.signedSOC(t, f.signer, bps.KindData, challenge, 3, []byte("broadcast"))
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 3, data)); err != nil {
-		t.Fatal(err)
-	}
-	expectPublished(t, f, bps.KindData, 3, data)
+	defer f.bps.mu.Unlock()
+	return f.bps.req
 }
 
-func TestBPSPublishFrameErrors(t *testing.T) {
+func TestBPSPreUpgrade(t *testing.T) {
 	t.Parallel()
 
-	other, _ := crypto.GenerateSecp256k1Key()
-	otherSigner := crypto.NewDefaultSigner(other)
+	f := newBPSFixture(t)
+	nilClient, _, _, _, _ := newTestServer(t, testServerOptions{})
+	owner := hex.EncodeToString(f.owner)
+	topic := hex.EncodeToString(f.topic)
+	identity := "&identity=" + hex.EncodeToString(f.identity)
+	base := fmt.Sprintf("/bps/%s/%s", owner, topic)
 
-	for _, tc := range []struct {
-		name string
-		auth bool // authenticate the socket first
-		send func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte)
-		code int
-	}{
-		{
-			name: "wrong signer",
-			auth: true,
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, otherSigner, bps.KindData, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "wrong challenge",
-			auth: true,
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, _ []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "index not the signed one",
-			auth: true,
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 1, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "auth relabelled as data",
-			auth: true,
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "auth with payload",
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "auth at index 1",
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 1, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 1, nil)))
-			},
-			code: api.BPSCloseInvalidSOC,
-		},
-		{
-			name: "data before auth",
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidMessage,
-		},
-		{
-			name: "invalid data before auth is still a message error",
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, f.signedSOC(t, otherSigner, bps.KindData, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidMessage,
-		},
-		{
-			name: "unknown kind",
-			send: func(t *testing.T, f *bpsFixture, conn *websocket.Conn, challenge []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.Kind(9), 0, f.signedSOC(t, f.signer, bps.KindData, challenge, 0, []byte("x"))))
-			},
-			code: api.BPSCloseInvalidMessage,
-		},
-		{
-			name: "short frame",
-			send: func(t *testing.T, _ *bpsFixture, conn *websocket.Conn, _ []byte) {
-				t.Helper()
-				_ = conn.WriteMessage(websocket.BinaryMessage, []byte{1, 2})
-			},
-			code: api.BPSCloseInvalidMessage,
-		},
-		{
-			name: "text frame",
-			send: func(t *testing.T, _ *bpsFixture, conn *websocket.Conn, _ []byte) {
-				t.Helper()
-				_ = conn.WriteJSON(map[string]string{"type": "auth"})
-			},
-			code: api.BPSCloseInvalidMessage,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			f := newBPSFixture(t)
-			conn := f.dial(t, "publish")
-			challenge := readChallenge(t, f, conn)
-			if tc.auth {
-				authenticate(t, f, conn, challenge)
-			}
-			tc.send(t, f, conn, challenge)
-			expectClose(t, conn, tc.code)
-			waitSessionClosed(t, f)
-			if len(f.sess.published) != 0 {
-				t.Fatal("rejected frame reached the session")
-			}
-		})
-	}
+	jsonhttptest.Request(t, f.client, http.MethodGet, base, http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Code: http.StatusBadRequest, Message: "missing broker",
+		}),
+	)
+	jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker=zz"+identity, http.StatusBadRequest)
+	jsonhttptest.Request(t, f.client, http.MethodGet,
+		fmt.Sprintf("/bps/%s/%s?broker=%s%s", "zz", topic, f.broker, identity), http.StatusBadRequest)
+	jsonhttptest.Request(t, f.client, http.MethodGet,
+		fmt.Sprintf("/bps/%s/%s?broker=%s%s", owner, "abcd", f.broker, identity), http.StatusBadRequest)
+	jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker=abcd"+identity, http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Code: http.StatusBadRequest, Message: "invalid broker",
+		}),
+	)
+	jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker="+f.self.String()+identity, http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Code: http.StatusBadRequest, Message: "broker cannot be this node",
+		}),
+	)
+	jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker="+f.broker.String(), http.StatusBadRequest,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Code: http.StatusBadRequest, Message: "missing identity",
+		}),
+	)
+	jsonhttptest.Request(t, f.client, http.MethodGet, base+"?broker="+f.broker.String()+"&identity=abcd", http.StatusBadRequest)
+	jsonhttptest.Request(t, nilClient, http.MethodGet, base+"?broker="+f.broker.String()+identity, http.StatusServiceUnavailable)
 }
 
-func TestBPSPublishSessionErrors(t *testing.T) {
+// TestBPSListener: a stream declaring any address but the owner's listens.
+func TestBPSListener(t *testing.T) {
 	t.Parallel()
+
+	t.Run("forwards deliveries", func(t *testing.T) {
+		t.Parallel()
+		f := newBPSFixture(t)
+		conn := f.dial(t)
+		if m := readChallenge(t, f, conn); m.RosterTopic != "" || m.EOSTopic != "" {
+			t.Fatalf("the service topics are the owner's: %+v", m)
+		}
+		chunk := f.signedSOC(t, f.signer, bps.KindData, f.sess.challenge, 7, []byte("hello cohort"))
+		deliver(t, f, bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: chunk, Challenge: f.sess.challenge, Index: 7})
+		typ, got, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := append([]byte{byte(bps.KindData)}, f.owner...)
+		want = append(want, f.sess.challenge...)
+		want = append(want, 0, 0, 0, 0, 0, 0, 0, 7)
+		want = append(want, chunk...)
+		if typ != websocket.BinaryMessage || !bytes.Equal(got, want) {
+			t.Fatalf("got type %d %x, want binary %x", typ, got, want)
+		}
+		req := joinRequest(f)
+		if !req.Broker.Equal(f.broker) || !bytes.Equal(req.Spec.Principal, f.owner) || !bytes.Equal(req.Identity, f.identity) || !bytes.Equal(req.Spec.Topic, f.topic) {
+			t.Fatalf("unexpected join request %+v", req)
+		}
+	})
+
+	t.Run("a frame before the grant closes 4002", func(t *testing.T) {
+		t.Parallel()
+		f := newBPSFixture(t)
+		conn := f.dial(t)
+		readChallenge(t, f, conn)
+		auth := f.signedSOC(t, f.signer, bps.KindAuth, f.sess.challenge, 0, nil)
+		if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+			t.Fatal(err)
+		}
+		expectClose(t, conn, api.BPSCloseInvalidMessage)
+		waitSessionClosed(t, f)
+	})
 
 	t.Run("broker gone closes 4003", func(t *testing.T) {
 		t.Parallel()
 		f := newBPSFixture(t)
-		conn := f.dial(t, "publish")
+		conn := f.dial(t)
 		readChallenge(t, f, conn)
 		f.sess.end(errors.New("stream reset"))
 		expectClose(t, conn, api.BPSCloseBrokerGone)
 		waitSessionClosed(t, f)
 	})
 
-	t.Run("publish error closes 4003", func(t *testing.T) {
+	t.Run("join error closes 4003", func(t *testing.T) {
 		t.Parallel()
 		f := newBPSFixture(t)
-		f.sess.publishErr = errors.New("write failed")
-		conn := f.dial(t, "publish")
-		challenge := readChallenge(t, f, conn)
-		_ = conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, f.signedSOC(t, f.signer, bps.KindAuth, challenge, 0, nil)))
+		f.bps.joinErr = errors.New("broker unreachable")
+		conn := f.dial(t)
 		expectClose(t, conn, api.BPSCloseBrokerGone)
+	})
+
+	t.Run("end of stream closes 4004", func(t *testing.T) {
+		t.Parallel()
+		f := newBPSFixture(t)
+		conn := f.dial(t)
+		readChallenge(t, f, conn)
+		f.sess.end(bps.ErrEndOfStream)
+		expectClose(t, conn, api.BPSCloseEndOfStream)
 	})
 }
 
-func TestBPSPublishClientGoneBeforeAuth(t *testing.T) {
+// TestBPSGrant: a listener is told when a roster naming it has reached its
+// stream, and may then send its AUTH and publish.
+func TestBPSGrant(t *testing.T) {
 	t.Parallel()
 	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
-	readChallenge(t, f, conn)
-	// Send a close frame rather than Close, which the dial cleanup would
-	// report as an error on the already closed connection.
-	_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
-	waitSessionClosed(t, f)
-}
+	key, _ := crypto.GenerateSecp256k1Key()
+	seatSigner := crypto.NewDefaultSigner(key)
+	seatAddr, _ := seatSigner.EthereumAddress()
+	seat := seatAddr.Bytes()
 
-func TestBPSPublishOversizedFrame(t *testing.T) {
-	t.Parallel()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
+	conn := f.dialQuery(t, seat, "")
 	readChallenge(t, f, conn)
-	_ = conn.WriteMessage(websocket.BinaryMessage, make([]byte, 5000))
-	expectClose(t, conn, websocket.CloseMessageTooBig)
-	waitSessionClosed(t, f)
-}
-
-// Not parallel: mutates the package-level auth timeout.
-func TestBPSPublishAuthTimeout(t *testing.T) {
-	restore := api.SetBPSAuthTimeout(100 * time.Millisecond)
-	defer restore()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
-	readChallenge(t, f, conn)
-	expectClose(t, conn, api.BPSCloseInvalidMessage)
-}
-
-func TestBPSPublishInvalidChallengeLength(t *testing.T) {
-	t.Parallel()
-	f := newBPSFixture(t)
-	f.sess.challenge = make([]byte, 100)
-	conn := f.dial(t, "publish")
-	// expectClose skips data frames, so check explicitly that the first
-	// frame is the close and no challenge was sent.
-	_, _, err := conn.ReadMessage()
-	var ce *websocket.CloseError
-	if !errors.As(err, &ce) {
-		t.Fatalf("want close error, got %v", err)
+	if req := joinRequest(f); !bytes.Equal(req.Identity, seat) {
+		t.Fatalf("unexpected join request %+v", req)
 	}
-	if ce.Code != api.BPSCloseBrokerGone || ce.Text != "invalid challenge" {
-		t.Fatalf("got close %d %q", ce.Code, ce.Text)
+
+	// listening until the grant
+	deliver(t, f, bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: []byte("soc"), Challenge: f.sess.challenge})
+	if typ, _, err := conn.ReadMessage(); err != nil || typ != websocket.BinaryMessage {
+		t.Fatalf("want a delivery, got %d %v", typ, err)
 	}
-	waitSessionClosed(t, f)
+
+	close(f.sess.granted)
+	typ, msg, err := conn.ReadMessage()
+	if err != nil || typ != websocket.TextMessage || string(msg) != api.BPSGranted {
+		t.Fatalf("want granted, got %d %q %v", typ, msg, err)
+	}
+	auth := f.signedSOC(t, seatSigner, bps.KindAuth, f.sess.challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindAuth, 0, auth)
+	data := f.signedSOC(t, seatSigner, bps.KindData, f.sess.challenge, 0, []byte("from the seat"))
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, data)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindData, 0, data)
 }
 
-func TestBPSSubscribeEndOfStream(t *testing.T) {
+// TestBPSOwner: a stream declaring the owner's address publishes, service
+// messages included, and receives what the others publish.
+func TestBPSOwner(t *testing.T) {
 	t.Parallel()
 	f := newBPSFixture(t)
-	conn := f.dial(t, "subscribe")
-	f.sess.end(bps.ErrEndOfStream)
-	expectClose(t, conn, api.BPSCloseEndOfStream)
-}
+	conn := f.dialOwner(t)
+	m := readChallenge(t, f, conn)
+	rosterTopic, _ := bps.SessionTopic(bps.KindRoster, f.topic, f.sess.challenge)
+	eosTopic, _ := bps.SessionTopic(bps.KindEOS, f.topic, f.sess.challenge)
+	if m.RosterTopic != hex.EncodeToString(rosterTopic) || m.EOSTopic != hex.EncodeToString(eosTopic) {
+		t.Fatalf("unexpected service topics %+v", m)
+	}
+	if req := joinRequest(f); !bytes.Equal(req.Identity, f.owner) {
+		t.Fatalf("joined as %x, want the principal %x", req.Identity, f.owner)
+	}
+	authenticate(t, f, conn, f.sess.challenge)
 
-func TestBPSPublishForwardsDeliveries(t *testing.T) {
-	t.Parallel()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
-	_ = readChallenge(t, f, conn)
+	data := f.signedSOC(t, f.signer, bps.KindData, f.sess.challenge, 3, []byte("broadcast"))
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 3, data)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindData, 3, data)
+
+	ros := f.signedSOC(t, f.signer, bps.KindRoster, f.sess.challenge, 0, nil)
+	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 0, ros)); err != nil {
+		t.Fatal(err)
+	}
+	expectPublished(t, f, bps.KindRoster, 0, ros)
+
 	seat := make([]byte, 20)
 	copy(seat, "bps-test-seat")
-	f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: seat, SOC: []byte("soc"), Challenge: f.sess.challenge, Index: 1}
+	deliver(t, f, bps.Message{Kind: bps.KindData, Owner: seat, SOC: []byte("soc"), Challenge: f.sess.challenge, Index: 1})
 	typ, got, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatal(err)
@@ -666,103 +526,141 @@ func TestBPSPublishForwardsDeliveries(t *testing.T) {
 	}
 }
 
-func TestBPSPublishRoster(t *testing.T) {
+// TestBPSFrameErrors: what is wrong with a frame as such is the bridge's to say.
+func TestBPSFrameErrors(t *testing.T) {
 	t.Parallel()
-	f := newBPSFixture(t)
-	conn := f.dial(t, "publish")
-	challenge := readChallenge(t, f, conn)
-	authenticate(t, f, conn, challenge)
-
-	payload, err := bps.RosterPayload([][]byte{f.identity})
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name string
+		send func(conn *websocket.Conn) error
+	}{
+		{"short frame", func(conn *websocket.Conn) error { return conn.WriteMessage(websocket.BinaryMessage, []byte{1, 2}) }},
+		{"text frame", func(conn *websocket.Conn) error { return conn.WriteJSON(map[string]string{"type": "auth"}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newBPSFixture(t)
+			conn := f.dialOwner(t)
+			readChallenge(t, f, conn)
+			if err := tc.send(conn); err != nil {
+				t.Fatal(err)
+			}
+			expectClose(t, conn, api.BPSCloseInvalidMessage)
+			waitSessionClosed(t, f)
+			if len(f.sess.published) != 0 {
+				t.Fatal("rejected frame reached the session")
+			}
+		})
 	}
-	ros := f.signedSOC(t, f.signer, bps.KindRoster, challenge, 0, payload)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 0, ros)); err != nil {
-		t.Fatal(err)
-	}
-	expectPublished(t, f, bps.KindRoster, 0, ros)
-
-	bad := f.signedSOC(t, f.signer, bps.KindRoster, challenge, 1, []byte{0x0a, 0x01, 0x01})
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 1, bad)); err != nil {
-		t.Fatal(err)
-	}
-	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }
 
-func TestBPSPublishSeat(t *testing.T) {
+// TestBPSPublishErrors: what the session refuses closes the socket with the code
+// its error maps to.
+func TestBPSPublishErrors(t *testing.T) {
 	t.Parallel()
-	f := newBPSFixture(t)
-	f.sess.granted = make(chan struct{})
-	key, _ := crypto.GenerateSecp256k1Key()
-	seatSigner := crypto.NewDefaultSigner(key)
-	seatAddr, _ := seatSigner.EthereumAddress()
-	seat := seatAddr.Bytes()
-
-	conn := f.dialAs(t, "publish", seat)
-	var m struct {
-		Type        string `json:"type"`
-		Challenge   string `json:"challenge"`
-		RosterTopic string `json:"rosterTopic"`
+	for _, tc := range []struct {
+		err  error
+		code int
+	}{
+		{fmt.Errorf("id not derived from frame: %w", bps.ErrInvalidSOC), api.BPSCloseInvalidSOC},
+		{fmt.Errorf("data before the auth: %w", bps.ErrInvalidMessage), api.BPSCloseInvalidMessage},
+		{fmt.Errorf("the admin must not be on the roster: %w", bps.ErrInvalidRoster), api.BPSCloseInvalidMessage},
+		{bps.ErrNotPublisher, api.BPSCloseInvalidMessage},
+		{errors.New("write failed"), api.BPSCloseBrokerGone},
+	} {
+		t.Run(tc.err.Error(), func(t *testing.T) {
+			t.Parallel()
+			f := newBPSFixture(t)
+			f.sess.publishErr = tc.err
+			conn := f.dialOwner(t)
+			readChallenge(t, f, conn)
+			auth := f.signedSOC(t, f.signer, bps.KindAuth, f.sess.challenge, 0, nil)
+			if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
+				t.Fatal(err)
+			}
+			expectClose(t, conn, tc.code)
+			waitSessionClosed(t, f)
+		})
 	}
-	if err := conn.ReadJSON(&m); err != nil {
-		t.Fatal(err)
-	}
-	if m.Type != "challenge" || m.RosterTopic != "" {
-		t.Fatalf("unexpected challenge message %+v", m)
-	}
-	f.bps.mu.Lock()
-	req := f.bps.req
-	f.bps.mu.Unlock()
-	if !bytes.Equal(req.Identity, seat) {
-		t.Fatalf("unexpected join request %+v", req)
-	}
-
-	// granted once a roster naming the seat has reached the stream
-	close(f.sess.granted)
-	if err := conn.ReadJSON(&m); err != nil || m.Type != "granted" {
-		t.Fatalf("want granted, got %+v %v", m, err)
-	}
-	challenge := f.sess.challenge
-	auth := f.signedSOC(t, seatSigner, bps.KindAuth, challenge, 0, nil)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
-		t.Fatal(err)
-	}
-	expectPublished(t, f, bps.KindAuth, 0, auth)
-	data := f.signedSOC(t, seatSigner, bps.KindData, challenge, 0, []byte("from the seat"))
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindData, 0, data)); err != nil {
-		t.Fatal(err)
-	}
-	expectPublished(t, f, bps.KindData, 0, data)
-
-	// the roster is the owner's alone
-	payload, _ := bps.RosterPayload(nil)
-	ros := f.signedSOC(t, seatSigner, bps.KindRoster, challenge, 0, payload)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindRoster, 0, ros)); err != nil {
-		t.Fatal(err)
-	}
-	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }
 
-func TestBPSPublishSeatNotGranted(t *testing.T) {
+func TestBPSCloseCode(t *testing.T) {
 	t.Parallel()
-	f := newBPSFixture(t)
-	f.sess.granted = make(chan struct{})
-	conn := f.dialAs(t, "publish", f.identity)
-	_ = readChallenge(t, f, conn)
-	// a seat listens until it is granted, and may send nothing before
-	f.sess.msgs <- bps.Message{Kind: bps.KindData, Owner: f.owner, SOC: []byte("soc"), Challenge: f.sess.challenge}
-	if typ, _, err := conn.ReadMessage(); err != nil || typ != websocket.BinaryMessage {
-		t.Fatalf("want a delivery, got %d %v", typ, err)
+	for _, tc := range []struct {
+		err  error
+		code int
+	}{
+		{bps.ErrInvalidSOC, api.BPSCloseInvalidSOC},
+		{api.ErrBPSInvalidMessage, api.BPSCloseInvalidMessage},
+		{bps.ErrInvalidMessage, api.BPSCloseInvalidMessage},
+		{bps.ErrInvalidRoster, api.BPSCloseInvalidMessage},
+		{bps.ErrNotPublisher, api.BPSCloseInvalidMessage},
+		{api.ErrBPSBrokerGone, api.BPSCloseBrokerGone},
+		{errors.New("stream reset"), api.BPSCloseBrokerGone},
+		{bps.ErrEndOfStream, api.BPSCloseEndOfStream},
+		{fmt.Errorf("wrapped: %w", bps.ErrEndOfStream), api.BPSCloseEndOfStream},
+		{api.ErrBPSAuthTimeout, api.BPSCloseAuthTimeout},
+		{api.ErrBPSShutdown, websocket.CloseGoingAway},
+	} {
+		if got := api.BPSCloseCode(tc.err); got != tc.code {
+			t.Errorf("%v: got %d, want %d", tc.err, got, tc.code)
+		}
 	}
-	auth := f.signedSOC(t, f.signer, bps.KindAuth, f.sess.challenge, 0, nil)
-	if err := conn.WriteMessage(websocket.BinaryMessage, frame(bps.KindAuth, 0, auth)); err != nil {
-		t.Fatal(err)
-	}
-	expectClose(t, conn, api.BPSCloseInvalidMessage)
 }
 
-func TestBPSSubscribePosition(t *testing.T) {
+func TestBPSClientGone(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	conn := f.dialOwner(t)
+	readChallenge(t, f, conn)
+	// Send a close frame rather than Close, which the dial cleanup would
+	// report as an error on the already closed connection.
+	_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+	waitSessionClosed(t, f)
+}
+
+func TestBPSOversizedFrame(t *testing.T) {
+	t.Parallel()
+	f := newBPSFixture(t)
+	conn := f.dialOwner(t)
+	readChallenge(t, f, conn)
+	_ = conn.WriteMessage(websocket.BinaryMessage, make([]byte, 5000))
+	expectClose(t, conn, websocket.CloseMessageTooBig)
+	waitSessionClosed(t, f)
+}
+
+// Not parallel: mutates the package-level auth timeout.
+func TestBPSAuthTimeout(t *testing.T) {
+	const timeout = 100 * time.Millisecond
+	restore := api.SetBPSAuthTimeout(timeout)
+	defer restore()
+
+	t.Run("the owner's AUTH overdue closes 4005", func(t *testing.T) {
+		f := newBPSFixture(t)
+		conn := f.dialOwner(t)
+		readChallenge(t, f, conn)
+		expectClose(t, conn, api.BPSCloseAuthTimeout)
+		waitSessionClosed(t, f)
+	})
+
+	t.Run("the owner's AUTH in time stops the deadline", func(t *testing.T) {
+		f := newBPSFixture(t)
+		conn := f.dialOwner(t)
+		readChallenge(t, f, conn)
+		authenticate(t, f, conn, f.sess.challenge)
+		expectOpen(t, f, conn, 2*timeout)
+	})
+
+	t.Run("a listener has no deadline, granted or not", func(t *testing.T) {
+		f := newBPSFixture(t)
+		conn := f.dial(t)
+		readChallenge(t, f, conn)
+		expectOpen(t, f, conn, 2*timeout)
+		close(f.sess.granted)
+		expectOpen(t, f, conn, 2*timeout)
+	})
+}
+
+func TestBPSPosition(t *testing.T) {
 	t.Parallel()
 	seat1 := bytes.Repeat([]byte{0x11}, 20)
 	seat2 := bytes.Repeat([]byte{0x22}, 20)
@@ -770,26 +668,9 @@ func TestBPSSubscribePosition(t *testing.T) {
 	t.Run("cursor, roster and rosterCursor reach the join", func(t *testing.T) {
 		t.Parallel()
 		f := newBPSFixture(t)
-		q := "broker=" + f.broker.String() + "&identity=" + hex.EncodeToString(f.identity) +
-			"&cursor=7&rosterCursor=3&roster=" + hex.EncodeToString(seat1) + ":4,0x" + hex.EncodeToString(seat2) + ":0"
-		u := url.URL{Scheme: "ws", Host: f.listener, Path: f.path("subscribe"), RawQuery: q}
-		conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		testutil.CleanupCloser(t, conn)
-		var req bps.JoinRequest
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			f.bps.mu.Lock()
-			req = f.bps.req
-			f.bps.mu.Unlock()
-			if req.Identity != nil || time.Now().After(deadline) {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		pos := req.Position
+		conn := f.dialQuery(t, f.identity, "&cursor=7&rosterCursor=3&roster="+hex.EncodeToString(seat1)+":4,0x"+hex.EncodeToString(seat2)+":0")
+		readChallenge(t, f, conn)
+		pos := joinRequest(f).Position
 		if pos.RosterCursor != 3 || len(pos.Roster) != 2 || !bytes.Equal(pos.Roster[0], seat1) || !bytes.Equal(pos.Roster[1], seat2) {
 			t.Fatalf("roster %x at %d", pos.Roster, pos.RosterCursor)
 		}
@@ -806,13 +687,13 @@ func TestBPSSubscribePosition(t *testing.T) {
 		{"bad index", hex.EncodeToString(seat1) + ":x"},
 		{"the owner", "OWNER:1"},
 		{"twice", hex.EncodeToString(seat1) + ":1," + hex.EncodeToString(seat1) + ":2"},
-		{"too many", strings.Repeat(hex.EncodeToString(seat1)+":1,", 186) + hex.EncodeToString(seat2) + ":1"},
+		{"too many", strings.Repeat(hex.EncodeToString(seat1)+":1,", bps.MaxRosterSize) + hex.EncodeToString(seat2) + ":1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f := newBPSFixture(t)
 			roster := strings.ReplaceAll(tc.roster, "OWNER", hex.EncodeToString(f.owner))
-			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.path("subscribe")+"?broker="+f.broker.String()+"&identity="+hex.EncodeToString(f.identity)+"&roster="+roster, nil)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.path()+"?broker="+f.broker.String()+"&identity="+hex.EncodeToString(f.identity)+"&roster="+roster, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

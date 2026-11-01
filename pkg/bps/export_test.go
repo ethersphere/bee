@@ -4,6 +4,8 @@
 
 package bps
 
+import "github.com/ethersphere/bee/v2/pkg/bps/pb"
+
 const (
 	ProtocolName    = protocolName
 	ProtocolVersion = protocolVersion
@@ -11,11 +13,22 @@ const (
 )
 
 var (
-	ErrInvalidSOC      = errInvalidSOC
-	ErrNotPublisher    = errNotPublisher
+	ErrNotBroker       = errNotBroker
+	ErrJoinRefused     = errJoinRefused
+	ErrInvalidJoin     = errInvalidJoin
+	ErrSessionClosed   = errSessionClosed
+	ErrProtocolError   = errProtocolError
 	ErrInvalidDelivery = errInvalidDelivery
+	ErrChannelEnded    = errChannelEnded
 )
 
-var (
-	ErrChannelEnded = errChannelEnded
-)
+// Verify checks a chunk against the frame fields it was derived from and its owner.
+func Verify(kind Kind, challenge []byte, index uint64, chunk, topic, owner []byte) error {
+	_, err := verify(&pb.Broadcast{Soc: chunk, Kind: kind.proto(), Challenge: challenge, Index: index}, topic, owner)
+	return err
+}
+
+// EncodeRosterMsg returns the payload of a ROSTER chunk naming the publishers.
+func EncodeRosterMsg(publishers [][]byte) ([]byte, error) {
+	return (&pb.Roster{Publishers: publishers}).Marshal()
+}
