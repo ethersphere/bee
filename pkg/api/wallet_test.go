@@ -27,7 +27,7 @@ func TestWallet(t *testing.T) {
 	t.Run("Okay", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return big.NewInt(10000000000000000), nil
@@ -52,7 +52,7 @@ func TestWallet(t *testing.T) {
 	t.Run("500 - erc20 error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return new(big.Int), nil
@@ -70,7 +70,7 @@ func TestWallet(t *testing.T) {
 	t.Run("500 - chain backend error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return new(big.Int), nil
@@ -88,7 +88,7 @@ func TestWallet(t *testing.T) {
 	t.Run("swap disabled", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapDisabled: true,
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -114,7 +114,7 @@ func TestWallet(t *testing.T) {
 	t.Run("erc20 service unavailable", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapDisabled:    true,
 			Erc20ServiceNil: true,
 			BackendOpts: []backendmock.Option{
@@ -136,7 +136,7 @@ func TestWallet(t *testing.T) {
 	t.Run("chequebook disabled", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookDisabled: true,
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -166,7 +166,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("address not whitelisted", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{})
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/BZZ?address=0xaf&amount=99999999", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -178,7 +178,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("invalid coin type", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{})
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/BTC?address=0xaf&amount=99999999", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -190,7 +190,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("BZZ erc20 balance error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 		})
 
@@ -204,7 +204,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("BZZ erc20 balance insufficient", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -223,7 +223,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("BZZ erc20 transfer error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -244,7 +244,7 @@ func TestWalletWithdraw(t *testing.T) {
 
 		txHash := common.HexToHash("0x00f")
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			Erc20Opts: []erc20mock.Option{
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -271,7 +271,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("native balance error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 		})
 
@@ -285,7 +285,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("native insufficient balance", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
@@ -304,7 +304,7 @@ func TestWalletWithdraw(t *testing.T) {
 	t.Run("native backend send error", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
@@ -325,7 +325,7 @@ func TestWalletWithdraw(t *testing.T) {
 
 		txHash := common.HexToHash("0x00f")
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			WhitelistedAddr: "0xaf",
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {

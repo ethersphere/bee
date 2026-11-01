@@ -3,12 +3,9 @@ name: Beekeeper
 on:
   repository_dispatch:
     types: [trigger-beekeeper, beekeeper]
+  # No paths-ignore on pull_request: the required check below must always
+  # report. Docs-only PRs are detected by the changes job and skip the work.
   pull_request:
-    paths-ignore:
-      - packaging/**
-      - openapi/**
-      - "**/*.md"
-      - ".github/ISSUE_TEMPLATE/**"
     branches:
       - "**"
 
@@ -32,8 +29,33 @@ env:
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      # "false" only for a pull request touching nothing but ignored paths.
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+    steps:
+      - name: Detect code changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - "!packaging/**"
+              - "!openapi/**"
+              - "!**/*.md"
+              - "!.github/ISSUE_TEMPLATE/**"
   init:
     name: Init
+    needs: [changes]
+    # When skipped, the dependent "Integration tests" job is skipped too, and
+    # skipped jobs report success to required status checks.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     outputs:
       msg: ${{ steps.commit.outputs.msg }}

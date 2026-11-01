@@ -195,7 +195,7 @@ func TestGetter(t *testing.T) {
 
 				t.Run("returns correct error", func(t *testing.T) {
 					if tc.level > 0 {
-						if !errors.Is(err, replicas.ErrSwarmageddon) {
+						if !errors.Is(err, replicas.ErrContentNotFound) {
 							t.Fatalf("incorrect error. want Swarmageddon. got %v", err)
 						}
 					}

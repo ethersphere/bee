@@ -244,6 +244,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "create manifest failed")
 		}
+		return
 	}
 
 	meta := map[string]string{

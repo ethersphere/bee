@@ -142,3 +142,36 @@ func TestSum256x8_PartialBatch(t *testing.T) {
 		}
 	}
 }
+
+// TestSum256_UnequalLanes checks that lanes of different non-zero lengths are
+// rejected. The XKCP wrappers compute each lane's final block offset relative
+// to the longest lane, so a lane with fewer full blocks makes them write the
+// padding marker at a negative index, below their stack buffer. The lengths
+// here share a full-block count, so a missing check produces wrong digests
+// but no out-of-bounds write.
+func TestSum256_UnequalLanes(t *testing.T) {
+	short, long := make([]byte, 140), make([]byte, 200)
+
+	t.Run("x4", func(t *testing.T) {
+		if !HasSIMD() {
+			t.Skip("AVX2 not available on this CPU")
+		}
+		assertPanics(t, func() { Sum256x4([4][]byte{long, short, long, nil}) })
+	})
+	t.Run("x8", func(t *testing.T) {
+		if !HasAVX512() {
+			t.Skip("AVX-512 not available on this CPU")
+		}
+		assertPanics(t, func() { Sum256x8([8][]byte{long, long, short, nil, long}) })
+	})
+}
+
+func assertPanics(t *testing.T, f func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic for lanes of unequal length")
+		}
+	}()
+	f()
+}

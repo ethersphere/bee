@@ -92,10 +92,10 @@ func TestSubdomains(t *testing.T) {
 			t.Parallel()
 
 			var (
-				dirUploadResource = "/bzz"
-				storer            = mockstorer.New()
-				logger            = log.Noop
-				client, _, _, _   = newTestServer(t, testServerOptions{
+				dirUploadResource  = "/bzz"
+				storer             = mockstorer.New()
+				logger             = log.Noop
+				client, _, _, _, _ = newTestServer(t, testServerOptions{
 					Storer:          storer,
 					Logger:          logger,
 					PreventRedirect: true,

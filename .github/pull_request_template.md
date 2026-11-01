@@ -3,6 +3,7 @@
 - [ ] I have read the [coding guide](https://github.com/ethersphere/bee/blob/master/CODING.md).
 - [ ] My change requires a documentation update, and I have done it.
 - [ ] I have added tests to cover my changes.
+- [ ] I have added or updated [fuzz targets](https://github.com/ethersphere/bee/blob/master/CODING.md#fuzzing) for any code handling untrusted input.
 - [ ] I have filled out the description and linked the related issues.
 
 ### Description

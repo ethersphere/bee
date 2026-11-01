@@ -26,9 +26,9 @@ func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 // nolint:paralleltest
 func TestTags(t *testing.T) {
 	var (
-		tagsResource    = "/tags"
-		storerMock      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		tagsResource       = "/tags"
+		storerMock         = mockstorer.New()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
@@ -199,7 +199,7 @@ func TestTags(t *testing.T) {
 func TestTagsHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name  string

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	pricermock "github.com/ethersphere/bee/v2/pkg/pricer/mock"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
@@ -778,6 +780,90 @@ func TestHandler(t *testing.T) {
 
 	if balance.Int64() != 0 {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
+	}
+}
+
+// TestHandlerRejectsInvalidSOC checks that a chunk carrying a well-formed and
+// correctly signed SOC payload, which nevertheless does not pass soc.Valid, is
+// rejected by the handler and is neither stored nor handed to the gsoc listener.
+func TestHandlerRejectsInvalidSOC(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range invalidSOCs(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if soc.Valid(tc.chunk) {
+				t.Fatal("test chunk must not be a valid soc")
+			}
+			if _, err := soc.FromChunk(tc.chunk); err != nil {
+				t.Fatalf("test chunk must parse as soc: %v", err)
+			}
+
+			pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+			closestPeer := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+
+			var gsocCalls atomic.Int32
+			gsocListener := func(*soc.SOC) { gsocCalls.Add(1) }
+
+			psPeer, peerStorer, _ := createGsocPushSyncNode(t, closestPeer, defaultPrices, nil, gsocListener, defaultSigner(tc.chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+			recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
+			psPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(tc.chunk), mock.WithClosestPeer(closestPeer))
+
+			if _, err := psPivot.PushChunkToClosest(context.Background(), tc.chunk); err == nil {
+				t.Error("expected push of invalid soc to be rejected")
+			}
+
+			if peerStorer.hasChunk(t, tc.chunk.Address()) {
+				t.Error("invalid soc stored in reserve")
+			}
+			if n := gsocCalls.Load(); n != 0 {
+				t.Errorf("gsoc listener called %d times for invalid soc", n)
+			}
+		})
+	}
+}
+
+type invalidSOC struct {
+	name  string
+	chunk swarm.Chunk
+}
+
+// invalidSOCs returns chunks whose data is a correctly signed SOC that
+// soc.FromChunk accepts but soc.Valid rejects.
+func invalidSOCs(t *testing.T) []invalidSOC {
+	t.Helper()
+
+	cac := testingc.GenerateTestRandomChunk()
+
+	// a regular SOC sent under an address other than keccak(id, owner)
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := make([]byte, swarm.HashSize)
+	sch, err := soc.New(id, cac).Sign(crypto.NewDefaultSigner(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongAddress := swarm.NewChunk(cac.Address(), sch.Data()).WithStamp(postagetesting.MustNewStamp())
+
+	// a replica SOC with the correct address, but whose id does not match the
+	// wrapped chunk address
+	replicasKey, err := crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replicaID := bytes.Repeat([]byte{0xff}, swarm.HashSize)
+	rch, err := soc.New(replicaID, cac).Sign(crypto.NewDefaultSigner(replicasKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	badReplica := rch.WithStamp(postagetesting.MustNewStamp())
+
+	return []invalidSOC{
+		{name: "mismatched address", chunk: wrongAddress},
+		{name: "replica with mismatched id", chunk: badReplica},
 	}
 }
 

@@ -6,15 +6,14 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -33,45 +32,56 @@ const (
 	socFieldPayload         = "payload"
 )
 
-var validSocFields = []string{
-	socFieldAddress,
-	socFieldRecoveredPubKey,
-	socFieldIdentifier,
-	socFieldSignature,
-	socFieldWrappedAddress,
-	socFieldSpan,
-	socFieldPayload,
+// gsocQueueCapacity is the maximum number of pending outgoing messages held
+// per GSOC websocket subscription. Since a serialized message is at most
+// maxSocFieldsSize bytes, this caps a single subscription's backlog at a bit
+// over 1 MB, while still leaving enough room to absorb the bursts a client
+// that keeps reading can be expected to work through.
+const gsocQueueCapacity = 256
+
+// socFieldSizes is the single source of truth for the valid SOC fields: it maps
+// every field identifier to the maximum number of bytes its serialized form
+// occupies. A field added here is accepted by parseSocFields and accounted for
+// in maxSocFieldsSize without any further change.
+var socFieldSizes = map[string]int{
+	socFieldAddress:         swarm.HashSize,
+	socFieldRecoveredPubKey: soc.OwnerPubKeySize,
+	socFieldIdentifier:      swarm.HashSize,
+	socFieldSignature:       swarm.SocSignatureSize,
+	socFieldWrappedAddress:  swarm.HashSize,
+	socFieldSpan:            swarm.SpanSize,
+	socFieldPayload:         swarm.ChunkSize,
 }
 
 // maxSocFieldsSize is the maximum size of a serialized SOC fields message when
-// every field is requested: the whole single owner chunk (identifier +
-// signature + span + payload, i.e. SocMaxChunkSize) plus the derived metadata
-// fields that are not part of the chunk on the wire (soc address, recovered
-// public key and wrapped chunk address).
-const maxSocFieldsSize = swarm.SocMaxChunkSize +
-	swarm.HashSize + // soc address
-	soc.OwnerPubKeySize + // recovered public key
-	swarm.HashSize // wrapped chunk address
+// every field is requested. It is derived from socFieldSizes so that it stays
+// correct when fields are added or removed.
+var maxSocFieldsSize = func() (size int) {
+	for _, s := range socFieldSizes {
+		size += s
+	}
+	return size
+}()
 
 // parseSocFields parses the SwarmSocFieldsHeader value into a list of SOC field
 // identifiers. When the header is empty it defaults to the payload field only,
 // which preserves backward compatibility. Duplicate fields are dropped, keeping
-// the first occurrence, so the returned slice never exceeds len(validSocFields)
+// the first occurrence, so the returned slice never exceeds len(socFieldSizes)
 // entries regardless of how many times a field is repeated in the header.
 func parseSocFields(header string) ([]string, error) {
 	if strings.TrimSpace(header) == "" {
 		return []string{socFieldPayload}, nil
 	}
 
-	seen := make(map[string]bool, len(validSocFields))
+	seen := make(map[string]bool, len(socFieldSizes))
 	parts := strings.Split(header, ",")
-	fields := make([]string, 0, len(validSocFields))
+	fields := make([]string, 0, len(socFieldSizes))
 	for _, p := range parts {
 		f := strings.ToLower(strings.TrimSpace(p))
 		if f == "" {
 			continue
 		}
-		if !slices.Contains(validSocFields, f) {
+		if _, ok := socFieldSizes[f]; !ok {
 			return nil, fmt.Errorf("unknown soc field: %q", p)
 		}
 		if seen[f] {
@@ -129,18 +139,36 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	headers := struct {
 		SocFields         string `map:"Swarm-Soc-Fields"`
-		CacheWrappedChunk bool   `map:"Swarm-Cache-Wrapped-Chunk"`
+		CacheWrappedChunk *bool  `map:"Swarm-Cache-Wrapped-Chunk"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
+	// Browser WebSocket clients cannot set request headers, so the same
+	// options are also accepted as query parameters. Query parameters take
+	// precedence over headers.
+	queries := struct {
+		SocFields         string `map:"swarm-soc-fields"`
+		CacheWrappedChunk *bool  `map:"swarm-cache-wrapped-chunk"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+	if queries.SocFields != "" {
+		headers.SocFields = queries.SocFields
+	}
+	if queries.CacheWrappedChunk != nil {
+		headers.CacheWrappedChunk = queries.CacheWrappedChunk
+	}
+
 	fields, err := parseSocFields(headers.SocFields)
 	if err != nil {
-		logger.Debug("invalid soc fields header", "error", err)
-		logger.Error(nil, "invalid soc fields header")
-		jsonhttp.BadRequest(w, "invalid soc fields header")
+		logger.Debug("invalid soc fields", "error", err)
+		logger.Error(nil, "invalid soc fields")
+		jsonhttp.BadRequest(w, "invalid soc fields")
 		return
 	}
 
@@ -155,8 +183,47 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin:     s.checkOrigin,
 	}
 
+	// Subscribe before upgrading the connection: Upgrade flushes the 101
+	// response, after which the client can immediately start sending
+	// GSOC-triggering activity. Subscribing only after Upgrade leaves a window
+	// in which such an update arrives before the handler is registered and is
+	// silently missed. Updates that arrive before the writer goroutine starts
+	// are buffered in the queue and picked up through wake.
+	//
+	// Caching the wrapped chunks is a subscription of its own, shared by every
+	// subscriber of this address that asked for it. It is registered first, so
+	// that a chunk arriving in between is cached rather than announced to a
+	// client that cannot resolve it yet.
+	releaseCache := func() {}
+	if headers.CacheWrappedChunk != nil && *headers.CacheWrappedChunk {
+		releaseCache = s.cacheGsocWrappedChunks(paths.Address)
+	}
+
+	queue := newGsocQueue()
+	wake := make(chan struct{}, 1)
+	cleanup := s.gsoc.Subscribe(paths.Address, func(c *soc.SOC) {
+		b, err := socFieldsBytes(c, fields)
+		if err != nil {
+			s.logger.Warning("gsoc ws: serialize soc fields failed", "error", err)
+			return
+		}
+
+		queue.push(b)
+
+		// Non-blocking: the writer only needs to know there is something to
+		// drain, not one notification per message, so a full wake channel
+		// means it is already going to pick this up.
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	})
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		cleanup()
+		releaseCache()
+		queue.release()
 		logger.Debug("upgrade failed", "error", err)
 		logger.Error(nil, "upgrade failed")
 		jsonhttp.InternalServerError(w, "upgrade failed")
@@ -164,55 +231,171 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.wsWg.Add(1)
-	go s.gsocListeningWs(conn, paths.Address, fields, headers.CacheWrappedChunk)
+	go s.gsocListeningWs(conn, func() {
+		cleanup()
+		releaseCache()
+	}, queue, wake)
 }
 
-func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address, fields []string, cacheWrappedChunk bool) {
+// gsocCacheSub is the subscription that caches the wrapped chunks delivered on
+// one GSOC address, together with the number of websocket subscribers of that
+// address currently interested in it. Caching is a node-local side effect, so
+// it is done once per chunk no matter how many subscribers asked for it: done
+// per subscriber instead, the very same chunk would be written to the store as
+// many times as there are subscribers.
+type gsocCacheSub struct {
+	refs    int
+	cleanup func()
+}
+
+// cacheGsocWrappedChunks subscribes to the given GSOC address to cache the
+// wrapped chunk of every message delivered on it, unless that subscription is
+// already in place, and returns the release of this caller's interest in it.
+// The subscription ends with the release of the last interest in it.
+func (s *Service) cacheGsocWrappedChunks(address swarm.Address) (release func()) {
+	key := address.ByteString()
+
+	s.gsocCacheMu.Lock()
+	defer s.gsocCacheMu.Unlock()
+
+	sub, ok := s.gsocCacheSubs[key]
+	if !ok {
+		sub = &gsocCacheSub{}
+		sub.cleanup = s.gsoc.Subscribe(address, func(c *soc.SOC) {
+			// This callback runs inline on the push and pull sync stream
+			// goroutines, so the store write is handed to its own goroutine:
+			// done here it would hold up the chunk's own storage and, on the
+			// push sync path, the receipt the sending peer is waiting for.
+			// Caching is also independent of any single subscriber's
+			// connection, so it must not be aborted just because a websocket
+			// closes mid-write; it is bound to the node's lifetime instead.
+			wrapped := c.WrappedChunk()
+			safe.Go(s.logger, "gsoc-cache-wrapped-chunk", func() {
+				if err := s.storer.Cache().Put(s.bgCtx, wrapped); err != nil {
+					s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
+				}
+			})
+		})
+		s.gsocCacheSubs[key] = sub
+	}
+	sub.refs++
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.gsocCacheMu.Lock()
+			defer s.gsocCacheMu.Unlock()
+
+			sub.refs--
+			if sub.refs > 0 {
+				return
+			}
+			delete(s.gsocCacheSubs, key)
+			sub.cleanup()
+		})
+	}
+}
+
+// gsocQueue is a bounded FIFO ring buffer of pending outgoing GSOC messages.
+//
+// The producer (the GSOC subscription callback) runs on the node's chunk
+// handling path, so it must never block on the websocket writer; with an
+// unbounded queue that would let anyone spamming a subscribed GSOC address
+// grow the backlog without limit and exhaust the node's memory whenever the
+// client does not keep up. Once the queue is full the oldest pending message
+// is therefore evicted to make room for the newest one: for a real-time
+// subscription a fresh update is worth more than a stale one.
+type gsocQueue struct {
+	mu       sync.Mutex
+	items    [][]byte // ring buffer, fixed length gsocQueueCapacity
+	head     int      // index of the oldest queued message
+	size     int      // number of queued messages
+	dropped  uint64   // messages evicted since the last droppedCount call
+	released bool     // set once the writer is gone, see release
+}
+
+func newGsocQueue() *gsocQueue {
+	return &gsocQueue{items: make([][]byte, gsocQueueCapacity)}
+}
+
+// push queues a message, evicting the oldest one if the queue is full. It is a
+// no-op once the queue has been released.
+func (q *gsocQueue) push(b []byte) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.released {
+		return
+	}
+	if q.size == len(q.items) {
+		q.items[q.head] = nil
+		q.head = (q.head + 1) % len(q.items)
+		q.size--
+		q.dropped++
+	}
+	q.items[(q.head+q.size)%len(q.items)] = b
+	q.size++
+}
+
+// pop returns the oldest queued message, or ok=false if the queue is empty.
+func (q *gsocQueue) pop() (b []byte, ok bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.size == 0 {
+		return nil, false
+	}
+	b = q.items[q.head]
+	q.items[q.head] = nil // drop the reference so the message can be collected
+	q.head = (q.head + 1) % len(q.items)
+	q.size--
+	return b, true
+}
+
+// droppedCount returns how many messages were evicted since the previous call
+// and resets the counter, so that a slow subscriber is reported once per
+// reporting period instead of once per lost message.
+func (q *gsocQueue) droppedCount() uint64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	dropped := q.dropped
+	q.dropped = 0
+	return dropped
+}
+
+// release discards the undelivered backlog and stops the queue from accepting
+// further messages. Nothing drains the queue once its writer is gone, so the
+// pending messages are dead weight from that point on; dropping them here
+// frees them right away instead of keeping them alive for as long as a
+// producer that is still mid-callback can reach the queue.
+func (q *gsocQueue) release() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	clear(q.items)
+	q.head = 0
+	q.size = 0
+	q.released = true
+}
+
+func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *gsocQueue, wake chan struct{}) {
 	defer s.wsWg.Done()
+	// Defers run in reverse order: unsubscribe first, so that no producer can
+	// queue anything new, and only then drop whatever backlog this connection
+	// never got to write out.
+	defer queue.release()
+	defer cleanup()
 
 	var (
-		dataC    = make(chan []byte, 2) // small buffer to decouple producer/consumer
-		gone     = make(chan struct{})
-		slow     = make(chan struct{})
-		slowOnce sync.Once
-		ticker   = time.NewTicker(s.WsPingPeriod)
-		err      error
+		gone   = make(chan struct{})
+		ticker = time.NewTicker(s.WsPingPeriod)
+		err    error
 	)
 	defer func() {
 		ticker.Stop()
 		_ = conn.Close()
 	}()
-	cleanup := s.gsoc.Subscribe(socAddress, func(c *soc.SOC) {
-		if cacheWrappedChunk {
-			// Caching is a node-local side effect independent of this
-			// subscriber's connection, so it must not be aborted just
-			// because the websocket closes mid-write.
-			if err := s.storer.Cache().Put(context.Background(), c.WrappedChunk()); err != nil {
-				s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
-			}
-		}
-
-		b, err := socFieldsBytes(c, fields)
-		if err != nil {
-			s.logger.Warning("gsoc ws: serialize soc fields failed", "error", err)
-			return
-		}
-
-		select {
-		case dataC <- b:
-		case <-gone:
-		case <-slow:
-		case <-s.quit:
-		default:
-			// The connection writer is single-threaded in the main loop below;
-			// only signal it here instead of writing/closing the conn from this
-			// callback goroutine, which can run concurrently with the writer.
-			s.logger.Warning("gsoc ws: slow consumer, closing connection")
-			slowOnce.Do(func() { close(slow) })
-		}
-	})
-
-	defer cleanup()
 
 	conn.SetCloseHandler(func(code int, text string) error {
 		s.logger.Debug("gsoc ws: client gone", "code", code, "message", text)
@@ -222,7 +405,21 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 
 	for {
 		select {
-		case b := <-dataC:
+		case <-wake:
+			// Write a single message per iteration and re-arm wake, instead
+			// of draining the whole queue here: the outer select then keeps
+			// serving the keepalive ping, the shutdown and the client-gone
+			// signals between messages, however long the backlog stays
+			// non-empty. A spurious wake just finds the queue empty.
+			b, ok := queue.pop()
+			if !ok {
+				continue
+			}
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
 				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
@@ -237,30 +434,19 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 
 		case <-s.quit:
 			// shutdown
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-			if err != nil {
-				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-				return
-			}
-			err = conn.WriteMessage(websocket.CloseMessage, []byte{})
-			if err != nil {
-				s.logger.Debug("gsoc ws: write close message failed", "error", err)
-			}
+			s.gsocWsNotifyClose(conn)
 			return
 		case <-gone:
 			// client gone
 			return
-		case <-slow:
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-			if err != nil {
-				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-				return
-			}
-			_ = conn.WriteControl(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "slow consumer"),
-				time.Now().Add(writeDeadline))
-			return
 		case <-ticker.C:
+			// Report evictions once per ping period rather than per message,
+			// so that a subscriber that stays behind is reported periodically
+			// without flooding the operator log.
+			if dropped := queue.droppedCount(); dropped > 0 {
+				s.logger.Warning("gsoc ws: subscriber too slow, messages dropped", "count", dropped)
+			}
+
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
 				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
@@ -271,5 +457,17 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 				return
 			}
 		}
+	}
+}
+
+// gsocWsNotifyClose tells the subscriber that the node is going away. It is
+// best effort: the connection is closed either way once the writer returns.
+func (s *Service) gsocWsNotifyClose(conn *websocket.Conn) {
+	if err := conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
+		s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
+		return
+	}
+	if err := conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+		s.logger.Debug("gsoc ws: write close message failed", "error", err)
 	}
 }

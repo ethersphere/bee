@@ -35,7 +35,7 @@ func TestDirs(t *testing.T) {
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
 		storer              = mockstorer.New()
-		client, _, _, _     = newTestServer(t, testServerOptions{
+		client, _, _, _, _  = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),
@@ -501,9 +501,9 @@ func TestDirsEmtpyDir(t *testing.T) {
 	t.Parallel()
 
 	var (
-		dirUploadResource = "/bzz"
-		storer            = mockstorer.New()
-		client, _, _, _   = newTestServer(t, testServerOptions{
+		dirUploadResource  = "/bzz"
+		storer             = mockstorer.New()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:          storer,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),

@@ -88,15 +88,21 @@ func GenerateTestRandomChunks(count int) []swarm.Chunk {
 	return chunks
 }
 
-// GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
+// GenerateTestRandomChunkAt generates a valid content addressed chunk with address of proximity order po wrt target.
 func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swarm.Chunk {
 	tb.Helper()
 
 	data := make([]byte, swarm.ChunkSize)
-	_, _ = rand.Read(data)
-	addr := swarm.RandAddressAt(tb, target, po)
-	stamp := postagetesting.MustNewStamp()
-	return swarm.NewChunk(addr, data).WithStamp(stamp)
+	for {
+		_, _ = rand.Read(data)
+		ch, err := cac.New(data)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		if int(swarm.Proximity(ch.Address().Bytes(), target.Bytes())) == po {
+			return ch.WithStamp(postagetesting.MustNewStamp())
+		}
+	}
 }
 
 // GenerateValidRandomChunkAt generates an valid chunk with address of proximity order po wrt target.

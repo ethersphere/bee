@@ -18,7 +18,7 @@ func TestReadiness(t *testing.T) {
 	t.Run("probe not set", func(t *testing.T) {
 		t.Parallel()
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 		// When probe is not set readiness endpoint should indicate that API is not ready
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusBadRequest)
@@ -28,7 +28,7 @@ func TestReadiness(t *testing.T) {
 		t.Parallel()
 
 		probe := api.NewProbe()
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			Probe: probe,
 		})
 

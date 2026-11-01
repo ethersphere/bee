@@ -181,9 +181,9 @@ func TestPssSend(t *testing.T) {
 			mtx.Unlock()
 			return err
 		}
-		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		p               = newMockPss(sendFn)
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		mp                 = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		p                  = newMockPss(sendFn)
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,
 			Storer: mockstorer.New(),
 			Post:   mp,
@@ -382,7 +382,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	if o.pingPeriod == 0 {
 		o.pingPeriod = 10 * time.Second
 	}
-	_, cl, listener, _ := newTestServer(t, testServerOptions{
+	_, cl, listener, _, _ := newTestServer(t, testServerOptions{
 		Pss:          pss,
 		WsPath:       "/pss/subscribe/testtopic",
 		Storer:       mockstorer.New(),
@@ -396,7 +396,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 func TestPssPostHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string

@@ -79,6 +79,13 @@ The Plan 9 assembly stubs (`keccak_times{4,8}_linux_amd64.s`) and the Go
 wrappers are hand-maintained in this directory; they should not need
 re-generation unless the XKCP entry-symbol names change.
 
+The C code runs on the goroutine stack without any stack checks, so the stubs
+reserve a frame (`keccak256x{4,8}FrameSize` in `keccak_amd64.go`) and move SP
+to its top before the call; the C stack must never grow below that frame.
+`TestStackUsage` measures the stack the linked blobs actually use and fails if
+it exceeds the reserved frame — if it fails after a rebuild, raise the frame
+size constant and the matching literal in the `TEXT` directive.
+
 ### 5. Refresh CHECKSUM and run the guard test
 
 The `CHECKSUM` file in this directory pins the SHA-256 of each `.syso`. Update

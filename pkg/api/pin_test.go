@@ -80,8 +80,8 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 // nolint:paralleltest
 func TestPinHandlers(t *testing.T) {
 	var (
-		storerMock      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
@@ -151,7 +151,7 @@ func TestPinHandlers(t *testing.T) {
 func TestPinHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name      string
@@ -205,7 +205,7 @@ func TestIntegrityHandler(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			PinIntegrity: &mockPinIntegrity{
 				Store:  inmemstore.New(),
 				tester: t,
@@ -220,7 +220,7 @@ func TestIntegrityHandler(t *testing.T) {
 
 	t.Run("wrong hash format", func(t *testing.T) {
 		t.Parallel()
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			PinIntegrity: &mockPinIntegrity{
 				Store:  inmemstore.New(),
 				tester: t,

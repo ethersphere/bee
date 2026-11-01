@@ -34,7 +34,7 @@ func TestSOC(t *testing.T) {
 		mockStorer  = mockstorer.New()
 	)
 	t.Run("empty data", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Post:         newTestPostService(),
 			DirectUpload: true,
@@ -57,7 +57,7 @@ func TestSOC(t *testing.T) {
 		sig[12] = 0x98
 		sig[10] = 0x12
 
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Post:         newTestPostService(),
 			DirectUpload: true,
@@ -74,7 +74,7 @@ func TestSOC(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
-		client, _, _, chanStore := newTestServer(t, testServerOptions{
+		client, _, _, chanStore, _ := newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Post:         newTestPostService(),
 			DirectUpload: true,
@@ -127,7 +127,7 @@ func TestSOC(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := "abcdefgg"
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:       mockStorer,
 				Post:         newTestPostService(),
 				DirectUpload: true,
@@ -150,7 +150,7 @@ func TestSOC(t *testing.T) {
 		t.Run("ok batch", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
-			client, _, _, chanStorer := newTestServer(t, testServerOptions{
+			client, _, _, chanStorer, _ := newTestServer(t, testServerOptions{
 				Storer:       mockStorer,
 				Post:         newTestPostService(),
 				DirectUpload: true,
@@ -169,7 +169,7 @@ func TestSOC(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
 			storer := mockstorer.New()
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:       storer,
 				Post:         newTestPostService(),
 				DirectUpload: true,
@@ -193,7 +193,7 @@ func TestSOC(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
 			storer := mockstorer.New()
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:       storer,
 				Post:         newTestPostService(),
 				DirectUpload: true,
@@ -222,10 +222,10 @@ func TestSOC(t *testing.T) {
 			t.Parallel()
 
 			var (
-				s               = testingsoc.GenerateMockSOC(t, testData)
-				storerMock      = mockstorer.New()
-				batchStore      = mockbatchstore.New()
-				client, _, _, _ = newTestServer(t, testServerOptions{
+				s                  = testingsoc.GenerateMockSOC(t, testData)
+				storerMock         = mockstorer.New()
+				batchStore         = mockbatchstore.New()
+				client, _, _, _, _ = newTestServer(t, testServerOptions{
 					Storer:     storerMock,
 					BatchStore: batchStore,
 				})
@@ -254,7 +254,7 @@ func TestSOC(t *testing.T) {
 		t.Run("err - batch empty", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchEmpty)
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				Storer:       mockStorer,
 				Post:         newTestPostService(),
 				DirectUpload: true,

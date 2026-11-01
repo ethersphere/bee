@@ -5,6 +5,7 @@
 package soc_test
 
 import (
+	"bytes"
 	"crypto/rand"
 	"io"
 	"strings"
@@ -32,6 +33,38 @@ func TestValid(t *testing.T) {
 	// check valid chunk
 	if !soc.Valid(sch) {
 		t.Fatal("valid chunk evaluates to invalid")
+	}
+}
+
+// TestFromValidChunk verifies that a correctly signed soc is returned only when
+// it is delivered under its own address.
+func TestFromValidChunk(t *testing.T) {
+	t.Parallel()
+
+	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
+	owner := swarm.MustParseHexAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
+
+	// signed soc chunk of:
+	// id: 0
+	// wrapped chunk of: `foo`
+	// owner: 0x8d3766440f0d7b949a5e32995d09619a7f86e632
+	data := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 205, 56, 79, 235, 193, 51, 183, 178, 69, 229, 221, 198, 45, 130, 210, 205, 237, 145, 130, 210, 113, 97, 38, 205, 136, 68, 80, 154, 246, 90, 5, 61, 235, 65, 130, 8, 2, 127, 84, 142, 62, 136, 52, 58, 246, 248, 74, 135, 114, 251, 60, 235, 192, 161, 131, 58, 14, 167, 236, 12, 19, 72, 49, 27, 3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111}
+
+	s, err := soc.FromChunkValidate(swarm.NewChunk(socAddress, data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(s.OwnerAddress(), owner.Bytes()) {
+		t.Fatalf("got owner %x, want %s", s.OwnerAddress(), owner)
+	}
+
+	// the same signed payload under a different address parses as a soc, but is not valid
+	wrongAddress := swarm.RandAddress(t)
+	if _, err := soc.FromChunk(swarm.NewChunk(wrongAddress, data)); err != nil {
+		t.Fatalf("expected payload to parse as soc: %v", err)
+	}
+	if _, err := soc.FromChunkValidate(swarm.NewChunk(wrongAddress, data)); err == nil {
+		t.Fatal("expected soc under a different address to be rejected")
 	}
 }
 

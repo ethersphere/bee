@@ -16,6 +16,7 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	NeighborhoodBroadcasts    = neighborhoodBroadcasts
 )
 
 // MarkConnectedPeersSeen runs the sweep the manage loop performs on every

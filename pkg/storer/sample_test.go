@@ -5,21 +5,29 @@
 package storer_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"math/big"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-
+	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestReserveSampler(t *testing.T) {
@@ -141,6 +149,196 @@ func TestReserveSampler(t *testing.T) {
 		}
 		testF(t, baseAddr, storer)
 	})
+}
+
+type multiBatchStore struct {
+	*batchstore.BatchStore
+	batches []*postage.Batch
+}
+
+func (m *multiBatchStore) Iterate(cb func(*postage.Batch) (bool, error)) error {
+	for _, b := range m.batches {
+		if stop, err := cb(b); stop || err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type errBatchStore struct {
+	*batchstore.BatchStore
+	err error
+}
+
+func (e *errBatchStore) Iterate(cb func(*postage.Batch) (bool, error)) error {
+	return e.err
+}
+
+func TestReserveSamplerMinBatchBalance(t *testing.T) {
+	t.Parallel()
+
+	const chunkCount = 10
+	baseAddr := swarm.RandAddress(t)
+
+	lowBatchValue := big.NewInt(100)
+	highBatchValue := big.NewInt(200)
+
+	lowBatch := &postage.Batch{
+		ID:    postagetesting.MustNewID(),
+		Value: lowBatchValue,
+	}
+	highBatch := &postage.Batch{
+		ID:    postagetesting.MustNewID(),
+		Value: highBatchValue,
+	}
+
+	bs := &multiBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		batches:    []*postage.Batch{lowBatch, highBatch},
+	}
+
+	opts := dbTestOps(baseAddr, 1000, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := memStorer(t, opts)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	radius := uint8(5)
+	anchor := swarm.RandAddressAt(t, baseAddr, int(radius)).Bytes()
+	anchorAddr := swarm.NewAddress(anchor)
+
+	timeVar := uint64(time.Now().UnixNano())
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, timeVar-1)
+
+	putter := st.ReservePutter()
+
+	// Store chunks from lowBatch and highBatch at proximity radius to anchor
+	for range chunkCount {
+		chLow := chunk.GenerateValidRandomChunkAt(t, anchorAddr, int(radius)).WithBatch(3, 2, false)
+		chLow = chLow.WithStamp(postage.NewStamp(lowBatch.ID, postagetesting.MustNewID()[:8], tsBuf, postagetesting.MustNewSignature()))
+		if err := putter.Put(context.Background(), chLow); err != nil {
+			t.Fatal(err)
+		}
+
+		chHigh := chunk.GenerateValidRandomChunkAt(t, anchorAddr, int(radius)).WithBatch(3, 2, false)
+		chHigh = chHigh.WithStamp(postage.NewStamp(highBatch.ID, postagetesting.MustNewID()[:8], tsBuf, postagetesting.MustNewSignature()))
+		if err := putter.Put(context.Background(), chHigh); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("minimum below batch value", func(t *testing.T) {
+		minBelow := big.NewInt(50)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minBelow)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != 0 {
+			t.Fatalf("expected 0 below balance ignored, got %d", sample.Stats.BelowBalanceIgnored)
+		}
+	})
+
+	t.Run("minimum equal to batch value", func(t *testing.T) {
+		minEqual := big.NewInt(100)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minEqual)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != 0 {
+			t.Fatalf("expected 0 below balance ignored, got %d", sample.Stats.BelowBalanceIgnored)
+		}
+	})
+
+	t.Run("minimum above low batch value", func(t *testing.T) {
+		minAbove := big.NewInt(150)
+		sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minAbove)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if sample.Stats.BelowBalanceIgnored != chunkCount {
+			t.Fatalf("expected %d below balance ignored, got %d", chunkCount, sample.Stats.BelowBalanceIgnored)
+		}
+
+		if len(sample.Items) == 0 {
+			t.Fatal("expected sample items from valid batch, got 0")
+		}
+
+		for _, item := range sample.Items {
+			if bytes.Equal(item.Stamp.BatchID(), lowBatch.ID) {
+				t.Fatalf("sample contains chunk from excluded batch %x", lowBatch.ID)
+			}
+		}
+	})
+}
+
+func TestReserveSamplerBatchExclusionFilterError(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	expectedErr := errors.New("batchstore iteration failure")
+
+	bs := &errBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		err:        expectedErr,
+	}
+
+	opts := dbTestOps(baseAddr, 1000, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := memStorer(t, opts)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	radius := uint8(5)
+	anchor := swarm.RandAddressAt(t, baseAddr, int(radius)).Bytes()
+
+	_, err = st.ReserveSample(context.TODO(), anchor, radius, uint64(time.Now().UnixNano()), big.NewInt(100))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected error wrapping %v, got %v", expectedErr, err)
+	}
+
+	if got := reserveSampleRuns(t, st, "failure"); got != 1 {
+		t.Fatalf("expected 1 failed sample run in metrics, got %d", got)
+	}
+	if got := reserveSampleRuns(t, st, "success"); got != 0 {
+		t.Fatalf("expected 0 successful sample runs in metrics, got %d", got)
+	}
+}
+
+// reserveSampleRuns returns the number of sample runs recorded with status.
+func reserveSampleRuns(t *testing.T, st *storer.DB, status string) uint64 {
+	t.Helper()
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(st.Metrics()...)
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mf := range families {
+		if !strings.HasSuffix(mf.GetName(), "reserve_sample_duration_seconds") {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "status" && l.GetValue() == status {
+					return m.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func TestReserveSamplerSisterNeighborhood(t *testing.T) {
@@ -302,6 +500,9 @@ func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anch
 		assertSampleItem(item, i)
 	}
 
+	assertSampleDataIntact(t, sample)
+	assertSampleDataNotShared(t, sample)
+
 	// Assert that transformed addresses are in ascending order
 	for i := 0; i < len(sample.Items)-1; i++ {
 		if sample.Items[i].TransformedAddress.Compare(sample.Items[i+1].TransformedAddress) != -1 {
@@ -310,16 +511,49 @@ func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anch
 	}
 }
 
+// assertSampleDataIntact checks that every item's ChunkData still reproduces its
+// ChunkAddress.
+//
+// The sampler currently hands out the buffer that the chunk store allocated for
+// each chunk, so the data is trivially intact. That stops being true the moment
+// chunks are read into a buffer that the worker reuses: unless the bytes handed
+// to a SampleItem are copied out, every item except the last one a worker
+// touched carries the contents of some later chunk instead.
+func assertSampleDataIntact(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	for i, item := range sample.Items {
+		ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
+		if !cac.Valid(ch) && !soc.Valid(ch) {
+			t.Fatalf("sample item [%d]: chunk data does not reproduce address %s", i, item.ChunkAddress)
+		}
+	}
+}
+
+// assertSampleDataNotShared checks that no two items are backed by the same
+// array. It catches a reused read buffer even in the case where the surviving
+// contents happen to stay valid for one of the aliased items.
+func assertSampleDataNotShared(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	seen := make(map[*byte]int, len(sample.Items))
+	for i, item := range sample.Items {
+		if len(item.ChunkData) == 0 {
+			continue
+		}
+		first := &item.ChunkData[0]
+		if j, ok := seen[first]; ok {
+			t.Fatalf("sample items [%d] and [%d] share one backing array", j, i)
+		}
+		seen[first] = i
+	}
+}
+
 // TestSampleVectorCAC is a deterministic test vector that verifies the chunk
 // address and transformed address produced by MakeSampleUsingChunks for a
 // single hardcoded CAC chunk and anchor. It guards against regressions in the
 // BMT hashing or sampling pipeline, and asserts that both the goroutine and
 // SIMD hasher paths produce identical hashes.
-//
-// Sub-tests are intentionally not run in parallel: SetSIMDOptIn mutates global
-// state and concurrent calls would see flapping values. On platforms where the
-// dispatcher falls back to the goroutine pool (non-linux/amd64 or CPU without
-// AVX2/AVX-512), the SIMD sub-test degrades to a goroutine run.
 func TestSampleVectorCAC(t *testing.T) {
 	// Chunk content: 4096 bytes with repeating pattern i%256.
 	chunkContent := make([]byte, swarm.ChunkSize)
@@ -332,25 +566,71 @@ func TestSampleVectorCAC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Attach a hardcoded (but otherwise irrelevant) stamp so that
-	// MakeSampleUsingChunks can read ch.Stamp() without panicking.
-	batchID := make([]byte, 32)
-	for i := range batchID {
-		batchID[i] = byte(i + 1)
+	// The stamp is irrelevant to the vector; MakeSampleUsingChunks only needs
+	// ch.Stamp() to not panic.
+	ch = ch.WithStamp(postagetesting.MustNewStamp())
+
+	assertSampleVector(t, ch,
+		"902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16",
+		"9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60",
+	)
+}
+
+// TestSampleVectorSOC is the SOC counterpart of TestSampleVectorCAC. The
+// sampler reads the wrapped CAC straight out of the raw chunk data instead of
+// rebuilding it through soc.UnwrapCAC, which drops the length validation and
+// the redundant BMT hash that path performed; the vector was cross-checked
+// against it. Neither asserted address depends on the signature, so the vector
+// survives the ECDSA nonce.
+func TestSampleVectorSOC(t *testing.T) {
+	// Wrapped CAC content: the same payload TestSampleVectorCAC uses.
+	chunkContent := make([]byte, swarm.ChunkSize)
+	for i := range chunkContent {
+		chunkContent[i] = byte(i % 256)
 	}
-	sig := make([]byte, 65)
-	for i := range sig {
-		sig[i] = byte(i + 1)
+
+	wrappedCh, err := cac.New(chunkContent)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ch = ch.WithStamp(postage.NewStamp(batchID, make([]byte, 8), make([]byte, 8), sig))
+
+	id := make([]byte, swarm.HashSize)
+	for i := range id {
+		id[i] = byte(i + 1)
+	}
+
+	// Fixed key, so that the owner address and with it the SOC address is
+	// constant across runs. Not the replicas signer, which soc.Valid
+	// special-cases into the dispersed replica rule.
+	privKeyData := make([]byte, 32)
+	for i := range privKeyData {
+		privKeyData[i] = byte(i + 1)
+	}
+
+	ch, err := soc.New(id, wrappedCh).Sign(crypto.NewDefaultSigner(crypto.Secp256k1PrivateKeyFromBytes(privKeyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch = ch.WithStamp(postagetesting.MustNewStamp())
+
+	assertSampleVector(t, ch,
+		"6f8d756905e023c9a6cb9f11dd22feec5c6fcfff33d9115bae3be210be162ebb",
+		"014d0e6a4caeaebe37bed9d7fb76d1049122e2e9e5659d4528537f6162d670bc",
+	)
+}
+
+// assertSampleVector checks the chunk and transformed addresses MakeSampleUsingChunks
+// produces for ch against a pinned vector, on both the goroutine and SIMD hasher paths.
+//
+// Sub-tests are intentionally not run in parallel: SetSIMDOptIn mutates global
+// state and concurrent calls would see flapping values. On platforms where the
+// dispatcher falls back to the goroutine pool (non-linux/amd64 or CPU without
+// AVX2/AVX-512), the SIMD sub-test degrades to a goroutine run.
+func assertSampleVector(t *testing.T, ch swarm.Chunk, wantChunkAddr, wantTransformedAddr string) {
+	t.Helper()
 
 	// Anchor: exactly 32 bytes, constant across runs.
 	anchor := []byte("swarm-test-anchor-deterministic!")
-
-	const (
-		wantChunkAddr       = "902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16"
-		wantTransformedAddr = "9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60"
-	)
 
 	prev := bmt.SIMDOptIn()
 	t.Cleanup(func() { bmt.SetSIMDOptIn(prev) })
@@ -386,14 +666,56 @@ func TestSampleVectorCAC(t *testing.T) {
 	}
 }
 
+func TestTransformedAddressCACInvalidLength(t *testing.T) {
+	t.Parallel()
+
+	hasher := bmt.NewPrefixHasher([]byte("anchor"))
+	addr := swarm.RandAddress(t)
+
+	// Too short (< bmt.SpanSize)
+	shortData := make([]byte, bmt.SpanSize-1)
+	chShort := swarm.NewChunk(addr, shortData)
+	if _, err := storer.TransformedAddress(hasher, chShort, swarm.ChunkTypeContentAddressed); err == nil {
+		t.Fatal("expected error for chunk shorter than SpanSize")
+	}
+
+	// Too large (> swarm.ChunkWithSpanSize)
+	largeData := make([]byte, swarm.ChunkWithSpanSize+1)
+	chLarge := swarm.NewChunk(addr, largeData)
+	if _, err := storer.TransformedAddress(hasher, chLarge, swarm.ChunkTypeContentAddressed); err == nil {
+		t.Fatal("expected error for chunk larger than ChunkWithSpanSize")
+	}
+}
+
+func TestTransformedAddressSOCInvalidLength(t *testing.T) {
+	t.Parallel()
+
+	hasher := bmt.NewPrefixHasher([]byte("anchor"))
+	addr := swarm.RandAddress(t)
+
+	// Too short (< swarm.SocMinChunkSize)
+	shortData := make([]byte, swarm.SocMinChunkSize-1)
+	chShort := swarm.NewChunk(addr, shortData)
+	if _, err := storer.TransformedAddress(hasher, chShort, swarm.ChunkTypeSingleOwner); err == nil {
+		t.Fatal("expected error for chunk shorter than SocMinChunkSize")
+	}
+
+	// Too large (> swarm.SocMaxChunkSize)
+	largeData := make([]byte, swarm.SocMaxChunkSize+1)
+	chLarge := swarm.NewChunk(addr, largeData)
+	if _, err := storer.TransformedAddress(hasher, chLarge, swarm.ChunkTypeSingleOwner); err == nil {
+		t.Fatal("expected error for chunk larger than SocMaxChunkSize")
+	}
+}
+
 func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	t.Helper()
 
 	if sample.Stats.ChunkLoadFailed != 0 {
 		t.Fatalf("got unexpected failed chunk loads")
 	}
-	if sample.Stats.RogueChunk != 0 {
-		t.Fatalf("got unexpected rogue chunks")
+	if sample.Stats.AssemblyChunkLoadFailed != 0 {
+		t.Fatalf("got unexpected failed assembly chunk loads")
 	}
 	if sample.Stats.StampLoadFailed != 0 {
 		t.Fatalf("got unexpected failed stamp loads")
@@ -420,11 +742,27 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 // method, including DB iteration, chunk loading, stamp validation, and sample
 // assembly.
 func BenchmarkReserveSample1k(b *testing.B) {
-	const chunkCountPerPO = 100
+	benchmarkReserveSample(b, 100)
+}
+
+// BenchmarkReserveSample10k is BenchmarkReserveSample1k over a reserve ten
+// times the size. The per-chunk costs of the sampler are linear in the number
+// of chunks iterated, so a change that only removes a fixed overhead reads the
+// same at both sizes while a change to a per-chunk allocation does not. The
+// larger reserve is also where garbage collection starts to show.
+func BenchmarkReserveSample10k(b *testing.B) {
+	benchmarkReserveSample(b, 1000)
+}
+
+// benchmarkReserveSample fills a reserve with chunkCountPerPO chunks in each of
+// the first maxPO proximity orders and then samples it repeatedly.
+func benchmarkReserveSample(b *testing.B, chunkCountPerPO int) {
+	b.Helper()
+
 	const maxPO = 10
 
 	baseAddr := swarm.RandAddress(b)
-	opts := dbTestOps(baseAddr, 5000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 5*chunkCountPerPO*maxPO, nil, nil, time.Second)
 	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
 
 	st, err := diskStorer(b, opts)()
@@ -450,11 +788,60 @@ func BenchmarkReserveSample1k(b *testing.B) {
 		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
 	)
 
+	b.ResetTimer()
+
 	for b.Loop() {
 		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// BenchmarkTransformedAddress measures the sampler's per-chunk hashing on its
+// own, separately for a content-addressed and a single owner chunk.
+//
+// The SOC case is the reason this exists. Both ReserveSample benchmarks build
+// their reserve with chunk.GenerateValidRandomChunkAt, which produces CAC
+// chunks only, so the SOC branch of transformedAddress is never measured by
+// them. Any work the SOC path does over and above hashing the wrapped CAC shows
+// up here and nowhere else.
+func BenchmarkTransformedAddress(b *testing.B) {
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	content := make([]byte, swarm.ChunkSize)
+	for i := range content {
+		content[i] = byte(i)
+	}
+
+	cacChunk, err := cac.New(content)
+	if err != nil {
+		b.Fatal(err)
+	}
+	socChunk := chunk.GenerateTestRandomSoChunk(b, cacChunk)
+
+	for _, tc := range []struct {
+		name string
+		ch   swarm.Chunk
+		typ  swarm.ChunkType
+	}{
+		{"cac", cacChunk, swarm.ChunkTypeContentAddressed},
+		{"soc", socChunk, swarm.ChunkTypeSingleOwner},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			// One hasher reused across iterations, as a sampler worker does.
+			hasher := bmt.NewPrefixHasher(anchor)
+
+			b.ReportAllocs()
+			b.SetBytes(int64(len(tc.ch.Data())))
+			b.ResetTimer()
+
+			for b.Loop() {
+				if _, err := storer.TransformedAddress(hasher, tc.ch, tc.typ); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
@@ -494,5 +881,69 @@ func BenchmarkSampleHashing(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// BenchmarkReserveSample10kWith1000ExcludedBatches benchmarks sampling with 10k chunks
+// in the reserve and 1000 batches below the minimum balance (excluded).
+func BenchmarkReserveSample10kWith1000ExcludedBatches(b *testing.B) {
+	const (
+		maxPO           = 10
+		chunkCountPerPO = 1000
+		numBatches      = 1000
+	)
+
+	baseAddr := swarm.RandAddress(b)
+	batches := make([]*postage.Batch, numBatches)
+	for i := range batches {
+		batches[i] = &postage.Batch{
+			ID:    postagetesting.MustNewID(),
+			Value: big.NewInt(50), // below minBatchBalance
+		}
+	}
+
+	bs := &multiBatchStore{
+		BatchStore: batchstore.New(batchstore.WithAcceptAllExistsFunc()),
+		batches:    batches,
+	}
+
+	opts := dbTestOps(baseAddr, 5*chunkCountPerPO*maxPO, bs, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := diskStorer(b, opts)()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	timeVar := uint64(time.Now().UnixNano())
+
+	putter := st.ReservePutter()
+	var chunkIdx int
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(b, baseAddr, po).WithBatch(3, 2, false)
+			batchID := batches[chunkIdx%numBatches].ID
+			chunkIdx++
+			ch = ch.WithStamp(postage.NewStamp(batchID, postagetesting.MustNewID()[:8], postagetesting.MustNewID()[:8], postagetesting.MustNewSignature()))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	var (
+		radius uint8 = 5
+		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
+	)
+
+	minBatchBalance := big.NewInt(100)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, minBatchBalance)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

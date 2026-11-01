@@ -7,8 +7,10 @@ package libp2p
 import (
 	"crypto/tls"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -17,6 +19,11 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+// forgeHTTPTimeout bounds HTTP calls to the p2p-forge registration broker.
+// Set explicitly because the fallback, http.DefaultClient, has none, and the
+// DNS-01 challenge POST is otherwise unbounded.
+const forgeHTTPTimeout = 60 * time.Second
 
 // P2PForgeOptions contains the configuration for creating a P2P Forge certificate manager.
 type P2PForgeOptions struct {
@@ -54,6 +61,7 @@ func newP2PForgeCertManager(beeLogger log.Logger, opts P2PForgeOptions) (*P2PFor
 		p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
 		p2pforge.WithLogger(zapLogger.Sugar()),
 		p2pforge.WithUserAgent(userAgent()),
+		p2pforge.WithHTTPClient(&http.Client{Timeout: forgeHTTPTimeout}),
 		p2pforge.WithAllowPrivateForgeAddrs(),
 		p2pforge.WithRegistrationDelay(0),
 		p2pforge.WithOnCertLoaded(func() {

@@ -220,7 +220,14 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		case op := <-cc:
 			idAddress, err := storage.IdentityAddress(op.Chunk)
 			if err != nil {
-				op.Err <- err
+				if op.Direct {
+					op.Err <- err
+				} else {
+					s.logger.Error(err, "pusher: invalid chunk in push queue, dropping", "chunk_address", op.Chunk.Address())
+					if rerr := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); rerr != nil {
+						s.logger.Error(rerr, "pusher: failed to report invalid chunk", "chunk_address", op.Chunk.Address())
+					}
+				}
 				continue
 			}
 			op.identityAddress = idAddress

@@ -339,6 +339,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		PaymentTolerance:              c.config.GetInt64(optionNamePaymentTolerance),
 		PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
 		PostageContractStartBlock:     c.config.GetUint64(optionNamePostageContractStartBlock),
+		PostageSyncBlockRange:         c.config.GetUint64(optionNamePostageSyncBlockRange),
 		PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
 		RedistributionContractAddress: c.config.GetString(optionNameRedistributionAddress),
 		ReserveCapacityDoubling:       c.config.GetInt(optionReserveCapacityDoubling),

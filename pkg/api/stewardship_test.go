@@ -36,7 +36,7 @@ func TestStewardship(t *testing.T) {
 		storer      = mockstorer.New()
 		addr        = swarm.NewAddress([]byte{31: 128})
 	)
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Logger:  logger,
 		Steward: stewardMock,
@@ -53,6 +53,19 @@ func TestStewardship(t *testing.T) {
 		)
 		if !stewardMock.LastAddress().Equal(addr) {
 			t.Fatalf("\nhave address: %q\nwant address: %q", stewardMock.LastAddress().String(), addr.String())
+		}
+		if got := stewardMock.LastLevel(); got != redundancy.DefaultUploadLevel {
+			t.Fatalf("have redundancy level %d, want %d when the header is omitted", got, redundancy.DefaultUploadLevel)
+		}
+	})
+
+	t.Run("re-upload with redundancy level", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+addr.String(), http.StatusOK,
+			jsonhttptest.WithRequestHeader("Swarm-Postage-Batch-Id", "aa"),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(int(redundancy.STRONG))),
+		)
+		if got := stewardMock.LastLevel(); got != redundancy.STRONG {
+			t.Fatalf("have redundancy level %d, want %d", got, redundancy.STRONG)
 		}
 	})
 
@@ -85,10 +98,10 @@ func TestStewardshipWithRedundancy(t *testing.T) {
 	t.Parallel()
 
 	var (
-		storerMock      = mockstorer.New()
-		localRetrieval  = &localRetriever{getter: storerMock.ChunkStore()}
-		s               = steward.New(storerMock, localRetrieval, storerMock.Cache())
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		localRetrieval     = &localRetriever{getter: storerMock.ChunkStore()}
+		s                  = steward.New(storerMock, localRetrieval, storerMock.Cache())
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Logger:  log.Noop,
 			Steward: s,
@@ -124,7 +137,7 @@ func TestStewardshipWithRedundancy(t *testing.T) {
 func TestStewardshipInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 	})
 

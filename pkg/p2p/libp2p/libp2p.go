@@ -634,7 +634,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
-		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
+		s.logger.Warning("stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
 		_ = stream.Conn().Close()
 		return
@@ -918,6 +918,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			loggerV1 := logger.V(1).Build()
 
 			s.metrics.HandledStreamCount.Inc()
+			s.metrics.ProtocolHandlerCallCount.WithLabelValues(p.Name, p.Version, ss.Name).Inc()
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
 				var de *p2p.DisconnectError
 				if errors.As(err, &de) {

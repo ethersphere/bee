@@ -45,9 +45,24 @@ var (
 	SuccessWsMsg = successWsMsg
 )
 
+const GsocQueueCapacity = gsocQueueCapacity
+
+type GsocQueue = gsocQueue
+
+func NewGsocQueue() *GsocQueue { return newGsocQueue() }
+
+func (q *GsocQueue) Push(b []byte)       { q.push(b) }
+func (q *GsocQueue) Pop() ([]byte, bool) { return q.pop() }
+func (q *GsocQueue) Release()            { q.release() }
+
+func (s *Service) CacheGsocWrappedChunks(address swarm.Address) func() {
+	return s.cacheGsocWrappedChunks(address)
+}
+
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket
+	MetricsMethod         = metricsMethod
 )
 
 func (s *Service) ResolveNameOrAddress(str string) (swarm.Address, error) {
@@ -99,6 +114,8 @@ type (
 	StakeTransactionReponse           = stakeTransactionReponse
 	StatusSnapshotResponse            = statusSnapshotResponse
 	StatusResponse                    = statusResponse
+	RedistributionStatusResponse      = redistributionStatusResponse
+	RedistributionToggleResponse      = redistributionToggleResponse
 )
 
 var (

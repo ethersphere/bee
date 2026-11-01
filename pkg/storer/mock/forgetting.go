@@ -33,7 +33,8 @@ func (d *DelayedStore) Delay(addr swarm.Address, delay time.Duration) {
 	d.cache[addr.String()] = delay
 }
 
-func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+// wait consumes any delay registered for addr, blocking for its duration.
+func (d *DelayedStore) wait(ctx context.Context, addr swarm.Address) error {
 	d.mu.Lock()
 	delay, ok := d.cache[addr.String()]
 	if ok && delay > 0 {
@@ -42,12 +43,28 @@ func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Ch
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		}
 	} else {
 		d.mu.Unlock()
 	}
+	return nil
+}
+
+func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	if err := d.wait(ctx, addr); err != nil {
+		return nil, err
+	}
 	return d.ChunkStore.Get(ctx, addr)
+}
+
+// GetInto implements the ChunkStore interface. Without this override the
+// promoted method would bypass Delay.
+func (d *DelayedStore) GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error) {
+	if err := d.wait(ctx, addr); err != nil {
+		return 0, err
+	}
+	return d.ChunkStore.GetInto(ctx, addr, buf)
 }
 
 type ForgettingStore struct {
@@ -127,6 +144,19 @@ func (f *ForgettingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm
 		return nil, storage.ErrNotFound
 	}
 	return f.ChunkStore.Get(ctx, addr)
+}
+
+// GetInto implements the ChunkStore interface. It applies the same recording
+// and forgetting rules as Get.
+func (f *ForgettingStore) GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record.Load() {
+		f.miss(addr)
+	} else if f.isMiss(addr) {
+		return 0, storage.ErrNotFound
+	}
+	return f.ChunkStore.GetInto(ctx, addr, buf)
 }
 
 // Put implements the ChunkStore interface.

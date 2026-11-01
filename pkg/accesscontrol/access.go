@@ -23,6 +23,10 @@ var (
 	zeroByteArray = []byte{0}
 )
 
+// ErrInvalidAccessKey is returned when an ACT slot does not decrypt to a
+// full-length access key.
+var ErrInvalidAccessKey = errors.New("access control: invalid access key")
+
 // Decryptor is a read-only interface for the ACT.
 type Decryptor interface {
 	// DecryptRef will return a decrypted reference, for given encrypted reference and grantee.
@@ -121,6 +125,11 @@ func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore,
 	accessKey, err := accessKeyDecryptionCipher.Decrypt(encryptedAK)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt access key: %w", err)
+	}
+	// The slot value is read from the ACT manifest, so check its length
+	// before using it as a key.
+	if len(accessKey) != encryption.KeyLength {
+		return nil, ErrInvalidAccessKey
 	}
 
 	return accessKey, nil

@@ -37,9 +37,9 @@ func TestBytes(t *testing.T) {
 	)
 
 	var (
-		storerMock      = mockstorer.New()
-		logger          = log.Noop
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		logger             = log.Noop
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -174,7 +174,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	}
 
 	t.Run("upload batch not found", func(t *testing.T) {
-		clientBatchNotExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchNotExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(),
@@ -209,7 +209,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	retErr = errors.New("err happened")
 
 	t.Run("upload batch exists error", func(t *testing.T) {
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -233,7 +233,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	})
 
 	t.Run("upload batch unusable", func(t *testing.T) {
-		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchUnusable, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -248,7 +248,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	})
 
 	t.Run("upload invalid tag", func(t *testing.T) {
-		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
+		clientInvalidTag, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -263,7 +263,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 	})
 
 	t.Run("upload tag not found", func(t *testing.T) {
-		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientTagExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -281,7 +281,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 	})
 
@@ -332,7 +332,7 @@ func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
 func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -380,7 +380,7 @@ func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 func TestBytesRedundancyLevel(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
@@ -458,7 +458,7 @@ func TestBytesHead(t *testing.T) {
 			t.Run(fmt.Sprintf("level %d encrypt %v", level, encrypt), func(t *testing.T) {
 				t.Parallel()
 
-				client, _, _, _ := newTestServer(t, testServerOptions{
+				client, _, _, _, _ := newTestServer(t, testServerOptions{
 					Storer: mockstorer.New(),
 					Post:   mockpost.New(mockpost.WithAcceptAll()),
 				})
@@ -513,7 +513,7 @@ func TestBytesHeadRangeAndConditional(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
@@ -599,7 +599,7 @@ func TestBytesHeadRangeAndConditional(t *testing.T) {
 func TestBytesHeadErrorsMatchGet(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})

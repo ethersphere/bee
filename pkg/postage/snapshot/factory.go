@@ -41,7 +41,7 @@ func New(
 		return nil, fmt.Errorf("read postage snapshot: %w", err)
 	}
 
-	eventListener := listener.New(syncingStopped, logger, filterer, contractAddress, contractABI, blockTime, stallingTimeout, backoffTimeout)
+	eventListener := listener.New(syncingStopped, logger, filterer, contractAddress, contractABI, blockTime, stallingTimeout, backoffTimeout, listener.DefaultBlockPage)
 
 	return &batchservice.Snapshot{
 		Listener:   eventListener,

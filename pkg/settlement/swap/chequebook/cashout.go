@@ -142,7 +142,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		To:          &chequebook,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
+		GasLimit:    sctx.GetGasLimit(ctx),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
 	}
@@ -180,6 +180,10 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 			}, nil
 		}
 		return nil, err
+	}
+
+	if action.Cheque.CumulativePayout == nil {
+		return nil, fmt.Errorf("nil cumulative payout on cashout action loaded from statestore for chequebook %x: %w", chequebookAddress, ErrNoCheque)
 	}
 
 	_, pending, err := s.backend.TransactionByHash(ctx, action.TxHash)

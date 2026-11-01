@@ -41,6 +41,20 @@ func (t *Timeout) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 	return ch, nil
 }
 
+// GetInto implements the ChunkStore interface. Without this override the
+// promoted method would bypass the latency Get introduces.
+func (t *Timeout) GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error) {
+	n, err := t.ChunkStore.GetInto(ctx, addr, buf)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			time.Sleep(searchTimeout)
+		}
+		return n, err
+	}
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+	return n, nil
+}
+
 // nolint:tparallel
 func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 	t.Parallel()

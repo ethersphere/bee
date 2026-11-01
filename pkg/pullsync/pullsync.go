@@ -41,12 +41,15 @@ const (
 	cursorStreamName = "cursors"
 )
 
-var ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
+var (
+	ErrUnsolicitedChunk    = errors.New("peer sent unsolicited chunk")
+	errStreamLimitExceeded = errors.New("pullsync: peer exceeded concurrent stream limit")
+)
 
 const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
-	pageTimeout                     = time.Second
+	pageTimeout                     = time.Millisecond * 250
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
@@ -77,6 +80,9 @@ type Syncer struct {
 
 	limiter *ratelimit.Limiter
 
+	syncStreams   *peerStreamLimiter
+	cursorStreams *peerStreamLimiter
+
 	Interface
 	io.Closer
 }
@@ -101,6 +107,9 @@ func New(
 		quit:        make(chan struct{}),
 		maxPage:     maxPage,
 		limiter:     ratelimit.New(handleRequestsLimitRate, int(maxPage)),
+
+		syncStreams:   newPeerStreamLimiter(maxPeerSyncStreams),
+		cursorStreams: newPeerStreamLimiter(maxPeerCursorStreams),
 	}
 }
 
@@ -132,6 +141,12 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		s.syncInProgress.Add(1)
 		defer s.syncInProgress.Add(-1)
 	}
+
+	release, ok := s.syncStreams.acquire(p.Address)
+	if !ok {
+		return s.streamLimitExceeded(p, stream, streamName, maxPeerSyncStreams)
+	}
+	defer release()
 
 	r := protobuf.NewReader(stream)
 	defer func() {
@@ -355,14 +370,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
-		} else if chunk, err := soc.FromChunk(chunk); err == nil {
-			addr, err := chunk.Address()
-			if err != nil {
-				chunkErr = errors.Join(chunkErr, err)
-				continue
-			}
-			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
-			s.gsocHandler(chunk)
+		} else if sch, err := soc.FromChunkValidate(chunk); err == nil {
+			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", sch.WrappedChunk().Address())
+			s.gsocHandler(sch)
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
@@ -539,6 +549,12 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 }
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	release, ok := s.cursorStreams.acquire(p.Address)
+	if !ok {
+		return s.streamLimitExceeded(p, stream, cursorStreamName, maxPeerCursorStreams)
+	}
+	defer release()
+
 	w, r := protobuf.NewWriterAndReader(stream)
 	s.logger.Debug("peer wants cursors", "peer_address", p.Address)
 	defer func() {
@@ -568,8 +584,19 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	return nil
 }
 
+// streamLimitExceeded resets the stream and returns an error which makes the
+// p2p layer disconnect the peer.
+func (s *Syncer) streamLimitExceeded(p p2p.Peer, stream p2p.Stream, name string, limit int) error {
+	s.metrics.StreamLimitExceeded.Inc()
+	s.logger.Warning("peer exceeded concurrent stream limit, disconnecting", "peer_address", p.Address, "stream", name, "limit", limit)
+	_ = stream.Reset()
+	return p2p.NewDisconnectError(errStreamLimitExceeded)
+}
+
 func (s *Syncer) disconnect(peer p2p.Peer) error {
 	s.limiter.Clear(peer.Address.ByteString())
+	s.syncStreams.clear(peer.Address)
+	s.cursorStreams.clear(peer.Address)
 	return nil
 }
 
