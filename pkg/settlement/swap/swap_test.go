@@ -174,12 +174,10 @@ func TestReceiveCheque(t *testing.T) {
 
 	peer := swarm.MustParseHexAddress("abcd")
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("0xab"),
-			CumulativePayout: big.NewInt(10),
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("0xab"),
+		CumulativePayout: big.NewInt(10),
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	chequeStore := mockchequestore.NewChequeStore(
@@ -278,12 +276,10 @@ func TestReceiveChequeReject(t *testing.T) {
 
 	peer := swarm.MustParseHexAddress("abcd")
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("0xab"),
-			CumulativePayout: big.NewInt(10),
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("0xab"),
+		CumulativePayout: big.NewInt(10),
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	errReject := errors.New("reject")
@@ -342,12 +338,10 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 
 	peer := swarm.MustParseHexAddress("abcd")
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("0xab"),
-			CumulativePayout: big.NewInt(10),
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("0xab"),
+		CumulativePayout: big.NewInt(10),
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	chequeStore := mockchequestore.NewChequeStore()

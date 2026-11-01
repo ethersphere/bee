@@ -137,6 +137,7 @@ func Init(
 	overlayEthAddress common.Address,
 	chequeSigner ChequeSigner,
 	erc20Service erc20.Service,
+	blockTime time.Duration,
 ) (chequebookService Service, err error) {
 	logger = logger.WithName(loggerName).Register()
 
@@ -194,7 +195,7 @@ func Init(
 			return nil, err
 		}
 
-		chequebookService, err = New(transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service)
+		chequebookService, err = New(transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service, blockTime)
 		if err != nil {
 			return nil, err
 		}
@@ -215,7 +216,7 @@ func Init(
 			logger.Info("successfully deposited to chequebook")
 		}
 	} else {
-		chequebookService, err = New(transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service)
+		chequebookService, err = New(transactionService, chequebookAddress, overlayEthAddress, stateStore, chequeSigner, erc20Service, blockTime)
 		if err != nil {
 			return nil, err
 		}

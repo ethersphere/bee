@@ -157,7 +157,7 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 	}
 
 	select {
-	case <-g.waits[i]:
+	case <-g.waits[i]: //nolint:errcheck // completion signal only
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -249,7 +249,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 	}
 
 	for range len(m) {
-		<-c
+		<-c //nolint:errcheck // completion signal only
 		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
 			return nil
 		}
@@ -299,7 +299,7 @@ func (g *decoder) decode() error {
 func (g *decoder) unattemptedDataShards() (m []int) {
 	for i := 0; i < g.shardCnt; i++ {
 		select {
-		case <-g.waits[i]: // attempted
+		case <-g.waits[i]: //nolint:errcheck // attempted
 			continue
 		default:
 			m = append(m, i) // remember the missing chunk

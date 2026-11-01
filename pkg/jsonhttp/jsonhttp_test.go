@@ -322,8 +322,8 @@ func TestPanicRespond(t *testing.T) {
 
 	defer func() {
 		err := recover()
-		if _, ok := err.(*json.UnsupportedTypeError); !ok {
-			t.Errorf("expected error from recover json.UnsupportedTypeError, got %#v", err)
+		if _, ok := err.(*json.UnsupportedValueError); !ok {
+			t.Errorf("expected error from recover json.UnsupportedValueError, got %#v", err)
 		}
 	}()
 

@@ -31,12 +31,10 @@ func TestReceiveCheque(t *testing.T) {
 	deduction := big.NewInt(1)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	var verifiedWithFactory bool
@@ -98,12 +96,10 @@ func TestReceiveCheque(t *testing.T) {
 	}
 
 	cheque = &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout2,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout2,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	verifiedWithFactory = false
@@ -134,12 +130,10 @@ func TestReceiveChequeInvalidBeneficiary(t *testing.T) {
 	chainID := int64(1)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      issuer,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      issuer,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	chequestore := chequebook.NewChequeStore(
@@ -193,24 +187,20 @@ func TestReceiveChequeInvalidAmount(t *testing.T) {
 		})
 
 	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	_, err = chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayoutLower,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayoutLower,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if err == nil {
 		t.Fatal("accepted lower amount cheque")
@@ -251,12 +241,10 @@ func TestReceiveChequeInvalidChequebook(t *testing.T) {
 		})
 
 	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if !errors.Is(err, chequebook.ErrNotDeployedByFactory) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNotDeployedByFactory, err)
@@ -293,12 +281,10 @@ func TestReceiveChequeInvalidSignature(t *testing.T) {
 		})
 
 	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if !errors.Is(err, chequebook.ErrChequeInvalid) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrChequeInvalid, err)
@@ -337,12 +323,10 @@ func TestReceiveChequeInsufficientBalance(t *testing.T) {
 		})
 
 	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if !errors.Is(err, chequebook.ErrBouncingCheque) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrBouncingCheque, err)
@@ -381,12 +365,10 @@ func TestReceiveChequeSufficientBalancePaidOut(t *testing.T) {
 		})
 
 	_, err := chequestore.ReceiveCheque(context.Background(), &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}, cumulativePayout, big.NewInt(0))
 	if err != nil {
 		t.Fatal(err)
@@ -407,12 +389,10 @@ func TestReceiveChequeNotEnoughValue(t *testing.T) {
 	deduction := big.NewInt(0)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	factory := &factoryMock{
@@ -471,12 +451,10 @@ func TestReceiveChequeNotEnoughValueAfterDeduction(t *testing.T) {
 	deduction := big.NewInt(1)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	factory := &factoryMock{

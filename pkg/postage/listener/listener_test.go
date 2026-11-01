@@ -82,7 +82,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -124,7 +124,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -167,7 +167,7 @@ func TestListener(t *testing.T) {
 		)
 		testutil.CleanupCloser(t, l)
 
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -207,7 +207,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -271,7 +271,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -352,7 +352,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -381,7 +381,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case <-c.C:
@@ -409,7 +409,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev)
+		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
 
 		select {
 		case e := <-ev.eventC:
@@ -519,8 +519,7 @@ func TestListenerBackoffAfterPagedError(t *testing.T) {
 
 	f := &backoffFilterer{done: make(chan struct{})}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	l := listener.New(
 		nil,

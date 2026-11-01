@@ -10,14 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
       - name: Install commitlint
-        run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+        run: npm install --ignore-scripts --save-dev @commitlint/cli @commitlint/config-conventional
       - name: PR title linting
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js
+        run: echo "$PR_TITLE" | ./node_modules/.bin/commitlint --config ./commitlint.config.js

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
@@ -143,7 +145,8 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+swarm.EmptyAddress.String(), http.StatusNotFound)
+		ref := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+ref.String(), http.StatusNotFound)
 	})
 }
 
@@ -621,4 +624,40 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodGet, resource, tt.want)
 		})
 	}
+}
+
+func TestBytesEmptyAddress(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	key := strings.Repeat("ab", swarm.HashSize)
+	for _, ref := range []string{
+		swarm.EmptyAddress.String(),
+		swarm.EmptyAddress.String() + strings.Repeat("00", swarm.HashSize),
+		swarm.EmptyAddress.String() + key,
+	} {
+		jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+ref, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "all-zero address is not a valid reference",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+		jsonhttptest.Request(t, client, http.MethodHead, "/bytes/"+ref, http.StatusBadRequest)
+	}
+}
+
+// TestBytesGetHandlerNoPeers verifies that a retrieval failure caused by having no available peers
+func TestBytesGetHandlerNoPeers(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.NewWithChunkStore(noPeersChunkStore{inmemchunkstore.New()}),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	ref := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+	jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+ref.String(), http.StatusServiceUnavailable)
 }

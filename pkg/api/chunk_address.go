@@ -27,6 +27,10 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
+	if !address.IsValidNonEmpty() {
+		jsonhttp.BadRequest(w, errInvalidChunkAddress)
+		return
+	}
 
 	has, err := s.storer.ChunkStore().Has(r.Context(), address)
 	if err != nil {

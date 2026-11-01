@@ -119,7 +119,7 @@ func (h *goroutineHasher) Sum(b []byte) []byte {
 	select {
 	case result := <-h.result:
 		inner = result
-	case <-h.errc:
+	case <-h.errc: //nolint:errcheck // swallowed, see above
 	}
 	// wrap the BMT root with the span (and any configured prefix via baseHasher)
 	// to produce the final chunk address, then append it to b.

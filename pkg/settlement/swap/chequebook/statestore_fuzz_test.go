@@ -103,7 +103,7 @@ func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 		_, _ = cs.ReceiveCheque(context.Background(), incomingCheque, big.NewInt(1), big.NewInt(0))
 
 		// 3. Service.LastCheque must never panic
-		svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
+		svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil, 0)
 		if err == nil {
 			issuedCheque, err := svc.LastCheque(beneficiary)
 			if err == nil && (issuedCheque == nil || issuedCheque.CumulativePayout == nil) {

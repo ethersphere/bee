@@ -93,7 +93,7 @@ func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		for i := 0; i < iterations; i++ {
+		for range iterations {
 			_, _, _ = ex.CurrentRates()
 		}
 	}()
