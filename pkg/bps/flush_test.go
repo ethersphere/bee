@@ -250,7 +250,7 @@ func (p *peer) mustSend(kind pb.Kind, index uint64, payload []byte) {
 
 func (e *flushEnv) roster(admin *peer, index uint64, addrs ...[]byte) {
 	e.t.Helper()
-	payload, err := RosterPayload(addrs)
+	payload, err := EncodeRosterMsg(addrs)
 	if err != nil {
 		e.t.Fatal(err)
 	}

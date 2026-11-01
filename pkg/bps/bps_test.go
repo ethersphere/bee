@@ -172,10 +172,8 @@ func expectMessage(t *testing.T, s bps.Session, index uint64, chunk []byte) {
 func expectNoMessage(t *testing.T, s bps.Session) {
 	t.Helper()
 	select {
-	case m, ok := <-s.Messages():
-		if ok {
-			t.Fatalf("unexpected message at index %d", m.Index)
-		}
+	case m := <-s.Messages():
+		t.Fatalf("unexpected message at index %d", m.Index)
 	case <-time.After(100 * time.Millisecond):
 	}
 }
@@ -317,39 +315,53 @@ func TestViolations(t *testing.T) {
 		expectNoMessage(t, keep)
 	})
 
+	// a session refuses to send these (see TestPublishChecks); a peer on a raw
+	// stream can, and is punished for it
 	for _, tc := range []struct {
 		name  string
-		chunk func(e *env, challenge []byte) (bps.Kind, uint64, []byte)
+		frame func(e *env, challenge []byte) *pb.Broadcast
 	}{
-		{"wrong signer", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindData, 0, e.chunk(otherSigner, bps.KindData, ch, 0, []byte("x"))
+		{"wrong signer", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Soc: e.chunk(otherSigner, bps.KindData, ch, 0, []byte("x"))}
 		}},
-		{"signed for another challenge", func(e *env, _ []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindData, 0, e.chunk(e.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))
+		{"signed for another challenge", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Soc: e.chunk(e.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))}
 		}},
-		{"index not the signed one", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindData, 1, e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))
+		{"index not the signed one", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Index: 1, Soc: e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))}
 		}},
-		{"auth relabelled as data", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindData, 0, e.chunk(e.signer, bps.KindAuth, ch, 0, nil)
+		{"auth relabelled as data", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Soc: e.chunk(e.signer, bps.KindAuth, ch, 0, nil)}
 		}},
-		{"auth with payload", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindAuth, 0, e.chunk(e.signer, bps.KindAuth, ch, 0, []byte("x"))
+		{"auth with payload", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ch, Soc: e.chunk(e.signer, bps.KindAuth, ch, 0, []byte("x"))}
 		}},
-		{"auth at index 1", func(e *env, ch []byte) (bps.Kind, uint64, []byte) {
-			return bps.KindAuth, 1, e.chunk(e.signer, bps.KindAuth, ch, 1, nil)
+		{"auth at index 1", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ch, Index: 1, Soc: e.chunk(e.signer, bps.KindAuth, ch, 1, nil)}
+		}},
+		{"index that would overflow the cursor", func(e *env, ch []byte) *pb.Broadcast {
+			return &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: ch, Index: math.MaxUint64, Soc: e.chunk(e.signer, bps.KindData, ch, math.MaxUint64, []byte("x"))}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			e := newEnv(t, bps.Options{})
 			sub := e.subscribe()
-			pub, overlay := e.publisher()
-			kind, index, chunk := tc.chunk(e, pub.Challenge())
-			if err := pub.Publish(context.Background(), kind, index, chunk); err != nil {
+			overlay := swarm.RandAddress(t)
+			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: e.principal})
+			if ack.Status != pb.Status_OK {
+				t.Fatalf("status %s", ack.Status)
+			}
+			auth := e.chunk(e.signer, bps.KindAuth, ack.Challenge, 0, nil)
+			if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
 				t.Fatal(err)
 			}
-			expectDone(t, pub)
+			if err := w.WriteMsg(tc.frame(e, ack.Challenge)); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.ReadMsg(&pb.Broadcast{}); err == nil {
+				t.Fatal("stream not ended")
+			}
 			eventually(t, func() bool { return e.bl.blocklisted(overlay) })
 			if got := e.counters().InvalidSOC; got != 1 {
 				t.Fatalf("invalid_soc %d, want 1", got)
@@ -558,12 +570,12 @@ func TestBounds(t *testing.T) {
 		e := newEnv(t, bps.Options{MaxPeerStreamsPerCohort: 1, MaxCohortsPerConnection: 1})
 		c, _ := e.client(swarm.RandAddress(t))
 		e.join(c, e.principal)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}); err == nil {
-			t.Fatal("want a second stream on the cohort refused")
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
+			t.Fatalf("second stream on the cohort: got %v, want %v", err, bps.ErrJoinRefused)
 		}
 		other := make([]byte, 32)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: other, Principal: e.principal}, Identity: e.principal}); err == nil {
-			t.Fatal("want a second cohort refused")
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: other, Principal: e.principal}, Identity: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
+			t.Fatalf("second cohort: got %v, want %v", err, bps.ErrJoinRefused)
 		}
 	})
 
@@ -610,16 +622,173 @@ func TestVerify(t *testing.T) {
 	for _, err := range []error{
 		bps.Verify(bps.KindAuth, challenge, 1, e.chunk(e.signer, bps.KindAuth, challenge, 1, nil), e.topic, e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c, e.topic, other),
-		bps.Verify(bps.KindData, challenge[:31], 9, c, e.topic, e.principal),
 		bps.Verify(bps.KindAuth, challenge, 9, c, e.topic, e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c, make([]byte, 32), e.principal),
 		bps.Verify(bps.KindData, challenge, 9, c[:10], e.topic, e.principal),
-		bps.Verify(bps.KindData, challenge, math.MaxUint64,
-			e.chunk(e.signer, bps.KindData, challenge, math.MaxUint64, []byte("x")), e.topic, e.principal),
 	} {
 		if !errors.Is(err, bps.ErrInvalidSOC) {
 			t.Fatalf("got %v, want invalid soc", err)
 		}
+	}
+	// these say nothing of the chunk: the frame's own fields are wrong
+	for _, err := range []error{
+		bps.Verify(bps.KindData, challenge[:31], 9, c, e.topic, e.principal),
+		bps.Verify(bps.KindData, challenge, math.MaxUint64,
+			e.chunk(e.signer, bps.KindData, challenge, math.MaxUint64, []byte("x")), e.topic, e.principal),
+	} {
+		if !errors.Is(err, bps.ErrInvalidMessage) {
+			t.Fatalf("got %v, want invalid message", err)
+		}
+	}
+}
+
+// TestPublishChecks: a session refuses what the broker would punish, and tells
+// the caller: nothing reaches the broker, and the stream lives on.
+func TestPublishChecks(t *testing.T) {
+	t.Parallel()
+
+	other, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSigner := crypto.NewDefaultSigner(other)
+	rosterMsg := func(t *testing.T, addrs ...[]byte) []byte {
+		t.Helper()
+		b, err := bps.EncodeRosterMsg(addrs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	for _, tc := range []struct {
+		name   string
+		noAuth bool // the session has not sent its AUTH
+		frame  func(t *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte)
+		want   error
+	}{
+		{name: "wrong signer", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, e.chunk(otherSigner, bps.KindData, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidSOC},
+		{name: "signed for another challenge", frame: func(_ *testing.T, e *env, _ []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, e.chunk(e.signer, bps.KindData, make([]byte, 32), 0, []byte("x"))
+		}, want: bps.ErrInvalidSOC},
+		{name: "index not the signed one", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 1, e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidSOC},
+		{name: "auth relabelled as data", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, e.chunk(e.signer, bps.KindAuth, ch, 0, nil)
+		}, want: bps.ErrInvalidSOC},
+		{name: "not a chunk", frame: func(*testing.T, *env, []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, []byte("x")
+		}, want: bps.ErrInvalidSOC},
+		{name: "auth with payload", noAuth: true, frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindAuth, 0, e.chunk(e.signer, bps.KindAuth, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidSOC},
+		{name: "auth at index 1", noAuth: true, frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindAuth, 1, e.chunk(e.signer, bps.KindAuth, ch, 1, nil)
+		}, want: bps.ErrInvalidSOC},
+		{name: "data before auth", noAuth: true, frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidMessage},
+		{name: "invalid data before auth is still a message error", noAuth: true, frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, 0, e.chunk(otherSigner, bps.KindData, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidMessage},
+		{name: "unknown kind", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.Kind(9), 0, e.chunk(e.signer, bps.KindData, ch, 0, []byte("x"))
+		}, want: bps.ErrInvalidMessage},
+		{name: "index that would overflow the cursor", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindData, math.MaxUint64, e.chunk(e.signer, bps.KindData, ch, math.MaxUint64, []byte("x"))
+		}, want: bps.ErrInvalidMessage},
+		{name: "roster that does not decode", frame: func(_ *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			return bps.KindRoster, 0, e.chunk(e.signer, bps.KindRoster, ch, 0, []byte{0x0a, 0x01, 0x01})
+		}, want: bps.ErrInvalidRoster},
+		{name: "roster naming the admin", frame: func(t *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			t.Helper()
+			return bps.KindRoster, 0, e.chunk(e.signer, bps.KindRoster, ch, 0, rosterMsg(t, e.principal))
+		}, want: bps.ErrInvalidRoster},
+		{name: "roster naming the admin with another", frame: func(t *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			t.Helper()
+			return bps.KindRoster, 0, e.chunk(e.signer, bps.KindRoster, ch, 0, rosterMsg(t, make([]byte, 20), e.principal))
+		}, want: bps.ErrInvalidRoster},
+		{name: "roster naming an address twice", frame: func(t *testing.T, e *env, ch []byte) (bps.Kind, uint64, []byte) {
+			t.Helper()
+			a := make([]byte, 20)
+			return bps.KindRoster, 0, e.chunk(e.signer, bps.KindRoster, ch, 0, rosterMsg(t, a, a))
+		}, want: bps.ErrInvalidRoster},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, bps.Options{})
+			sub := e.subscribe()
+			pub, _ := e.pending()
+			if !tc.noAuth {
+				e.publish(pub, bps.KindAuth, 0, nil)
+			}
+			kind, index, chunk := tc.frame(t, e, pub.Challenge())
+			if err := pub.Publish(context.Background(), kind, index, chunk); !errors.Is(err, tc.want) {
+				t.Fatalf("got %v, want %v", err, tc.want)
+			}
+			// the stream lives on: the AUTH and an update still go through
+			if tc.noAuth {
+				e.publish(pub, bps.KindAuth, 0, nil)
+			}
+			expectMessage(t, sub, 0, e.publish(pub, bps.KindData, 0, []byte("ok")))
+			if got := e.counters(); got.InvalidSOC != 0 || got.WrongStream != 0 || got.InvalidRoster != 0 {
+				t.Fatalf("counters %+v", got)
+			}
+		})
+	}
+
+	t.Run("a closed session", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, bps.Options{})
+		pub, _ := e.publisher()
+		c := e.chunk(e.signer, bps.KindData, pub.Challenge(), 0, []byte("x"))
+		if err := pub.Close(); err != nil {
+			t.Fatal(err)
+		}
+		expectDone(t, pub)
+		if err := pub.Publish(context.Background(), bps.KindData, 0, c); !errors.Is(err, bps.ErrSessionClosed) {
+			t.Fatalf("got %v, want %v", err, bps.ErrSessionClosed)
+		}
+	})
+}
+
+func TestJoinInvalid(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	c, _ := e.client(swarm.RandAddress(t))
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic[:31], Principal: e.principal}, Identity: e.principal})
+	if !errors.Is(err, bps.ErrInvalidJoin) {
+		t.Fatalf("got %v, want %v", err, bps.ErrInvalidJoin)
+	}
+}
+
+// TestJoinChallengeLength: a broker that issues a challenge of another length
+// is not joined.
+func TestJoinChallengeLength(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	broker := p2p.ProtocolSpec{
+		Name:    bps.ProtocolName,
+		Version: bps.ProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{{
+			Name: bps.StreamName,
+			Handler: func(ctx context.Context, _ p2p.Peer, stream p2p.Stream) error {
+				w, r := protobuf.NewWriterAndReader(stream)
+				if err := r.ReadMsgWithContext(ctx, &pb.Join{}); err != nil {
+					return err
+				}
+				return w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: make([]byte, bps.ChallengeSize-1)})
+			},
+		}},
+	}
+	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
+	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal})
+	if !errors.Is(err, bps.ErrProtocolError) {
+		t.Fatalf("got %v, want %v", err, bps.ErrProtocolError)
 	}
 }
 
@@ -633,4 +802,6 @@ func TestJoinNotBroker(t *testing.T) {
 	if err == nil {
 		t.Fatal("join to a non-broker succeeded")
 	}
+	records := rec.WaitRecords(t, e.brokerAddr, bps.ProtocolName, bps.ProtocolVersion, bps.StreamName, 1, 5)
+	eventually(t, func() bool { return errors.Is(records[0].Err(), bps.ErrNotBroker) })
 }

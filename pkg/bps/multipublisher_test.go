@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/bps/pb"
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -51,9 +52,13 @@ func (e *env) grant(admin bps.Session, index uint64, seats ...seat) {
 	probe := e.subscribe()
 	e.roster(admin, index, seats...)
 	for {
-		m := <-probe.Messages()
-		if m.Kind == bps.KindRoster && m.Index == index {
-			return
+		select {
+		case m := <-probe.Messages():
+			if m.Kind == bps.KindRoster && m.Index == index {
+				return
+			}
+		case <-probe.Done():
+			e.t.Fatalf("waiting for roster %d: %v", index, probe.Err())
 		}
 	}
 }
@@ -76,7 +81,7 @@ func (e *env) roster(admin bps.Session, index uint64, seats ...seat) []byte {
 	for _, st := range seats {
 		addrs = append(addrs, st.addr)
 	}
-	payload, err := bps.RosterPayload(addrs)
+	payload, err := bps.EncodeRosterMsg(addrs)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -95,14 +100,13 @@ func waitGranted(t *testing.T, s bps.Session) {
 func expectKind(t *testing.T, s bps.Session, kind bps.Kind, owner []byte, index uint64) bps.Message {
 	t.Helper()
 	select {
-	case m, ok := <-s.Messages():
-		if !ok {
-			t.Fatalf("stream ended: %v", s.Err())
-		}
+	case m := <-s.Messages():
 		if m.Kind != kind || !bytes.Equal(m.Owner, owner) || m.Index != index {
 			t.Fatalf("got kind %d owner %x index %d, want kind %d owner %x index %d", m.Kind, m.Owner, m.Index, kind, owner, index)
 		}
 		return m
+	case <-s.Done():
+		t.Fatalf("stream ended: %v", s.Err())
 	case <-time.After(waitFor):
 		t.Fatalf("timed out waiting for kind %d index %d", kind, index)
 	}
@@ -112,7 +116,12 @@ func expectKind(t *testing.T, s bps.Session, kind bps.Kind, owner []byte, index 
 // drain discards a session's deliveries, so that its stream keeps reading.
 func drain(s bps.Session) {
 	go func() {
-		for range s.Messages() {
+		for {
+			select {
+			case <-s.Messages():
+			case <-s.Done():
+				return
+			}
 		}
 	}()
 }
@@ -397,8 +406,17 @@ func TestRosterFeed(t *testing.T) {
 	e.roster(admin, 0, st)
 	eventually(t, func() bool { return e.counters().Retransmit == 1 })
 
-	// a valid chunk whose payload is not a roster changes nothing
-	e.publish(admin, bps.KindRoster, 1, []byte{0x0a, 0x02, 0x01, 0x02})
+	// a valid chunk whose payload is not a roster changes nothing; a session
+	// refuses to send one, so it comes from a raw stream of the admin's
+	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
+	auth := e.chunk(e.signer, bps.KindAuth, ack.Challenge, 0, nil)
+	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
+		t.Fatal(err)
+	}
+	bad := e.chunk(e.signer, bps.KindRoster, ack.Challenge, 1, []byte{0x0a, 0x02, 0x01, 0x02})
+	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_ROSTER, Challenge: ack.Challenge, Index: 1, Soc: bad}); err != nil {
+		t.Fatal(err)
+	}
 	eventually(t, func() bool { return e.counters().InvalidRoster == 1 })
 	e.roster(admin, 1)
 	expectKind(t, sub, bps.KindRoster, e.principal, 1)
@@ -429,7 +447,7 @@ func TestServiceKindsAdminOnly(t *testing.T) {
 	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
 		t.Fatal(err)
 	}
-	payload, _ := bps.RosterPayload([][]byte{st.addr})
+	payload, _ := bps.EncodeRosterMsg([][]byte{st.addr})
 	ros := e.chunk(st.signer, bps.KindRoster, ack.Challenge, 1, payload)
 	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_ROSTER, Challenge: ack.Challenge, Index: 1, Soc: ros}); err != nil {
 		t.Fatal(err)
@@ -534,5 +552,147 @@ func TestRosteredPastFullSet(t *testing.T) {
 	expectDone(t, listener)
 	if e.bl.blocklisted(overlay) || e.counters().AuthTimeout != 1 {
 		t.Fatal("a rostered pending stream times out without a blocklist")
+	}
+}
+
+// TestSeatPublishChecks: a session refuses what its seat may not send yet, or at all.
+func TestSeatPublishChecks(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	st := e.newSeat()
+	seatSess, overlay := e.joinAs(st)
+	publish := func(kind bps.Kind, payload []byte) error {
+		t.Helper()
+		return seatSess.Publish(context.Background(), kind, 0, e.chunk(st.signer, kind, seatSess.Challenge(), 0, payload))
+	}
+
+	if err := publish(bps.KindAuth, nil); !errors.Is(err, bps.ErrNotPublisher) {
+		t.Fatalf("auth before the grant: got %v, want %v", err, bps.ErrNotPublisher)
+	}
+
+	admin, _ := e.publisher()
+	drain(admin)
+	e.roster(admin, 0, st)
+	expectKind(t, seatSess, bps.KindRoster, e.principal, 0)
+	waitGranted(t, seatSess)
+
+	if err := publish(bps.KindData, []byte("x")); !errors.Is(err, bps.ErrInvalidMessage) {
+		t.Fatalf("data before the auth: got %v, want %v", err, bps.ErrInvalidMessage)
+	}
+	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
+	if err := publish(bps.KindRoster, nil); !errors.Is(err, bps.ErrNotPublisher) {
+		t.Fatalf("roster from a seat: got %v, want %v", err, bps.ErrNotPublisher)
+	}
+	if err := publish(bps.KindEOS, nil); !errors.Is(err, bps.ErrNotPublisher) {
+		t.Fatalf("eos from a seat: got %v, want %v", err, bps.ErrNotPublisher)
+	}
+	// none of it reached the broker
+	if e.bl.blocklisted(overlay) || e.counters().WrongStream != 0 {
+		t.Fatal("a refused frame reached the broker")
+	}
+}
+
+// TestGrantOnReconnect: a seat that passes back its position does not get the
+// broker's re-sent roster again, which is below its roster cursor, but it is the
+// cue on this stream all the same. So a dApp cannot go by the ROSTER delivery
+// alone: Granted is what tells it.
+func TestGrantOnReconnect(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	st := e.newSeat()
+	admin, _ := e.publisher()
+	drain(admin)
+	e.grant(admin, 0, st)
+
+	c, _ := e.client(swarm.RandAddress(t))
+	seatSess, err := c.Join(context.Background(), bps.JoinRequest{
+		Broker:   e.brokerAddr,
+		Spec:     bps.CohortSpec{Topic: e.topic, Principal: e.principal},
+		Identity: st.addr,
+		Position: bps.Position{Cursors: map[string]uint64{}, Roster: [][]byte{st.addr}, RosterCursor: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = seatSess.Close() })
+	waitGranted(t, seatSess)
+	expectNoMessage(t, seatSess)
+	e.publishAs(st, seatSess, bps.KindAuth, 0, nil)
+}
+
+// TestRosterNamingTheAdmin: a session refuses to send one (see TestPublishChecks),
+// but a broker and a subscriber take a roster that names the admin, or an address
+// twice, as it comes, and it changes nothing: the admin stays a publisher, by that
+// roster and by a later one that does not name it, and the rest of it holds.
+func TestRosterNamingTheAdmin(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		roster func(admin, seat []byte) [][]byte
+	}{
+		{"the admin alone", func(admin, _ []byte) [][]byte { return [][]byte{admin} }},
+		{"the admin with another", func(admin, seat []byte) [][]byte { return [][]byte{admin, seat} }},
+		{"an address twice", func(_, seat []byte) [][]byte { return [][]byte{seat, seat} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, bps.Options{})
+			st := e.newSeat()
+			sub := e.subscribe()
+			w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
+			write := func(f *pb.Broadcast) {
+				t.Helper()
+				f.Challenge = ack.Challenge
+				if err := w.WriteMsg(f); err != nil {
+					t.Fatal(err)
+				}
+			}
+			roster := func(index uint64, addrs [][]byte) {
+				t.Helper()
+				payload, err := bps.EncodeRosterMsg(addrs)
+				if err != nil {
+					t.Fatal(err)
+				}
+				write(&pb.Broadcast{Kind: pb.Kind_ROSTER, Index: index, Soc: e.chunk(e.signer, bps.KindRoster, ack.Challenge, index, payload)})
+				expectKind(t, sub, bps.KindRoster, e.principal, index)
+			}
+			data := func(index uint64) {
+				t.Helper()
+				write(&pb.Broadcast{Kind: pb.Kind_DATA, Index: index, Soc: e.chunk(e.signer, bps.KindData, ack.Challenge, index, []byte("x"))})
+				expectKind(t, sub, bps.KindData, e.principal, index)
+			}
+			write(&pb.Broadcast{Kind: pb.Kind_AUTH, Soc: e.chunk(e.signer, bps.KindAuth, ack.Challenge, 0, nil)})
+
+			roster(0, tc.roster(e.principal, st.addr))
+			data(0)
+			roster(1, nil) // names no one: the admin is a publisher all the same
+			data(1)
+			if got := e.counters(); got.InvalidRoster != 0 || got.Revoked != 0 || got.WrongStream != 0 || got.InvalidSOC != 0 {
+				t.Fatalf("counters %+v", got)
+			}
+		})
+	}
+}
+
+// TestMaxRoster: the most addresses a roster can name is what fits in a chunk.
+func TestMaxRoster(t *testing.T) {
+	t.Parallel()
+	addrs := make([][]byte, bps.MaxRosterSize+1)
+	for i := range addrs {
+		addrs[i] = make([]byte, crypto.AddressSize)
+	}
+	fits, err := bps.EncodeRosterMsg(addrs[:bps.MaxRosterSize])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cac.New(fits); err != nil {
+		t.Fatalf("%d addresses, %d bytes: %v", bps.MaxRosterSize, len(fits), err)
+	}
+	over, err := bps.EncodeRosterMsg(addrs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cac.New(over); err == nil {
+		t.Fatalf("%d addresses, %d bytes fit in a chunk", len(addrs), len(over))
 	}
 }

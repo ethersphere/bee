@@ -61,7 +61,7 @@ func FuzzVerify(f *testing.F) {
 	if err != nil {
 		f.Fatal(err)
 	}
-	if len(authChunk.Data()) != swarm.HashSize+swarm.SocSignatureSize+swarm.SpanSize {
+	if len(authChunk.Data()) != swarm.SocMinChunkSize {
 		f.Fatal("auth seed not the empty auth layout")
 	}
 
@@ -69,7 +69,7 @@ func FuzzVerify(f *testing.F) {
 	if err != nil {
 		f.Fatal(err)
 	}
-	rosterPayload, err := RosterPayload([][]byte{principal.Bytes()})
+	rosterPayload, err := EncodeRosterMsg([][]byte{principal.Bytes()})
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -103,23 +103,22 @@ func FuzzVerify(f *testing.F) {
 			kind = uint8(pb.Kind_KIND_UNSPECIFIED)
 		}
 		frame := &pb.Broadcast{Soc: socData, Kind: pb.Kind(kind), Challenge: challenge, Index: index}
-		owner, recErr := recoverOwner(frame, topic)
-		_, _ = rosterOf(socData)
-		if err := verify(frame, topic, principal); err != nil {
+		parsed, parseErr := parseFrame(frame, topic)
+		_, _ = decodeRosterMsg(socData)
+		if _, err := verify(frame, topic, principal); err != nil {
 			return
 		}
-		// a chunk valid at an owner recovers that owner
-		if recErr != nil || !bytes.Equal(owner, principal) {
-			t.Fatalf("valid at %x, recovered %x (%v)", principal, owner, recErr)
+		// a chunk valid at an owner parses, and recovers that owner
+		if parseErr != nil || !bytes.Equal(parsed.OwnerAddress(), principal) {
+			t.Fatalf("valid at %x, parsed %v", principal, parseErr)
 		}
-
-		if len(topic) != swarm.HashSize || len(principal) != crypto.AddressSize || len(challenge) != ChallengeSize {
-			return
+		// and is a single-owner chunk at keccak256(id | owner)
+		addr, err := soc.CreateAddress(parsed.ID(), principal)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if len(socData) >= swarm.HashSize {
-			if _, err := soc.FromChunk(swarm.NewChunk(swarm.ZeroAddress, socData)); err == nil {
-				_ = soc.Valid(swarm.NewChunk(swarm.ZeroAddress, socData))
-			}
+		if !soc.Valid(swarm.NewChunk(addr, socData)) {
+			t.Fatal("valid at an owner, not a single-owner chunk at its address")
 		}
 	})
 }
@@ -128,21 +127,18 @@ func FuzzVerify(f *testing.F) {
 // supplies: it never panics, every address it returns is 20 bytes, and what
 // it returns encodes and decodes to itself.
 func FuzzRoster(f *testing.F) {
-	off := swarm.HashSize + swarm.SocSignatureSize + swarm.SpanSize
-	header := make([]byte, off)
-	one, err := RosterPayload([][]byte{make([]byte, crypto.AddressSize)})
+	one, err := EncodeRosterMsg([][]byte{make([]byte, crypto.AddressSize)})
 	if err != nil {
 		f.Fatal(err)
 	}
-	f.Add(append(append([]byte{}, header...), one...))
-	f.Add(header)
+	f.Add(one)
 	f.Add([]byte{})
-	f.Add(append(append([]byte{}, header...), 0x0a, 0x02, 0x01, 0x02))
-	f.Add(append(append([]byte{}, header...), 0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f))
+	f.Add([]byte{0x0a, 0x02, 0x01, 0x02})
+	f.Add([]byte{0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f})
 
-	f.Fuzz(func(t *testing.T, chunk []byte) {
-		roster, err := ParseRoster(chunk)
-		if err != nil {
+	f.Fuzz(func(t *testing.T, b []byte) {
+		roster, ok := decodeRosterMsg(b)
+		if !ok {
 			return
 		}
 		for _, a := range roster {
@@ -150,13 +146,13 @@ func FuzzRoster(f *testing.F) {
 				t.Fatalf("address of %d bytes", len(a))
 			}
 		}
-		payload, err := RosterPayload(roster)
+		encoded, err := EncodeRosterMsg(roster)
 		if err != nil {
 			t.Fatal(err)
 		}
-		again, err := ParseRoster(append(append([]byte{}, chunk[:off]...), payload...))
-		if err != nil || len(again) != len(roster) {
-			t.Fatalf("round trip: %d of %d (%v)", len(again), len(roster), err)
+		again, ok := decodeRosterMsg(encoded)
+		if !ok || len(again) != len(roster) {
+			t.Fatalf("round trip: %d of %d (%t)", len(again), len(roster), ok)
 		}
 		for i := range roster {
 			if !bytes.Equal(again[i], roster[i]) {
