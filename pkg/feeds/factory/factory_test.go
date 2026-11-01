@@ -8,54 +8,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/expfmt"
 )
 
-func TestFactoryMetricsCollectors(t *testing.T) {
-	t.Parallel()
-
-	f := factory.New(nil)
-	c, ok := f.(metrics.Collector)
-	if !ok {
-		t.Fatal("factory does not implement metrics.Collector")
-	}
-
-	collectors := c.Metrics()
-	if len(collectors) != 2 {
-		t.Fatalf("got %d collectors, want 2", len(collectors))
-	}
-
-	names := make([]string, 0, len(collectors))
-	for _, collector := range collectors {
-		ch := make(chan *prometheus.Desc, 1)
-		collector.Describe(ch)
-		close(ch)
-		for d := range ch {
-			names = append(names, d.String())
-		}
-	}
-
-	joined := strings.Join(names, "\n")
-	for _, want := range []string{
-		"feeds_lookup_started_total",
-		"feeds_lookup_duration_seconds",
-	} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("missing metric %q in %s", want, joined)
-		}
-	}
-}
+const (
+	startedMetric  = "bee_feeds_lookup_started_total"
+	durationMetric = "bee_feeds_lookup_duration_seconds"
+)
 
 func TestInstrumentedLookup(t *testing.T) {
 	t.Parallel()
@@ -66,53 +38,62 @@ func TestInstrumentedLookup(t *testing.T) {
 		feedType   feeds.Type
 		chunk      swarm.Chunk
 		err        error
+		wantType   string
 		wantResult string
 	}{
 		{
-			name:       "sequence found",
+			name:       "found",
 			feedType:   feeds.Sequence,
 			chunk:      chunk,
+			wantType:   "sequence",
 			wantResult: "found",
 		},
 		{
-			name:       "sequence not found",
+			name:       "not found",
 			feedType:   feeds.Sequence,
+			wantType:   "sequence",
 			wantResult: "not_found",
 		},
 		{
-			name:       "sequence error",
+			name:       "error",
 			feedType:   feeds.Sequence,
 			err:        errors.New("lookup failed"),
+			wantType:   "sequence",
 			wantResult: "error",
 		},
 		{
-			name:       "sequence canceled",
+			name:       "canceled",
 			feedType:   feeds.Sequence,
 			err:        context.Canceled,
+			wantType:   "sequence",
 			wantResult: "canceled",
+		},
+		{
+			name:       "wrapped canceled",
+			feedType:   feeds.Sequence,
+			err:        fmt.Errorf("get chunk: %w", context.Canceled),
+			wantType:   "sequence",
+			wantResult: "canceled",
+		},
+		{
+			name:       "deadline exceeded",
+			feedType:   feeds.Sequence,
+			err:        context.DeadlineExceeded,
+			wantType:   "sequence",
+			wantResult: "error",
 		},
 		{
 			name:       "epoch found",
 			feedType:   feeds.Epoch,
 			chunk:      chunk,
+			wantType:   "epoch",
 			wantResult: "found",
 		},
 		{
 			name:       "epoch not found",
 			feedType:   feeds.Epoch,
+			wantType:   "epoch",
 			wantResult: "not_found",
-		},
-		{
-			name:       "epoch error",
-			feedType:   feeds.Epoch,
-			err:        errors.New("lookup failed"),
-			wantResult: "error",
-		},
-		{
-			name:       "epoch canceled",
-			feedType:   feeds.Epoch,
-			err:        context.Canceled,
-			wantResult: "canceled",
 		},
 	}
 
@@ -120,26 +101,134 @@ func TestInstrumentedLookup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := factory.New(nil).(*factory.Factory)
-			lookup := f.WrapLookup(tc.feedType, &mockLookup{chunk: tc.chunk, err: tc.err})
+			f := factory.New(nil)
+			var cur, next feeds.Index = mockIndex("cur"), mockIndex("next")
+			lookup := factory.WrapLookup(f, tc.feedType, &mockLookup{chunk: tc.chunk, cur: cur, next: next, err: tc.err})
 
-			ch, _, _, atErr := lookup.At(context.Background(), 0, 0)
-			if !errors.Is(atErr, tc.err) {
-				t.Fatalf("got error %v, want %v", atErr, tc.err)
+			gotChunk, gotCur, gotNext, err := lookup.At(context.Background(), 0, 0)
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("got error %v, want %v", err, tc.err)
 			}
-			if tc.chunk == nil && ch != nil {
-				t.Fatal("expected nil chunk")
+			if gotChunk != tc.chunk {
+				t.Fatalf("got chunk %v, want %v", gotChunk, tc.chunk)
 			}
-			if tc.chunk != nil && !ch.Address().Equal(tc.chunk.Address()) {
-				t.Fatalf("got chunk %s, want %s", ch.Address(), tc.chunk.Address())
+			if gotCur != cur || gotNext != next {
+				t.Fatalf("got indexes %v/%v, want %v/%v", gotCur, gotNext, cur, next)
 			}
 
-			typ := strings.ToLower(tc.feedType.String())
-			if got := counterValue(t, f.MetricsStruct().LookupStarted.WithLabelValues(typ)); got != 1 {
-				t.Fatalf("lookup_started_total{%s}=%v, want 1", typ, got)
+			counts, _ := gather(t, f)
+			want := map[string]float64{
+				startedMetric + "{type=" + tc.wantType + "}":                                     1,
+				durationMetric + "_count{result=" + tc.wantResult + ",type=" + tc.wantType + "}": 1,
 			}
-			if got := histogramCount(t, f.MetricsStruct().LookupDuration.WithLabelValues(typ, tc.wantResult)); got != 1 {
-				t.Fatalf("lookup_duration_seconds{%s,%s} count=%v, want 1", typ, tc.wantResult, got)
+			if !maps.Equal(counts, want) {
+				t.Fatalf("got metrics %v, want %v", counts, want)
+			}
+		})
+	}
+}
+
+func TestInstrumentedLookupDuration(t *testing.T) {
+	t.Parallel()
+
+	const delay = 50 * time.Millisecond
+	f := factory.New(nil)
+	lookup := factory.WrapLookup(f, feeds.Sequence, &mockLookup{delay: delay})
+
+	if _, _, _, err := lookup.At(context.Background(), 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	_, sums := gather(t, f)
+	key := durationMetric + "_sum{result=not_found,type=sequence}"
+	if got := sums[key]; got < delay.Seconds() {
+		t.Fatalf("%s=%v, want at least %v", key, got, delay.Seconds())
+	}
+}
+
+func TestInstrumentedLookupStartedBeforeCompletion(t *testing.T) {
+	t.Parallel()
+
+	f := factory.New(nil)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	lookup := factory.WrapLookup(f, feeds.Sequence, &mockLookup{entered: entered, release: release})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _, _ = lookup.At(context.Background(), 0, 0)
+	}()
+
+	<-entered
+	inFlight, _ := gather(t, f)
+	close(release)
+	<-done
+
+	want := map[string]float64{startedMetric + "{type=sequence}": 1}
+	if !maps.Equal(inFlight, want) {
+		t.Fatalf("got metrics during lookup %v, want %v", inFlight, want)
+	}
+}
+
+func TestNewLookupRecordsMetrics(t *testing.T) {
+	t.Parallel()
+
+	notFound := storage.GetterFunc(func(context.Context, swarm.Address) (swarm.Chunk, error) {
+		return nil, storage.ErrNotFound
+	})
+	failing := storage.GetterFunc(func(context.Context, swarm.Address) (swarm.Chunk, error) {
+		return nil, errors.New("getter failed")
+	})
+
+	tests := []struct {
+		name       string
+		feedType   feeds.Type
+		getter     storage.Getter
+		wantType   string
+		wantResult string
+	}{
+		{
+			name:       "sequence not found",
+			feedType:   feeds.Sequence,
+			getter:     notFound,
+			wantType:   "sequence",
+			wantResult: "not_found",
+		},
+		{
+			name:       "sequence error",
+			feedType:   feeds.Sequence,
+			getter:     failing,
+			wantType:   "sequence",
+			wantResult: "error",
+		},
+		{
+			name:       "epoch not found",
+			feedType:   feeds.Epoch,
+			getter:     notFound,
+			wantType:   "epoch",
+			wantResult: "not_found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := factory.New(tc.getter)
+			lookup, err := f.NewLookup(tc.feedType, feeds.New([]byte("topic"), common.Address{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, _, _ = lookup.At(context.Background(), time.Now().Unix(), 0)
+
+			counts, _ := gather(t, f)
+			want := map[string]float64{
+				startedMetric + "{type=" + tc.wantType + "}":                                     1,
+				durationMetric + "_count{result=" + tc.wantResult + ",type=" + tc.wantType + "}": 1,
+			}
+			if !maps.Equal(counts, want) {
+				t.Fatalf("got metrics %v, want %v", counts, want)
 			}
 		})
 	}
@@ -153,154 +242,76 @@ func TestNewLookupUnknownType(t *testing.T) {
 	if !errors.Is(err, feeds.ErrFeedTypeNotFound) {
 		t.Fatalf("got %v, want %v", err, feeds.ErrFeedTypeNotFound)
 	}
+
+	if counts, _ := gather(t, f); len(counts) != 0 {
+		t.Fatalf("got metrics %v, want none", counts)
+	}
 }
 
-func TestMetricsRegistryScrape(t *testing.T) {
-	t.Parallel()
+// gather registers the factory metrics in a fresh registry and returns
+// counter values and histogram sample counts, and histogram sample sums,
+// keyed by metric name and sorted labels.
+func gather(t *testing.T, f feeds.Factory) (counts, sums map[string]float64) {
+	t.Helper()
 
-	f := factory.New(nil).(*factory.Factory)
+	c, ok := f.(metrics.Collector)
+	if !ok {
+		t.Fatal("factory does not implement metrics.Collector")
+	}
 	registry := prometheus.NewRegistry()
-	for _, c := range f.Metrics() {
-		if err := registry.Register(c); err != nil {
+	for _, collector := range c.Metrics() {
+		if err := registry.Register(collector); err != nil {
 			t.Fatal(err)
 		}
 	}
-
-	chunk := swarm.NewChunk(swarm.NewAddress(make([]byte, swarm.HashSize)), []byte("payload"))
-	lookups := []struct {
-		typ   feeds.Type
-		chunk swarm.Chunk
-		err   error
-	}{
-		{feeds.Sequence, chunk, nil},
-		{feeds.Sequence, nil, nil},
-		{feeds.Sequence, nil, errors.New("boom")},
-		{feeds.Sequence, nil, context.Canceled},
-		{feeds.Epoch, chunk, nil},
-		{feeds.Epoch, nil, nil},
-	}
-	for _, tc := range lookups {
-		_, _, _, _ = f.WrapLookup(tc.typ, &mockLookup{chunk: tc.chunk, err: tc.err}).At(context.Background(), 0, 0)
-	}
-
-	gathered, err := registry.Gather()
+	families, err := registry.Gather()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got := make(map[string]map[string]float64)
-	for _, mf := range gathered {
-		series := make(map[string]float64)
-		for _, metric := range mf.GetMetric() {
-			labels := make([]string, 0, len(metric.GetLabel()))
-			for _, l := range metric.GetLabel() {
+	counts = make(map[string]float64)
+	sums = make(map[string]float64)
+	for _, mf := range families {
+		for _, m := range mf.GetMetric() {
+			labels := make([]string, 0, len(m.GetLabel()))
+			for _, l := range m.GetLabel() {
 				labels = append(labels, l.GetName()+"="+l.GetValue())
 			}
-			sort.Strings(labels)
-			key := strings.Join(labels, ",")
+			slices.Sort(labels)
+			key := "{" + strings.Join(labels, ",") + "}"
+
 			switch mf.GetType() {
 			case dto.MetricType_COUNTER:
-				series[key] = metric.GetCounter().GetValue()
+				counts[mf.GetName()+key] = m.GetCounter().GetValue()
 			case dto.MetricType_HISTOGRAM:
-				series[key] = float64(metric.GetHistogram().GetSampleCount())
+				counts[mf.GetName()+"_count"+key] = float64(m.GetHistogram().GetSampleCount())
+				sums[mf.GetName()+"_sum"+key] = m.GetHistogram().GetSampleSum()
 			}
 		}
-		got[mf.GetName()] = series
 	}
-
-	wantStarted := map[string]float64{
-		"type=sequence": 4,
-		"type=epoch":    2,
-	}
-	if err := cmpMaps(got["bee_feeds_lookup_started_total"], wantStarted); err != nil {
-		t.Fatalf("lookup_started_total: %v", err)
-	}
-
-	wantDuration := map[string]float64{
-		"result=canceled,type=sequence":  1,
-		"result=error,type=sequence":     1,
-		"result=found,type=epoch":        1,
-		"result=found,type=sequence":     1,
-		"result=not_found,type=epoch":    1,
-		"result=not_found,type=sequence": 1,
-	}
-	if err := cmpMaps(got["bee_feeds_lookup_duration_seconds"], wantDuration); err != nil {
-		t.Fatalf("lookup_duration_seconds: %v\ngot=%v", err, got["bee_feeds_lookup_duration_seconds"])
-	}
-
-	var body strings.Builder
-	enc := expfmt.NewEncoder(&body, expfmt.NewFormat(expfmt.TypeTextPlain))
-	for _, mf := range gathered {
-		if err := enc.Encode(mf); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if closer, ok := enc.(expfmt.Closer); ok {
-		_ = closer.Close()
-	}
-	text := body.String()
-	t.Logf("prometheus scrape:\n%s", text)
-	for _, want := range []string{
-		"# HELP bee_feeds_lookup_started_total",
-		"# TYPE bee_feeds_lookup_started_total counter",
-		`bee_feeds_lookup_started_total{type="sequence"} 4`,
-		`bee_feeds_lookup_started_total{type="epoch"} 2`,
-		"# HELP bee_feeds_lookup_duration_seconds",
-		"# TYPE bee_feeds_lookup_duration_seconds histogram",
-		`bee_feeds_lookup_duration_seconds_count{result="found",type="sequence"} 1`,
-		`bee_feeds_lookup_duration_seconds_count{result="not_found",type="sequence"} 1`,
-		`bee_feeds_lookup_duration_seconds_count{result="error",type="sequence"} 1`,
-		`bee_feeds_lookup_duration_seconds_count{result="canceled",type="sequence"} 1`,
-		`bee_feeds_lookup_duration_seconds_count{result="found",type="epoch"} 1`,
-		`bee_feeds_lookup_duration_seconds_count{result="not_found",type="epoch"} 1`,
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("scrape missing %q\n%s", want, text)
-		}
-	}
+	return counts, sums
 }
 
+type mockIndex string
+
+func (i mockIndex) MarshalBinary() ([]byte, error) { return []byte(i), nil }
+func (i mockIndex) Next(int64, uint64) feeds.Index { return i }
+func (i mockIndex) String() string                 { return string(i) }
+
 type mockLookup struct {
-	chunk swarm.Chunk
-	err   error
+	chunk     swarm.Chunk
+	cur, next feeds.Index
+	err       error
+	delay     time.Duration
+	entered   chan struct{}
+	release   chan struct{}
 }
 
 func (m *mockLookup) At(context.Context, int64, uint64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
-	return m.chunk, nil, nil, m.err
-}
-
-func counterValue(t *testing.T, c prometheus.Counter) float64 {
-	t.Helper()
-	metric := &dto.Metric{}
-	if err := c.Write(metric); err != nil {
-		t.Fatal(err)
+	if m.entered != nil {
+		close(m.entered)
+		<-m.release
 	}
-	return metric.GetCounter().GetValue()
-}
-
-func histogramCount(t *testing.T, o prometheus.Observer) float64 {
-	t.Helper()
-	m, ok := o.(prometheus.Metric)
-	if !ok {
-		t.Fatal("observer is not a prometheus.Metric")
-	}
-	metric := &dto.Metric{}
-	if err := m.Write(metric); err != nil {
-		t.Fatal(err)
-	}
-	return float64(metric.GetHistogram().GetSampleCount())
-}
-
-func cmpMaps(got, want map[string]float64) error {
-	for k, wantV := range want {
-		if got[k] != wantV {
-			return fmt.Errorf("key %q got %v want %v", k, got[k], wantV)
-		}
-	}
-	for k := range got {
-		if _, ok := want[k]; !ok {
-			return fmt.Errorf("unexpected key %q", k)
-		}
-	}
-	return nil
+	time.Sleep(m.delay)
+	return m.chunk, m.cur, m.next, m.err
 }

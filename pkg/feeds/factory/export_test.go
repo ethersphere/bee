@@ -6,15 +6,6 @@ package factory
 
 import "github.com/ethersphere/bee/v2/pkg/feeds"
 
-// Factory is an alias for testing.
-type Factory = factory
-
-// WrapLookup exposes wrapLookup for tests.
-func (f *factory) WrapLookup(t feeds.Type, lookup feeds.Lookup) feeds.Lookup {
-	return f.wrapLookup(t, lookup)
-}
-
-// MetricsStruct exposes metrics for tests.
-func (f *factory) MetricsStruct() metrics {
-	return f.metrics
+func WrapLookup(f feeds.Factory, t feeds.Type, lookup feeds.Lookup) feeds.Lookup {
+	return f.(*factory).wrapLookup(t, lookup)
 }
