@@ -19,8 +19,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// memberOf returns the cohort's member declaring identity.
-func (e *flushEnv) memberOf(identity []byte) (*cohort, *member) {
+// memberOf returns the cohort's member declaring owner.
+func (e *flushEnv) memberOf(owner []byte) (*cohort, *member) {
 	e.t.Helper()
 	key, err := e.spec.Marshal()
 	if err != nil {
@@ -35,7 +35,7 @@ func (e *flushEnv) memberOf(identity []byte) (*cohort, *member) {
 	co.mtx.Lock()
 	defer co.mtx.Unlock()
 	for m := range co.attached {
-		if bytes.Equal(m.identity, identity) {
+		if bytes.Equal(m.owner, owner) {
 			return co, m
 		}
 	}
@@ -121,7 +121,7 @@ func TestServiceClose(t *testing.T) {
 	waitClosed(t, admin.st.reset, "the admin's stream was not reset")
 	waitClosed(t, sub.st.reset, "the subscriber's stream was not reset")
 	waitClosed(t, sub.done, "the subscriber's handler did not return")
-	co, m, _, err := e.svc.join(swarm.RandAddress(t), &pb.Join{Cohort: e.spec, Identity: other})
+	co, m, _, err := e.svc.join(swarm.RandAddress(t), &pb.Join{Cohort: e.spec, Owner: other})
 	if !errors.Is(err, errSessionClosed) || co != nil || m != nil {
 		t.Fatalf("join after Close: got %v, want %v", err, errSessionClosed)
 	}
@@ -173,11 +173,11 @@ func TestSessionEnd(t *testing.T) {
 			broker := &peer{e: e, st: st, w: protobuf.NewWriter(st.pw), signer: e.admin, challenge: challenge}
 			go func() { _ = broker.w.WriteMsg(&pb.Ack{Status: pb.Status_OK, Challenge: challenge}) }()
 
-			_, identity := newSigner(t)
+			_, owner := newSigner(t)
 			client := New(singleStream{st}, nil, false, log.Noop, Options{})
 			sess, err := client.Join(context.Background(), JoinRequest{
-				Spec:     CohortSpec{Topic: e.spec.Topic, Principal: e.spec.Principal},
-				Identity: identity,
+				Spec:  CohortSpec{Topic: e.spec.Topic, Principal: e.spec.Principal},
+				Owner: owner,
 			})
 			if err != nil {
 				t.Fatal(err)
