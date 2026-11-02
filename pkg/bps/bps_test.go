@@ -90,7 +90,7 @@ func (e *env) client(overlay swarm.Address) (*bps.Service, *streamtest.Recorder)
 
 func (e *env) join(c *bps.Service, addr []byte) bps.Session {
 	e.t.Helper()
-	s, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: addr})
+	s, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: addr})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func TestViolations(t *testing.T) {
 		e := newEnv(t, bps.Options{})
 		overlay := swarm.RandAddress(t)
 		keep := e.subscribe()
-		w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: swarm.RandAddress(t).Bytes()[:20]})
+		w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: swarm.RandAddress(t).Bytes()[:20]})
 		if ack.Status != pb.Status_OK {
 			t.Fatalf("status %s", ack.Status)
 		}
@@ -348,7 +348,7 @@ func TestViolations(t *testing.T) {
 			e := newEnv(t, bps.Options{})
 			sub := e.subscribe()
 			overlay := swarm.RandAddress(t)
-			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: e.principal})
+			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: e.principal})
 			if ack.Status != pb.Status_OK {
 				t.Fatalf("status %s", ack.Status)
 			}
@@ -388,7 +388,7 @@ func TestViolations(t *testing.T) {
 			e := newEnv(t, bps.Options{})
 			sub := e.subscribe()
 			overlay := swarm.RandAddress(t)
-			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: e.principal})
+			w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: e.principal})
 			if ack.Status != pb.Status_OK {
 				t.Fatalf("status %s", ack.Status)
 			}
@@ -442,7 +442,7 @@ func TestDroppedFrames(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, bps.Options{})
 	sub := e.subscribe()
-	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
+	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Owner: e.principal})
 	if ack.Status != pb.Status_OK {
 		t.Fatalf("status %s", ack.Status)
 	}
@@ -527,11 +527,11 @@ func TestJoinRejected(t *testing.T) {
 		name string
 		join *pb.Join
 	}{
-		{"no cohort", &pb.Join{Identity: e.principal}},
-		{"unspecified binding", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}},
-		{"short topic", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic[:31], Binding: pb.TopicBinding_FEED_TOPIC, Principal: e.principal}, Identity: e.principal}},
-		{"no admin", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC}, Identity: e.principal}},
-		{"short addr", &pb.Join{Cohort: e.spec(), Identity: e.principal[:19]}},
+		{"no cohort", &pb.Join{Owner: e.principal}},
+		{"unspecified binding", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: e.principal}},
+		{"short topic", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic[:31], Binding: pb.TopicBinding_FEED_TOPIC, Principal: e.principal}, Owner: e.principal}},
+		{"no admin", &pb.Join{Cohort: &pb.CohortSpec{Topic: e.topic, Binding: pb.TopicBinding_FEED_TOPIC}, Owner: e.principal}},
+		{"short addr", &pb.Join{Cohort: e.spec(), Owner: e.principal[:19]}},
 	} {
 		_, _, ack := e.raw(tc.join)
 		if ack.Status != pb.Status_REJECTED || len(ack.Challenge) != 0 {
@@ -547,7 +547,7 @@ func TestBounds(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t, bps.Options{MaxSubsPerCohort: 1})
 		sub := e.subscribe()
-		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: make([]byte, 20)}); ack.Status != pb.Status_FULL {
+		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Owner: make([]byte, 20)}); ack.Status != pb.Status_FULL {
 			t.Fatalf("got %s, want FULL", ack.Status)
 		}
 		pub, _ := e.publisher()
@@ -560,7 +560,7 @@ func TestBounds(t *testing.T) {
 		e.subscribe()
 		spec := e.spec()
 		spec.Topic = make([]byte, 32)
-		if _, _, ack := e.raw(&pb.Join{Cohort: spec, Identity: e.principal}); ack.Status != pb.Status_FULL {
+		if _, _, ack := e.raw(&pb.Join{Cohort: spec, Owner: e.principal}); ack.Status != pb.Status_FULL {
 			t.Fatalf("got %s, want FULL", ack.Status)
 		}
 	})
@@ -570,11 +570,11 @@ func TestBounds(t *testing.T) {
 		e := newEnv(t, bps.Options{MaxPeerStreamsPerCohort: 1, MaxCohortsPerConnection: 1})
 		c, _ := e.client(swarm.RandAddress(t))
 		e.join(c, e.principal)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
 			t.Fatalf("second stream on the cohort: got %v, want %v", err, bps.ErrJoinRefused)
 		}
 		other := make([]byte, 32)
-		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: other, Principal: e.principal}, Identity: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
+		if _, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: other, Principal: e.principal}, Owner: e.principal}); !errors.Is(err, bps.ErrJoinRefused) {
 			t.Fatalf("second cohort: got %v, want %v", err, bps.ErrJoinRefused)
 		}
 	})
@@ -759,7 +759,7 @@ func TestJoinInvalid(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, bps.Options{})
 	c, _ := e.client(swarm.RandAddress(t))
-	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic[:31], Principal: e.principal}, Identity: e.principal})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic[:31], Principal: e.principal}, Owner: e.principal})
 	if !errors.Is(err, bps.ErrInvalidJoin) {
 		t.Fatalf("got %v, want %v", err, bps.ErrInvalidJoin)
 	}
@@ -786,7 +786,7 @@ func TestJoinChallengeLength(t *testing.T) {
 	}
 	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
 	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
-	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: e.principal})
 	if !errors.Is(err, bps.ErrProtocolError) {
 		t.Fatalf("got %v, want %v", err, bps.ErrProtocolError)
 	}
@@ -798,7 +798,7 @@ func TestJoinNotBroker(t *testing.T) {
 	notBroker := bps.New(nil, nil, false, log.Noop, bps.Options{})
 	rec := streamtest.New(streamtest.WithProtocols(notBroker.Protocol()), streamtest.WithBaseAddr(swarm.RandAddress(t)))
 	c := bps.New(rec, nil, false, log.Noop, bps.Options{})
-	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: e.principal})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: e.principal})
 	if err == nil {
 		t.Fatal("join to a non-broker succeeded")
 	}

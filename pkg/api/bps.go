@@ -31,8 +31,8 @@ const (
 	bpsCloseInvalidSOC     = 4001 // a chunk that does not validate under the session challenge
 	bpsCloseInvalidMessage = 4002 // a frame violates the endpoint protocol
 	bpsCloseBrokerGone     = 4003 // the p2p stream to the broker ended
-	bpsCloseEndOfStream    = 4004 // the owner ended the channel with an EOS
-	bpsCloseAuthTimeout    = 4005 // the owner's AUTH did not arrive in time
+	bpsCloseEndOfStream    = 4004 // the principal ended the channel with an EOS
+	bpsCloseAuthTimeout    = 4005 // the principal's AUTH did not arrive in time
 
 	bpsMaxCloseReason = 123   // websocket control frame payload limit minus the code
 	bpsFrameHeader    = 1 + 8 // publish frame header: kind | index (big-endian)
@@ -41,13 +41,13 @@ const (
 	bpsDeliveryHeader = 1 + common.AddressLength + bps.ChallengeSize + 8
 
 	// bpsGranted is the text frame that tells a stream a roster naming its
-	// identity has reached it: it may now send its AUTH.
+	// owner has reached it: it may now send its AUTH.
 	bpsGranted = "granted"
 )
 
-// bpsAuthTimeout bounds how long the owner may take to send its AUTH. It is
-// counted from before the join and is shorter than the broker's auth deadline,
-// so that the broker never blocklists this node for a slow dApp.
+// bpsAuthTimeout bounds how long the principal may take to send its AUTH. It
+// is counted from before the join and is shorter than the broker's auth
+// deadline, so that the broker never blocklists this node for a slow dApp.
 var bpsAuthTimeout = 25 * time.Second
 
 // errBPSInvalidRoster is a roster query parameter that does not parse.
@@ -64,28 +64,26 @@ var (
 )
 
 type bpsRequest struct {
-	owner    common.Address
-	topic    []byte
-	broker   swarm.Address
-	identity []byte
-	position bps.Position // the place on the channel: cursor, roster, rosterCursor
+	principal common.Address
+	topic     []byte
+	broker    swarm.Address
+	owner     []byte       // the owner of the stream's frames; none, the stream can only listen
+	position  bps.Position // the place on the channel: cursor, roster, rosterCursor
 }
 
 type bpsChallengeMsg struct {
-	Type        string `json:"type"`
 	Challenge   string `json:"challenge"`
 	Broker      string `json:"broker"`
 	DataTopic   string `json:"dataTopic"`
 	AuthTopic   string `json:"authTopic"`
-	RosterTopic string `json:"rosterTopic,omitempty"` // the owner's only
-	EOSTopic    string `json:"eosTopic,omitempty"`    // the owner's only
+	RosterTopic string `json:"rosterTopic,omitempty"` // the principal's only
+	EOSTopic    string `json:"eosTopic,omitempty"`    // the principal's only
 }
 
 // newBPSChallengeMsg returns what a dApp needs to sign under the stream's
-// challenge: the session topics of the kinds its identity may publish.
-func newBPSChallengeMsg(req bpsRequest, challenge []byte, isOwner bool) (bpsChallengeMsg, error) {
+// challenge: the session topics of the kinds its owner may publish.
+func newBPSChallengeMsg(req bpsRequest, challenge []byte, isPrincipal bool) (bpsChallengeMsg, error) {
 	msg := bpsChallengeMsg{
-		Type:      "challenge",
 		Challenge: hex.EncodeToString(challenge),
 		Broker:    req.broker.String(),
 	}
@@ -94,7 +92,7 @@ func newBPSChallengeMsg(req bpsRequest, challenge []byte, isOwner bool) (bpsChal
 		dst  *string
 	}
 	topics := []sessionTopic{{bps.KindData, &msg.DataTopic}, {bps.KindAuth, &msg.AuthTopic}}
-	if isOwner {
+	if isPrincipal {
 		topics = append(topics, sessionTopic{bps.KindRoster, &msg.RosterTopic}, sessionTopic{bps.KindEOS, &msg.EOSTopic})
 	}
 	for _, t := range topics {
@@ -141,8 +139,8 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 	}
 
 	paths := struct {
-		Owner common.Address `map:"owner" validate:"required"`
-		Topic []byte         `map:"topic" validate:"required,len=32"`
+		Principal common.Address `map:"principal" validate:"required"`
+		Topic     []byte         `map:"topic" validate:"required,len=32"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -151,7 +149,7 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 
 	queries := struct {
 		Broker       swarm.Address `map:"broker"`
-		Identity     []byte        `map:"identity" validate:"omitempty,len=20"`
+		Owner        []byte        `map:"owner" validate:"omitempty,len=20"`
 		Cursor       uint64        `map:"cursor"`
 		Roster       string        `map:"roster"`
 		RosterCursor uint64        `map:"rosterCursor"`
@@ -172,34 +170,30 @@ func (s *Service) bpsParseRequest(w http.ResponseWriter, r *http.Request, logger
 		jsonhttp.BadRequest(w, "broker cannot be this node")
 		return bpsRequest{}, false
 	}
-	if len(queries.Identity) == 0 {
-		jsonhttp.BadRequest(w, "missing identity")
-		return bpsRequest{}, false
-	}
 
-	pos, err := bpsPosition(paths.Owner.Bytes(), queries.Cursor, queries.Roster, queries.RosterCursor)
+	pos, err := bpsPosition(paths.Principal.Bytes(), queries.Cursor, queries.Roster, queries.RosterCursor)
 	if err != nil {
 		jsonhttp.BadRequest(w, err.Error())
 		return bpsRequest{}, false
 	}
 
 	return bpsRequest{
-		owner:    paths.Owner,
-		topic:    paths.Topic,
-		broker:   queries.Broker,
-		identity: queries.Identity,
-		position: pos,
+		principal: paths.Principal,
+		topic:     paths.Topic,
+		broker:    queries.Broker,
+		owner:     queries.Owner,
+		position:  pos,
 	}, true
 }
 
-// bpsPosition builds the place on the channel from the query: the owner's
+// bpsPosition builds the place on the channel from the query: the principal's
 // cursor, and the roster as address:cursor pairs — the grantees it names, each
 // with the lowest index of its updates to deliver — at the roster cursor, the
 // lowest roster index to accept. A dApp keeps them from the deliveries it
 // received and passes them back when it reconnects.
-func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64) (bps.Position, error) {
+func bpsPosition(principal []byte, cursor uint64, roster string, rosterCursor uint64) (bps.Position, error) {
 	pos := bps.Position{
-		Cursors:      map[string]uint64{string(owner): cursor},
+		Cursors:      map[string]uint64{string(principal): cursor},
 		RosterCursor: rosterCursor,
 	}
 	if roster == "" {
@@ -218,8 +212,8 @@ func bpsPosition(owner []byte, cursor uint64, roster string, rosterCursor uint64
 		if err != nil || len(a) != common.AddressLength {
 			return pos, fmt.Errorf("%w: address %q", errBPSInvalidRoster, addr)
 		}
-		if bytes.Equal(a, owner) {
-			return pos, fmt.Errorf("%w: the owner must not be on the roster", errBPSInvalidRoster)
+		if bytes.Equal(a, principal) {
+			return pos, fmt.Errorf("%w: the principal must not be on the roster", errBPSInvalidRoster)
 		}
 		n, err := strconv.ParseUint(index, 10, 64)
 		if err != nil {
@@ -311,12 +305,13 @@ func bpsParseFrame(typ int, data []byte) (bps.Kind, uint64, []byte, error) {
 	return bps.Kind(data[0]), binary.BigEndian.Uint64(data[1:bpsFrameHeader]), data[bpsFrameHeader:], nil
 }
 
-// bpsRun bridges a dApp's socket and its stream to the broker. The identity
-// settles what the stream is, as it does on the wire: the owner's publishes once
-// it has sent its AUTH, which is due within bpsAuthTimeout; any other listens,
-// for as long as it likes, and may send its AUTH once told it is granted. The
-// outbox and the inbox run until either ends, or the node shuts down; the first
-// reason to stop decides how the socket closes.
+// bpsRun bridges a dApp's socket and its stream to the broker. The owner settles
+// what the stream is, as it does on the wire: the principal's publishes once it
+// has sent its AUTH, which is due within bpsAuthTimeout; any other listens, for
+// as long as it likes, and may send its AUTH once told it is granted; with none
+// the stream can only listen, and is sent no challenge. The outbox and the inbox
+// run until either ends, or the node shuts down; the first reason to stop decides
+// how the socket closes.
 func (s *Service) bpsRun(conn *websocket.Conn, req bpsRequest, logger log.Logger) {
 	defer s.wsWg.Done()
 	defer func() { _ = conn.Close() }()
@@ -331,17 +326,17 @@ func (s *Service) bpsRun(conn *websocket.Conn, req bpsRequest, logger log.Logger
 		}
 	}()
 
-	isOwner := bytes.Equal(req.identity, req.owner.Bytes())
+	isPrincipal := bytes.Equal(req.owner, req.principal.Bytes())
 	authTimer := time.NewTimer(bpsAuthTimeout)
 	defer authTimer.Stop()
-	if !isOwner {
+	if !isPrincipal {
 		authTimer.Stop()
 	}
 
 	sess, err := s.bps.Join(ctx, bps.JoinRequest{
 		Broker:   req.broker,
-		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.owner.Bytes()},
-		Identity: req.identity,
+		Spec:     bps.CohortSpec{Topic: req.topic, Principal: req.principal.Bytes()},
+		Owner:    req.owner,
 		Position: req.position,
 	})
 	if err != nil {
@@ -352,20 +347,23 @@ func (s *Service) bpsRun(conn *websocket.Conn, req bpsRequest, logger log.Logger
 	}
 	defer sess.Close()
 
-	msg, err := newBPSChallengeMsg(req, sess.Challenge(), isOwner)
-	if err != nil {
-		logger.Debug("challenge message failed", "error", err)
-		bpsClose(conn, fmt.Errorf("%w: %w", errBPSBrokerGone, err))
-		return
-	}
-	if err := s.bpsWriteJSON(conn, msg); err != nil {
-		logger.Debug("ws write failed", "error", err)
-		return
+	// a stream with no owner signs nothing: it has no use for the challenge
+	if len(req.owner) > 0 {
+		msg, err := newBPSChallengeMsg(req, sess.Challenge(), isPrincipal)
+		if err != nil {
+			logger.Debug("challenge message failed", "error", err)
+			bpsClose(conn, fmt.Errorf("%w: %w", errBPSBrokerGone, err))
+			return
+		}
+		if err := s.bpsWriteJSON(conn, msg); err != nil {
+			logger.Debug("ws write failed", "error", err)
+			return
+		}
 	}
 
 	var wg sync.WaitGroup
 	wg.Go(func() { stop(bpsHandleOutbox(ctx, conn, sess, authTimer)) })
-	wg.Go(func() { stop(s.bpsHandleInbox(ctx, conn, sess, isOwner, authTimer.C, logger)) })
+	wg.Go(func() { stop(s.bpsHandleInbox(ctx, conn, sess, isPrincipal, authTimer.C, logger)) })
 
 	<-ctx.Done()
 	if err := context.Cause(ctx); !errors.Is(err, errBPSClientGone) {
@@ -400,15 +398,15 @@ func bpsHandleOutbox(ctx context.Context, conn *websocket.Conn, sess bps.Session
 }
 
 // bpsHandleInbox brings what the stream receives in to the dApp, until the
-// stream or the socket ends or the owner's AUTH is overdue, and returns why it
-// stopped. It is the only writer of frames to the socket but the closing one.
-func (s *Service) bpsHandleInbox(ctx context.Context, conn *websocket.Conn, sess bps.Session, isOwner bool, authC <-chan time.Time, logger log.Logger) error {
+// stream or the socket ends or the principal's AUTH is overdue, and returns why
+// it stopped. It is the only writer of frames to the socket but the closing one.
+func (s *Service) bpsHandleInbox(ctx context.Context, conn *websocket.Conn, sess bps.Session, isPrincipal bool, authC <-chan time.Time, logger log.Logger) error {
 	ticker := time.NewTicker(s.WsPingPeriod)
 	defer ticker.Stop()
 
-	// the owner needs no cue; any other stream is told of its
+	// the principal needs no cue; any other stream is told of its
 	var granted <-chan struct{}
-	if !isOwner {
+	if !isPrincipal {
 		granted = sess.Granted()
 	}
 

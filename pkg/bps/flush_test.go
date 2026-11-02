@@ -194,8 +194,8 @@ type peer struct {
 	done      chan struct{} // the handler returned
 }
 
-// join attaches a stream declaring identity and returns once the Ack is written.
-func (e *flushEnv) join(signer crypto.Signer, identity []byte) *peer {
+// join attaches a stream declaring owner and returns once the Ack is written.
+func (e *flushEnv) join(signer crypto.Signer, owner []byte) *peer {
 	e.t.Helper()
 	st := newFlushStream()
 	p := &peer{e: e, st: st, w: protobuf.NewWriter(st.pw), signer: signer, done: make(chan struct{})}
@@ -203,7 +203,7 @@ func (e *flushEnv) join(signer crypto.Signer, identity []byte) *peer {
 		defer close(p.done)
 		_ = e.svc.handler(context.Background(), p2p.Peer{Address: swarm.RandAddress(e.t)}, st)
 	}()
-	go func() { _ = p.w.WriteMsg(&pb.Join{Cohort: e.spec, Identity: identity}) }()
+	go func() { _ = p.w.WriteMsg(&pb.Join{Cohort: e.spec, Owner: owner}) }()
 	deadline := time.Now().Add(waitFlush)
 	for {
 		st.mu.Lock()

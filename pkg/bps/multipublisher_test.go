@@ -216,7 +216,7 @@ func TestUnrosteredAuth(t *testing.T) {
 	st := e.newSeat()
 	_, _ = e.publisher()
 	overlay := swarm.RandAddress(t)
-	w, _, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
+	w, _, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: st.addr})
 	if ack.Status != pb.Status_OK {
 		t.Fatalf("status %s", ack.Status)
 	}
@@ -239,7 +239,7 @@ func TestRevokedSpectatorAuth(t *testing.T) {
 	e.grant(admin, 0, st)
 
 	overlay := swarm.RandAddress(t)
-	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
+	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: st.addr})
 	var cue pb.Broadcast
 	if err := r.ReadMsg(&cue); err != nil || cue.Kind != pb.Kind_ROSTER {
 		t.Fatalf("want the roster as the cue, got %s %v", cue.Kind, err)
@@ -265,7 +265,7 @@ func TestRevocation(t *testing.T) {
 
 	// the seat authenticates on a raw stream, to send after its revocation
 	overlay := swarm.RandAddress(t)
-	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
+	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: st.addr})
 	if ack.Status != pb.Status_OK {
 		t.Fatalf("status %s", ack.Status)
 	}
@@ -311,7 +311,7 @@ func TestRevocation(t *testing.T) {
 	expectKind(t, spectator, bps.KindRoster, e.principal, 1)
 	select {
 	case <-spectator.Granted():
-		t.Fatal("a revoked identity is not granted")
+		t.Fatal("a revoked owner is not granted")
 	default:
 	}
 }
@@ -408,7 +408,7 @@ func TestRosterFeed(t *testing.T) {
 
 	// a valid chunk whose payload is not a roster changes nothing; a session
 	// refuses to send one, so it comes from a raw stream of the admin's
-	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
+	w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Owner: e.principal})
 	auth := e.chunk(e.signer, bps.KindAuth, ack.Challenge, 0, nil)
 	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
 		t.Fatal(err)
@@ -418,6 +418,12 @@ func TestRosterFeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventually(t, func() bool { return e.counters().InvalidRoster == 1 })
+	// nor does one with an empty entry, which would name a stream with no owner
+	empty := e.chunk(e.signer, bps.KindRoster, ack.Challenge, 1, []byte{0x0a, 0x00})
+	if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_ROSTER, Challenge: ack.Challenge, Index: 1, Soc: empty}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { return e.counters().InvalidRoster == 2 })
 	e.roster(admin, 1)
 	expectKind(t, sub, bps.KindRoster, e.principal, 1)
 
@@ -438,7 +444,7 @@ func TestServiceKindsAdminOnly(t *testing.T) {
 	e.grant(admin, 0, st)
 
 	overlay := swarm.RandAddress(t)
-	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Identity: st.addr})
+	w, r, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec(), Owner: st.addr})
 	var cue pb.Broadcast
 	if err := r.ReadMsg(&cue); err != nil {
 		t.Fatal(err)
@@ -485,7 +491,7 @@ func TestEndOfStream(t *testing.T) {
 	}
 	c, _ := e.client(swarm.RandAddress(t))
 	addr := make([]byte, 20)
-	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Identity: addr, Position: pos})
+	_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}, Owner: addr, Position: pos})
 	if !errors.Is(err, bps.ErrChannelEnded) {
 		t.Fatalf("got %v, want %v", err, bps.ErrChannelEnded)
 	}
@@ -525,7 +531,7 @@ func TestPublisherStreamsBound(t *testing.T) {
 	}
 }
 
-// TestRosteredPastFullSet: a rostered identity that finds the fan-out set full
+// TestRosteredPastFullSet: a rostered owner that finds the fan-out set full
 // is pending — the roster, nothing else — and authenticates as any grantee;
 // one that does not is reset at the auth deadline, not blocklisted.
 func TestRosteredPastFullSet(t *testing.T) {
@@ -608,7 +614,7 @@ func TestGrantOnReconnect(t *testing.T) {
 	seatSess, err := c.Join(context.Background(), bps.JoinRequest{
 		Broker:   e.brokerAddr,
 		Spec:     bps.CohortSpec{Topic: e.topic, Principal: e.principal},
-		Identity: st.addr,
+		Owner:    st.addr,
 		Position: bps.Position{Cursors: map[string]uint64{}, Roster: [][]byte{st.addr}, RosterCursor: 1},
 	})
 	if err != nil {
@@ -639,7 +645,7 @@ func TestRosterNamingTheAdmin(t *testing.T) {
 			e := newEnv(t, bps.Options{})
 			st := e.newSeat()
 			sub := e.subscribe()
-			w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Identity: e.principal})
+			w, _, ack := e.raw(&pb.Join{Cohort: e.spec(), Owner: e.principal})
 			write := func(f *pb.Broadcast) {
 				t.Helper()
 				f.Challenge = ack.Challenge
@@ -672,6 +678,73 @@ func TestRosterNamingTheAdmin(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNoOwner: a stream may declare no owner. It listens like any spectator, within
+// the fan-out bound, and can never upgrade, even if the key behind it is on the
+// roster: no roster can name it.
+func TestNoOwner(t *testing.T) {
+	t.Parallel()
+
+	t.Run("it listens, and its session refuses to publish", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, bps.Options{})
+		st := e.newSeat()
+		admin, _ := e.publisher()
+		drain(admin)
+		e.grant(admin, 0, st)
+
+		c, _ := e.client(swarm.RandAddress(t))
+		listener := e.join(c, nil)
+		expectKind(t, listener, bps.KindRoster, e.principal, 0)
+		e.publish(admin, bps.KindData, 0, []byte("heard"))
+		expectKind(t, listener, bps.KindData, e.principal, 0)
+
+		select {
+		case <-listener.Granted():
+			t.Fatal("a stream with no owner is not granted")
+		default:
+		}
+		auth := e.chunk(st.signer, bps.KindAuth, listener.Challenge(), 0, nil)
+		if err := listener.Publish(context.Background(), bps.KindAuth, 0, auth); !errors.Is(err, bps.ErrNotPublisher) {
+			t.Fatalf("got %v, want %v", err, bps.ErrNotPublisher)
+		}
+
+		// a later roster changes nothing for it
+		e.grant(admin, 1)
+		expectKind(t, listener, bps.KindRoster, e.principal, 1)
+		e.publish(admin, bps.KindData, 1, []byte("still heard"))
+		expectKind(t, listener, bps.KindData, e.principal, 1)
+	})
+
+	t.Run("at the broker, an AUTH on it is not what the stream may send", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, bps.Options{})
+		st := e.newSeat()
+		admin, _ := e.publisher()
+		drain(admin)
+		e.grant(admin, 0, st)
+
+		overlay := swarm.RandAddress(t)
+		w, _, ack := e.rawFrom(overlay, &pb.Join{Cohort: e.spec()})
+		if ack.Status != pb.Status_OK {
+			t.Fatalf("status %s", ack.Status)
+		}
+		auth := e.chunk(st.signer, bps.KindAuth, ack.Challenge, 0, nil)
+		if err := w.WriteMsg(&pb.Broadcast{Kind: pb.Kind_AUTH, Challenge: ack.Challenge, Soc: auth}); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, func() bool { return e.bl.blocklisted(overlay) && e.counters().WrongStream == 1 })
+	})
+
+	t.Run("it counts against the fan-out bound", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t, bps.Options{MaxSubsPerCohort: 1})
+		e.subscribe()
+		if _, _, ack := e.raw(&pb.Join{Cohort: e.spec()}); ack.Status != pb.Status_FULL {
+			t.Fatalf("got %s, want FULL", ack.Status)
+		}
+	})
 }
 
 // TestMaxRoster: the most addresses a roster can name is what fits in a chunk.

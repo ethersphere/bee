@@ -15,7 +15,7 @@ option go_package = "pb";
 // What the topic binds to. One binding.
 enum TopicBinding {
   TOPIC_BINDING_UNSPECIFIED = 0; // invalid on the wire
-  FEED_TOPIC = 4;                // the stream is a feed on the topic
+  FEED_TOPIC = 1;                // the stream is a feed on the topic
 }
 
 // The cohort's identity, keyed by its canonical serialisation.
@@ -28,7 +28,8 @@ message CohortSpec {
 // Peer -> broker: the first frame on a fresh stream.
 message Join {
   CohortSpec cohort = 1;
-  bytes identity = 2; // 20 bytes, required: the stream's identity
+  bytes owner = 2;    // 20 bytes or absent: the owner of the stream's frames, the wallet address
+                      // signing its feed update SOCs; absent, the stream can only listen
 }
 
 enum Status {

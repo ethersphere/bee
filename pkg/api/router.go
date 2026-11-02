@@ -392,7 +392,7 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/bps/{owner}/{topic}", jsonhttp.MethodHandler{
+	handle("/bps/feeds/subscribe/{principal}/{topic}", jsonhttp.MethodHandler{
 		http.MethodGet: http.HandlerFunc(s.bpsWsHandler),
 	})
 
