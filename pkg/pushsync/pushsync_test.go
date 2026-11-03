@@ -461,6 +461,106 @@ func TestForwardToUnhealthyCloserPeer(t *testing.T) {
 	}
 }
 
+// TestDoublingNodeStoresAndForwards verifies that a node whose reserve holds
+// the chunk only because of capacity doubling (storage radius below the
+// committed depth) stores the chunk and also forwards it, so that the origin
+// gets a receipt from the chunk's neighborhood. Without a closer peer the node
+// still answers with its own receipt.
+func TestDoublingNodeStoresAndForwards(t *testing.T) {
+	t.Parallel()
+
+	newOverlay := func(t *testing.T) (crypto.Signer, swarm.Address) {
+		t.Helper()
+		key, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(key)
+		pubKey, err := signer.PublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		overlay, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signer, overlay
+	}
+
+	// the doubling node shares at least 3 bits with the chunk; its storage
+	// radius is 3 and its committed depth is one bin deeper, which is also
+	// the radius of the network
+	doublingSigner, doubling := newOverlay(t)
+	chunk := testingc.GenerateValidRandomChunkAt(t, doubling, 2)
+	for swarm.Proximity(chunk.Address().Bytes(), doubling.Bytes()) > 4 {
+		chunk = testingc.GenerateValidRandomChunkAt(t, doubling, 2)
+	}
+	networkRadius := swarm.Proximity(chunk.Address().Bytes(), doubling.Bytes()) + 1
+	doublingRadius := networkRadius - 1
+
+	// the storer is within the chunk's neighborhood at the network radius
+	storerSigner, storer := newOverlay(t)
+	for swarm.Proximity(chunk.Address().Bytes(), storer.Bytes()) < networkRadius {
+		storerSigner, storer = newOverlay(t)
+	}
+
+	// the origin shares no bits with the chunk
+	originBytes := chunk.Address().Clone().Bytes()
+	originBytes[0] ^= 0x80
+	origin := swarm.NewAddress(originBytes)
+
+	t.Run("closer peer", func(t *testing.T) {
+		t.Parallel()
+
+		psStorer, storerStore := createPushSyncNodeWithRadius(t, storer, defaultPrices, nil, nil, storerSigner, networkRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+		doublingRecorder := streamtest.New(streamtest.WithProtocols(psStorer.Protocol()), streamtest.WithBaseAddr(doubling))
+		psDoubling, doublingStore := createPushSyncNodeWithDepths(t, doubling, defaultPrices, doublingRecorder, nil, doublingSigner, doublingRadius, networkRadius, mock.WithClosestPeer(storer))
+
+		originRecorder := streamtest.New(streamtest.WithProtocols(psDoubling.Protocol()), streamtest.WithBaseAddr(origin))
+		psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, originRecorder, nil, nil, networkRadius, mock.WithPeers(doubling))
+
+		receipt, err := psOrigin.PushChunkToClosest(context.Background(), chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !chunk.Address().Equal(receipt.Address) {
+			t.Fatal("invalid receipt")
+		}
+
+		for name, store := range map[string]*testStorer{"doubling node": doublingStore, "storer": storerStore} {
+			store.chunksMu.Lock()
+			_, has := store.chunksPut[chunk.Address().ByteString()]
+			store.chunksMu.Unlock()
+			if !has {
+				t.Fatalf("chunk not stored by the %s", name)
+			}
+		}
+	})
+
+	t.Run("no closer peer", func(t *testing.T) {
+		t.Parallel()
+
+		psDoubling, doublingStore := createPushSyncNodeWithDepths(t, doubling, defaultPrices, nil, nil, doublingSigner, doublingRadius, networkRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+		originRecorder := streamtest.New(streamtest.WithProtocols(psDoubling.Protocol()), streamtest.WithBaseAddr(origin))
+		psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, originRecorder, nil, nil, networkRadius, mock.WithPeers(doubling))
+
+		// the doubling node answers with its own receipt, which the origin
+		// counts as shallow
+		if _, err := psOrigin.PushChunkToClosest(context.Background(), chunk); !errors.Is(err, pushsync.ErrShallowReceipt) {
+			t.Fatalf("got %v, want %v", err, pushsync.ErrShallowReceipt)
+		}
+
+		doublingStore.chunksMu.Lock()
+		_, has := doublingStore.chunksPut[chunk.Address().ByteString()]
+		doublingStore.chunksMu.Unlock()
+		if !has {
+			t.Fatal("chunk not stored by the doubling node")
+		}
+	})
+}
+
 // TestOriginSelfStore verifies that an origin without peers falls back to
 // storing the chunk itself only when the chunk is within its AOR.
 func TestOriginSelfStore(t *testing.T) {
@@ -1283,6 +1383,23 @@ func createPushSyncNodeWithRadius(
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()
+	return createPushSyncNodeWithDepths(t, addr, prices, recorder, unwrap, signer, radius, radius, mockOpts...)
+}
+
+// createPushSyncNodeWithDepths creates a node whose committed depth differs
+// from its storage radius, as on a node with capacity doubling.
+func createPushSyncNodeWithDepths(
+	t *testing.T,
+	addr swarm.Address,
+	prices pricerParameters,
+	recorder *streamtest.Recorder,
+	unwrap func(swarm.Chunk),
+	signer crypto.Signer,
+	radius uint8,
+	committedDepth uint8,
+	mockOpts ...mock.Option,
+) (*pushsync.PushSync, *testStorer) {
+	t.Helper()
 	storer := &testStorer{
 		chunksPut:      make(map[string]swarm.Chunk),
 		chunksReported: make(map[string]int),
@@ -1301,8 +1418,9 @@ func createPushSyncNodeWithRadius(
 	}
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
+	committedDepthFunc := func() uint8 { return committedDepth }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, stabilmock.NewSubscriber(true))
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, committedDepthFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, stabilmock.NewSubscriber(true))
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
@@ -1342,8 +1460,9 @@ func createPushSyncNodeWithAccounting(
 	}
 
 	radiusFunc := func() (uint8, error) { return 0, nil }
+	committedDepthFunc := func() uint8 { return 0 }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, stabilmock.NewSubscriber(true))
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, committedDepthFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, stabilmock.NewSubscriber(true))
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer

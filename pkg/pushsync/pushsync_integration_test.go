@@ -57,6 +57,7 @@ func TestPushSyncIntegration(t *testing.T) {
 		server, // Use libp2p service as streamer
 		serverStorer,
 		func() (uint8, error) { return 0, nil },
+		func() uint8 { return 0 },
 		topologymock.NewTopologyDriver(), // No peers needed for server in this test
 		true,
 		func(swarm.Chunk) {}, // unwrap
@@ -92,6 +93,7 @@ func TestPushSyncIntegration(t *testing.T) {
 		client, // Use libp2p service as streamer
 		clientStorer,
 		func() (uint8, error) { return 0, nil },
+		func() uint8 { return 0 },
 		clientTopology,
 		true,
 		func(swarm.Chunk) {}, // unwrap

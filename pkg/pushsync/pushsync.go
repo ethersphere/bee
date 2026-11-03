@@ -82,6 +82,7 @@ type PushSync struct {
 	address                 swarm.Address
 	networkID               uint64
 	radius                  func() (uint8, error)
+	committedDepth          func() uint8
 	nonce                   []byte
 	streamer                p2p.StreamerDisconnecter
 	store                   Storer
@@ -115,6 +116,7 @@ func New(
 	streamer p2p.StreamerDisconnecter,
 	store Storer,
 	radius func() (uint8, error),
+	committedDepth func() uint8,
 	topology topology.Driver,
 	fullNode bool,
 	unwrap func(swarm.Chunk),
@@ -130,6 +132,7 @@ func New(
 	ps := &PushSync{
 		address:                 address,
 		radius:                  radius,
+		committedDepth:          committedDepth,
 		networkID:               networkID,
 		nonce:                   nonce,
 		streamer:                streamer,
@@ -256,25 +259,30 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	store := func(ctx context.Context) error {
+	// putLocal stores the chunk in the reserve and signs a receipt for it.
+	putLocal := func(ctx context.Context) (*pb.Receipt, error) {
 		ps.metrics.Storer.Inc()
 
 		chunkToPut, err := ps.validStamp(chunk)
 		if err != nil {
-			return fmt.Errorf("invalid stamp: %w", err)
+			return nil, fmt.Errorf("invalid stamp: %w", err)
 		}
 
 		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
 		if err != nil {
-			return fmt.Errorf("reserve put: %w", err)
+			return nil, fmt.Errorf("reserve put: %w", err)
 		}
 
 		signature, err := ps.signer.Sign(chunkToPut.Address().Bytes())
 		if err != nil {
-			return fmt.Errorf("receipt signature: %w", err)
+			return nil, fmt.Errorf("receipt signature: %w", err)
 		}
 
-		// return back receipt
+		return &pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce, StorageRadius: uint32(rad)}, nil
+	}
+
+	// writeReceipt debits the upstream peer and returns the receipt to it.
+	writeReceipt := func(ctx context.Context, receipt *pb.Receipt) error {
 		debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 		if err != nil {
 			return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
@@ -283,24 +291,51 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		attemptedWrite = true
 
-		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce, StorageRadius: uint32(rad)}
-		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
+		if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
 		return debit.Apply()
 	}
 
-	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
+	store := func(ctx context.Context) error {
+		receipt, err := putLocal(ctx)
+		if err != nil {
+			return err
+		}
+		return writeReceipt(ctx, receipt)
+	}
+
+	po := swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes())
+
+	if ps.topologyDriver.IsReachable() && po >= rad {
 		stored, reason = true, "is within AOR"
-		return store(ctx)
+		if po >= ps.committedDepth() {
+			return store(ctx)
+		}
+		// The reserve holds the chunk because of capacity doubling, but the
+		// chunk's neighborhood is one bin deeper. Store the chunk and also
+		// forward it, so that the origin gets a receipt from a node whose
+		// committed depth covers the chunk instead of a shallow one.
+		ownReceipt, err := putLocal(ctx)
+		if err != nil {
+			return err
+		}
+		receipt, err := ps.pushToClosest(ctx, chunk, false)
+		if err != nil {
+			ps.logger.Debug("stored below committed depth, forwarding failed", "chunk_address", chunkAddress, "proximity_order", po, "error", err)
+			return writeReceipt(ctx, ownReceipt)
+		}
+		ps.metrics.StoredAndForwarded.Inc()
+		reason = "stored and forwarded"
+		return writeReceipt(ctx, receipt)
 	}
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// Out-of-AOR chunks are unreachable via retrieval even when not
 		// evicted; let the origin try the next peer instead.
-		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
+		if po < rad {
 			ps.metrics.OutOfDepthStoring.Inc()
 			return ErrOutOfDepthStoring
 		}
@@ -308,21 +343,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return store(ctx)
 	case err == nil:
 		ps.metrics.Forwarder.Inc()
-
-		debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
-		if err != nil {
-			return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
-		}
-		defer debit.Cleanup()
-
-		attemptedWrite = true
-
-		// pass back the receipt
-		if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
-			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-		}
-
-		return debit.Apply()
+		return writeReceipt(ctx, receipt)
 	default:
 		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)

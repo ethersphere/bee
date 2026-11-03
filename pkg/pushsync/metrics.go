@@ -32,6 +32,7 @@ type metrics struct {
 	OverdraftRefresh        prometheus.Counter
 	OutOfDepthStoring       prometheus.Counter
 	OriginNoPeersLeft       prometheus.Counter
+	StoredAndForwarded      prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -167,6 +168,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "origin_no_peers_left",
 			Help:      "Total number of pushes given up by an origin outside the chunk's neighborhood because every peer was already tried or skipped.",
+		}),
+		StoredAndForwarded: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "stored_and_forwarded",
+			Help:      "Total number of chunks stored in a doubled reserve below the committed depth and forwarded to the chunk's neighborhood.",
 		}),
 	}
 }
