@@ -1070,6 +1070,124 @@ func TestClosestPeer(t *testing.T) {
 	}
 }
 
+// TestClosestPeerDeeperBins checks that ClosestPeer considers peers in bins
+// deeper than PO(base, addr) when no peer in bin PO(base, addr) is eligible.
+func TestClosestPeerDeeperBins(t *testing.T) {
+	t.Parallel()
+
+	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+
+	// flip returns base with the given bits flipped, bit 0 being the most
+	// significant bit of the first byte.
+	flip := func(bits ...int) swarm.Address {
+		b := base.Clone().Bytes()
+		for _, i := range bits {
+			b[i/8] ^= 0x80 >> (i % 8)
+		}
+		return swarm.NewAddress(b)
+	}
+
+	// target is 0001 1100, so prox = PO(base, target) = 3.
+	// Distance to target is shown as the first byte of peer XOR target.
+	var (
+		target  = flip(3, 4, 5)
+		prox    = swarm.Proximity(base.Bytes(), target.Bytes())
+		bin0    = flip(0)    // 1000 0000, distance 1001 1100, PO 0
+		bin1    = flip(1)    // 0100 0000, distance 0101 1100, PO 1
+		bin2    = flip(2)    // 0010 0000, distance 0011 1100, PO 2
+		bin3a   = flip(3)    // 0001 0000, distance 0000 1100, PO 4
+		bin3b   = flip(3, 4) // 0001 1000, distance 0000 0100, PO 5
+		bin4    = flip(4)    // 0000 1000, distance 0001 0100, PO 3
+		bin5    = flip(5)    // 0000 0100, distance 0001 1000, PO 3
+		peers   = []swarm.Address{bin0, bin1, bin2, bin3a, bin3b, bin4, bin5}
+		skipBin = []swarm.Address{bin3a, bin3b}
+	)
+	if prox != 3 {
+		t.Fatalf("got prox %d, want 3", prox)
+	}
+
+	for _, tc := range []struct {
+		name         string
+		peers        []swarm.Address
+		reachability p2p.ReachabilityStatus
+		includeSelf  bool
+		skip         []swarm.Address
+		want         swarm.Address
+		wantErr      error
+	}{
+		{
+			name:  "bin prox peer wins",
+			peers: peers,
+			want:  bin3b,
+		},
+		{
+			name:         "bin prox peer wins over self",
+			peers:        peers,
+			reachability: p2p.ReachabilityStatusPublic,
+			includeSelf:  true,
+			want:         bin3b,
+		},
+		{
+			// bin4 has PO 3 to target, bin2 only PO 2. bin4 also beats
+			// bin5 on distance, so the deepest bin does not always win.
+			name:  "bin prox skipped, deeper bin peer wins",
+			peers: peers,
+			skip:  skipBin,
+			want:  bin4,
+		},
+		{
+			// bin4 is closer to target than self on distance, but both
+			// have PO 3, so self is kept.
+			name:         "bin prox skipped, self wins over deeper bin peer",
+			peers:        peers,
+			reachability: p2p.ReachabilityStatusPublic,
+			includeSelf:  true,
+			skip:         skipBin,
+			wantErr:      topology.ErrWantSelf,
+		},
+		{
+			name:        "bin prox skipped, self not public",
+			peers:       peers,
+			includeSelf: true,
+			skip:        skipBin,
+			want:        bin4,
+		},
+		{
+			name:        "no peers",
+			includeSelf: true,
+			wantErr:     topology.ErrNotFound,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, kad, ab, _, signer := newTestKademliaWithAddr(t, base, nil, nil, kademlia.Options{})
+			if err := kad.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			testutil.CleanupCloser(t, kad)
+
+			for _, p := range tc.peers {
+				connectOne(t, signer, kad, ab, p, nil)
+			}
+			kad.UpdateReachability(tc.reachability)
+
+			got, err := kad.ClosestPeer(target, tc.includeSelf, topology.Select{}, tc.skip...)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got error %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil {
+				return
+			}
+			if !got.Equal(tc.want) {
+				t.Fatalf("got peer %s (PO %d to target), want %s (PO %d to target)",
+					got, swarm.Proximity(got.Bytes(), target.Bytes()),
+					tc.want, swarm.Proximity(tc.want.Bytes(), target.Bytes()))
+			}
+		})
+	}
+}
+
 func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	t.Parallel()
 
