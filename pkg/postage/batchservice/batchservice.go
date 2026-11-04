@@ -213,7 +213,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("put: %w", err)
 	}
 
-	amount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(batch.Depth))))
+	amount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<batch.Depth)))
 
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
 		if err := svc.batchListener.HandleCreate(batch, amount); err != nil {
@@ -243,7 +243,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update: %w", err)
 	}
 
-	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(b.Depth))))
+	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<b.Depth)))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
 		svc.batchListener.HandleTopUp(id, topUpAmount)

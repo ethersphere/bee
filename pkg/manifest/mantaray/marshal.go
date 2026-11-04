@@ -314,7 +314,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 			f := &fork{}
 
 			if len(data) < offset+nodeForkTypeBytesSize {
-				return fmt.Errorf("not enough bytes for node fork: %d (%d) on byte '%x': %w", (len(data) - offset), (nodeForkTypeBytesSize), []byte{b}, ErrInvalidManifest)
+				return fmt.Errorf("not enough bytes for node fork: %d (%d) on byte '%x': %w", (len(data) - offset), nodeForkTypeBytesSize, []byte{b}, ErrInvalidManifest)
 			}
 
 			nodeType := data[offset]

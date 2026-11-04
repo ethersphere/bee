@@ -160,7 +160,7 @@ func (m *mockController) UploadHandler(ctx context.Context, ls file.LoadSaver, r
 	}
 
 	encryptedRef, _ := m.encrypter.Encrypt(reference.Bytes())
-	m.refMap[(hex.EncodeToString(encryptedRef))] = reference
+	m.refMap[hex.EncodeToString(encryptedRef)] = reference
 	return kvsRef, historyRef, swarm.NewAddress(encryptedRef), nil
 }
 
