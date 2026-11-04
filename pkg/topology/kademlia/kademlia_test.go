@@ -668,7 +668,6 @@ func TestBootnodeMaxConnections(t *testing.T) {
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
 	t.Parallel()
-	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
 	var (
 		base, kad, ab, _, signer = newTestKademlia(t, nil, nil, kademlia.Options{})
@@ -961,9 +960,6 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 func TestClosestPeer(t *testing.T) {
 	t.Parallel()
-	t.Skip("disabled due to kademlia inconsistencies hotfix")
-
-	_ = waitPeers
 
 	logger := log.Noop
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -1007,6 +1003,9 @@ func TestClosestPeer(t *testing.T) {
 	}
 
 	waitPeers(t, kad, 3)
+
+	// ClosestPeer only considers self when the node is publicly reachable.
+	kad.UpdateReachability(p2p.ReachabilityStatusPublic)
 
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
@@ -1055,11 +1054,14 @@ func TestClosestPeer(t *testing.T) {
 		},
 	} {
 		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, topology.Select{})
-		if err != nil {
-			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
+		if tc.expectedPeer == -1 {
+			if !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
 			}
 			continue
+		}
+		if err != nil {
+			t.Fatalf("closest peer for %s: %v", tc.chunkAddress, err)
 		}
 
 		expected := connectedPeers[tc.expectedPeer].Address
