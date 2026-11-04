@@ -55,7 +55,7 @@ func (r *Rate) Rate() float64 {
 
 	interpolate := 1 - float64(now-(window*r.windowSize))/float64(r.windowSize)
 
-	return milliInSeconds * ((float64(r.windows[window])) + ((interpolate) * float64(r.windows[window-1]))) / float64(r.windowSize)
+	return milliInSeconds * (float64(r.windows[window]) + (interpolate * float64(r.windows[window-1]))) / float64(r.windowSize)
 }
 
 // cleanup removes windows older than the most recent two windows.

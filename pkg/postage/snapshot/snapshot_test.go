@@ -235,9 +235,15 @@ func (r *blockRecorder) UpdateBlockNumber(blockNumber uint64) error {
 func (r *blockRecorder) Create(_, _ []byte, _, _ *big.Int, _, _ uint8, _ bool, _ common.Hash) error {
 	return nil
 }
-func (r *blockRecorder) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error             { return nil }
+
+func (r *blockRecorder) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error { return nil }
+
 func (r *blockRecorder) UpdateDepth(_ []byte, _ uint8, _ *big.Int, _ common.Hash) error { return nil }
-func (r *blockRecorder) UpdatePrice(_ *big.Int, _ common.Hash) error                    { return nil }
-func (r *blockRecorder) Start(_ context.Context, _ uint64) error                        { return nil }
-func (r *blockRecorder) TransactionStart() error                                        { return nil }
-func (r *blockRecorder) TransactionEnd() error                                          { return nil }
+
+func (r *blockRecorder) UpdatePrice(_ *big.Int, _ common.Hash) error { return nil }
+
+func (r *blockRecorder) Start(_ context.Context, _ uint64) error { return nil }
+
+func (r *blockRecorder) TransactionStart() error { return nil }
+
+func (r *blockRecorder) TransactionEnd() error { return nil }

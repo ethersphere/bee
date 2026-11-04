@@ -74,7 +74,6 @@ func TestGetStatus(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(ssr),
 		)
 	})
-
 }
 
 // TestGetStatusPeersIncludesBootnodes is a regression test for
