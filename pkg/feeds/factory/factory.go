@@ -63,7 +63,7 @@ func (l *instrumentedLookup) At(ctx context.Context, at int64, after uint64) (sw
 	l.m.LookupStarted.WithLabelValues(l.typ).Inc()
 	start := time.Now()
 	ch, cur, next, err := l.lookup.At(ctx, at, after)
-	l.m.LookupDuration.WithLabelValues(l.typ, lookupResult(ch, err)).Observe(time.Since(start).Seconds())
+	l.m.LookupDuration.WithLabelValues(l.typ, lookupResult(ctx, ch, err)).Observe(time.Since(start).Seconds())
 	return ch, cur, next, err
 }
 
@@ -78,11 +78,11 @@ func lookupType(t feeds.Type) string {
 	}
 }
 
-func lookupResult(ch swarm.Chunk, err error) string {
+func lookupResult(ctx context.Context, ch swarm.Chunk, err error) string {
 	switch {
-	case err != nil && errors.Is(err, context.Canceled):
+	case errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled):
 		return "canceled"
-	case err != nil:
+	case err != nil || ctx.Err() != nil:
 		return "error"
 	case ch == nil:
 		return "not_found"

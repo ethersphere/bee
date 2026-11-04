@@ -33,11 +33,14 @@ func TestInstrumentedLookup(t *testing.T) {
 	t.Parallel()
 
 	chunk := swarm.NewChunk(swarm.NewAddress(make([]byte, swarm.HashSize)), []byte("payload"))
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	t.Cleanup(cancel)
 	tests := []struct {
 		name       string
 		feedType   feeds.Type
 		chunk      swarm.Chunk
 		err        error
+		ctx        context.Context
 		wantType   string
 		wantResult string
 	}{
@@ -83,6 +86,14 @@ func TestInstrumentedLookup(t *testing.T) {
 			wantResult: "error",
 		},
 		{
+			name:       "deadline context",
+			feedType:   feeds.Sequence,
+			chunk:      chunk,
+			ctx:        expired,
+			wantType:   "sequence",
+			wantResult: "error",
+		},
+		{
 			name:       "epoch found",
 			feedType:   feeds.Epoch,
 			chunk:      chunk,
@@ -105,7 +116,11 @@ func TestInstrumentedLookup(t *testing.T) {
 			var cur, next feeds.Index = mockIndex("cur"), mockIndex("next")
 			lookup := factory.WrapLookup(f, tc.feedType, &mockLookup{chunk: tc.chunk, cur: cur, next: next, err: tc.err})
 
-			gotChunk, gotCur, gotNext, err := lookup.At(context.Background(), 0, 0)
+			ctx := tc.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			gotChunk, gotCur, gotNext, err := lookup.At(ctx, 0, 0)
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("got error %v, want %v", err, tc.err)
 			}
@@ -231,6 +246,46 @@ func TestNewLookupRecordsMetrics(t *testing.T) {
 				t.Fatalf("got metrics %v, want %v", counts, want)
 			}
 		})
+	}
+}
+
+func TestNewLookupSequenceCanceledAfterFirstChunk(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	chunk := swarm.NewChunk(swarm.NewAddress(make([]byte, swarm.HashSize)), []byte("payload"))
+	getter := storage.GetterFunc(func(ctx context.Context, _ swarm.Address) (swarm.Chunk, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// The client goes away after the first update is fetched. Later probes
+		// observe the canceled context and the sequence finder treats them as
+		// not found, returning this chunk with a nil error.
+		cancel()
+		return chunk, nil
+	})
+
+	f := factory.New(getter)
+	lookup, err := f.NewLookup(feeds.Sequence, feeds.New([]byte("topic"), common.Address{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, _, err := lookup.At(ctx, time.Now().Unix(), 0)
+	if err != nil {
+		t.Fatalf("got error %v, want nil", err)
+	}
+	if got != chunk {
+		t.Fatalf("got chunk %v, want the chunk fetched before cancel", got)
+	}
+
+	counts, _ := gather(t, f)
+	want := map[string]float64{
+		startedMetric + "{type=sequence}":                        1,
+		durationMetric + "_count{result=canceled,type=sequence}": 1,
+	}
+	if !maps.Equal(counts, want) {
+		t.Fatalf("got metrics %v, want %v", counts, want)
 	}
 }
 
