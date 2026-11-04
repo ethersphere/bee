@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/gorilla/mux"
 )
 
@@ -33,6 +34,14 @@ type addressKey struct{}
 const granteeListEncrypt = true
 
 // getAddressFromContext is a helper function to extract the address from the context.
+// isEmptyReference reports whether the content address of a reference, its
+// first swarm.HashSize bytes, is all zeros. An encrypted reference appends the
+// decryption key to the content address.
+func isEmptyReference(ref swarm.Address) bool {
+	b := ref.Bytes()
+	return len(b) >= swarm.HashSize && swarm.NewAddress(b[:swarm.HashSize]).IsEmpty()
+}
+
 func getAddressFromContext(ctx context.Context) swarm.Address {
 	v, ok := ctx.Value(addressKey{}).(swarm.Address)
 	if ok {
@@ -147,6 +156,10 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 					jsonhttp.BadRequest(w, "invalid public key")
 				case errors.Is(err, accesscontrol.ErrUnexpectedType):
 					jsonhttp.BadRequest(w, "failed to create history")
+				case errors.Is(err, storage.ErrNotFound):
+					jsonhttp.NotFound(w, "act or history entry not found")
+				case errors.Is(err, topology.ErrNotFound):
+					jsonhttp.ServiceUnavailable(w, "act history could not be retrieved because no usable peer was available")
 				default:
 					jsonhttp.InternalServerError(w, errActDownload)
 				}

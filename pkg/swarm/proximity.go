@@ -18,19 +18,14 @@ package swarm
 //
 // (0 farthest, 255 closest, 256 self)
 func Proximity(one, other []byte) (ret uint8) {
-	b := MaxPO/8 + 1
-	if l := uint8(len(one)); b > l {
-		b = l
-	}
-	if l := uint8(len(other)); b > l {
-		b = l
-	}
-	var m uint8 = 8
-	for i := uint8(0); i < b; i++ {
+	// Compare lengths as int: converting them to uint8 wraps lengths that are a
+	// multiple of 256 to zero, which made unrelated addresses report MaxPO.
+	b := min(int(MaxPO)/8+1, len(one), len(other))
+	for i := range b {
 		oxo := one[i] ^ other[i]
-		for j := range m {
+		for j := range uint8(8) {
 			if (oxo>>(7-j))&0x01 != 0 {
-				return i*8 + j
+				return uint8(i)*8 + j
 			}
 		}
 	}
@@ -38,19 +33,14 @@ func Proximity(one, other []byte) (ret uint8) {
 }
 
 func ExtendedProximity(one, other []byte) (ret uint8) {
-	b := ExtendedPO/8 + 1
-	if l := uint8(len(one)); b > l {
-		b = l
-	}
-	if l := uint8(len(other)); b > l {
-		b = l
-	}
-	var m uint8 = 8
-	for i := uint8(0); i < b; i++ {
+	// Compare lengths as int: converting them to uint8 wraps lengths that are a
+	// multiple of 256 to zero, which made unrelated addresses report ExtendedPO.
+	b := min(int(ExtendedPO)/8+1, len(one), len(other))
+	for i := range b {
 		oxo := one[i] ^ other[i]
-		for j := range m {
+		for j := range uint8(8) {
 			if (oxo>>(7-j))&0x01 != 0 {
-				return i*8 + j
+				return uint8(i)*8 + j
 			}
 		}
 	}

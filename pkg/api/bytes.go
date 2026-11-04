@@ -182,9 +182,13 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
+	if isEmptyReference(address) {
+		jsonhttp.BadRequest(w, errEmptyAddress)
+		return
+	}
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader: {"application/octet-stream"},
+		ContentTypeHeader: {contentTypeOctetStream},
 	}
 
 	s.downloadHandler(logger, w, r, address, additionalHeaders, true, false, nil)
@@ -205,9 +209,13 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
+	if isEmptyReference(address) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader: {"application/octet-stream"},
+		ContentTypeHeader: {contentTypeOctetStream},
 	}
 
 	// share the GET path: the joiner strips the redundancy level encoded in the

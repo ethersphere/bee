@@ -40,8 +40,7 @@ func TestBlocklistError(t *testing.T) {
 
 	for _, sp := range tp.StreamSpecs {
 		err := sp.Handler(context.Background(), p2p.Peer{}, nil)
-		var discErr *p2p.BlockPeerError
-		if !errors.As(err, &discErr) {
+		if _, ok := errors.AsType[*p2p.BlockPeerError](err); !ok {
 			t.Error("unexpected error type")
 		}
 		if !errors.Is(err, p2p.ErrUnexpected) {
@@ -61,8 +60,7 @@ func TestDisconnectError(t *testing.T) {
 
 	for _, sp := range tp.StreamSpecs {
 		err := sp.Handler(context.Background(), p2p.Peer{}, nil)
-		var discErr *p2p.DisconnectError
-		if !errors.As(err, &discErr) {
+		if _, ok := errors.AsType[*p2p.DisconnectError](err); !ok {
 			t.Error("unexpected error type")
 		}
 		if !errors.Is(err, p2p.ErrUnexpected) {

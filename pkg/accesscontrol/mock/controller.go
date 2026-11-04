@@ -30,12 +30,13 @@ import (
 )
 
 type mockController struct {
-	historyMap map[string]accesscontrol.History
-	refMap     map[string]swarm.Address
-	acceptAll  bool
-	publisher  string
-	encrypter  encryption.Interface
-	ls         file.LoadSaver
+	historyMap  map[string]accesscontrol.History
+	refMap      map[string]swarm.Address
+	acceptAll   bool
+	publisher   string
+	downloadErr error
+	encrypter   encryption.Interface
+	ls          file.LoadSaver
 }
 
 type optionFunc func(*mockController)
@@ -69,6 +70,11 @@ func WithAcceptAll() Option {
 	return optionFunc(func(m *mockController) { m.acceptAll = true })
 }
 
+// WithDownloadError sets the mock to return the given error on every call to DownloadHandler.
+func WithDownloadError(err error) Option {
+	return optionFunc(func(m *mockController) { m.downloadErr = err })
+}
+
 // WithHistory sets the mock to use the given history reference.
 func WithHistory(h accesscontrol.History, ref string) Option {
 	return optionFunc(func(m *mockController) {
@@ -85,6 +91,9 @@ func WithPublisher(ref string) Option {
 }
 
 func (m *mockController) DownloadHandler(ctx context.Context, ls file.LoadSaver, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error) {
+	if m.downloadErr != nil {
+		return swarm.ZeroAddress, m.downloadErr
+	}
 	if m.acceptAll {
 		return swarm.ParseHexAddress("36e6c1bbdfee6ac21485d5f970479fd1df458d36df9ef4e8179708ed46da557f")
 	}

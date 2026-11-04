@@ -120,6 +120,10 @@ func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Logged before the change takes effect, so that a change which silences
+	// logging still leaves a record.
+	logger.Info("setting logger verbosity", "expression", paths.Exp, "verbosity", paths.Verbosity)
+
 	if err := logSetVerbosityByExp(paths.Exp, log.MustParseVerbosityLevel(paths.Verbosity)); err != nil {
 		logger.Debug("invalid path params", "error", err)
 		logger.Error(nil, "invalid path params")

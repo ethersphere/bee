@@ -287,30 +287,24 @@ func TestChequebookLastCheques(t *testing.T) {
 		lastSentCheques := make(map[string]*chequebook.SignedCheque, 3)
 		sig := make([]byte, 65)
 		lastSentCheques[addr1.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary1,
-				CumulativePayout: cumulativePayout1,
-				Chequebook:       chequebookAddress1,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary1,
+			CumulativePayout: cumulativePayout1,
+			Chequebook:       chequebookAddress1,
+			Signature:        sig,
 		}
 
 		lastSentCheques[addr2.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary2,
-				CumulativePayout: cumulativePayout2,
-				Chequebook:       chequebookAddress2,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary2,
+			CumulativePayout: cumulativePayout2,
+			Chequebook:       chequebookAddress2,
+			Signature:        sig,
 		}
 
 		lastSentCheques[addr3.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary3,
-				CumulativePayout: cumulativePayout3,
-				Chequebook:       chequebookAddress3,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary3,
+			CumulativePayout: cumulativePayout3,
+			Chequebook:       chequebookAddress3,
+			Signature:        sig,
 		}
 		return lastSentCheques, nil
 	}
@@ -320,30 +314,24 @@ func TestChequebookLastCheques(t *testing.T) {
 		sig := make([]byte, 65)
 
 		lastReceivedCheques[addr1.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout4,
-				Chequebook:       chequebookAddress1,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout4,
+			Chequebook:       chequebookAddress1,
+			Signature:        sig,
 		}
 
 		lastReceivedCheques[addr4.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout5,
-				Chequebook:       chequebookAddress4,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout5,
+			Chequebook:       chequebookAddress4,
+			Signature:        sig,
 		}
 
 		lastReceivedCheques[addr5.String()] = &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary,
-				CumulativePayout: cumulativePayout6,
-				Chequebook:       chequebookAddress5,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary,
+			CumulativePayout: cumulativePayout6,
+			Chequebook:       chequebookAddress5,
+			Signature:        sig,
 		}
 
 		return lastReceivedCheques, nil
@@ -435,12 +423,10 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 		sig := make([]byte, 65)
 
 		lastSentCheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary1,
-				CumulativePayout: cumulativePayout1,
-				Chequebook:       chequebookAddress,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary1,
+			CumulativePayout: cumulativePayout1,
+			Chequebook:       chequebookAddress,
+			Signature:        sig,
 		}
 
 		return lastSentCheque, nil
@@ -448,12 +434,10 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 
 	lastReceivedChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
 		lastReceivedCheque := &chequebook.SignedCheque{
-			Cheque: chequebook.Cheque{
-				Beneficiary:      beneficiary0,
-				CumulativePayout: cumulativePayout2,
-				Chequebook:       chequebookAddress,
-			},
-			Signature: sig,
+			Beneficiary:      beneficiary0,
+			CumulativePayout: cumulativePayout2,
+			Chequebook:       chequebookAddress,
+			Signature:        sig,
 		}
 
 		return lastReceivedCheque, nil
@@ -568,12 +552,10 @@ func TestChequebookCashoutStatus(t *testing.T) {
 
 	sig := make([]byte, 65)
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: sig,
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        sig,
 	}
 
 	result := &chequebook.CashChequeResult{

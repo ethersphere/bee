@@ -139,6 +139,8 @@
 # BEE_TRACING_SERVICE_NAME=bee
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default info)
 # BEE_VERBOSITY=info
+## add caller file:line to log lines, development only (default false)
+# BEE_LOG_CALLER=false
 ## maximum node warmup duration; proceeds when stable or after this time (default 5m)
 # BEE_WARMUP_TIME=5m
 ## send a welcome message string during handshakes (default empty)
