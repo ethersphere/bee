@@ -930,10 +930,6 @@ components:
         welcomeMessage:
           type: string
 
-    FeedType:
-      type: string
-      pattern: "^(sequence|epoch)$"
-
     IsRetrievableResponse:
       type: object
       properties:

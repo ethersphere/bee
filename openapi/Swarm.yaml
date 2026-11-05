@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.2
+  version: 8.3.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -1180,12 +1180,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Topic identifier for the feed
-        - in: query
-          name: type
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
-          required: false
-          description: "Feed indexing scheme (default: sequence)"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
@@ -1213,7 +1207,7 @@ paths:
         default:
           description: Default response
     get:
-      summary: Retrieve the latest feed update
+      summary: Retrieve the latest feed update or the update at a given index
       tags:
         - Feed
       parameters:
@@ -1231,23 +1225,24 @@ paths:
           required: true
           description: Topic identifier for the feed
         - in: query
-          name: at
-          schema:
-            type: integer
-          required: false
-          description: "Timestamp of the update (default: now)"
-        - in: query
           name: after
           schema:
             type: integer
+            minimum: 0
           required: false
-          description: "Start index (default: 0)"
+          description: >
+            Index of a known feed update to start the search for the latest update from
+            (default: 0). If there is no update at this index, the search starts from 0.
         - in: query
-          name: type
+          name: index
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
+            type: integer
+            minimum: 0
           required: false
-          description: "Feed indexing scheme (default: sequence)"
+          description: >
+            Sequential index of the feed update to retrieve. When set, the update at
+            exactly this index is returned instead of the latest one, the
+            `swarm-feed-index-next` header is not set, and `after` is ignored.
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
@@ -1255,7 +1250,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
       responses:
         "200":
-          description: Latest feed update
+          description: Latest feed update, or the update at the requested index
           headers:
             "swarm-soc-signature":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmSocSignature"
@@ -1275,8 +1270,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
           $ref: "SwarmCommon.yaml#/components/responses/401"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         default:
           description: Default response
 
