@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -45,7 +46,7 @@ func FuzzOfferRead(f *testing.F) {
 	f.Add(pullsyncFrame(f, &pb.Offer{
 		Topmost: 10,
 		Chunks: []*pb.Chunk{
-			{Address: make([]byte, swarm.HashSize), BatchID: make([]byte, swarm.HashSize), StampHash: make([]byte, swarm.HashSize)},
+			{Address: make([]byte, swarm.HashSize), Sum: make([]byte, storage.ChunkSumSize)},
 		},
 	}))
 	f.Add([]byte{})

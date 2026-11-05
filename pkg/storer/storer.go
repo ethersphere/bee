@@ -153,7 +153,7 @@ type ReserveIterator interface {
 // content. It will implement all the core functionality required for the protocols.
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error)
-	ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error)
+	ReserveHas(addr swarm.Address, sum []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, uint64, error)

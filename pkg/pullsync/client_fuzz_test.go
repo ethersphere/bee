@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -41,9 +42,8 @@ func FuzzClientSync(f *testing.F) {
 		Topmost: 4,
 		Chunks: []*pb.Chunk{
 			{
-				Address:   make([]byte, swarm.HashSize),
-				BatchID:   make([]byte, swarm.HashSize),
-				StampHash: make([]byte, swarm.HashSize),
+				Address: make([]byte, swarm.HashSize),
+				Sum:     make([]byte, storage.ChunkSumSize),
 			},
 		},
 	})
@@ -59,6 +59,8 @@ func FuzzClientSync(f *testing.F) {
 
 	// offer with a wrong-length address.
 	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 1, Chunks: []*pb.Chunk{{Address: []byte{0x01, 0x02}}}}))
+	// offer with a wrong-length sum.
+	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 1, Chunks: []*pb.Chunk{{Address: make([]byte, swarm.HashSize), Sum: []byte{0x01}}}}))
 	// offer with zero chunks.
 	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 7}))
 	// empty stream.
