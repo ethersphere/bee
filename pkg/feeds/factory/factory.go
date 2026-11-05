@@ -6,7 +6,6 @@ package factory
 
 import (
 	"github.com/ethersphere/bee/v2/pkg/feeds"
-	"github.com/ethersphere/bee/v2/pkg/feeds/epochs"
 	"github.com/ethersphere/bee/v2/pkg/feeds/sequence"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
@@ -23,8 +22,6 @@ func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, error
 	switch t {
 	case feeds.Sequence:
 		return sequence.NewAsyncFinder(f.Getter, feed), nil
-	case feeds.Epoch:
-		return epochs.NewAsyncFinder(f.Getter, feed), nil
 	}
 
 	return nil, feeds.ErrFeedTypeNotFound

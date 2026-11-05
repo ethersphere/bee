@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package sequence provides implementation of sequential indexing for
-// time-based feeds
+// feeds
 // this feed type is best suited for
 // - version updates
 // - followed updates
@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -38,6 +39,11 @@ var (
 // index just wraps a uint64. implements the feeds.Index interface
 type index struct {
 	index uint64
+}
+
+// NewIndex returns the feeds.Index of the sequential update at position i.
+func NewIndex(i uint64) feeds.Index {
+	return &index{i}
 }
 
 func (i *index) String() string {
@@ -137,22 +143,26 @@ type result struct {
 	index    uint64      // the actual sequence index of the update
 }
 
-// At looks up the version valid at time `at`
-// after is a unix time hint of the latest known update
+// At looks up the latest update of the feed.
+// after is the index of a known update to start the search from; if there is
+// no update at that index, the search starts from index 0.
 func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
-	// first lookup update at the 0 index
-	// TODO: consider receive after as uint
+	// first lookup update at the start index
 	ch, err = f.get(ctx, at, after)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if ch == nil {
-		return nil, nil, &index{after}, nil
+		if after > 0 {
+			// the start index hint does not point to an update, search from the beginning
+			return f.At(ctx, at, 0)
+		}
+		return nil, nil, &index{0}, nil
 	}
-	// if chunk exists construct an initial interval with base=0
+	// if chunk exists construct an initial interval with base=after
 	c := make(chan *result)
-	i := newInterval(0)
-	i.found = &result{ch, nil, 0, 0}
+	i := newInterval(after)
+	i.found = &result{ch, nil, 0, after}
 
 	quit := make(chan struct{})
 	defer close(quit)
@@ -174,7 +184,7 @@ func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.
 			// if a chunk is found on the max level, and this is already a subinterval
 			// then found.index+1 is already known to be not found
 			if i.level == r.level && r.level < DefaultLevels {
-				return r.chunk, &index{r.index}, &index{r.index + 1}, nil
+				return r.chunk, &index{r.index}, nextIndex(r.index), nil
 			}
 			i.found = r
 		}
@@ -182,7 +192,7 @@ func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.
 		// DefaultLevel lookaheads
 		if i.found.level == i.notFound {
 			if i.found.level == 0 {
-				return i.found.chunk, &index{i.found.index}, &index{i.found.index + 1}, nil
+				return i.found.chunk, &index{i.found.index}, nextIndex(i.found.index), nil
 			}
 			go f.at(ctx, at, 0, i.next(), c, quit)
 		}
@@ -192,6 +202,14 @@ func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.
 		}
 	}
 	return nil, nil, nil, nil
+}
+
+// nextIndex returns the index after i, or nil when i is the last possible index.
+func nextIndex(i uint64) feeds.Index {
+	if i == math.MaxUint64 {
+		return nil
+	}
+	return &index{i + 1}
 }
 
 // at launches concurrent lookups at exponential intervals after the starting from further
@@ -213,7 +231,16 @@ func (f *asyncFinder) at(ctx context.Context, at int64, minValue int, i *interva
 				cancel()
 				wg.Done()
 			}()
-			index := i.base + (1 << l) - 1
+			offset := uint64(1)<<l - 1
+			if offset > math.MaxUint64-i.base {
+				// the index would overflow, there can be no update beyond the end of the index space
+				select {
+				case c <- &result{nil, i, l, 0}:
+				case <-quit:
+				}
+				return
+			}
+			index := i.base + offset
 			chunk := f.asyncGet(reqCtx, at, index)
 
 			select {
@@ -262,7 +289,7 @@ func (f *asyncFinder) get(ctx context.Context, at int64, idx uint64) (swarm.Chun
 	return u, nil
 }
 
-// updater encapsulates a feeds putter to generate successive updates for epoch based feeds
+// updater encapsulates a feeds putter to generate successive updates for sequence based feeds
 // it persists the last update
 type updater struct {
 	*feeds.Putter

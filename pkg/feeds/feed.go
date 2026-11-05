@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package feeds implements generic interfaces and methods for time-based feeds
-// indexing schemes are implemented in subpackages
-// - epochs
+// Package feeds implements generic interfaces and methods for feeds.
+// Indexing schemes are implemented in subpackages:
 // - sequence
 package feeds
 
@@ -28,20 +27,17 @@ type Factory interface {
 	NewLookup(Type, *Feed) (Lookup, error)
 }
 
-// Type enumerates the time-based feed types
+// Type enumerates the feed types
 type Type int
 
 const (
 	Sequence Type = iota
-	Epoch
 )
 
 func (t Type) String() string {
 	switch t {
 	case Sequence:
 		return "Sequence"
-	case Epoch:
-		return "Epoch"
 	default:
 		return ""
 	}
@@ -52,8 +48,6 @@ func (t *Type) FromString(s string) error {
 	switch s = strings.ToLower(s); s {
 	case "sequence":
 		*t = Sequence
-	case "epoch":
-		*t = Epoch
 	default:
 		return ErrFeedTypeNotFound
 	}
@@ -71,13 +65,13 @@ func (i *id) MarshalBinary() ([]byte, error) {
 	return crypto.LegacyKeccak256(append(append([]byte{}, i.topic...), i.index...))
 }
 
-// Feed is representing an epoch based feed
+// Feed is representing a feed
 type Feed struct {
 	Topic []byte
 	Owner common.Address
 }
 
-// New constructs an epoch based feed from a keccak256 digest of a plaintext
+// New constructs a feed from a keccak256 digest of a plaintext
 // topic and an ether address.
 func New(topic []byte, owner common.Address) *Feed {
 	return &Feed{topic, owner}
@@ -90,7 +84,7 @@ type Index interface {
 	fmt.Stringer
 }
 
-// Update represents an update instance of a feed, i.e., pairing of a Feed with an Epoch
+// Update represents an update instance of a feed, i.e., pairing of a Feed with an Index
 type Update struct {
 	*Feed
 	index Index
