@@ -89,7 +89,7 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # redistribution-address: ""
 ## reserve capacity doubling
 # reserve-capacity-doubling: 0
-## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
+## ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry
 # resolver-options: []
 ## forces the node to resync postage contract data
 # resync: false
