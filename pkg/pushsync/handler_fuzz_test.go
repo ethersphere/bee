@@ -69,7 +69,7 @@ func FuzzHandlerDelivery(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, addr, data, stamp []byte) {
 		ps, _ := createPushSyncNodeWithRadius(
-			t, fuzzHandlerSelf, defaultPrices, nil, nil, fuzzSigner, 0, 0,
+			t, fuzzHandlerSelf, defaultPrices, nil, nil, fuzzSigner, 0,
 			mock.WithClosestPeerErr(topology.ErrWantSelf),
 		)
 
