@@ -7,7 +7,10 @@ package cmd
 import (
 	"io"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type (
@@ -88,4 +91,55 @@ func WithPasswordReader(r PasswordReader) func(c *Command) {
 // StringVar default resets c.cfgFile during flag registration.
 func (c *Command) SetCfgFileForTest(f string) {
 	c.cfgFile = f
+}
+
+// Config keys read by node-mode resolution.
+const (
+	OptionNameNodeMode                = optionNameNodeMode
+	OptionNameFullNode                = optionNameFullNode
+	OptionNameBootnodeMode            = optionNameBootnodeMode
+	OptionNameSwapEnable              = optionNameSwapEnable
+	OptionNameChequebookEnable        = optionNameChequebookEnable
+	OptionNameStorageIncentivesEnable = optionNameStorageIncentivesEnable
+	OptionNameChequebookVerification  = optionNameChequebookVerification
+	OptionNameReserveCapacityDoubling = optionReserveCapacityDoubling
+	ConfigKeyBlockchainRpcEndpoint    = configKeyBlockchainRpcEndpoint
+)
+
+// ResolveNodeModeForTest runs node-mode resolution against cfg, leaving the
+// resolved option values in cfg.
+func ResolveNodeModeForTest(cfg *viper.Viper) (node.NodeMode, error) {
+	return ResolveNodeModeWithLoggerForTest(cfg, log.Noop)
+}
+
+// ResolveNodeModeWithLoggerForTest is ResolveNodeModeForTest with a logger, for
+// tests that assert on the warnings resolution emits.
+func ResolveNodeModeWithLoggerForTest(cfg *viper.Viper, logger log.Logger) (node.NodeMode, error) {
+	c := &command{config: cfg, logger: logger}
+	return c.resolveNodeMode(c.logger)
+}
+
+// BindStartFlagsForTest mirrors the start command's PreRunE: it binds cfg to
+// the command flags, then maps the flat blockchain-rpc-* flags onto their
+// nested config keys.
+func BindStartFlagsForTest(cfg *viper.Viper, startCmd *cobra.Command) error {
+	if err := cfg.BindPFlags(startCmd.Flags()); err != nil {
+		return err
+	}
+	c := &command{config: cfg}
+	c.bindBlockchainRpcConfig(startCmd)
+	return nil
+}
+
+// LegacyMigrationForTest resolves a config without node-mode through the
+// production path and returns the inferred mode with the migration the
+// deprecation warning lists.
+func LegacyMigrationForTest(cfg *viper.Viper) (mode node.NodeMode, set, remove, notes []string, err error) {
+	c := &command{config: cfg, logger: log.Noop}
+	mode, err = c.resolveNodeMode(c.logger)
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	m := c.legacyMigration(mode)
+	return mode, m.set, m.remove, m.notes, nil
 }
