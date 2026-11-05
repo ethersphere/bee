@@ -27,6 +27,7 @@ type metrics struct {
 	TotalOutboundConnectionFailedAttempts prometheus.Counter
 	TotalBootNodesConnectionAttempts      prometheus.Counter
 	StartAddAddressBookOverlaysTime       prometheus.Histogram
+	DialRateLimitWaitTime                 prometheus.Histogram
 	PeerLatencyEWMA                       prometheus.Histogram
 	Blocklist                             prometheus.Counter
 	ReachabilityStatus                    *prometheus.GaugeVec
@@ -138,7 +139,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "start_add_addressbook_overlays_time",
-			Help:      "The time spent adding overlays peers from addressbook on kademlia start.",
+			Help:      "The time spent adding overlays peers from addressbook on kademlia start, including the pauses between batches.",
+		}),
+		DialRateLimitWaitTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "dial_rate_limit_wait_time",
+			Help:      "The time outbound connection attempts waited for the dial rate limiter.",
 		}),
 		PeerLatencyEWMA: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,

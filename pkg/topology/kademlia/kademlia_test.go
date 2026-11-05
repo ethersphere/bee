@@ -1311,6 +1311,157 @@ func TestStart(t *testing.T) {
 	})
 }
 
+// TestDialRateLimit checks that outbound connection attempts are throttled by
+// the dial limiter and that shutdown does not wait for the dial tokens.
+func TestDialRateLimit(t *testing.T) {
+	t.Parallel()
+
+	const burst = 3
+
+	var (
+		conns                 int32 // how many connect calls were made to the p2p mock
+		_, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			BitSuffixLength: new(-1),
+			ExcludeFunc:     defaultExcludeFunc,
+			DialBurst:       new(burst),
+			DialInterval:    new(time.Hour), // no tokens are refilled during the test
+		})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	kad.SetStorageRadius(0)
+
+	for range 20 {
+		addOne(t, signer, kad, ab, swarm.RandAddress(t))
+	}
+
+	// only the burst is allowed to dial
+	waitCounter(t, &conns, burst)
+
+	// no further dials happen while the limiter has no tokens
+	counterStays(t, &conns, 0, 500*time.Millisecond)
+}
+
+// writeAddressBook stores n random peers in the address book
+// and returns their overlays.
+func writeAddressBook(t *testing.T, signer beeCrypto.Signer, ab addressbook.Putter, n int) []swarm.Address {
+	t.Helper()
+
+	peers := make([]swarm.Address, 0, n)
+	for range n {
+		peer := swarm.RandAddress(t)
+		multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nonce, 1, common.Address{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ab.Put(peer, *bzzAddr, false); err != nil {
+			t.Fatal(err)
+		}
+		peers = append(peers, peer)
+	}
+	return peers
+}
+
+// TestStartAddressBookBatches checks that the address book is fed into
+// kademlia in batches spaced out in time on start.
+func TestStartAddressBookBatches(t *testing.T) {
+	t.Parallel()
+
+	const (
+		batchSize = 5
+		peers     = 20
+	)
+
+	t.Run("first batch only", func(t *testing.T) {
+		t.Parallel()
+
+		var conns int32 // how many connect calls were made to the p2p mock
+		_, kad, ab, _, signer := newTestKademlia(t, &conns, nil, kademlia.Options{
+			BitSuffixLength:          new(-1),
+			ExcludeFunc:              defaultExcludeFunc,
+			AddressBookBatchSize:     new(batchSize),
+			AddressBookBatchInterval: new(time.Hour), // the next batch is never added during the test
+		})
+		writeAddressBook(t, signer, ab, peers)
+
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, kad)
+
+		kad.SetStorageRadius(0)
+
+		waitCounter(t, &conns, batchSize)
+		counterStays(t, &conns, 0, 500*time.Millisecond)
+	})
+
+	t.Run("all batches", func(t *testing.T) {
+		t.Parallel()
+
+		var conns int32 // how many connect calls were made to the p2p mock
+		_, kad, ab, _, signer := newTestKademlia(t, &conns, nil, kademlia.Options{
+			BitSuffixLength:          new(-1),
+			ExcludeFunc:              defaultExcludeFunc,
+			SaturationPeers:          new(peers),
+			OverSaturationPeers:      new(peers),
+			AddressBookBatchSize:     new(batchSize),
+			AddressBookBatchInterval: new(50 * time.Millisecond),
+		})
+		addrs := writeAddressBook(t, signer, ab, peers)
+
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, kad)
+
+		kad.SetStorageRadius(0)
+
+		for _, addr := range addrs {
+			waitPeerConnected(t, kad, addr)
+		}
+	})
+}
+
+// counterStays checks that the counter keeps the expected value for the whole duration.
+func counterStays(t *testing.T, conns *int32, exp int32, d time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if got := atomic.LoadInt32(conns); got != exp {
+			t.Fatalf("counter changed. got %d want %d", got, exp)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func waitPeerConnected(t *testing.T, kad *kademlia.Kad, addr swarm.Address) {
+	t.Helper()
+
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
+		connected := false
+		_ = kad.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+			if p.Equal(addr) {
+				connected = true
+				return true, false, nil
+			}
+			return false, false, nil
+		}, topology.Select{})
+		return connected
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for peer %s to connect", addr)
+	}
+}
+
 func TestOutofDepthPrune(t *testing.T) {
 	t.Parallel()
 
@@ -1349,7 +1500,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		// implement empty prune func
 		pruneMux.Lock()
 		pruneImpl := func(uint8) {}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		if err := kad.Start(context.Background()); err != nil {
@@ -1412,7 +1563,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		pruneImpl = func(depth uint8) {
 			kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 		}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		// add a peer to kick start pruning
@@ -1470,7 +1621,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	// implement empty prune func
 	pruneMux.Lock()
 	pruneImpl := func(uint8) {}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -1525,7 +1676,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	pruneImpl = func(depth uint8) {
 		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 	}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	// add a peer to kick start pruning
@@ -2180,6 +2331,16 @@ func newTestKademliaWithAddrDiscovery(
 		p2p    = p2pMock(t, ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = log.Noop                                               // logger
 	)
+
+	// connection counting tests expect the dials to happen right away,
+	// so throttling is disabled unless a test asks for it
+	if kadOpts.DialInterval == nil {
+		kadOpts.DialInterval = new(time.Duration(0))
+	}
+	if kadOpts.AddressBookBatchInterval == nil {
+		kadOpts.AddressBookBatchInterval = new(time.Duration(0))
+	}
+
 	kad, err := kademlia.New(base, ab, disc, p2p, detector, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)

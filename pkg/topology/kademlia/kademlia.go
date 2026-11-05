@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -40,8 +41,6 @@ const (
 	maxConnAttempts     = 4 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootNodeAttempts = 6 // how many attempts to dial to boot-nodes before giving up
 	maxNeighborAttempts = 6 // how many attempts to dial to boot-nodes before giving up
-
-	addPeerBatchSize = 500
 
 	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
@@ -65,6 +64,16 @@ const (
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 6
+
+	// Outbound dials to known peers are throttled by a token bucket so that a
+	// large address book does not turn into a burst of connection attempts.
+	defaultDialInterval = 200 * time.Millisecond // one dial token every interval (5 dials/s)
+	defaultDialBurst    = 16                     // number of dials allowed back to back
+
+	// On start, address book overlays are fed into the known peers in
+	// batches, spaced out in time, to spread the connection attempts.
+	defaultAddressBookBatchSize     = 50
+	defaultAddressBookBatchInterval = 5 * time.Second
 )
 
 var (
@@ -106,6 +115,10 @@ type Options struct {
 	BootnodeOverSaturationPeers *int
 	BroadcastBinSize            *int
 	LowWaterMark                *int
+	DialInterval                *time.Duration // minimal interval between outbound dial tokens; zero disables the limit
+	DialBurst                   *int           // maximal number of outbound dials allowed back to back
+	AddressBookBatchSize        *int           // number of address book overlays added per batch on start
+	AddressBookBatchInterval    *time.Duration // pause between address book batches on start; zero disables the pause
 }
 
 // kadOptions are made from Options with default values set
@@ -127,6 +140,10 @@ type kadOptions struct {
 	BootnodeOverSaturationPeers int
 	BroadcastBinSize            int
 	LowWaterMark                int
+	DialInterval                time.Duration
+	DialBurst                   int
+	AddressBookBatchSize        int
+	AddressBookBatchInterval    time.Duration
 }
 
 func newKadOptions(o Options) kadOptions {
@@ -148,6 +165,17 @@ func newKadOptions(o Options) kadOptions {
 		BootnodeOverSaturationPeers: defaultValInt(o.BootnodeOverSaturationPeers, defaultBootNodeOverSaturationPeers),
 		BroadcastBinSize:            defaultValInt(o.BroadcastBinSize, defaultBroadcastBinSize),
 		LowWaterMark:                defaultValInt(o.LowWaterMark, defaultLowWaterMark),
+		DialInterval:                defaultValDuration(o.DialInterval, defaultDialInterval),
+		DialBurst:                   defaultValInt(o.DialBurst, defaultDialBurst),
+		AddressBookBatchSize:        defaultValInt(o.AddressBookBatchSize, defaultAddressBookBatchSize),
+		AddressBookBatchInterval:    defaultValDuration(o.AddressBookBatchInterval, defaultAddressBookBatchInterval),
+	}
+
+	if ko.DialBurst < 1 {
+		ko.DialBurst = 1
+	}
+	if ko.AddressBookBatchSize < 1 {
+		ko.AddressBookBatchSize = defaultAddressBookBatchSize
 	}
 
 	if ko.SaturationFunc == nil {
@@ -155,6 +183,15 @@ func newKadOptions(o Options) kadOptions {
 	}
 
 	return ko
+}
+
+// newDialLimiter returns the token bucket that throttles outbound dials.
+// A zero or negative interval disables the limit.
+func newDialLimiter(interval time.Duration, burst int) *rate.Limiter {
+	if interval <= 0 {
+		return rate.NewLimiter(rate.Inf, burst)
+	}
+	return rate.NewLimiter(rate.Every(interval), burst)
 }
 
 func defaultValInt(v *int, d int) int {
@@ -210,6 +247,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
 	detector          *stabilization.Detector
+	dialLimiter       *rate.Limiter // throttles outbound connection attempts to known peers
 }
 
 // New returns a new Kademlia.
@@ -262,6 +300,7 @@ func New(
 		staticPeer:        isStaticPeer(opt.StaticNodes),
 		storageRadius:     swarm.MaxPO,
 		detector:          detector,
+		dialLimiter:       newDialLimiter(opt.DialInterval, opt.DialBurst),
 	}
 
 	if k.opt.PruneFunc == nil {
@@ -480,6 +519,17 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		inProgress   = make(map[string]bool)
 		inProgressMu sync.Mutex
 	)
+
+	// dialCtx unblocks the workers waiting for a dial token
+	// as soon as kademlia is halted or shut down.
+	dialCtx, dialCancel := context.WithCancel(ctx)
+	go func() {
+		defer dialCancel()
+		select {
+		case <-k.halt:
+		case <-dialCtx.Done():
+		}
+	}()
 	connAttempt := func(peerConnChan <-chan *peerConnInfo) {
 		for {
 			select {
@@ -498,7 +548,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				if !inProgress[addr] {
 					inProgress[addr] = true
 					inProgressMu.Unlock()
-					connect(peer)
+					if k.waitDialToken(dialCtx) == nil {
+						connect(peer)
+					}
 					inProgressMu.Lock()
 					delete(inProgress, addr)
 				}
@@ -512,6 +564,17 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		go connAttempt(balanceChan)
 		go connAttempt(neighbourhoodChan)
 	}
+}
+
+// waitDialToken blocks until the dial limiter allows the next outbound
+// connection attempt or the context is done.
+func (k *Kad) waitDialToken(ctx context.Context) error {
+	start := time.Now()
+	if err := k.dialLimiter.Wait(ctx); err != nil {
+		return fmt.Errorf("wait for dial token: %w", err)
+	}
+	k.metrics.DialRateLimitWaitTime.Observe(time.Since(start).Seconds())
+	return nil
 }
 
 // notifyManageLoop notifies kademlia manage loop.
@@ -803,42 +866,66 @@ func (k *Kad) Start(ctx context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
+	// previously connected peers are the most likely to be reachable,
+	// so they are added right away, ahead of the rest of the address book
 	k.AddPeers(k.previouslyConnected()...)
 
-	go func() {
-		select {
-		case <-k.halt:
-			return
-		case <-k.quit:
-			return
-		default:
-		}
-		var (
-			start     = time.Now()
-			addresses []swarm.Address
-		)
-
-		err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
-			addresses = append(addresses, addr)
-			if len(addresses) == addPeerBatchSize {
-				k.AddPeers(addresses...)
-				addresses = nil
-			}
-			return false, nil
-		})
-		if err != nil {
-			k.logger.Error(err, "addressbook iterate overlays failed")
-			return
-		}
-		k.AddPeers(addresses...)
-		k.metrics.StartAddAddressBookOverlaysTime.Observe(time.Since(start).Seconds())
-	}()
+	k.wg.Go(k.addAddressBookPeers)
 
 	// trigger the first manage loop immediately so that
 	// we can start connecting to the bootnode quickly
 	k.notifyManageLoop()
 
 	return nil
+}
+
+// addAddressBookPeers adds the address book overlays to the known peers in
+// shuffled batches spaced out in time, so that a large address book does not
+// translate into a burst of connection attempts right after the start.
+func (k *Kad) addAddressBookPeers() {
+	select {
+	case <-k.halt:
+		return
+	case <-k.quit:
+		return
+	default:
+	}
+
+	var (
+		start     = time.Now()
+		addresses []swarm.Address
+	)
+
+	err := k.addressBook.IterateOverlays(func(addr swarm.Address) (stop bool, err error) {
+		addresses = append(addresses, addr)
+		return false, nil
+	})
+	if err != nil {
+		k.logger.Error(err, "addressbook iterate overlays failed")
+		return
+	}
+
+	// shuffle so that every batch covers the whole address space
+	// instead of a single key range of the address book
+	rand.Shuffle(len(addresses), func(i, j int) {
+		addresses[i], addresses[j] = addresses[j], addresses[i]
+	})
+
+	batchSize := k.opt.AddressBookBatchSize
+	for i := 0; i < len(addresses); i += batchSize {
+		if i > 0 && k.opt.AddressBookBatchInterval > 0 {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(k.opt.AddressBookBatchInterval):
+			}
+		}
+		k.AddPeers(addresses[i:min(i+batchSize, len(addresses))]...)
+	}
+
+	k.metrics.StartAddAddressBookOverlaysTime.Observe(time.Since(start).Seconds())
 }
 
 func (k *Kad) previouslyConnected() []swarm.Address {
