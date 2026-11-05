@@ -79,6 +79,9 @@ func TestCreateBatch(t *testing.T) {
 					case bzzTokenAddress:
 						return txHashApprove, nil
 					case postageStampAddress:
+						if request.MinEstimatedGasLimit != transaction.DefaultGasLimit {
+							return common.Hash{}, fmt.Errorf("min estimated gas limit: want %d, got %d", transaction.DefaultGasLimit, request.MinEstimatedGasLimit)
+						}
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHashApprove, nil
 						}
@@ -324,6 +327,9 @@ func TestTopUpBatch(t *testing.T) {
 					case bzzTokenAddress:
 						return txHashApprove, nil
 					case postageStampAddress:
+						if request.MinEstimatedGasLimit != transaction.DefaultGasLimit {
+							return common.Hash{}, fmt.Errorf("min estimated gas limit: want %d, got %d", transaction.DefaultGasLimit, request.MinEstimatedGasLimit)
+						}
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -492,6 +498,9 @@ func TestDiluteBatch(t *testing.T) {
 			transactionMock.New(
 				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == postageStampAddress {
+						if request.MinEstimatedGasLimit != transaction.DefaultGasLimit {
+							return common.Hash{}, fmt.Errorf("min estimated gas limit: want %d, got %d", transaction.DefaultGasLimit, request.MinEstimatedGasLimit)
+						}
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHashApprove, nil
 						}

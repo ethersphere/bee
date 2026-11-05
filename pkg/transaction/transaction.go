@@ -84,6 +84,9 @@ type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
+	// SendAndWait sends the request and waits until the transaction is mined.
+	// It returns ErrTransactionReverted when the transaction failed.
+	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -229,6 +232,76 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 	t.waitForPendingTx(txHash)
 
 	return signedTx.Hash(), nil
+}
+
+// SendAndWait sends the request and waits for the transaction to be mined.
+// A transaction that ran out of an estimated gas limit is sent once more with
+// twice that limit; a gas limit set by the caller is never changed.
+func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, error) {
+	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent)
+	if err != nil {
+		return nil, err
+	}
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		return receipt, nil
+	}
+
+	if request.GasLimit != 0 {
+		return nil, ErrTransactionReverted
+	}
+	gasLimit, err := t.outOfGasLimit(txHash, receipt)
+	if err != nil {
+		return nil, err
+	}
+
+	retry := *request
+	retry.GasLimit = min(2*gasLimit, MaxGasLimit)
+	retry.Description = request.Description + " (retry after out of gas)"
+
+	t.logger.Warning("transaction ran out of gas, sending it again with a higher gas limit",
+		"tx_hash", txHash,
+		"gas_limit", gasLimit,
+		"retry_gas_limit", retry.GasLimit,
+		"description", request.Description,
+	)
+
+	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent)
+	if err != nil {
+		return nil, fmt.Errorf("retry after out of gas: %w", err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return nil, fmt.Errorf("retry after out of gas: %w", ErrTransactionReverted)
+	}
+
+	return receipt, nil
+}
+
+// sendAndWait sends the request and returns the receipt whatever its status.
+func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, common.Hash, error) {
+	txHash, err := t.Send(ctx, request, boostPercent)
+	if err != nil {
+		return nil, common.Hash{}, err
+	}
+
+	receipt, err := t.WaitForReceipt(ctx, txHash)
+	if err != nil {
+		return nil, common.Hash{}, err
+	}
+
+	return receipt, txHash, nil
+}
+
+// outOfGasLimit returns the gas limit of a failed transaction that used all
+// of it (a revert refunds unused gas), or ErrTransactionReverted otherwise.
+func (t *transactionService) outOfGasLimit(txHash common.Hash, receipt *types.Receipt) (uint64, error) {
+	stored, err := t.StoredTransaction(txHash)
+	if err != nil {
+		return 0, fmt.Errorf("%w: stored transaction: %w", ErrTransactionReverted, err)
+	}
+	if stored.GasLimit == 0 || receipt.GasUsed < stored.GasLimit {
+		return 0, ErrTransactionReverted
+	}
+	return stored.GasLimit, nil
 }
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
