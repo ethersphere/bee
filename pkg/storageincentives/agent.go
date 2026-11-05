@@ -427,7 +427,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to read ReserveSalt: %w", err)
+		return false, fmt.Errorf("reserve salt: %w", err)
 	}
 
 	// in a sister neighbourhood round the sample comes from our bin PO(overlay, anchor)
