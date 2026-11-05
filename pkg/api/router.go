@@ -392,6 +392,10 @@ func (s *Service) mountAPI() {
 		),
 	})
 
+	handle("/bps/feeds/subscribe/{principal}/{topic}", jsonhttp.MethodHandler{
+		http.MethodGet: http.HandlerFunc(s.bpsWsHandler),
+	})
+
 	handle("/tags", jsonhttp.MethodHandler{
 		http.MethodGet: http.HandlerFunc(s.listTagsHandler),
 		http.MethodPost: web.ChainHandlers(
