@@ -62,3 +62,112 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           BEE_API_VERSION: ${{ env.BEE_API_VERSION }}
+
+  # Publish the release to Swarm for bee-runner: dispatches the mirror-bee
+  # workflow in ethersphere/swarm-oci-registry, which re-verifies this
+  # release's GPG-signed checksums, uploads the binaries and image to Swarm,
+  # signs its own descriptor and updates the channel feed. Runs after
+  # goreleaser, so the GitHub release and the Docker image already exist.
+  #
+  # Needs the repository secret SWARM_OCI_DISPATCH_TOKEN (a token that can only
+  # run workflows in ethersphere/swarm-oci-registry). Without it the job only
+  # prints a notice; it never fails a bee release.
+  mirror:
+    needs: goreleaser
+    if: github.repository == 'ethersphere/bee' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # the no-rollback label
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Release settings come from labels on the PRs merged since the previous
+      # FINAL release, not the previous tag, so a label is not lost between a
+      # release candidate and its final release: 2.9.0 is compared with 2.8.x
+      # like 2.9.0-rc1 was. Labels are read from the PRs as they are now, so
+      # they can still be added after merging, up to the release. A fix
+      # cherry-picked onto a release branch is a new commit its PR does not
+      # name: label the cherry-pick PR too.
+      #
+      # - no-rollback: nodes that run this release never go back to an older
+      #   bee, e.g. after a database migration.
+      # - rollout-<duration> (rollout-1h, rollout-30m, ...): how long the fleet
+      #   takes to adopt the release. The shortest one found wins; without one
+      #   it is 24h. At most 720h.
+      - name: Read release labels from PRs
+        id: labels
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C # sort and join must collate alike
+          no_rollback=false rollout_window=24h notes=""
+          base="${TAG%%-rc*}"
+          prev=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+            { cat; echo "$base"; } | sort -uV | grep -B1 -xF "$base" | grep -vxF "$base" || true)
+          if [ -z "$prev" ]; then
+            echo "::warning::no final release before $TAG; not reading release labels"
+          else
+            git rev-list "$prev..$TAG" | sort > "$RUNNER_TEMP/commits"
+            # PRs with label $1 merged in prev..TAG, as "#<number> <title>".
+            labelled() {
+              gh pr list --label "$1" --state merged --limit 1000 \
+                --json number,title,mergeCommit --jq '.[] | [.mergeCommit.oid, "#\(.number) \(.title)"] | @tsv' |
+                sort | join -t $'\t' "$RUNNER_TEMP/commits" - | cut -f2
+            }
+            prs=$(labelled no-rollback)
+            if [ -n "$prs" ]; then
+              no_rollback=true
+              notes="No rollback: nodes that run this release cannot go back to an older bee. Because of:"$'\n'"$prs"
+              { echo "**no-rollback release** ($prev..$TAG):"; echo "$prs" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+            best=""
+            for label in $(gh label list --limit 500 --json name --jq '.[].name' | grep -E '^rollout-[0-9]+[mh]$' || true); do
+              d=${label#rollout-}
+              mins=$(( ${d%?} * $([ "${d: -1}" = h ] && echo 60 || echo 1) ))
+              if [ "$mins" -gt $((720 * 60)) ]; then
+                echo "::warning::label $label is longer than 720h; ignored"
+                continue
+              fi
+              prs=$(labelled "$label")
+              [ -n "$prs" ] || continue
+              echo "$label ($prev..$TAG):"$'\n'"$(echo "$prs" | sed 's/^/- /')" >> "$GITHUB_STEP_SUMMARY"
+              if [ -z "$best" ] || [ "$mins" -lt "$best" ]; then
+                best=$mins rollout_window=$d best_prs=$prs
+              fi
+            done
+            if [ -n "$best" ]; then
+              notes="${notes:+$notes$'\n'}Rollout window $rollout_window. Because of:"$'\n'"$best_prs"
+            fi
+          fi
+          echo "no_rollback=$no_rollback" >> "$GITHUB_OUTPUT"
+          echo "rollout_window=$rollout_window" >> "$GITHUB_OUTPUT"
+          { echo "notes<<EOF_NOTES"; echo "$notes"; echo "EOF_NOTES"; } >> "$GITHUB_OUTPUT"
+          echo "no_rollback=$no_rollback, rollout window $rollout_window" >> "$GITHUB_STEP_SUMMARY"
+      - name: Trigger mirror-bee
+        env:
+          TAG: ${{ github.ref_name }}
+          NO_ROLLBACK: ${{ steps.labels.outputs.no_rollback }}
+          ROLLOUT_WINDOW: ${{ steps.labels.outputs.rollout_window }}
+          NOTES: ${{ steps.labels.outputs.notes }}
+          GH_TOKEN: ${{ secrets.SWARM_OCI_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::SWARM_OCI_DISPATCH_TOKEN is not set; this release is not published to Swarm"
+            exit 0
+          fi
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] || { echo "::notice::tag $TAG is not a release tag; not publishing to Swarm"; exit 0; }
+          version="${TAG#v}"
+          channel=stable
+          [[ "$version" == *-rc* ]] && channel=rc
+          gh workflow run mirror-bee -R ethersphere/swarm-oci-registry --ref master \
+            -f bee_version="$version" -f channels="$channel" \
+            -f no_rollback="$NO_ROLLBACK" -f rollout_window="$ROLLOUT_WINDOW" \
+            -f notes="$(printf %s "$NOTES" | head -c 4000 | iconv -c -f utf-8 -t utf-8)"
+          echo "dispatched mirror-bee for $version on channel $channel (no_rollback=$NO_ROLLBACK, rollout_window=$ROLLOUT_WINDOW)" >> "$GITHUB_STEP_SUMMARY"

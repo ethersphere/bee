@@ -35,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/updatecheck"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -79,7 +80,7 @@ func (c *command) initStartCmd() (err error) {
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
-			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
+			respC := buildBeeNodeAsync(ctx, cancel, c, cmd, logger)
 			var beeNode atomic.Value
 
 			p := &program{
@@ -180,18 +181,24 @@ type buildBeeNodeResp struct {
 	err error
 }
 
-func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
+func buildBeeNodeAsync(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
 	respC := make(chan buildBeeNodeResp, 1)
 
 	go func() {
-		bee, err := buildBeeNode(ctx, c, cmd, logger)
+		bee, err := buildBeeNode(ctx, shutdown, c, cmd, logger)
 		respC <- buildBeeNodeResp{bee, err}
 	}()
 
 	return respC
 }
 
-func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
+// buildBeeNode builds the node. shutdown cancels the node's main context, and
+// the update restart calls it. It takes the same path as SIGINT/SIGTERM: start
+// returns, stop runs Bee.Shutdown, and bee exits with status 0. So whatever
+// restarts bee (systemd, Docker, Kubernetes) must restart bee-runner on a clean
+// exit too. Use k8s restartPolicy Always, systemd Restart=always, or docker
+// --restart always or unless-stopped.
+func buildBeeNode(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
 	var err error
 
 	// If the resolver is specified, resolve all connection strings
@@ -362,6 +369,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
 		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
+		UpdateCheckInterval:           c.config.GetDuration(optionNameUpdateCheckInterval),
+		UpdateCheckRunner:             runnerHandoff(),
+		UpdateCheckURL:                c.config.GetString(optionNameUpdateCheckURL),
+		UpdateRestart:                 c.config.GetBool(optionNameUpdateRestart),
+		UpdateRestartShutdown:         shutdown,
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
@@ -482,6 +494,24 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		pssPrivateKey:    pssPrivateKey,
 		session:          session,
 	}, nil
+}
+
+// runnerHandoff returns what bee-runner handed over in the environment when it
+// started bee. The variable names are the runner's contract. They are read
+// here, not through the configuration, so a config file or flag cannot pose as
+// the runner.
+func runnerHandoff() updatecheck.Runner {
+	return updatecheck.Runner{
+		Started:    os.Getenv("BEE_RUNNER") == "1",
+		Registry:   os.Getenv("BEE_RUNNER_REGISTRY"),
+		Channel:    os.Getenv("BEE_RUNNER_CHANNEL"),
+		Version:    os.Getenv("BEE_RUNNER_VERSION"),
+		Pubkey:     os.Getenv("BEE_RUNNER_PUBKEY"),
+		RolledBack: os.Getenv("BEE_RUNNER_ROLLED_BACK"),
+		Cache:      os.Getenv("BEE_RUNNER_CACHE"),
+		Binary:     os.Getenv("BEE_RUNNER_BINARY"),
+		NoRollback: os.Getenv("BEE_RUNNER_NO_ROLLBACK"),
+	}
 }
 
 type networkConfig struct {
