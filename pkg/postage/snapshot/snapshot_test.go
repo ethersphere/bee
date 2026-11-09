@@ -26,8 +26,10 @@ import (
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
+	batchstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	statestoremock "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -500,6 +502,57 @@ func TestReplayStopsBelowMaxBlock(t *testing.T) {
 	}
 	if maxBlock-got > 16 {
 		t.Fatalf("replay stopped %d blocks below max block %d; expected within the reorg-safety trim", maxBlock-got, maxBlock)
+	}
+}
+
+// TestReplayFailureFallsBack checks that a replay failure is reported as not loaded.
+func TestReplayFailureFallsBack(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		bad  types.Log
+	}{
+		{
+			name: "corrupt event data",
+			bad: types.Log{
+				Address:     fileContract,
+				Topics:      []common.Hash{priceTopic},
+				Data:        []byte{1, 2, 3},
+				BlockNumber: 150,
+			},
+		},
+		{
+			name: "top up of an unknown batch",
+			bad: types.Log{
+				Address: fileContract,
+				Topics: []common.Hash{
+					fileContractABI.Events["BatchTopUp"].ID,
+					common.BigToHash(big.NewInt(42)),
+				},
+				Data:        append(common.LeftPadBytes([]byte{1}, 32), common.LeftPadBytes([]byte{1}, 32)...),
+				BlockNumber: 150,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			logs := []types.Log{priceLog(110, 1), tc.bad, priceLog(200, 2)}
+			snap, _, err := snapshot.Load(log.Noop, embedded(makeSnapshotData(logs)), snapshot.Config{
+				Contract:        fileContract,
+				ABI:             fileContractABI,
+				StartBlock:      100,
+				BlockTime:       time.Second,
+				StallingTimeout: time.Minute,
+				BackoffTimeout:  time.Second,
+			})
+			require.NoError(t, err)
+
+			_, loaded, err := batchservice.New(context.Background(), statestoremock.NewStateStore(), batchstoremock.New(), log.Noop, nil, nil, nil, nil, snap, false)
+			require.NoError(t, err)
+			assert.False(t, loaded, "a failed replay must not report the snapshot as loaded")
+		})
 	}
 }
 

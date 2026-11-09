@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
-	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 )
 
 // Config holds what Load needs to validate a snapshot and build its replay
@@ -25,7 +24,6 @@ type Config struct {
 	BlockTime       time.Duration
 	StallingTimeout time.Duration
 	BackoffTimeout  time.Duration
-	SyncingStopped  *syncutil.Signaler
 }
 
 // Load parses src, rejects a snapshot that is empty, holds logs from another
@@ -49,7 +47,9 @@ func Load(logger log.Logger, src Source, cfg Config) (*batchservice.Snapshot, In
 		return nil, Info{}, fmt.Errorf("%w: max block %d, start block %d", ErrBlockHeightTooLow, info.MaxBlock, cfg.StartBlock)
 	}
 
-	eventListener := listener.New(cfg.SyncingStopped, logger, filterer, cfg.Contract, cfg.ABI, cfg.BlockTime, cfg.StallingTimeout, cfg.BackoffTimeout, blockPage)
+	// No syncingStopped: replay errors return through Listen, and NewBee decides
+	// whether to fail or fall back to chain sync.
+	eventListener := listener.New(nil, logger, filterer, cfg.Contract, cfg.ABI, cfg.BlockTime, cfg.StallingTimeout, cfg.BackoffTimeout, blockPage)
 
 	return &batchservice.Snapshot{
 		Listener:   eventListener,

@@ -956,7 +956,6 @@ func NewBee(
 			BlockTime:       o.BlockTime,
 			StallingTimeout: postageSyncingStallingTimeout,
 			BackoffTimeout:  postageSyncingBackoffTimeout,
-			SyncingStopped:  b.syncingStopped,
 		})
 		switch {
 		case err != nil && o.PostageSnapshotFile != "":
