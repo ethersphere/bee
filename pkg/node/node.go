@@ -449,8 +449,10 @@ func NewBee(
 		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
 	}
 
-	if o.ChequebookVerification && (o.NodeMode != FullMode || !o.ChequebookEnable || !chainEnabled) {
-		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.NodeMode == FullMode, o.ChequebookEnable, chainEnabled)
+	// The verifier checks peers' chequebooks over the chain backend; it does
+	// not use this node's own chequebook.
+	if o.ChequebookVerification && (o.NodeMode != FullMode || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode and an enabled chain backend (full_node=%t, chain_enabled=%t)", o.NodeMode == FullMode, chainEnabled)
 	}
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)

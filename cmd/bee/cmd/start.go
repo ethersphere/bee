@@ -563,9 +563,9 @@ func (c *command) validateNodeModeOptions(mode node.NodeMode) error {
 		return errors.New("reserve capacity doubling is only allowed for full nodes")
 	case c.config.GetBool(optionNameSwapEnable) && !chainEnabled:
 		return errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
-	case c.config.GetBool(optionNameChequebookVerification) && (mode != node.FullMode || !c.config.GetBool(optionNameChequebookEnable) || !chainEnabled):
-		return fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)",
-			mode == node.FullMode, c.config.GetBool(optionNameChequebookEnable), chainEnabled)
+	case c.config.GetBool(optionNameChequebookVerification) && (mode != node.FullMode || !chainEnabled):
+		return fmt.Errorf("chequebook-verification requires full-node mode and an enabled chain backend (full_node=%t, chain_enabled=%t)",
+			mode == node.FullMode, chainEnabled)
 	}
 	return nil
 }
@@ -584,22 +584,13 @@ func (c *command) legacyMigration(mode node.NodeMode) legacyNodeModeMigration {
 	var m legacyNodeModeMigration
 	bootnode := c.config.GetBool(optionNameBootnodeMode)
 	swap := c.config.GetBool(optionNameSwapEnable)
-	verification := c.config.GetBool(optionNameChequebookVerification)
 
 	m.set = append(m.set, optionNameNodeMode+"="+string(mode))
 	if c.config.IsSet(optionNameFullNode) {
 		m.remove = append(m.remove, optionNameFullNode)
 	}
-	// With node-mode set, chequebook-enable follows swap-enable and
-	// chequebook-verification requires the chequebook, so verification cannot
-	// keep running without swap.
-	switch {
-	case verification && !swap && mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable):
-		m.notes = append(m.notes, "node-mode: full enables swap and chequebook, which chequebook-verification requires; to keep swap off, set swap-enable=false and remove chequebook-verification")
-	case verification && !swap:
-		m.notes = append(m.notes, "chequebook-verification requires swap-enable once node-mode is set; set swap-enable=true or remove chequebook-verification")
-	case mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable):
-		// node-mode: full implies swap, which legacy full nodes did not.
+	// node-mode: full implies swap, which legacy full nodes did not.
+	if mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable) {
 		m.set = append(m.set, optionNameSwapEnable+"=false")
 	}
 	// With node-mode set, an explicit chequebook-enable=true is rejected

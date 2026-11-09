@@ -341,14 +341,24 @@ func TestResolveNodeMode(t *testing.T) {
 			wantErr: "chequebook-verification requires",
 		},
 		{
-			name: "full with swap off rejects chequebook-verification",
+			name: "full with swap off accepts chequebook-verification",
 			config: map[string]any{
 				cmd.OptionNameNodeMode:               "full",
 				cmd.ConfigKeyBlockchainRpcEndpoint:   testRPCEndpoint,
 				cmd.OptionNameSwapEnable:             false,
 				cmd.OptionNameChequebookVerification: true,
 			},
-			wantErr: "chequebook-verification requires",
+			wantMode: node.FullMode,
+		},
+		{
+			name: "full bootnode without swap accepts chequebook-verification",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:               "full",
+				cmd.ConfigKeyBlockchainRpcEndpoint:   testRPCEndpoint,
+				cmd.OptionNameBootnodeMode:           true,
+				cmd.OptionNameChequebookVerification: true,
+			},
+			wantMode: node.FullMode,
 		},
 		{
 			name: "full accepts chequebook-verification",
@@ -768,9 +778,10 @@ func TestResolveNodeModeWarnings(t *testing.T) {
 			absent: []string{"behavior_change"},
 		},
 		{
-			name: "legacy full node with verification notes the swap change",
-			args: []string{"--full-node", "--chequebook-verification", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
-			want: []string{`"set"=["node-mode=full"]`, "set swap-enable=false and remove chequebook-verification"},
+			name:   "legacy full node with verification keeps swap off",
+			args:   []string{"--full-node", "--chequebook-verification", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want:   []string{`"set"=["node-mode=full","swap-enable=false"]`},
+			absent: []string{"behavior_change"},
 		},
 		{
 			name: "legacy whitespace-only rpc notes that light needs an endpoint",
@@ -869,12 +880,11 @@ func TestLegacyMigrationPreservesBehavior(t *testing.T) {
 
 								// Rules of releases before node-mode: a bootnode must be
 								// full, a full node needs a chain, swap needs a chain,
-								// and verification needs a full node with chequebook and
-								// chain. chequebook-enable defaults to true.
+								// and verification needs a full node with a chain.
 								full := fullNode == "true"
 								chain := full || rpc
 								wantRejected := (bootnode && !full) || (full && !rpc) || (swap == "true" && !chain) ||
-									(verification == "true" && (!full || chequebook == "false" || !chain))
+									(verification == "true" && (!full || !chain))
 
 								legacyCfg := boundStartConfig(t, args)
 								mode, set, remove, notes, err := cmd.LegacyMigrationForTest(legacyCfg)
