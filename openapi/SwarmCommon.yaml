@@ -951,7 +951,11 @@ components:
       nullable: true
       properties:
         /:
-          $ref: "#/components/schemas/LoggerTreeNode"
+          # Kept free-form on purpose: a $ref back to LoggerTreeNode would make
+          # the schema circular, which breaks tools that dereference the spec.
+          type: object
+          additionalProperties: true
+          description: Child loggers of this node. Same shape as LoggerTreeNode, nested to any depth.
         +:
           type: array
           items:

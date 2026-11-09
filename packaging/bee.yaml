@@ -110,7 +110,7 @@ data-dir: "/var/lib/bee"
 # skip-postage-snapshot: false
 ## forces the node to resync postage contract data
 # resync: false
-## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
+## ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry
 # resolver-options: []
 ## price oracle contract address
 # price-oracle-address: ""
