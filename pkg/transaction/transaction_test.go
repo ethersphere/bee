@@ -1662,6 +1662,22 @@ func TestTransactionSendAndWait(t *testing.T) {
 			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
 		}
 	})
+
+	t.Run("does not retry when the limit is already at the maximum", func(t *testing.T) {
+		t.Parallel()
+		service, sentGas := newService(t, 8_000_000, []types.Receipt{
+			{Status: types.ReceiptStatusFailed, GasUsed: transaction.MaxGasLimit},
+			{Status: types.ReceiptStatusSuccessful},
+		})
+
+		_, err := service.SendAndWait(context.Background(), request(), 0)
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
+			t.Fatalf("got error %v, want %v", err, transaction.ErrTransactionReverted)
+		}
+		if want := []uint64{transaction.MaxGasLimit}; !equalGas(*sentGas, want) {
+			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
+		}
+	})
 }
 
 func equalGas(got, want []uint64) bool {

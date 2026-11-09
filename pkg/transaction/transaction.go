@@ -236,7 +236,8 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 // SendAndWait sends the request and waits for the transaction to be mined.
 // A transaction that ran out of an estimated gas limit is sent once more with
-// twice that limit; a gas limit set by the caller is never changed.
+// twice that limit, capped at MaxGasLimit; there is no retry when the cap
+// would not raise the limit. A gas limit set by the caller is never changed.
 func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, error) {
 	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent)
 	if err != nil {
@@ -254,8 +255,13 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 		return nil, err
 	}
 
+	retryGasLimit := min(2*gasLimit, MaxGasLimit)
+	if retryGasLimit <= gasLimit {
+		return nil, ErrTransactionReverted
+	}
+
 	retry := *request
-	retry.GasLimit = min(2*gasLimit, MaxGasLimit)
+	retry.GasLimit = retryGasLimit
 	retry.Description = request.Description + " (retry after out of gas)"
 
 	t.logger.Warning("transaction ran out of gas, sending it again with a higher gas limit",
