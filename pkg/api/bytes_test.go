@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -144,7 +145,8 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+swarm.EmptyAddress.String(), http.StatusNotFound)
+		ref := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+ref.String(), http.StatusNotFound)
 	})
 }
 
@@ -621,6 +623,29 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodHead, resource, tt.want)
 			jsonhttptest.Request(t, client, http.MethodGet, resource, tt.want)
 		})
+	}
+}
+
+func TestBytesEmptyAddress(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	key := strings.Repeat("ab", swarm.HashSize)
+	for _, ref := range []string{
+		swarm.EmptyAddress.String(),
+		swarm.EmptyAddress.String() + strings.Repeat("00", swarm.HashSize),
+		swarm.EmptyAddress.String() + key,
+	} {
+		jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+ref, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "all-zero address is not a valid reference",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+		jsonhttptest.Request(t, client, http.MethodHead, "/bytes/"+ref, http.StatusBadRequest)
 	}
 }
 

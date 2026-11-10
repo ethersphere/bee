@@ -88,7 +88,7 @@ func TestServiceLastChequeNilEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
+	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestServiceLastChequeNilCumulativePayout(t *testing.T) {
 	beneficiary := common.HexToAddress("0xbe")
 	store.setRaw(chequebook.LastIssuedChequeKey(beneficiary), []byte(`{}`))
 
-	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil)
+	svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -91,6 +91,7 @@ func (c *command) initDeployCmd() error {
 				chequebookFactory,
 				swapInitialDeposit,
 				erc20Service,
+				blocktime,
 			)
 			if err != nil {
 				return err

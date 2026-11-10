@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func TestChunkHasHandler(t *testing.T) {
 		Storer: mockStorer,
 	})
 
-	key := swarm.MustParseHexAddress("aabbcc")
+	key := swarm.MustParseHexAddress("aabbcc0000000000000000000000000000000000000000000000000000000000")
 	value := []byte("data data data")
 
 	err := mockStorer.Cache().Put(context.Background(), swarm.NewChunk(key, value))
@@ -141,7 +142,7 @@ func TestChunkHasHandler(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abbbbb", http.StatusNotFound,
+		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abbbbb0000000000000000000000000000000000000000000000000000000000", http.StatusNotFound,
 			jsonhttptest.WithNoResponseBody())
 	})
 
@@ -158,12 +159,34 @@ func TestChunkGetHandlerNoPeers(t *testing.T) {
 		Storer: storerMock,
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodGet, "/chunks/"+swarm.MustParseHexAddress("aabbcc").String(), http.StatusServiceUnavailable,
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chunks/"+swarm.MustParseHexAddress("aabbcc0000000000000000000000000000000000000000000000000000000000").String(), http.StatusServiceUnavailable,
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: "chunk could not be retrieved because no usable peer was available",
 			Code:    http.StatusServiceUnavailable,
 		}),
 	)
+}
+
+func TestChunkHandlersInvalidAddress(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	for _, address := range []string{
+		swarm.EmptyAddress.String(),
+		strings.Repeat("00", 2*swarm.HashSize),
+		strings.Repeat("ab", 2*swarm.HashSize),
+	} {
+		jsonhttptest.Request(t, client, http.MethodGet, "/chunks/"+address, http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "chunk address must be 32 bytes and not all zeros",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+		jsonhttptest.Request(t, client, http.MethodHead, "/chunks/"+address, http.StatusBadRequest)
+	}
 }
 
 func TestChunkHandlersInvalidInputs(t *testing.T) {
