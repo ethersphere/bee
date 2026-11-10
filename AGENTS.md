@@ -32,7 +32,7 @@ Code that parses, decodes or validates untrusted input needs a fuzz target (`*_f
 
 Before you finish a change set (especially before a commit or PR), run these and fix failures:
 
-1. **Formatting** — `make format` (gofumpt + gci; see `CODING.md`).
+1. **Formatting** — `make format` (gofumpt; see `CODING.md`). `make format-imports` (gci) only regroups imports and is optional.
 2. **Compile** — `make build` (all packages) and, when you need the binary artifact, `make binary` (`dist/bee`, `CGO_ENABLED=0`).
 3. **Tests** — `make test` (unit tests, `-failfast`). For a single package use `go test ./pkg/<name>/...`. Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code. Run `make fuzz-regression FUZZPKG=./pkg/<name>/...` when you touch fuzz targets or the input they cover. Run `make fuzz FUZZPKG=./pkg/<name>/...` when you add or change a fuzz target.
 4. **Static checks** — `make lint` and `make vet` (see `.golangci.yml`).

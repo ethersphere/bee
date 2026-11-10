@@ -382,7 +382,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 		Use:   "reserve <filename>",
 		Short: "Export reserve DB to a file. Use \"-\" as filename in order to write to STDOUT",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) != 1 {
+			if len(args) != 1 {
 				return cmd.Help()
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
@@ -466,7 +466,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 		Use:   "pinning <filename>",
 		Short: "Export pinning DB to a file. Use \"-\" as filename in order to write to STDOUT",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) != 1 {
+			if len(args) != 1 {
 				return cmd.Help()
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
@@ -576,7 +576,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 		Use:   "reserve <filename>",
 		Short: "Import reserve DB from a file. Use \"-\" as filename in order to read from STDIN",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) != 1 {
+			if len(args) != 1 {
 				return cmd.Help()
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
@@ -660,7 +660,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 		Use:   "pinning <filename>",
 		Short: "Import pinning DB from a file. Use \"-\" as filename in order to read from STDIN",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) != 1 {
+			if len(args) != 1 {
 				return cmd.Help()
 			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)

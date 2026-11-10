@@ -2,6 +2,8 @@ GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.15.0
+GOFUMPT_VERSION ?= v0.11.0
+GCI_VERSION ?= v0.14.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -84,15 +86,18 @@ testlocal-all: beekeeper beelocal deploylocal testlocal
 
 .PHONY: install-formatters
 install-formatters:
-	$(GO) get github.com/daixiang0/gci
-	$(GO) install mvdan.cc/gofumpt@latest
+	$(GO) install github.com/daixiang0/gci@$(GCI_VERSION)
+	$(GO) install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
 
 FOLDER=$(shell pwd)
 
 .PHONY: format
 format:
 	$(GOBIN)/gofumpt -l -w $(FOLDER)
-	$(GOBIN)/gci -w -local $(go list -m) `find $(FOLDER) -type f \! -name "*.pb.go" -name "*.go" \! -path \*/\.git/\* -exec echo {} \;`
+
+.PHONY: format-imports
+format-imports:
+	$(GOBIN)/gci write -s standard -s default -s "prefix($$($(GO) list -m))" `find $(FOLDER) -type f \! -name "*.pb.go" -name "*.go" \! -path \*/\.git/\* -exec echo {} \;`
 
 .PHONY: lint
 lint: linter

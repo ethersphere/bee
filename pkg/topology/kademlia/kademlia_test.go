@@ -1351,7 +1351,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		// implement empty prune func
 		pruneMux.Lock()
 		pruneImpl := func(uint8) {}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		if err := kad.Start(context.Background()); err != nil {
@@ -1414,7 +1414,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		pruneImpl = func(depth uint8) {
 			kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 		}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		// add a peer to kick start pruning
@@ -1472,7 +1472,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	// implement empty prune func
 	pruneMux.Lock()
 	pruneImpl := func(uint8) {}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -1527,7 +1527,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	pruneImpl = func(depth uint8) {
 		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 	}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	// add a peer to kick start pruning
