@@ -13,6 +13,7 @@ import (
 var (
 	ValidatePublicAddress = validatePublicAddress
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
+	IsChainEnabled        = isChainEnabled
 )
 
 // NewTestBeeWithClosers builds a Bee with only the push-sync and retrieval
