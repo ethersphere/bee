@@ -15,6 +15,10 @@ import (
 
 const subscribePushEventKey = "subscribe-push"
 
+// pushRetryInterval is how often the pending chunks are offered to the
+// subscriber again when no upload event triggers it.
+const pushRetryInterval = time.Minute
+
 func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 	chunks := make(chan swarm.Chunk)
 
@@ -74,6 +78,9 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				return
 			case <-trigger:
 				// wait for the next event
+			case <-time.After(pushRetryInterval):
+				// chunks the pusher left in the queue to retry later
+				// are only seen again by iterating
 			}
 		}
 	})

@@ -408,13 +408,21 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	skip := skippeers.NewList(0)
 	defer skip.Close()
 
-	for sentErrorsLeft > 0 {
+	// An origin whose budget is spent still waits for the pushes in flight:
+	// they run on their own timeout and are paid for when their receipt
+	// arrives, so dropping their result would waste a valid receipt.
+	for sentErrorsLeft > 0 || (origin && inflight > 0) {
 		select {
 		case <-ctx.Done():
 			return nil, ErrNoPush
 		case <-preemptiveTicker:
-			retry()
+			if sentErrorsLeft > 0 {
+				retry()
+			}
 		case <-retryC:
+			if sentErrorsLeft <= 0 {
+				continue
+			}
 
 			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
