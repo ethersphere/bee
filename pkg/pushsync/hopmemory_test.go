@@ -1,0 +1,344 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package pushsync_test
+
+import (
+	"math/rand"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+)
+
+// testClock is a clock that a test moves forward by hand.
+type testClock struct {
+	mtx sync.Mutex
+	t   time.Time
+}
+
+func newTestClock() *testClock {
+	return &testClock{t: time.Unix(1_700_000_000, 0)}
+}
+
+func (c *testClock) Now() time.Time {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.t
+}
+
+func (c *testClock) Add(d time.Duration) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// hopAddr returns an address that starts with the given bytes.
+func hopAddr(prefix ...byte) swarm.Address {
+	b := make([]byte, swarm.HashSize)
+	copy(b, prefix)
+	return swarm.NewAddress(b)
+}
+
+func hasAddr(addrs []swarm.Address, a swarm.Address) bool {
+	return swarm.ContainsAddress(addrs, a)
+}
+
+func TestHopMemoryRecord(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	m.RecordValid(10, chunk, peer)
+	valid, blocked, _ := m.View(10, chunk)
+	if !hasAddr(valid, peer) || len(blocked) != 0 {
+		t.Fatalf("after a valid receipt: valid %v blocked %v", valid, blocked)
+	}
+
+	m.RecordShallow(10, chunk, peer)
+	valid, blocked, _ = m.View(10, chunk)
+	if len(valid) != 0 || !hasAddr(blocked, peer) {
+		t.Fatalf("after a shallow receipt: valid %v blocked %v", valid, blocked)
+	}
+
+	m.RecordValid(10, chunk, peer)
+	m.Forget(10, chunk, peer)
+	valid, blocked, _ = m.View(10, chunk)
+	if len(valid) != 0 || len(blocked) != 0 {
+		t.Fatalf("after forget: valid %v blocked %v", valid, blocked)
+	}
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records, want 0", got)
+	}
+}
+
+// TestHopMemoryShallowDuringPause checks that shallow receipts of pushes that
+// were sent before the pause began do not make the pause longer.
+func TestHopMemoryShallowDuringPause(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	// results of pushes that ran in parallel
+	m.RecordShallow(10, chunk, peer)
+	m.RecordShallow(10, chunk, peer)
+	clock.Add(30 * time.Second)
+	m.RecordShallow(10, chunk, peer)
+
+	clock.Add(30 * time.Second)
+	if _, blocked, _ := m.View(10, chunk); len(blocked) != 0 {
+		t.Fatal("peer is blocked 60s after the first shallow receipt")
+	}
+}
+
+// TestHopMemoryForgetKeepsPause checks that an error of another push does not
+// end a pause that still runs.
+func TestHopMemoryForgetKeepsPause(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	m.RecordShallow(10, chunk, peer)
+	m.Forget(10, chunk, peer)
+	if _, blocked, _ := m.View(10, chunk); !hasAddr(blocked, peer) {
+		t.Fatal("forget ended a pause that still runs")
+	}
+
+	clock.Add(time.Minute)
+	m.Forget(10, chunk, peer)
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records after the pause, want 0", got)
+	}
+}
+
+func TestHopMemoryPauseDoubles(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	isBlocked := func() bool {
+		_, blocked, _ := m.View(10, chunk)
+		return hasAddr(blocked, peer)
+	}
+
+	// each step records one more shallow receipt in a row and checks the
+	// pause that follows it
+	for i, pause := range []time.Duration{
+		time.Minute,
+		2 * time.Minute,
+		4 * time.Minute,
+		8 * time.Minute,
+		16 * time.Minute,
+		30 * time.Minute,
+		30 * time.Minute,
+	} {
+		m.RecordShallow(10, chunk, peer)
+		clock.Add(pause - time.Second)
+		if !isBlocked() {
+			t.Fatalf("shallow receipt %d: peer is free one second before the end of a %s pause", i+1, pause)
+		}
+		clock.Add(time.Second)
+		if isBlocked() {
+			t.Fatalf("shallow receipt %d: peer is blocked after a %s pause", i+1, pause)
+		}
+	}
+
+	// a valid receipt starts the count again
+	m.RecordValid(10, chunk, peer)
+	m.RecordShallow(10, chunk, peer)
+	clock.Add(time.Minute)
+	if isBlocked() {
+		t.Fatal("peer is blocked 60s after the first shallow receipt that follows a valid one")
+	}
+}
+
+func TestHopMemoryValidIdle(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	m.RecordValid(10, chunk, peer)
+
+	clock.Add(29 * time.Minute)
+	if valid, _, _ := m.View(10, chunk); !hasAddr(valid, peer) {
+		t.Fatal("valid record is gone after 29 minutes")
+	}
+
+	clock.Add(time.Minute)
+	if valid, _, _ := m.View(10, chunk); len(valid) != 0 {
+		t.Fatal("valid record is still used after 30 minutes without a result")
+	}
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records, want 0", got)
+	}
+}
+
+func TestHopMemoryProbe(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		other = hopAddr(0x1c, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	m.RecordValid(10, chunk, peer)
+	m.RecordValid(10, other, peer)
+
+	if _, _, due := m.View(10, chunk); !due {
+		t.Fatal("probe is not due for a neighborhood that was never probed")
+	}
+
+	m.MarkProbe(10, chunk)
+	if _, _, due := m.View(10, chunk); due {
+		t.Fatal("probe is due right after a probe")
+	}
+	if _, _, due := m.View(10, other); !due {
+		t.Fatal("probe of one neighborhood changed another neighborhood")
+	}
+
+	clock.Add(29 * time.Second)
+	if _, _, due := m.View(10, chunk); due {
+		t.Fatal("probe is due 29s after a probe")
+	}
+	clock.Add(time.Second)
+	if _, _, due := m.View(10, chunk); !due {
+		t.Fatal("probe is not due 30s after a probe")
+	}
+}
+
+func TestHopMemoryNeighborhoodKey(t *testing.T) {
+	t.Parallel()
+
+	peer := hopAddr(0x10)
+
+	t.Run("radius 10", func(t *testing.T) {
+		t.Parallel()
+
+		m := pushsync.NewHopMemory(newTestClock().Now)
+		m.RecordValid(10, hopAddr(0x6b, 0x00), peer)
+
+		// 0x6b3f shares the first 10 bits with 0x6b00, 0x6b40 does not
+		if valid, _, _ := m.View(10, hopAddr(0x6b, 0x3f, 0xff)); !hasAddr(valid, peer) {
+			t.Fatal("chunk of the same neighborhood does not see the record")
+		}
+		if valid, _, _ := m.View(10, hopAddr(0x6b, 0x40)); len(valid) != 0 {
+			t.Fatal("chunk of another neighborhood sees the record")
+		}
+		if valid, _, _ := m.View(10, hopAddr(0x6a, 0x00)); len(valid) != 0 {
+			t.Fatal("chunk of another neighborhood sees the record")
+		}
+	})
+
+	t.Run("radius 8", func(t *testing.T) {
+		t.Parallel()
+
+		m := pushsync.NewHopMemory(newTestClock().Now)
+		m.RecordValid(8, hopAddr(0x6b, 0x00), peer)
+
+		if valid, _, _ := m.View(8, hopAddr(0x6b, 0xff)); !hasAddr(valid, peer) {
+			t.Fatal("chunk of the same neighborhood does not see the record")
+		}
+		if valid, _, _ := m.View(8, hopAddr(0x6a, 0x00)); len(valid) != 0 {
+			t.Fatal("chunk of another neighborhood sees the record")
+		}
+	})
+
+	t.Run("radius 0", func(t *testing.T) {
+		t.Parallel()
+
+		m := pushsync.NewHopMemory(newTestClock().Now)
+		m.RecordValid(0, hopAddr(0x6b), peer)
+
+		if valid, _, _ := m.View(0, hopAddr(0xff, 0xff)); !hasAddr(valid, peer) {
+			t.Fatal("at radius 0 every chunk is in one neighborhood")
+		}
+	})
+}
+
+func TestHopMemoryRadiusChange(t *testing.T) {
+	t.Parallel()
+
+	var (
+		m     = pushsync.NewHopMemory(newTestClock().Now)
+		chunk = hopAddr(0x6b, 0x00)
+	)
+
+	m.RecordValid(9, chunk, hopAddr(0x10))
+	m.RecordShallow(9, chunk, hopAddr(0x20))
+
+	valid, blocked, _ := m.View(10, chunk)
+	if len(valid) != 0 || len(blocked) != 0 {
+		t.Fatalf("records of radius 9 are used at radius 10: valid %v blocked %v", valid, blocked)
+	}
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records, want 0", got)
+	}
+}
+
+func TestHopMemoryConcurrent(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		wg    sync.WaitGroup
+	)
+
+	for i := range 64 {
+		wg.Go(func() {
+			r := rand.New(rand.NewSource(int64(i)))
+			for range 200 {
+				chunk := hopAddr(byte(r.Intn(4)), byte(r.Intn(256)))
+				peer := hopAddr(byte(r.Intn(8)))
+				switch r.Intn(6) {
+				case 0:
+					m.RecordValid(10, chunk, peer)
+				case 1:
+					m.RecordShallow(10, chunk, peer)
+				case 2:
+					m.Forget(10, chunk, peer)
+				case 3:
+					m.MarkProbe(10, chunk)
+				case 4:
+					clock.Add(time.Second)
+				default:
+					m.View(10, chunk)
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	_ = m.Len()
+}
