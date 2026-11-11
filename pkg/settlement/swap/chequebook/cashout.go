@@ -147,7 +147,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		Description: "cheque cashout",
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := s.transactionService.Send(ctx, request, nil)
 	if err != nil {
 		return common.Hash{}, err
 	}

@@ -172,6 +172,9 @@ func TestSuggestedFeeAndTipsFromHistory_MinimumTip(t *testing.T) {
 					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
 						return history, nil
 					}),
+					backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+						return &types.Header{BaseFee: big.NewInt(1000)}, nil
+					}),
 				),
 				tc.minimum,
 				5*time.Second,
@@ -179,14 +182,63 @@ func TestSuggestedFeeAndTipsFromHistory_MinimumTip(t *testing.T) {
 				wrapped.DefaultFeeHistoryBlockCount,
 			)
 
-			got, err := backend.SuggestedFeeAndTipsFromHistory(context.Background(), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.LowTip.String() != tc.low || got.MarketTip.String() != tc.market || got.AggressiveTip.String() != tc.aggressive {
-				t.Fatalf("got low %s market %s aggressive %s, want %s %s %s",
-					got.LowTip, got.MarketTip, got.AggressiveTip, tc.low, tc.market, tc.aggressive)
+			for _, tier := range []struct{ name, want string }{
+				{"low", tc.low},
+				{"market", tc.market},
+				{"aggressive", tc.aggressive},
+			} {
+				_, tip, err := backend.SuggestFeeHistory(context.Background(), tier.name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tip.String() != tier.want {
+					t.Fatalf("%s tip %s, want %s", tier.name, tip, tier.want)
+				}
 			}
 		})
+	}
+}
+
+func TestSuggestFeeHistory(t *testing.T) {
+	t.Parallel()
+
+	history := &ethereum.FeeHistory{
+		BaseFee: []*big.Int{big.NewInt(1), big.NewInt(1000)},
+		Reward: [][]*big.Int{
+			{big.NewInt(10), big.NewInt(50), big.NewInt(90)},
+			{big.NewInt(20), big.NewInt(60), big.NewInt(100)},
+		},
+	}
+	header := &types.Header{BaseFee: big.NewInt(1000)}
+
+	backend := wrapped.NewBackend(
+		backendmock.New(
+			backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+				return history, nil
+			}),
+			backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+				return header, nil
+			}),
+		),
+		0,
+		5*time.Second,
+		90,
+		wrapped.DefaultFeeHistoryBlockCount,
+	)
+
+	// Medians are low=15, market=55, aggressive=95. Fee cap is 2*baseFee + tip.
+	feeCap, tip, err := backend.SuggestFeeHistory(context.Background(), "market")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tip.String() != "55" || feeCap.String() != "2055" {
+		t.Fatalf("got tip %s fee cap %s, want 55 and 2055", tip, feeCap)
+	}
+
+	if _, _, err := backend.SuggestFeeHistory(context.Background(), ""); err == nil {
+		t.Fatal("empty tier should be rejected")
+	}
+	if _, _, err := backend.SuggestFeeHistory(context.Background(), "banana"); err == nil {
+		t.Fatal("unknown tier should be rejected")
 	}
 }

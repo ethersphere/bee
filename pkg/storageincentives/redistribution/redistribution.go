@@ -11,16 +11,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
-const (
-	loggerName      = "redistributionContract"
-	BoostTipPercent = 50
-)
+const loggerName = "redistributionContract"
 
 type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
@@ -29,6 +27,7 @@ type Contract interface {
 	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
+	FeePriority() string
 }
 
 type contract struct {
@@ -39,6 +38,7 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
+	feePriority               string
 }
 
 func New(
@@ -49,7 +49,11 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
+	feePriority string,
 ) Contract {
+	if feePriority == "" {
+		feePriority = transaction.FeePriorityMarket.String()
+	}
 	return &contract{
 		overlay:                   overlay,
 		owner:                     owner,
@@ -58,6 +62,7 @@ func New(
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
 		gasLimit:                  gasLimit,
+		feePriority:               feePriority,
 	}
 }
 
@@ -109,13 +114,12 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
@@ -132,13 +136,12 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
@@ -155,13 +158,12 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -189,7 +191,11 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (c *contract) FeePriority() string {
+	return c.feePriority
+}
+
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -199,7 +205,7 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		)
 	}()
 
-	txHash, err = c.txService.Send(ctx, request, boostPercent)
+	txHash, err = c.txService.Send(ctx, request, transaction.OptionalFeePriority(c.feePriority))
 	if err != nil {
 		return txHash, err
 	}

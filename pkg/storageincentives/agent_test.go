@@ -593,6 +593,10 @@ func (m *mockchainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return big.NewInt(4), big.NewInt(5), nil
 }
 
+func (m *mockchainBackend) SuggestFeeHistory(context.Context, string) (*big.Int, *big.Int, error) {
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
 type contractCall int
 
 func (c contractCall) String() string {
@@ -654,6 +658,8 @@ func (m *mockContract) playingCount() int {
 	defer m.mtx.Unlock()
 	return m.isPlayingCount
 }
+
+func (m *mockContract) FeePriority() string { return "" }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return m.anchor, nil

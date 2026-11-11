@@ -312,7 +312,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockTime:                     networkConfig.blockTime,
 		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
 		FeeHistoryBlockCount:          c.config.GetUint64(optionNameFeeHistoryBlockCount),
-		TransactionFeePriority:        c.config.GetString(optionNameTransactionFeePriority),
+		RedistributionGameFeePriority: c.config.GetString(optionNameRedistributionGameFeePriority),
 		TransactionFeePriorityMax:     c.config.GetString(optionNameTransactionFeePriorityMax),
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,

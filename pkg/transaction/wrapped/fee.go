@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -84,8 +85,35 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 	return gasFeeCap, gasTipCap, nil
 }
 
-func (b *wrappedBackend) SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
-	fh, err := b.FeeHistory(ctx, b.feeHistoryBlockCount, lastBlock, b.feeHistoryRewardPercentiles)
+// SuggestFeeHistory calculates gasFeeCap and gasTipCap for tier from eth_feeHistory.
+// gasFeeCap is twice the latest base fee plus the tier tip.
+func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
+	if strings.TrimSpace(tier) == "" {
+		return nil, nil, errors.New("fee priority is required")
+	}
+	parsed, err := transaction.ParseFeePriority(tier)
+	if err != nil {
+		return nil, nil, err
+	}
+	tips, err := b.suggestedFeeAndTipsFromHistory(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+	}
+	if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+		return nil, nil, ErrEIP1559NotSupported
+	}
+	gasTipCap := new(big.Int).Set(transaction.TipForPriority(parsed, tips))
+	gasFeeCap := new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
+	return gasFeeCap, gasTipCap, nil
+}
+
+func (b *wrappedBackend) suggestedFeeAndTipsFromHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryBlockCount, nil, b.feeHistoryRewardPercentiles)
 	if err != nil {
 		return nil, err
 	}

@@ -69,23 +69,23 @@ func InitChain(
 	feePriority string,
 	feePriorityMax string,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	startTier, err := transaction.ParseFeeTier(feePriority)
+	startPriority, err := transaction.ParseFeePriority(feePriority)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority: %w", err)
 	}
-	endTier, err := transaction.ParseFeeTier(feePriorityMax)
+	endPriority, err := transaction.ParseFeePriority(feePriorityMax)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority max: %w", err)
 	}
-	if startTier > endTier {
+	if startPriority > endPriority {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority %q must not be higher than maximum %q", feePriority, feePriorityMax)
 	}
 	if feeHistoryBlockCount == 0 {
 		feeHistoryBlockCount = wrapped.DefaultFeeHistoryBlockCount
 	}
 	logger.Info("transaction fee priority",
-		"start_tier", startTier.String(),
-		"end_tier", endTier.String(),
+		"start_priority", startPriority.String(),
+		"end_priority", endPriority.String(),
 		"fee_history_blocks", feeHistoryBlockCount,
 	)
 

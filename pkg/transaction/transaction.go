@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/safe"
@@ -69,9 +70,10 @@ type StoredTransaction struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // used gas price
 	GasLimit    uint64          // used gas limit
-	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
+	GasTipBoost int             // percent added to the suggested tip; zero when a fee priority priced the transaction
 	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
+	FeePriority string          // fee priority that priced the transaction; resend recalculates from it
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -82,8 +84,9 @@ type StoredTransaction struct {
 // limit and nonce management.
 type Service interface {
 	io.Closer
-	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
-	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
+	// Send creates a transaction based on the request and sends it.
+	// tier selects an eth_feeHistory tip (low, market, aggressive). A nil tier uses the default suggestion with DefaultTipBoostPercent.
+	Send(ctx context.Context, request *TxRequest, tier *string) (txHash common.Hash, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -174,7 +177,8 @@ func (t *transactionService) waitForAllPendingTx() error {
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
+// A non-nil tier prices the transaction with SuggestFeeHistory. Otherwise the default suggestion is used.
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, tier *string) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -185,7 +189,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce, boostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, tier)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -204,18 +208,25 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 	txHash = signedTx.Hash()
 
+	tierName := ""
+	tipBoost := DefaultTipBoostPercent
+	if tier != nil {
+		tierName = *tier
+		tipBoost = 0
+	}
 	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
 		To:          signedTx.To(),
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
-		GasTipBoost: boostPercent,
+		GasTipBoost: tipBoost,
 		GasTipCap:   signedTx.GasTipCap(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
 		Description: request.Description,
+		FeePriority: tierName,
 	})
 	if err != nil {
 		return common.Hash{}, err
@@ -282,7 +293,7 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, tier *string) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
 		// Estimate gas using pending state for consistency with PendingNonceAt
@@ -348,7 +359,14 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
+	var gasFeeCap, gasTipCap *big.Int
+	tierName := ""
+	if tier != nil {
+		tierName = *tier
+		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, tierName)
+	} else {
+		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, DefaultTipBoostPercent)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +377,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		"gas_limit", gasLimit,
 		"gas_fee_cap", gasFeeCap,
 		"gas_tip_cap", gasTipCap,
+		"fee_priority", tierName,
 		"nonce", nonce,
 		"description", request.Description,
 	)
@@ -494,7 +513,12 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
+	var gasFeeCap, gasTipCap *big.Int
+	if storedTransaction.FeePriority != "" {
+		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, storedTransaction.FeePriority)
+	} else {
+		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
+	}
 	if err != nil {
 		return err
 	}
@@ -578,6 +602,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		GasLimit:    signedTx.Gas(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		GasTipBoost: storedTransaction.GasTipBoost,
+		FeePriority: storedTransaction.FeePriority,
 		GasTipCap:   signedTx.GasTipCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),

@@ -51,6 +51,7 @@ type ChainBackend interface {
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
+	SuggestFeeHistory(ctx context.Context, tier string) (*big.Int, *big.Int, error)
 }
 
 type Health interface {
@@ -646,7 +647,7 @@ func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error
 		return nil, false, err
 	}
 
-	price, _, err := a.backend.SuggestedFeeAndTip(ctx, nil, redistribution.BoostTipPercent)
+	price, _, err := a.backend.SuggestFeeHistory(ctx, a.contract.FeePriority())
 	if err != nil {
 		return nil, false, err
 	}

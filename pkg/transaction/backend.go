@@ -30,7 +30,7 @@ type FeeHistorySuggestedFeeAndTips struct {
 type Backend interface {
 	backend.Geth
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*FeeHistorySuggestedFeeAndTips, error)
+	SuggestFeeHistory(ctx context.Context, tier string) (gasFeeCap, gasTipCap *big.Int, err error)
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This

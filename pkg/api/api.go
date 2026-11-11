@@ -235,9 +235,10 @@ type Service struct {
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
 
-	chainBackend transaction.Backend
-	erc20Service erc20.Service
-	chainID      int64
+	chainBackend   transaction.Backend
+	erc20Service   erc20.Service
+	chainID        int64
+	maxFeePriority string
 
 	whitelistedWithdrawalAddress []common.Address
 
@@ -267,6 +268,18 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 	if s != nil {
 		s.redistributionAgent = redistributionAgent
 	}
+}
+
+// SetMaxFeePriority stores the highest fee priority a request may select.
+func (s *Service) SetMaxFeePriority(tier string) error {
+	parsed, err := transaction.ParseFeePriority(tier)
+	if err != nil {
+		return err
+	}
+	if s != nil {
+		s.maxFeePriority = parsed.String()
+	}
+	return nil
 }
 
 type Options struct {
@@ -611,7 +624,8 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 }
 
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
-// gas price and gas limit through the HTTP API headers.
+// gas price, gas limit, and an optional fee priority through the HTTP API headers.
+// An absent fee priority is left unset. A priority above the configured maximum is rejected.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -634,8 +648,8 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			ctx := r.Context()
 			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
 			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
-			if headers.FeePriority != "" {
-				tier, err := transaction.ParseFeeTier(headers.FeePriority)
+			if tierName := strings.TrimSpace(headers.FeePriority); tierName != "" {
+				tier, err := transaction.ParseFeePriority(tierName)
 				if err != nil {
 					logger.Debug("invalid fee priority header", "error", err)
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
@@ -644,6 +658,28 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,
 							Error: err.Error(),
+						}},
+					})
+					return
+				}
+				maxTier := s.maxFeePriority
+				if maxTier == "" {
+					maxTier = transaction.FeePriorityAggressive.String()
+				}
+				above, err := transaction.FeePriorityAboveMax(tier.String(), maxTier)
+				if err != nil {
+					logger.Debug("invalid fee priority", "error", err)
+					jsonhttp.InternalServerError(w, nil)
+					return
+				}
+				if above {
+					logger.Debug("fee priority above configured maximum", "fee_priority", tier.String(), "maximum", maxTier)
+					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+						Message: "invalid header params",
+						Code:    http.StatusBadRequest,
+						Reasons: []jsonhttp.Reason{{
+							Field: FeePriorityHeader,
+							Error: fmt.Sprintf("fee priority %q is above maximum %q", tier.String(), maxTier),
 						}},
 					})
 					return

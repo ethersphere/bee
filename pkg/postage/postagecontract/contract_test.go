@@ -74,7 +74,7 @@ func TestCreateBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					switch *request.To {
 					case bzzTokenAddress:
 						return txHashApprove, nil
@@ -319,7 +319,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					switch *request.To {
 					case bzzTokenAddress:
 						return txHashApprove, nil
@@ -490,7 +490,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == postageStampAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHashApprove, nil
@@ -663,7 +663,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					return common.Hash{}, nil
 				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 					return &types.Receipt{
@@ -805,7 +805,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == postageContractAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHash, fmt.Errorf("some error")
@@ -928,7 +928,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					return common.Hash{}, nil
 				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 					return &types.Receipt{

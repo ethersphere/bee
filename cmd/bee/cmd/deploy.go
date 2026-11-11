@@ -62,7 +62,7 @@ func (c *command) initDeployCmd() error {
 				},
 				c.config.GetUint64(optionNameBlockSyncInterval),
 				c.config.GetUint64(optionNameFeeHistoryBlockCount),
-				c.config.GetString(optionNameTransactionFeePriority),
+				c.config.GetString(optionNameRedistributionGameFeePriority),
 				c.config.GetString(optionNameTransactionFeePriorityMax),
 			)
 			if err != nil {

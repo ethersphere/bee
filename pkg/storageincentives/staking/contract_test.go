@@ -183,7 +183,7 @@ func TestProofHeightBypassViaDeposit(t *testing.T) {
 		owner, stakingAddr, stakingContractABI, bzzAddr,
 		transactionMock.New(
 			transactionMock.WithCallFunc(newStakeCallFunc(t, stakingAddr, oracleAddr, bzzAddr, committed, potential, balance, price)),
-			transactionMock.WithSendFunc(func(_ context.Context, req *transaction.TxRequest, _ int) (common.Hash, error) {
+			transactionMock.WithSendFunc(func(_ context.Context, req *transaction.TxRequest, _ *string) (common.Hash, error) {
 				if *req.To == stakingAddr && bytes.Equal(req.Data[:4], manageStakeSig) {
 					args, err := stakingContractABI.Methods["manageStake"].Inputs.Unpack(req.Data[4:])
 					if err != nil {
@@ -317,7 +317,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -379,7 +379,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -515,7 +515,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -608,7 +608,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					t.Fatal("transaction should not be sent")
 					return common.Hash{}, nil
 				}),
@@ -654,7 +654,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -697,7 +697,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return common.Hash{}, errors.New("send transaction failed")
 					}
@@ -741,7 +741,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -790,7 +790,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -852,7 +852,7 @@ func TestDepositStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -950,7 +950,7 @@ func TestChangeHeight(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1014,7 +1014,7 @@ func TestChangeHeight(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1078,7 +1078,7 @@ func TestChangeHeight(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1134,7 +1134,7 @@ func TestChangeHeight(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					return common.Hash{}, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
@@ -1209,7 +1209,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1247,7 +1247,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						return common.Hash{}, errors.New("send transaction failed")
 					}
@@ -1279,7 +1279,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1317,7 +1317,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1360,7 +1360,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -1817,7 +1817,7 @@ func TestWithdrawStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
@@ -1911,7 +1911,7 @@ func TestWithdrawStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
@@ -1967,7 +1967,7 @@ func TestWithdrawStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
@@ -2073,7 +2073,7 @@ func TestMigrateStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
@@ -2189,7 +2189,7 @@ func TestMigrateStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
@@ -2253,7 +2253,7 @@ func TestMigrateStake(t *testing.T) {
 			stakingContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
 					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)

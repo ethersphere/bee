@@ -167,7 +167,7 @@ type Options struct {
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
 	FeeHistoryBlockCount          uint64
-	TransactionFeePriority        string
+	RedistributionGameFeePriority string
 	TransactionFeePriorityMax     string
 	BootnodeMode                  bool
 	Bootnodes                     []string
@@ -495,7 +495,7 @@ func NewBee(
 		},
 		o.BlockSyncInterval,
 		o.FeeHistoryBlockCount,
-		o.TransactionFeePriority,
+		o.RedistributionGameFeePriority,
 		o.TransactionFeePriorityMax,
 	)
 	if err != nil {
@@ -567,6 +567,9 @@ func NewBee(
 		)
 
 		apiService.Mount()
+		if err = apiService.SetMaxFeePriority(o.TransactionFeePriorityMax); err != nil {
+			return nil, fmt.Errorf("transaction fee priority max: %w", err)
+		}
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
@@ -1353,7 +1356,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit, o.RedistributionGameFeePriority)
 
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10

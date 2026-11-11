@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	signermock "github.com/ethersphere/bee/v2/pkg/crypto/mock"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -182,7 +183,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +264,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,6 +333,9 @@ func TestTransactionSend(t *testing.T) {
 					return nonce - 1, nil
 				}),
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					if boostPercent != transaction.DefaultTipBoostPercent {
+						t.Fatalf("got boost %d, want %d", boostPercent, transaction.DefaultTipBoostPercent)
+					}
 					return gasFeeCapWithBoost, suggestedGasTip, nil
 				}),
 			),
@@ -350,7 +354,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, transaction.DefaultTipBoostPercent)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -429,7 +433,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +498,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -561,7 +565,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -631,7 +635,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -700,7 +704,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -772,7 +776,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -846,7 +850,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -920,7 +924,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -989,7 +993,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1058,7 +1062,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, 0)
+		txHash, err := transactionService.Send(context.Background(), request, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1206,6 +1210,79 @@ func TestTransactionResend(t *testing.T) {
 
 	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResendFeePriorityRecalculates(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	sender := common.HexToAddress("0xddff")
+	recipient := common.HexToAddress("0xbbbddd")
+	chainID := big.NewInt(5)
+	nonce := uint64(10)
+	data := []byte{1, 2, 3, 4}
+	gasTip := big.NewInt(55)
+	gasFeeCap := big.NewInt(2055)
+	gasLimit := uint64(100000)
+	value := big.NewInt(0)
+
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       gasLimit,
+		GasTipCap: gasTip,
+		GasFeeCap: gasFeeCap,
+		Data:      data,
+	})
+
+	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
+		Nonce:       nonce,
+		To:          &recipient,
+		Data:        data,
+		GasLimit:    gasLimit,
+		GasFeeCap:   gasFeeCap,
+		GasTipCap:   gasTip,
+		Value:       value,
+		FeePriority: "market",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transactionService, err := transaction.NewService(logger, sender,
+		backendmock.New(
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				if tx != signedTx {
+					t.Fatal("not sending signed transaction")
+				}
+				return nil
+			}),
+			backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
+				if tier != "market" {
+					t.Fatalf("got tier %q, want market", tier)
+				}
+				return gasFeeCap, gasTip, nil
+			}),
+		),
+		signerMockForTransaction(t, signedTx, recipient, chainID),
+		store,
+		chainID,
+		monitormock.New(),
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, transactionService)
+
+	if err := transactionService.ResendTransaction(context.Background(), signedTx.Hash()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1507,4 +1584,164 @@ func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSendUsesFeeHistoryForTier(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	sender := common.HexToAddress("0xddff")
+	recipient := common.HexToAddress("0xabcd")
+	txData := common.Hex2Bytes("0xabcdee")
+	value := big.NewInt(1)
+	suggestedGasTip := minimumTip
+	estimatedGasLimit := uint64(30000)
+	gasLimit := estimatedGasLimit + estimatedGasLimit*transaction.GasBufferPercent/100
+	nonce := uint64(2)
+	chainID := big.NewInt(5)
+	defaultFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), suggestedGasTip)
+	historyTip := big.NewInt(55)
+	historyFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), historyTip)
+
+	newService := func(t *testing.T, signedTx *types.Transaction, suggestedCalled, historyCalled *bool, wantGasPrice *big.Int) transaction.Service {
+		t.Helper()
+		svc, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce - 1, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					*suggestedCalled = true
+					if boostPercent != transaction.DefaultTipBoostPercent {
+						t.Fatalf("got boost %d, want %d", boostPercent, transaction.DefaultTipBoostPercent)
+					}
+					switch {
+					case wantGasPrice == nil && gasPrice != nil:
+						t.Fatalf("got gas price %s, want none", gasPrice)
+					case wantGasPrice != nil && (gasPrice == nil || gasPrice.Cmp(wantGasPrice) != 0):
+						t.Fatalf("got gas price %v, want %s", gasPrice, wantGasPrice)
+					}
+					return defaultFeeCap, suggestedGasTip, nil
+				}),
+				backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
+					*historyCalled = true
+					if tier != "low" {
+						t.Fatalf("got tier %q, want low", tier)
+					}
+					return historyFeeCap, historyTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			storemock.NewStateStore(),
+			chainID,
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return nil, nil, nil
+				}),
+			),
+			0,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, svc)
+		return svc
+	}
+
+	t.Run("tier", func(t *testing.T) {
+		t.Parallel()
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       gasLimit,
+			GasFeeCap: historyFeeCap,
+			GasTipCap: historyTip,
+			Data:      txData,
+		})
+		var suggestedCalled, historyCalled bool
+		svc := newService(t, signedTx, &suggestedCalled, &historyCalled, nil)
+		txHash, err := svc.Send(context.Background(), &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasPrice: big.NewInt(9000),
+		}, transaction.OptionalFeePriority("low"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if txHash != signedTx.Hash() {
+			t.Fatalf("got hash %s, want %s", txHash, signedTx.Hash())
+		}
+		if suggestedCalled || !historyCalled {
+			t.Fatalf("suggested=%t history=%t, want history only", suggestedCalled, historyCalled)
+		}
+	})
+
+	t.Run("empty tier", func(t *testing.T) {
+		t.Parallel()
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       gasLimit,
+			GasFeeCap: defaultFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		var suggestedCalled, historyCalled bool
+		svc := newService(t, signedTx, &suggestedCalled, &historyCalled, nil)
+		if _, err := svc.Send(context.Background(), &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !suggestedCalled || historyCalled {
+			t.Fatalf("suggested=%t history=%t, want default suggestion only", suggestedCalled, historyCalled)
+		}
+	})
+
+	t.Run("gas price without tier", func(t *testing.T) {
+		t.Parallel()
+
+		gasPrice := big.NewInt(9000)
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       gasLimit,
+			GasFeeCap: defaultFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		var suggestedCalled, historyCalled bool
+		svc := newService(t, signedTx, &suggestedCalled, &historyCalled, gasPrice)
+		if _, err := svc.Send(context.Background(), &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasPrice: gasPrice,
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !suggestedCalled || historyCalled {
+			t.Fatalf("suggested=%t history=%t, want gas price suggestion only", suggestedCalled, historyCalled)
+		}
+	})
 }
