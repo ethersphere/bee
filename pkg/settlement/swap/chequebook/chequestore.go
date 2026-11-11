@@ -26,9 +26,9 @@ const (
 var (
 	// ErrNoCheque is the error returned if there is no prior cheque for a chequebook or beneficiary.
 	ErrNoCheque = errors.New("no cheque")
-	// ErrNilCumulativePayout is returned when a stored cheque has no cumulative payout.
+	// ErrNilCheque is returned when a stored cheque entry is the JSON literal null.
 	// It does not wrap ErrNoCheque: callers treat that as "no cheque" and may start a new payout at zero.
-	ErrNilCumulativePayout = errors.New("nil cumulative payout")
+	ErrNilCheque = errors.New("nil cheque")
 	// ErrChequeNotIncreasing is the error returned if the cheque amount is the same or lower.
 	ErrChequeNotIncreasing = errors.New("cheque cumulativePayout is not increasing")
 	// ErrChequeInvalid is the error returned if the cheque itself is invalid.
@@ -89,27 +89,34 @@ func lastReceivedChequeKey(chequebook common.Address) string {
 	return fmt.Sprintf("%s_%x", lastReceivedChequePrefix, chequebook)
 }
 
+// loadCheque reads the cheque stored under key. It returns ErrNoCheque if
+// there is no entry. SignedCheque.UnmarshalJSON rejects an entry with a bad
+// cumulative payout, but encoding/json does not call it for a literal null,
+// so a null entry is rejected here with ErrNilCheque.
+func loadCheque(store storage.StateStorer, key string) (*SignedCheque, error) {
+	var cheque *SignedCheque
+	err := store.Get(key, &cheque)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, ErrNoCheque
+		}
+		return nil, err
+	}
+	if cheque == nil {
+		return nil, ErrNilCheque
+	}
+	return cheque, nil
+}
+
 // LastCheque returns the last cheque we received from a specific chequebook.
 func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, error) {
-	var cheque *SignedCheque
-	err := s.store.Get(lastReceivedChequeKey(chequebook), &cheque)
+	cheque, err := loadCheque(s.store, lastReceivedChequeKey(chequebook))
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, err
+		if errors.Is(err, ErrNoCheque) {
+			return nil, ErrNoCheque
 		}
-		return nil, ErrNoCheque
+		return nil, fmt.Errorf("load last received cheque for chequebook %x: %w", chequebook, err)
 	}
-
-	// A corrupt statestore entry (e.g. a literal JSON null) unmarshals into a
-	// nil pointer without an error; guard against returning it for later deref.
-	if cheque == nil {
-		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNoCheque)
-	}
-
-	if cheque.CumulativePayout == nil {
-		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNilCumulativePayout)
-	}
-
 	return cheque, nil
 }
 
@@ -134,11 +141,10 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 
 	// load the lastCumulativePayout for the cheques chequebook
 	var lastCumulativePayout *big.Int
-	var lastReceivedCheque *SignedCheque
-	err := s.store.Get(lastReceivedChequeKey(cheque.Chequebook), &lastReceivedCheque)
+	lastReceivedCheque, err := loadCheque(s.store, lastReceivedChequeKey(cheque.Chequebook))
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, err
+		if !errors.Is(err, ErrNoCheque) {
+			return nil, fmt.Errorf("load last received cheque for chequebook %x: %w", cheque.Chequebook, err)
 		}
 
 		// if this is the first cheque from this chequebook, verify with the factory.
@@ -148,11 +154,6 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 		}
 
 		lastCumulativePayout = big.NewInt(0)
-	} else if lastReceivedCheque == nil || lastReceivedCheque.CumulativePayout == nil {
-		// A corrupt statestore entry (e.g. a literal JSON null or an object
-		// omitting cumulativePayout) unmarshals into a nil pointer without an
-		// error; guard against dereferencing it below.
-		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", cheque.Chequebook, ErrNoCheque)
 	} else {
 		lastCumulativePayout = lastReceivedCheque.CumulativePayout
 	}
