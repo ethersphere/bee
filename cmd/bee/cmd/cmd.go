@@ -13,14 +13,16 @@ import (
 	"strings"
 	"time"
 
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	p2pforge "github.com/ipshipyard/p2p-forge/client"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
 )
 
 const (
@@ -92,6 +94,9 @@ const (
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
+	optionNameFeeHistoryBlockCount         = "fee-history-block-count"
+	optionNameTransactionFeePriority       = "transaction-fee-priority"
+	optionNameTransactionFeePriorityMax    = "transaction-fee-priority-max"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
@@ -377,6 +382,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
+	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, wrapped.DefaultFeeHistoryBlockCount, "eth_feeHistory block count for fee hints")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
@@ -396,6 +402,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 900_000, "gas limit fallback when estimation fails for contract transactions")
+	cmd.Flags().String(optionNameTransactionFeePriority, "market", "fee priority tier for transaction broadcasts (low, market, aggressive)")
+	cmd.Flags().String(optionNameTransactionFeePriorityMax, "aggressive", "maximum fee priority tier (low, market, aggressive)")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")

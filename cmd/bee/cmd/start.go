@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/kardianos/service"
+	"github.com/spf13/cobra"
+
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/bmt"
@@ -36,8 +39,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/kardianos/service"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -310,6 +311,9 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
+		FeeHistoryBlockCount:          c.config.GetUint64(optionNameFeeHistoryBlockCount),
+		TransactionFeePriority:        c.config.GetString(optionNameTransactionFeePriority),
+		TransactionFeePriorityMax:     c.config.GetString(optionNameTransactionFeePriorityMax),
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),

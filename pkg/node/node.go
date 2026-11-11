@@ -26,6 +26,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/hashicorp/go-multierror"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/idna"
+	"golang.org/x/sync/errgroup"
+
 	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
@@ -81,12 +88,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
-	"github.com/hashicorp/go-multierror"
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/sha3"
-	"golang.org/x/net/idna"
-	"golang.org/x/sync/errgroup"
 )
 
 // LoggerName is the tree path name of the logger for this package.
@@ -165,6 +166,9 @@ type Options struct {
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
+	FeeHistoryBlockCount          uint64
+	TransactionFeePriority        string
+	TransactionFeePriorityMax     string
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -490,6 +494,9 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
+		o.TransactionFeePriority,
+		o.TransactionFeePriorityMax,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

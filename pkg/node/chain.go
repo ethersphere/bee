@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -64,7 +65,30 @@ func InitChain(
 	fallbackGasLimit uint64,
 	rpcCfg BlockchainRPCConfig,
 	blockSyncInterval uint64,
+	feeHistoryBlockCount uint64,
+	feePriority string,
+	feePriorityMax string,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
+	startTier, err := transaction.ParseFeeTier(feePriority)
+	if err != nil {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority: %w", err)
+	}
+	endTier, err := transaction.ParseFeeTier(feePriorityMax)
+	if err != nil {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority max: %w", err)
+	}
+	if startTier > endTier {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction fee priority %q must not be higher than maximum %q", feePriority, feePriorityMax)
+	}
+	if feeHistoryBlockCount == 0 {
+		feeHistoryBlockCount = wrapped.DefaultFeeHistoryBlockCount
+	}
+	logger.Info("transaction fee priority",
+		"start_tier", startTier.String(),
+		"end_tier", endTier.String(),
+		"fee_history_blocks", feeHistoryBlockCount,
+	)
+
 	backend := backendnoop.New(chainID)
 
 	if chainEnabled {
@@ -98,7 +122,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)

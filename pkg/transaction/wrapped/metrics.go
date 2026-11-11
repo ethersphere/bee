@@ -5,8 +5,9 @@
 package wrapped
 
 import (
-	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 type metrics struct {
@@ -28,6 +29,8 @@ type metrics struct {
 	FilterLogsCalls               prometheus.Counter
 	ChainIDCalls                  prometheus.Counter
 	AverageBlockTimeSeconds       prometheus.Gauge
+	FeeHistoryCalls               prometheus.Counter
+	FeeHistoryParseErrors         prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -135,6 +138,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "average_block_time_seconds",
 			Help:      "Observed average block time in seconds, updated on each block number cache refresh.",
+		}),
+		FeeHistoryCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "calls_fee_history",
+			Help:      "Count of eth_feeHistory rpc calls",
+		}),
+		FeeHistoryParseErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "fee_history_parse_errors",
+			Help:      "Count of failures to derive suggested fees from fee history response",
 		}),
 	}
 }

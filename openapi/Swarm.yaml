@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.2
+  version: 8.3.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2288,6 +2288,7 @@ paths:
             type: boolean
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "201":
@@ -2326,6 +2327,7 @@ paths:
           required: true
           description: Amount of BZZ per chunk to top up to an existing postage batch.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
@@ -2366,6 +2368,7 @@ paths:
           required: true
           description: The new batch depth, which must be greater than the current depth
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":

@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
 const (
@@ -440,6 +441,7 @@ func newTestWrappedBackendWithConfig(
 		testMinimumGasTipCap,
 		blockTime,
 		blockSyncInterval,
+		DefaultFeeHistoryBlockCount,
 	).(*wrappedBackend)
 	assert.True(t, ok)
 

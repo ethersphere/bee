@@ -13,14 +13,24 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
+
+// FeeHistorySuggestedFeeAndTips are max-fee-per-gas style estimates from eth_feeHistory over the last N blocks (by default 100)
+// Low, Market, and Aggressive are the median per-block priority fee at the 10th, 50th, and 90th reward percentiles respectively.
+type FeeHistorySuggestedFeeAndTips struct {
+	LowTip        *big.Int
+	MarketTip     *big.Int
+	AggressiveTip *big.Int
+}
 
 // Backend is the minimum of blockchain backend functions we need.
 type Backend interface {
 	backend.Geth
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
+	SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*FeeHistorySuggestedFeeAndTips, error)
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This
