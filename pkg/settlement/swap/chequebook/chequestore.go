@@ -47,10 +47,10 @@ type ChequeStore interface {
 	// exchangeRate and deduction must be non-nil; they are supplied by the local
 	// node (from the price oracle), not by the peer.
 	ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchangeRate, deduction *big.Int) (*big.Int, error)
-	// LastCheque returns the last cheque we received from a specific chequebook.
-	LastCheque(chequebook common.Address) (*SignedCheque, error)
-	// LastCheques returns the last received cheques from every known chequebook.
-	LastCheques() (map[common.Address]*SignedCheque, error)
+	// LastReceivedCheque returns the last cheque we received from a specific chequebook.
+	LastReceivedCheque(chequebook common.Address) (*SignedCheque, error)
+	// LastReceivedCheques returns the last received cheques from every known chequebook.
+	LastReceivedCheques() (map[common.Address]*SignedCheque, error)
 }
 
 type chequeStore struct {
@@ -89,8 +89,8 @@ func lastReceivedChequeKey(chequebook common.Address) string {
 	return fmt.Sprintf("%s_%x", lastReceivedChequePrefix, chequebook)
 }
 
-// LastCheque returns the last cheque we received from a specific chequebook.
-func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, error) {
+// LastReceivedCheque returns the last cheque we received from a specific chequebook.
+func (s *chequeStore) LastReceivedCheque(chequebook common.Address) (*SignedCheque, error) {
 	var cheque *SignedCheque
 	err := s.store.Get(lastReceivedChequeKey(chequebook), &cheque)
 	if err != nil {
@@ -244,8 +244,8 @@ func keyChequebook(key []byte, prefix string) (chequebook common.Address, err er
 	return common.HexToAddress(split[1]), nil
 }
 
-// LastCheques returns the last received cheques from every known chequebook.
-func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
+// LastReceivedCheques returns the last received cheques from every known chequebook.
+func (s *chequeStore) LastReceivedCheques() (map[common.Address]*SignedCheque, error) {
 	result := make(map[common.Address]*SignedCheque)
 	err := s.store.Iterate(lastReceivedChequePrefix, func(key, val []byte) (stop bool, err error) {
 		addr, err := keyChequebook(key, lastReceivedChequePrefix+"_")
@@ -254,7 +254,7 @@ func (s *chequeStore) LastCheques() (map[common.Address]*SignedCheque, error) {
 		}
 
 		if _, ok := result[addr]; !ok {
-			lastCheque, err := s.LastCheque(addr)
+			lastCheque, err := s.LastReceivedCheque(addr)
 			if err != nil && !errors.Is(err, ErrNoCheque) {
 				return false, err
 			} else if errors.Is(err, ErrNoCheque) {

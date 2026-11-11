@@ -83,7 +83,7 @@ func TestCashout(t *testing.T) {
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
 		),
 		chequestoremock.NewChequeStore(
-			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
+			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
 				if c != chequebookAddress {
 					t.Fatalf("using wrong chequebook. wanted %v, got %v", chequebookAddress, c)
 				}
@@ -186,7 +186,7 @@ func TestCashoutBounced(t *testing.T) {
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
 		),
 		chequestoremock.NewChequeStore(
-			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
+			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
 				if c != chequebookAddress {
 					t.Fatalf("using wrong chequebook. wanted %v, got %v", chequebookAddress, c)
 				}
@@ -269,7 +269,7 @@ func TestCashoutStatusReverted(t *testing.T) {
 			transactionmock.WithABICall(&chequebookABI, chequebookAddress, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 		),
 		chequestoremock.NewChequeStore(
-			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
+			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
 				if c != chequebookAddress {
 					t.Fatalf("using wrong chequebook. wanted %v, got %v", chequebookAddress, c)
 				}
@@ -332,7 +332,7 @@ func TestCashoutStatusPending(t *testing.T) {
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
 		),
 		chequestoremock.NewChequeStore(
-			chequestoremock.WithLastChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
+			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
 				if c != chequebookAddress {
 					t.Fatalf("using wrong chequebook. wanted %v, got %v", chequebookAddress, c)
 				}
