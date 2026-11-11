@@ -99,7 +99,9 @@ enum Status {
   STATUS_UNSPECIFIED = 0;
   // STATUS_OK: the chunk was retrieved, or pushed to the network.
   STATUS_OK = 1;
-  // STATUS_NOT_FOUND: the chunk is not in the reserve and no peer could serve it.
+  // STATUS_NOT_FOUND: the node does not have the chunk and the peers it asked
+  // did not return it; retrieval gives up after a fixed number of failed
+  // requests. The chunk may still exist; retry later, a limited number of times.
   STATUS_NOT_FOUND = 2;
   // STATUS_ERROR: an internal or storage failure.
   STATUS_ERROR = 3;
@@ -108,8 +110,8 @@ enum Status {
   STATUS_BAD_REQUEST = 4;
   // STATUS_BUSY: the request queue is full; retry with backoff.
   STATUS_BUSY = 5;
-  // STATUS_UNAVAILABLE: no peer could serve the chunk, either because none was
-  // usable or because every peer was tried. The chunk may or may not exist;
-  // retry later, a limited number of times.
+  // STATUS_UNAVAILABLE: the node ran out of peers to ask for the chunk, either
+  // because none was usable or because every one was tried. The chunk may or
+  // may not exist; retry later, a limited number of times.
   STATUS_UNAVAILABLE = 6;
 }

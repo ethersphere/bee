@@ -32,7 +32,7 @@ type metrics struct {
 	UploadSpeed        *prometheus.HistogramVec
 	DownloadSpeed      *prometheus.HistogramVec
 
-	ChunkStreamOpenConnections *prometheus.GaugeVec
+	ChunkStreamOpenConnections prometheus.Gauge
 	ChunkStreamDeliveryCount   *prometheus.CounterVec
 	ChunkStreamFetchDuration   prometheus.Histogram
 }
@@ -84,15 +84,12 @@ func newMetrics() metrics {
 			Help:      "Histogram of download speed in B/s.",
 			Buckets:   []float64{0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9},
 		}, []string{"endpoint"}),
-		ChunkStreamOpenConnections: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "chunk_stream_open_connections",
-				Help:      "Number of currently open /chunks/stream connections.",
-			},
-			[]string{"mode"},
-		),
+		ChunkStreamOpenConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "chunk_stream_open_connections",
+			Help:      "Number of currently open /chunks/stream connections.",
+		}),
 		ChunkStreamDeliveryCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,

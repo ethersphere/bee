@@ -262,12 +262,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s.Configure(signer, tracer, api.Options{
-		CORSAllowedOrigins:          o.CORSAllowedOrigins,
-		WsPingPeriod:                o.WsPingPeriod,
-		ChunkDeliveryWriteDeadline:  o.ChunkDeliveryWriteDeadline,
-		ChunkDownloadRequestTimeout: o.ChunkDownloadRequestTimeout,
-		ChunkStreamReadTimeout:      o.ChunkStreamReadTimeout,
+		CORSAllowedOrigins: o.CORSAllowedOrigins,
+		WsPingPeriod:       o.WsPingPeriod,
 	}, extraOpts, 1, erc20APIService)
+	s.SetChunkStreamTimeouts(o.ChunkDeliveryWriteDeadline, o.ChunkDownloadRequestTimeout, o.ChunkStreamReadTimeout)
 
 	s.Mount()
 	if !o.FullAPIDisabled {

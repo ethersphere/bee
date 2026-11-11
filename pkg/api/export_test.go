@@ -5,6 +5,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -177,7 +179,7 @@ func (s *Service) ChunkStreamDeliveryCount(status string) float64 {
 // ChunkStreamOpenConnections returns the number of open chunk streams.
 func (s *Service) ChunkStreamOpenConnections() float64 {
 	m := &dto.Metric{}
-	if err := s.metrics.ChunkStreamOpenConnections.WithLabelValues("stream").Write(m); err != nil {
+	if err := s.metrics.ChunkStreamOpenConnections.Write(m); err != nil {
 		return -1
 	}
 	return m.GetGauge().GetValue()
@@ -186,3 +188,17 @@ func (s *Service) ChunkStreamOpenConnections() float64 {
 const RootPath = rootPath
 
 func (s *Service) Router() *mux.Router { return s.router }
+
+// SetChunkStreamTimeouts overrides the /chunks/stream reply write deadline,
+// download timeout and read timeout. A zero value keeps the default.
+func (s *Service) SetChunkStreamTimeouts(writeDeadline, downloadTimeout, readTimeout time.Duration) {
+	if writeDeadline > 0 {
+		s.chunkDeliveryWriteDeadline = writeDeadline
+	}
+	if downloadTimeout > 0 {
+		s.chunkDownloadRequestTimeout = downloadTimeout
+	}
+	if readTimeout > 0 {
+		s.chunkStreamReadTimeout = readTimeout
+	}
+}

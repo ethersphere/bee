@@ -166,8 +166,8 @@ type chunkStream struct {
 func (cs *chunkStream) run() {
 	defer cs.s.wsWg.Done()
 
-	cs.s.metrics.ChunkStreamOpenConnections.WithLabelValues("stream").Inc()
-	defer cs.s.metrics.ChunkStreamOpenConnections.WithLabelValues("stream").Dec()
+	cs.s.metrics.ChunkStreamOpenConnections.Inc()
+	defer cs.s.metrics.ChunkStreamOpenConnections.Dec()
 
 	cs.conn.SetReadLimit(maxStreamFrameSize)
 	cs.setKeepaliveHandlers()
@@ -408,12 +408,14 @@ func (cs *chunkStream) handleGet(streamCtx context.Context, req *pb.GetRequest) 
 	)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
+		// Retrieval gave up after the peers it asked did not return the
+		// chunk. It may still exist.
 		status, errMsg = pb.Status_STATUS_NOT_FOUND, "chunk not found"
 		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("not_found").Inc()
 		cs.logger.V(1).Build().Debug("chunk stream: chunk not found", "address", addr)
 	case errors.Is(err, topology.ErrNotFound):
-		// No peer could serve the chunk: none was usable, or every peer was
-		// tried. The chunk may or may not exist.
+		// Retrieval ran out of peers to ask: none was usable, or every one
+		// was tried. The chunk may or may not exist.
 		status, errMsg = pb.Status_STATUS_UNAVAILABLE, "no peer could serve the chunk"
 		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("unavailable").Inc()
 		cs.logger.V(1).Build().Debug("chunk stream: no peer could serve the chunk", "address", addr)
