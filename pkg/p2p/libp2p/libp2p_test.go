@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type libp2pServiceOpts struct {
@@ -498,5 +499,56 @@ func TestPutHandshakeAddress_ChangedRecord_Writes(t *testing.T) {
 	}
 	if got.Timestamp != second.Timestamp {
 		t.Fatalf("stored timestamp: got %d, want %d", got.Timestamp, second.Timestamp)
+	}
+}
+
+// TestResourceManagerLimitMetricsDescribeMainHost checks that the
+// libp2p_rcmgr_limit gauges exposed by the service carry the main host's
+// stream limits. The go-libp2p stats reporter writes into package-level
+// Prometheus collectors, so a metrics-enabled resource manager on any of the
+// auxiliary dialer hosts would overwrite these values with go-libp2p's
+// autoscaled defaults. The gauges are process-global, so this test must not
+// run in parallel with tests that construct libp2p hosts.
+func TestResourceManagerLimitMetricsDescribeMainHost(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	_, _ = newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{Registry: registry},
+	})
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := make(map[string]float64)
+	for _, family := range families {
+		if family.GetName() != "libp2p_rcmgr_limit" {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			var scope, resource string
+			for _, l := range m.GetLabel() {
+				switch l.GetName() {
+				case "scope":
+					scope = l.GetValue()
+				case "resource":
+					resource = l.GetValue()
+				}
+			}
+			if scope == "system" {
+				got[resource] = m.GetGauge().GetValue()
+			}
+		}
+	}
+
+	want := map[string]float64{
+		"streams_inbound":  libp2p.IncomingStreamCountLimit,
+		"streams_outbound": libp2p.OutgoingStreamCountLimit,
+		"streams":          libp2p.IncomingStreamCountLimit + libp2p.OutgoingStreamCountLimit,
+	}
+	for resource, wantValue := range want {
+		if gotValue, ok := got[resource]; !ok || gotValue != wantValue {
+			t.Errorf("libp2p_rcmgr_limit{scope=%q,resource=%q}: got %v (present=%t), want %v", "system", resource, gotValue, ok, wantValue)
+		}
 	}
 }
