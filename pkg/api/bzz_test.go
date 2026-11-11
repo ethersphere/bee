@@ -888,7 +888,7 @@ func TestFeedIndirection(t *testing.T) {
 	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
 		api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",
 		api.FeedMetadataEntryTopic: "abcc",
-		api.FeedMetadataEntryType:  "epoch",
+		api.FeedMetadataEntryType:  "sequence",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -907,7 +907,7 @@ func TestFeedIndirection(t *testing.T) {
 	t.Run("legacy feed", func(t *testing.T) {
 		feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
 		var (
-			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
+			look    = newMockLookup(0, feedUpdate, nil, &id{}, nil)
 			factory = newMockFactory(look)
 		)
 		client, _, _, _, _ = newTestServer(t, testServerOptions{
@@ -936,7 +936,7 @@ func TestFeedIndirection(t *testing.T) {
 		socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
 
 		var (
-			look    = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
+			look    = newMockLookup(0, socRootCh, nil, &id{}, nil)
 			factory = newMockFactory(look)
 		)
 		client, _, _, _, _ = newTestServer(t, testServerOptions{
@@ -954,6 +954,45 @@ func TestFeedIndirection(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
+	})
+
+	t.Run("unsupported feed type", func(t *testing.T) {
+		m, err := manifest.NewDefaultManifest(
+			loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultDownloadLevel),
+			false,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
+			api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",
+			api.FeedMetadataEntryTopic: "abcc",
+			api.FeedMetadataEntryType:  "epoch",
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		epochManifRef, err := m.Store(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		factory := newMockFactory(newMockLookup(0, nil, nil, nil, nil))
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: storer,
+			Logger: logger,
+			Feeds:  factory,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(epochManifRef.String(), ""), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "unsupported feed type",
+			}),
+		)
+		if factory.sequenceCalled {
+			t.Fatal("feed lookup must not be used for an unsupported feed type")
+		}
 	})
 }
 

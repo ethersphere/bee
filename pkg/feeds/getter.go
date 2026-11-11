@@ -25,7 +25,9 @@ func (e WrappedChunkNotFoundError) Error() string {
 	return fmt.Sprintf("feed pointing to the wrapped chunk not found: %x", e.Ref)
 }
 
-// Lookup is the interface for time based feed lookup
+// Lookup finds the latest update of a feed.
+// after is the index of a known update to start the search from.
+// at is not used by the sequence lookup.
 type Lookup interface {
 	At(ctx context.Context, at int64, after uint64) (chunk swarm.Chunk, currentIndex, nextIndex Index, err error)
 }
@@ -42,13 +44,13 @@ func NewGetter(getter storage.Getter, feed *Feed) *Getter {
 }
 
 // Latest looks up the latest update of the feed
-// after is a unix time hint of the latest known update
+// after is the index of a known update to start the search from
 func Latest(ctx context.Context, l Lookup, after uint64) (swarm.Chunk, error) {
 	c, _, _, err := l.At(ctx, time.Now().Unix(), after)
 	return c, err
 }
 
-// Get creates an update of the underlying feed at the given epoch
+// Get creates an update of the underlying feed at the given index
 // and looks it up in the chunk Getter based on its address
 func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	addr, err := f.Feed.Update(i).Address()

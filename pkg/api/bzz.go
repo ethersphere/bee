@@ -563,7 +563,14 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
-		if l, err := s.manifestFeed(ctx, m); err == nil {
+		l, err := s.manifestFeed(ctx, m)
+		if errors.Is(err, feeds.ErrFeedTypeNotFound) {
+			logger.Debug("bzz download: unsupported feed type", "address", address, "error", err)
+			logger.Error(nil, "bzz download: unsupported feed type")
+			jsonhttp.NotFound(w, "unsupported feed type")
+			return
+		}
+		if err == nil {
 			// we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -879,7 +886,7 @@ func (s *Service) manifestFeed(
 	if e := meta[feedMetadataEntryType]; e != "" {
 		err := t.FromString(e)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("feed type %q: %w", e, err)
 		}
 	}
 	if len(owner) == 0 || len(topic) == 0 {

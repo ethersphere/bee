@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/feeds/sequence"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/gorilla/mux"
 )
 
@@ -53,15 +55,12 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		At    int64  `map:"at"`
-		After uint64 `map:"after"`
+		After uint64  `map:"after"`
+		Index *uint64 `map:"index"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
 		return
-	}
-	if queries.At == 0 {
-		queries.At = time.Now().Unix()
 	}
 
 	headers := struct {
@@ -72,32 +71,60 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := feeds.New(paths.Topic, paths.Owner)
-	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
-	if err != nil {
-		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
-		logger.Error(nil, "new lookup failed")
-		switch {
-		case errors.Is(err, feeds.ErrFeedTypeNotFound):
-			jsonhttp.NotFound(w, "feed type not found")
-		default:
-			jsonhttp.InternalServerError(w, "new lookup failed")
-		}
-		return
-	}
-	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
-	if err != nil {
-		logger.Debug("lookup at failed", "at", queries.At, "error", err)
-		logger.Error(nil, "lookup at failed")
-		jsonhttp.NotFound(w, "lookup at failed")
-		return
-	}
 
-	// KLUDGE: if a feed was never updated, the chunk will be nil
-	if ch == nil {
-		logger.Debug("no update found")
-		logger.Error(nil, "no update found")
-		jsonhttp.NotFound(w, "no update found")
-		return
+	var (
+		ch        swarm.Chunk
+		cur, next feeds.Index
+		err       error
+	)
+	if queries.Index != nil {
+		// a specific sequential index is requested, so there is no next index to report
+		cur = sequence.NewIndex(*queries.Index)
+		ch, err = feeds.NewGetter(s.storer.Download(true), f).Get(r.Context(), cur)
+		if err != nil {
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				logger.Debug("feed update not found", "index", *queries.Index)
+				jsonhttp.NotFound(w, "no update found")
+			case errors.Is(err, topology.ErrNotFound):
+				logger.Debug("no peers available to retrieve feed update", "index", *queries.Index)
+				jsonhttp.ServiceUnavailable(w, "feed update could not be retrieved because no usable peer was available")
+			default:
+				logger.Debug("get feed update failed", "index", *queries.Index, "error", err)
+				logger.Error(nil, "get feed update failed")
+				jsonhttp.InternalServerError(w, "get feed update failed")
+			}
+			return
+		}
+	} else {
+		var lookup feeds.Lookup
+		lookup, err = s.feedFactory.NewLookup(feeds.Sequence, f)
+		if err != nil {
+			logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
+			logger.Error(nil, "new lookup failed")
+			switch {
+			case errors.Is(err, feeds.ErrFeedTypeNotFound):
+				jsonhttp.NotFound(w, "feed type not found")
+			default:
+				jsonhttp.InternalServerError(w, "new lookup failed")
+			}
+			return
+		}
+		ch, cur, next, err = lookup.At(r.Context(), time.Now().Unix(), queries.After)
+		if err != nil {
+			logger.Debug("lookup at failed", "after", queries.After, "error", err)
+			logger.Error(nil, "lookup at failed")
+			jsonhttp.NotFound(w, "lookup at failed")
+			return
+		}
+
+		// KLUDGE: if a feed was never updated, the chunk will be nil
+		if ch == nil {
+			logger.Debug("no update found")
+			logger.Error(nil, "no update found")
+			jsonhttp.NotFound(w, "no update found")
+			return
+		}
 	}
 
 	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch)
@@ -115,14 +142,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nextBytes, err := next.MarshalBinary()
-	if err != nil {
-		logger.Debug("marshal next index failed", "error", err)
-		logger.Error(nil, "marshal next index failed")
-		jsonhttp.InternalServerError(w, "marshal next index failed")
-		return
-	}
-
 	socCh, err := soc.FromChunk(ch)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
@@ -134,10 +153,20 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	additionalHeaders := http.Header{
 		ContentTypeHeader:              {contentTypeOctetStream},
 		SwarmFeedIndexHeader:           {hex.EncodeToString(curBytes)},
-		SwarmFeedIndexNextHeader:       {hex.EncodeToString(nextBytes)},
 		SwarmSocSignatureHeader:        {hex.EncodeToString(sig)},
 		SwarmFeedResolvedVersionHeader: {feedVer},
 		AccessControlExposeHeaders:     {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
+	}
+
+	if next != nil {
+		nextBytes, err := next.MarshalBinary()
+		if err != nil {
+			logger.Debug("marshal next index failed", "error", err)
+			logger.Error(nil, "marshal next index failed")
+			jsonhttp.InternalServerError(w, "marshal next index failed")
+			return
+		}
+		additionalHeaders.Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
 	}
 
 	if headers.OnlyRootChunk {
