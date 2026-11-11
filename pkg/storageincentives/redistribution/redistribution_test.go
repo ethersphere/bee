@@ -207,7 +207,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -250,7 +250,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -294,7 +294,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -340,7 +340,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ int) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -440,7 +440,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ *string) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)

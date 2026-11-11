@@ -32,20 +32,25 @@ func (ft feePriority) String() string {
 	}
 }
 
-// OptionalFeePriority returns nil when priority is unset. Send treats nil as the default suggestion.
-func OptionalFeePriority(tier string) *string {
-	if strings.TrimSpace(tier) == "" {
-		return nil
+// FallbackTipBoostPercent is the boost applied to the default tip suggestion when eth_feeHistory is unusable.
+func (ft feePriority) FallbackTipBoostPercent() int {
+	switch ft {
+	case FeePriorityLow:
+		return 10
+	case FeePriorityAggressive:
+		return 90
+	default:
+		return 50
 	}
-	return &tier
 }
 
 // ParseFeePriority validates a fee priority name (for API headers and config).
+// An empty name is rejected. Callers apply their own default for an unset priority.
 func ParseFeePriority(s string) (feePriority, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "low":
 		return FeePriorityLow, nil
-	case "market", "":
+	case "market":
 		return FeePriorityMarket, nil
 	case "aggressive":
 		return FeePriorityAggressive, nil

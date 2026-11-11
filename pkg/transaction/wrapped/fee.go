@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -87,17 +86,24 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 
 // SuggestFeeHistory calculates gasFeeCap and gasTipCap for tier from eth_feeHistory.
 // gasFeeCap is twice the latest base fee plus the tier tip.
+// When eth_feeHistory fails or has no usable rewards, it falls back to SuggestedFeeAndTip
+// with the tier's fallback tip boost.
 func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
-	if strings.TrimSpace(tier) == "" {
-		return nil, nil, errors.New("fee priority is required")
-	}
 	parsed, err := transaction.ParseFeePriority(tier)
 	if err != nil {
 		return nil, nil, err
 	}
 	tips, err := b.suggestedFeeAndTipsFromHistory(ctx)
 	if err != nil {
-		return nil, nil, err
+		if ctx.Err() != nil {
+			return nil, nil, err
+		}
+		b.metrics.FeeHistoryFallbacks.Inc()
+		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, parsed.FallbackTipBoostPercent())
+		if fallbackErr != nil {
+			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
+		}
+		return gasFeeCap, gasTipCap, nil
 	}
 	latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
@@ -113,7 +119,7 @@ func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier string) (*b
 }
 
 func (b *wrappedBackend) suggestedFeeAndTipsFromHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
-	fh, err := b.FeeHistory(ctx, b.feeHistoryBlockCount, nil, b.feeHistoryRewardPercentiles)
+	fh, err := b.FeeHistory(ctx, b.feeHistoryBlocks, nil, feeHistoryRewardPercentiles)
 	if err != nil {
 		return nil, err
 	}

@@ -13,10 +13,9 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/google/go-cmp/cmp"
-
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestSuggestedFeeAndTip(t *testing.T) {

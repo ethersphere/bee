@@ -448,11 +448,12 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		To:          &s.address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		Value:       big.NewInt(0),
 		Description: fmt.Sprintf("chequebook withdrawal of %d BZZ", amount),
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, nil)
+	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 
 	s.lock.Lock()
 	s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)

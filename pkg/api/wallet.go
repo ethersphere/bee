@@ -11,12 +11,11 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/gorilla/mux"
-
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/gorilla/mux"
 )
 
 type walletResponse struct {
@@ -141,12 +140,13 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	req := &transaction.TxRequest{
 		To:          queries.Address,
 		GasPrice:    sctx.GetGasPrice(r.Context()),
+		FeePriority: sctx.GetFeePriority(r.Context()),
 		GasLimit:    sctx.GetGasLimitWithDefault(r.Context(), 300_000),
 		Value:       queries.Amount,
 		Description: "native token withdraw",
 	}
 
-	txHash, err := s.transaction.Send(r.Context(), req, nil)
+	txHash, err := s.transaction.Send(r.Context(), req, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		logger.Error(err, "unable to transfer")
 		jsonhttp.InternalServerError(w, "unable to transfer")

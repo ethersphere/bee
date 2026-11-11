@@ -8,13 +8,11 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
@@ -28,7 +26,7 @@ var _ transaction.Backend = (*wrappedBackend)(nil)
 // Callers pass it explicitly. NewBackend stores the supplied count as-is.
 const DefaultFeeHistoryBlockCount = 100
 
-var feeHistoryDefaultRewardPercentiles = []float64{10, 50, 90}
+var feeHistoryRewardPercentiles = []float64{10, 50, 90}
 
 type blockNumberAnchor struct {
 	number           uint64
@@ -37,14 +35,13 @@ type blockNumberAnchor struct {
 }
 
 type wrappedBackend struct {
-	backend                     backend.Geth
-	metrics                     metrics
-	minimumGasTipCap            int64
-	blockTime                   time.Duration
-	blockSyncInterval           uint64
-	blockNumberCache            *cache.SingleFlightCache[blockNumberAnchor]
-	feeHistoryBlockCount        uint64
-	feeHistoryRewardPercentiles []float64
+	backend           backend.Geth
+	metrics           metrics
+	minimumGasTipCap  int64
+	blockTime         time.Duration
+	blockSyncInterval uint64
+	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
+	feeHistoryBlocks  uint64
 }
 
 func NewBackend(
@@ -59,14 +56,13 @@ func NewBackend(
 	}
 
 	return &wrappedBackend{
-		backend:                     backend,
-		metrics:                     newMetrics(),
-		minimumGasTipCap:            int64(minimumGasTipCap),
-		blockTime:                   blockTime,
-		blockSyncInterval:           blockSyncInterval,
-		blockNumberCache:            cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
-		feeHistoryBlockCount:        feeHistoryBlockCount,
-		feeHistoryRewardPercentiles: slices.Clone(feeHistoryDefaultRewardPercentiles),
+		backend:           backend,
+		minimumGasTipCap:  int64(minimumGasTipCap),
+		blockTime:         blockTime,
+		metrics:           newMetrics(),
+		blockSyncInterval: blockSyncInterval,
+		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
+		feeHistoryBlocks:  feeHistoryBlockCount,
 	}
 }
 

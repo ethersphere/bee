@@ -5,9 +5,8 @@
 package wrapped
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
@@ -31,6 +30,7 @@ type metrics struct {
 	AverageBlockTimeSeconds       prometheus.Gauge
 	FeeHistoryCalls               prometheus.Counter
 	FeeHistoryParseErrors         prometheus.Counter
+	FeeHistoryFallbacks           prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -150,6 +150,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "fee_history_parse_errors",
 			Help:      "Count of failures to derive suggested fees from fee history response",
+		}),
+		FeeHistoryFallbacks: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "fee_history_fallbacks",
+			Help:      "Count of fee priority suggestions that fell back to the default tip suggestion",
 		}),
 	}
 }

@@ -20,24 +20,28 @@ func suggestedFeesFromFeeHistoryResult(fh *ethereum.FeeHistory) (low, market, ag
 	if len(fh.BaseFee) == 0 {
 		return nil, nil, nil, errors.New("fee history: no base fees")
 	}
-	low, err = medianPriorityTipAtPercentileIndex(fh.Reward, 0)
+	low, err = medianPriorityTipAtPercentileIndex(fh, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	market, err = medianPriorityTipAtPercentileIndex(fh.Reward, 1)
+	market, err = medianPriorityTipAtPercentileIndex(fh, 1)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	aggressive, err = medianPriorityTipAtPercentileIndex(fh.Reward, 2)
+	aggressive, err = medianPriorityTipAtPercentileIndex(fh, 2)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	return low, market, aggressive, nil
 }
 
-func medianPriorityTipAtPercentileIndex(reward [][]*big.Int, idx int) (*big.Int, error) {
+// medianPriorityTipAtPercentileIndex skips empty blocks because eth_feeHistory reports zero rewards for them.
+func medianPriorityTipAtPercentileIndex(fh *ethereum.FeeHistory, idx int) (*big.Int, error) {
 	var vals []*big.Int
-	for _, row := range reward {
+	for i, row := range fh.Reward {
+		if i < len(fh.GasUsedRatio) && fh.GasUsedRatio[i] == 0 {
+			continue
+		}
 		if idx >= len(row) {
 			continue
 		}

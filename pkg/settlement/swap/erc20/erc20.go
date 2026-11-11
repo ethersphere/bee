@@ -79,11 +79,12 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 		To:          &c.address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		Value:       big.NewInt(0),
 		Description: "token transfer",
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, nil)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}

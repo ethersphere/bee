@@ -28,15 +28,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/go-playground/validator/v10"
-	"github.com/gorilla/mux"
-	"github.com/hashicorp/go-multierror"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/otel/codes"
-	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/semaphore"
-
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -71,6 +62,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-multierror"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/semaphore"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -103,11 +102,12 @@ const (
 	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
 	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
-	ImmutableHeader   = "Immutable"
-	GasPriceHeader    = "Gas-Price"
-	GasLimitHeader    = "Gas-Limit"
+	ImmutableHeader = "Immutable"
+	GasPriceHeader  = "Gas-Price"
+	GasLimitHeader  = "Gas-Limit"
+	ETagHeader      = "ETag"
+
 	FeePriorityHeader = "Fee-Priority"
-	ETagHeader        = "ETag"
 
 	AuthorizationHeader        = "Authorization"
 	AcceptEncodingHeader       = "Accept-Encoding"
@@ -235,12 +235,12 @@ type Service struct {
 	cashOutChequeSem *semaphore.Weighted
 	beeMode          BeeNodeMode
 
-	chainBackend   transaction.Backend
-	erc20Service   erc20.Service
-	chainID        int64
-	maxFeePriority string
+	chainBackend transaction.Backend
+	erc20Service erc20.Service
+	chainID      int64
 
 	whitelistedWithdrawalAddress []common.Address
+	maxFeePriority               string
 
 	preMapHooks              map[string]func(v string) (string, error)
 	customValidationMessages map[string]func(err validator.FieldError) error
@@ -271,7 +271,14 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 }
 
 // SetMaxFeePriority stores the highest fee priority a request may select.
+// An empty tier leaves requests unrestricted.
 func (s *Service) SetMaxFeePriority(tier string) error {
+	if strings.TrimSpace(tier) == "" {
+		if s != nil {
+			s.maxFeePriority = ""
+		}
+		return nil
+	}
 	parsed, err := transaction.ParseFeePriority(tier)
 	if err != nil {
 		return err

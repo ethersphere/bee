@@ -21,18 +21,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/hashicorp/go-multierror"
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/sha3"
-	"golang.org/x/net/idna"
-	"golang.org/x/sync/errgroup"
-
 	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
@@ -88,6 +82,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
+	"github.com/hashicorp/go-multierror"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/idna"
+	"golang.org/x/sync/errgroup"
 )
 
 // LoggerName is the tree path name of the logger for this package.
@@ -476,6 +476,12 @@ func NewBee(
 		}
 	}
 
+	if strings.TrimSpace(o.RedistributionGameFeePriority) != "" {
+		if _, err := transaction.ParseFeePriority(o.RedistributionGameFeePriority); err != nil {
+			return nil, fmt.Errorf("redistribution game fee priority: %w", err)
+		}
+	}
+
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
 		logger,
@@ -495,8 +501,6 @@ func NewBee(
 		},
 		o.BlockSyncInterval,
 		o.FeeHistoryBlockCount,
-		o.RedistributionGameFeePriority,
-		o.TransactionFeePriorityMax,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

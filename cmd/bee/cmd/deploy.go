@@ -5,10 +5,9 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
-
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/spf13/cobra"
 )
 
 const blocktime = 15
@@ -62,8 +61,6 @@ func (c *command) initDeployCmd() error {
 				},
 				c.config.GetUint64(optionNameBlockSyncInterval),
 				c.config.GetUint64(optionNameFeeHistoryBlockCount),
-				c.config.GetString(optionNameRedistributionGameFeePriority),
-				c.config.GetString(optionNameTransactionFeePriorityMax),
 			)
 			if err != nil {
 				return err

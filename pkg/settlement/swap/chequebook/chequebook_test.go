@@ -641,7 +641,7 @@ func TestChequebookWithdrawSendError(t *testing.T) {
 	sendErr := errors.New("send failed")
 	chain := newChainMock(t, 100)
 	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithSendFunc(func(context.Context, *transaction.TxRequest, *string) (common.Hash, error) {
+		transactionmock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
 			return common.Hash{}, sendErr
 		}),
 		transactionmock.WithWatchSentTransactionFunc(func(common.Hash) (chan types.Receipt, chan error, error) {
@@ -937,7 +937,7 @@ func TestChequebookConcurrentIssueAndWithdraw(t *testing.T) {
 
 	chain := newChainMock(t, balance)
 	chequebookService := newChainChequebook(t, chain, erc20mock.New(),
-		transactionmock.WithSendFunc(func(context.Context, *transaction.TxRequest, *string) (common.Hash, error) {
+		transactionmock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			sent++

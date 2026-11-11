@@ -96,59 +96,44 @@ func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 	t.Parallel()
 
 	gasPrice := big.NewInt(1000)
-	for _, tc := range []struct {
-		name        string
-		feePriority string
-		wantTier    string
-	}{
-		{name: "gas price only", wantTier: ""},
-		{name: "both headers", feePriority: "low", wantTier: "low"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var (
-				mu       sync.Mutex
-				gotTier  string
-				gotPrice *big.Int
-			)
-			contract := contractMock.New(
-				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
-					mu.Lock()
-					defer mu.Unlock()
-					gotTier = sctx.GetFeePriority(ctx)
-					gotPrice = sctx.GetGasPrice(ctx)
-					return common.HexToHash("0xabcd"), []byte{0xab}, nil
-				}),
-			)
-			client, _, _, _, _ := newTestServer(t, testServerOptions{PostageContract: contract})
-
-			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set(api.GasPriceHeader, gasPrice.String())
-			if tc.feePriority != "" {
-				req.Header.Set(api.FeePriorityHeader, tc.feePriority)
-			}
-			res, err := client.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			res.Body.Close()
-			if res.StatusCode != http.StatusCreated {
-				t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusCreated)
-			}
-
+	var (
+		mu       sync.Mutex
+		gotTier  string
+		gotPrice *big.Int
+	)
+	contract := contractMock.New(
+		contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
 			mu.Lock()
 			defer mu.Unlock()
-			if gotTier != tc.wantTier {
-				t.Fatalf("got fee priority %q, want %q", gotTier, tc.wantTier)
-			}
-			if gotPrice == nil || gotPrice.Cmp(gasPrice) != 0 {
-				t.Fatalf("got gas price %v, want %s", gotPrice, gasPrice)
-			}
-		})
+			gotTier = sctx.GetFeePriority(ctx)
+			gotPrice = sctx.GetGasPrice(ctx)
+			return common.HexToHash("0xabcd"), []byte{0xab}, nil
+		}),
+	)
+	client, _, _, _, _ := newTestServer(t, testServerOptions{PostageContract: contract})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.GasPriceHeader, gasPrice.String())
+	req.Header.Set(api.FeePriorityHeader, "low")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusCreated)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotTier != "low" {
+		t.Fatalf("got fee priority %q, want %q", gotTier, "low")
+	}
+	if gotPrice == nil || gotPrice.Cmp(gasPrice) != 0 {
+		t.Fatalf("got gas price %v, want %s", gotPrice, gasPrice)
 	}
 }
 

@@ -333,7 +333,7 @@ func TestWalletWithdraw(t *testing.T) {
 				}),
 			},
 			TransactionOpts: []transactionmock.Option{
-				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, _ *string) (common.Hash, error) {
+				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, i int) (common.Hash, error) {
 					if tx.Value.Cmp(big.NewInt(99999999)) != 0 {
 						t.Fatalf("bad value, want 99999999, got %s", tx.Value)
 					}

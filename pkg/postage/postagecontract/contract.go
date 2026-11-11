@@ -14,12 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/go-sw3-abi/sw3abi"
-
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
@@ -167,6 +166,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: approveDescription,
@@ -181,7 +181,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.OptionalFeePriority(sctx.GetFeePriority(ctx)))
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +203,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageStampContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: desc,
@@ -217,7 +218,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.OptionalFeePriority(sctx.GetFeePriority(ctx)))
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}

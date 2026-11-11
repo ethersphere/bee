@@ -11,10 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ transaction.Backend = (*Backend)(nil)

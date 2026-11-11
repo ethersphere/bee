@@ -317,6 +317,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: approveDescription,
@@ -331,7 +332,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, nil)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -353,6 +354,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		To:          &c.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: desc,
@@ -367,7 +369,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, nil)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
