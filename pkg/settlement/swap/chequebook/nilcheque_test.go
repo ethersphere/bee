@@ -6,9 +6,7 @@ package chequebook_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -21,7 +19,8 @@ import (
 // TestChequeStoreLastChequeNilEntry is a regression test for NIL-02. A
 // statestore entry holding a literal JSON null unmarshals into a nil
 // *SignedCheque with a nil error; LastCheque must not return that nil cheque
-// for a caller to dereference on cashout or a LastCheques listing.
+// for a caller to dereference on cashout or a LastCheques listing, and must
+// report it as corrupt rather than as no cheque.
 func TestChequeStoreLastChequeNilEntry(t *testing.T) {
 	t.Parallel()
 
@@ -36,8 +35,11 @@ func TestChequeStoreLastChequeNilEntry(t *testing.T) {
 	cs := chequebook.NewChequeStore(store, nil, 1, common.HexToAddress("0xbe"), nil, nil)
 
 	cheque, err := cs.LastCheque(chequebookAddr)
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCheque) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCheque, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("null entry must not be reported as no cheque")
 	}
 	if cheque != nil {
 		t.Fatalf("expected nil cheque, got %v", cheque)
@@ -47,7 +49,8 @@ func TestChequeStoreLastChequeNilEntry(t *testing.T) {
 // TestChequeStoreReceiveChequeNilLastReceived is a regression test for NIL-03.
 // The last-received-cheque key can hold a literal JSON null, which unmarshals
 // to a nil *SignedCheque with a nil error; ReceiveCheque must not dereference
-// lastReceivedCheque.CumulativePayout.
+// lastReceivedCheque.CumulativePayout, and must not treat the entry as a first
+// cheque, which would accept payouts already received.
 func TestChequeStoreReceiveChequeNilLastReceived(t *testing.T) {
 	t.Parallel()
 
@@ -69,15 +72,19 @@ func TestChequeStoreReceiveChequeNilLastReceived(t *testing.T) {
 	}
 
 	_, err := cs.ReceiveCheque(context.Background(), cheque, big.NewInt(1), big.NewInt(0))
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCheque) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCheque, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("null entry must not be reported as no cheque")
 	}
 }
 
 // TestServiceLastChequeNilEntry is a regression test for NIL-04. The
 // last-issued-cheque key can hold a literal JSON null, which unmarshals into a
 // nil *SignedCheque with a nil error; service.LastCheque must not return that
-// nil cheque for the caller to dereference.
+// nil cheque for the caller to dereference. It must not report ErrNoCheque
+// either, or Issue would start the next cheque from zero.
 func TestServiceLastChequeNilEntry(t *testing.T) {
 	t.Parallel()
 
@@ -94,8 +101,11 @@ func TestServiceLastChequeNilEntry(t *testing.T) {
 	}
 
 	cheque, err := svc.LastCheque(beneficiary)
-	if !errors.Is(err, chequebook.ErrNoCheque) {
-		t.Fatalf("expected %v, got %v", chequebook.ErrNoCheque, err)
+	if !errors.Is(err, chequebook.ErrNilCheque) {
+		t.Fatalf("expected %v, got %v", chequebook.ErrNilCheque, err)
+	}
+	if errors.Is(err, chequebook.ErrNoCheque) {
+		t.Fatal("null entry must not be reported as no cheque")
 	}
 	if cheque != nil {
 		t.Fatalf("expected nil cheque, got %v", cheque)
@@ -154,23 +164,21 @@ func TestChequeStoreLastChequeNilCumulativePayout(t *testing.T) {
 	}
 }
 
-// TestChequeStoreReceiveChequeNilCumulativePayout is a regression test for a
-// peer-supplied cheque that simply omits cumulativePayout: it unmarshals into a
-// non-nil cheque whose CumulativePayout is a nil *big.Int, which big.Int.Sub
-// dereferences. ReceiveCheque must reject it instead of panicking.
+// TestChequeStoreReceiveChequeNilCumulativePayout covers a cheque with a nil
+// CumulativePayout passed to ReceiveCheque directly, which big.Int.Sub would
+// dereference. ReceiveCheque must reject it instead of panicking. A
+// peer-supplied cheque that omits cumulativePayout is already rejected by
+// SignedCheque.UnmarshalJSON; that path is covered in cheque_json_test.go.
 func TestChequeStoreReceiveChequeNilCumulativePayout(t *testing.T) {
 	t.Parallel()
 
 	beneficiary := common.HexToAddress("0xbe")
 	chequebookAddr := common.HexToAddress("0xcb")
 
-	var cheque *chequebook.SignedCheque
-	body := fmt.Sprintf(`{"beneficiary":"%s","chequebook":"%s","signature":"AAA="}`, beneficiary, chequebookAddr)
-	if err := json.Unmarshal([]byte(body), &cheque); err != nil {
-		t.Fatal(err)
-	}
-	if cheque == nil || cheque.CumulativePayout != nil {
-		t.Fatal("expected a non-nil cheque with a nil cumulative payout")
+	cheque := &chequebook.SignedCheque{
+		Beneficiary: beneficiary,
+		Chequebook:  chequebookAddr,
+		Signature:   []byte{0},
 	}
 
 	cs := chequebook.NewChequeStore(storemock.NewStateStore(), nil, 1, beneficiary, nil, nil)
@@ -209,12 +217,10 @@ func TestChequeStoreEmptyObjectLastReceived(t *testing.T) {
 	}
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			Chequebook:       chequebookAddr,
-			CumulativePayout: big.NewInt(100),
-		},
-		Signature: make([]byte, 65),
+		Beneficiary:      beneficiary,
+		Chequebook:       chequebookAddr,
+		CumulativePayout: big.NewInt(100),
+		Signature:        make([]byte, 65),
 	}
 
 	if _, err := cs.ReceiveCheque(context.Background(), cheque, big.NewInt(1), big.NewInt(0)); err == nil {

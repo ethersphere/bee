@@ -30,7 +30,10 @@ import (
 // handler uses for an incoming cheque: the length-delimited protobuf reader
 // followed by JSON-decoding the embedded cheque.
 func FuzzEmitChequeRead(f *testing.F) {
-	seedCheque, err := json.Marshal(&chequebook.SignedCheque{Signature: make([]byte, 65)})
+	seedCheque, err := json.Marshal(&chequebook.SignedCheque{
+		CumulativePayout: big.NewInt(0),
+		Signature:        make([]byte, 65),
+	})
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -58,12 +61,10 @@ func FuzzEmitChequeRead(f *testing.F) {
 // particularly JSON literal "null", empty bodies, or missing fields.
 func FuzzHandlerEmitCheque(f *testing.F) {
 	validSignedCheque, err := json.Marshal(&chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("0xab"),
-			CumulativePayout: big.NewInt(1000),
-			Chequebook:       common.HexToAddress("0xcd"),
-		},
-		Signature: make([]byte, 65),
+		Beneficiary:      common.HexToAddress("0xab"),
+		CumulativePayout: big.NewInt(1000),
+		Chequebook:       common.HexToAddress("0xcd"),
+		Signature:        make([]byte, 65),
 	})
 	if err != nil {
 		f.Fatal(err)

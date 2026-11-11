@@ -33,11 +33,10 @@ const (
 )
 
 var (
-	ErrNegotiateRate       = errors.New("exchange rates mismatch")
-	ErrNegotiateDeduction  = errors.New("deduction values mismatch")
-	ErrHaveDeduction       = errors.New("received deduction not zero")
-	ErrNilCheque           = errors.New("nil cheque")
-	ErrNilCumulativePayout = errors.New("nil cumulative payout")
+	ErrNegotiateRate      = errors.New("exchange rates mismatch")
+	ErrNegotiateDeduction = errors.New("deduction values mismatch")
+	ErrHaveDeduction      = errors.New("received deduction not zero")
+	ErrNilCheque          = errors.New("nil cheque")
 )
 
 type SendChequeFunc chequebook.SendChequeFunc
@@ -140,14 +139,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	// A JSON null body (the four bytes "null") unmarshals to a nil pointer with
-	// a nil error; reject it before it reaches ReceiveCheque, which dereferences
-	// cheque.Beneficiary unconditionally. A body omitting cumulativePayout
-	// likewise leaves a nil *big.Int that is dereferenced there.
+	// a nil error, because encoding/json does not call SignedCheque.UnmarshalJSON
+	// for it; reject it before it reaches ReceiveCheque, which dereferences
+	// cheque.Beneficiary unconditionally. A missing, null or negative
+	// cumulativePayout is already rejected by SignedCheque.UnmarshalJSON.
 	if signedCheque == nil {
 		return ErrNilCheque
-	}
-	if signedCheque.CumulativePayout == nil {
-		return ErrNilCumulativePayout
 	}
 
 	// signature validation

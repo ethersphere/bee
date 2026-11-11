@@ -403,9 +403,8 @@ func TestHandlerRejectsNilCheque(t *testing.T) {
 }
 
 // TestHandlerRejectsNilCumulativePayout covers a peer-supplied cheque that
-// omits cumulativePayout: it unmarshals into a non-nil cheque whose
-// CumulativePayout is a nil *big.Int, which the chequestore passes to
-// big.Int.Sub. The handler must reject it before it gets there.
+// omits cumulativePayout. SignedCheque.UnmarshalJSON must reject it, so a nil
+// *big.Int never reaches the chequestore, which passes it to big.Int.Sub.
 func TestHandlerRejectsNilCumulativePayout(t *testing.T) {
 	t.Parallel()
 
@@ -456,8 +455,8 @@ func TestHandlerRejectsNilCumulativePayout(t *testing.T) {
 		t.Fatalf("got %v records, want %v", l, 1)
 	}
 
-	if err := records[0].Err(); !errors.Is(err, swapprotocol.ErrNilCumulativePayout) {
-		t.Fatalf("expected error %v, got %v", swapprotocol.ErrNilCumulativePayout, err)
+	if err := records[0].Err(); !errors.Is(err, chequebook.ErrNilCumulativePayout) {
+		t.Fatalf("expected error %v, got %v", chequebook.ErrNilCumulativePayout, err)
 	}
 
 	if received.Load() {

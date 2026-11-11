@@ -372,23 +372,13 @@ func (s *service) totalIssued() (totalIssued *big.Int, err error) {
 
 // LastCheque returns the last cheque we issued for the beneficiary.
 func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) {
-	var lastCheque *SignedCheque
-	err := s.store.Get(lastIssuedChequeKey(beneficiary), &lastCheque)
+	lastCheque, err := loadCheque(s.store, lastIssuedChequeKey(beneficiary))
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, err
+		if errors.Is(err, ErrNoCheque) {
+			return nil, ErrNoCheque
 		}
-		return nil, ErrNoCheque
+		return nil, fmt.Errorf("load last issued cheque for beneficiary %x: %w", beneficiary, err)
 	}
-
-	if lastCheque == nil {
-		return nil, fmt.Errorf("nil cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
-	}
-
-	if lastCheque.CumulativePayout == nil {
-		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNilCumulativePayout)
-	}
-
 	return lastCheque, nil
 }
 
