@@ -504,6 +504,82 @@ func TestTransactionSend(t *testing.T) {
 		}
 	})
 
+	t.Run("send higher tip than fee", func(t *testing.T) {
+		t.Parallel()
+
+		customGasFeeCap := big.NewInt(1000) // smaller than tip
+		nextNonce := nonce + 5
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nextNonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       gasLimit,
+			GasTipCap: customGasFeeCap,
+			GasFeeCap: customGasFeeCap,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasPrice: customGasFeeCap,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nextNonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return customGasFeeCap, customGasFeeCap, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+			0,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasTipCap.Cmp(customGasFeeCap) != 0 {
+			t.Fatalf("got wrong gas tip in stored transaction. wanted %d, got %d", customGasFeeCap, storedTransaction.GasTipCap)
+		}
+	})
+
 	t.Run("send with contract fallback", func(t *testing.T) {
 		t.Parallel()
 
@@ -1433,7 +1509,7 @@ func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
 	}
 }
 
-func TestResendFeePriorityReusesStoredFees(t *testing.T) {
+func TestResendFeePriorityUsesFeeHistory(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
@@ -1476,6 +1552,7 @@ func TestResendFeePriorityReusesStoredFees(t *testing.T) {
 	}
 
 	storedSigner := signerMockForTransaction(t, signedTx, recipient, chainID)
+	var historyTier int
 	transactionService, err := transaction.NewService(logger, sender,
 		backendmock.New(
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
@@ -1484,9 +1561,9 @@ func TestResendFeePriorityReusesStoredFees(t *testing.T) {
 				}
 				return nil
 			}),
-			backendmock.WithSuggestFeeHistoryFunc(func(context.Context, int) (*big.Int, *big.Int, error) {
-				t.Fatal("fee history must not be queried when resending a fee priority transaction")
-				return nil, nil, nil
+			backendmock.WithSuggestFeeHistoryFunc(func(_ context.Context, tier int) (*big.Int, *big.Int, error) {
+				historyTier = tier
+				return gasFeeCap, gasTip, nil
 			}),
 			backendmock.WithSuggestedFeeAndTipFunc(func(context.Context, *big.Int, int) (*big.Int, *big.Int, error) {
 				t.Fatal("fee suggestion must not be queried when resending a fee priority transaction")
@@ -1517,6 +1594,9 @@ func TestResendFeePriorityReusesStoredFees(t *testing.T) {
 	if err := transactionService.ResendTransaction(context.Background(), signedTx.Hash()); err != nil {
 		t.Fatal(err)
 	}
+	if historyTier != transaction.FeePriorityMarket {
+		t.Fatalf("fee history tier %d, want market", historyTier)
+	}
 }
 
 func TestSendUsesFeeHistoryForTier(t *testing.T) {
@@ -1533,117 +1613,85 @@ func TestSendUsesFeeHistoryForTier(t *testing.T) {
 	chainID := big.NewInt(5)
 	historyTip := big.NewInt(55)
 	historyFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), historyTip)
-	// Tip is not above the fee cap: both come back as the caller gas price.
-	gasPrice := big.NewInt(1000)
+	gasPrice := big.NewInt(9000)
 
-	for _, tc := range []struct {
-		name        string
-		feePriority int
-		price       *big.Int
-		feeCap      *big.Int
-		tip         *big.Int
-		wantHistory bool
-	}{
-		{
-			name:        "tier",
-			feePriority: transaction.FeePriorityLow,
-			price:       big.NewInt(9000),
-			feeCap:      historyFeeCap,
-			tip:         historyTip,
-			wantHistory: true,
-		},
-		{
-			name:   "gas price",
-			price:  gasPrice,
-			feeCap: gasPrice,
-			tip:    gasPrice,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       gasLimit,
+		GasFeeCap: historyFeeCap,
+		GasTipCap: historyTip,
+		Data:      txData,
+	})
+	var historyCalled bool
+	svc, err := transaction.NewService(logger, sender,
+		backendmock.New(
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				if tx != signedTx {
+					t.Fatal("not sending signed transaction")
+				}
+				return nil
+			}),
+			backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+				return estimatedGasLimit, nil
+			}),
+			backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+				return nonce - 1, nil
+			}),
+			backendmock.WithSuggestedFeeAndTipFunc(func(context.Context, *big.Int, int) (*big.Int, *big.Int, error) {
+				t.Fatal("fee suggestion must not be queried when a fee priority is set")
+				return nil, nil, nil
+			}),
+			backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
+				historyCalled = true
+				if tier != transaction.FeePriorityLow {
+					t.Fatalf("got tier %d, want low", tier)
+				}
+				return historyFeeCap, historyTip, nil
+			}),
+		),
+		signerMockForTransaction(t, signedTx, sender, chainID),
+		storemock.NewStateStore(),
+		chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				return nil, nil, nil
+			}),
+		),
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, svc)
 
-			signedTx := types.NewTx(&types.DynamicFeeTx{
-				ChainID:   chainID,
-				Nonce:     nonce,
-				To:        &recipient,
-				Value:     value,
-				Gas:       gasLimit,
-				GasFeeCap: tc.feeCap,
-				GasTipCap: tc.tip,
-				Data:      txData,
-			})
-			var suggestedCalled, historyCalled bool
-			svc, err := transaction.NewService(logger, sender,
-				backendmock.New(
-					backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-						if tx != signedTx {
-							t.Fatal("not sending signed transaction")
-						}
-						return nil
-					}),
-					backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
-						return estimatedGasLimit, nil
-					}),
-					backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
-						return nonce - 1, nil
-					}),
-					backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, got *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-						suggestedCalled = true
-						if boostPercent != transaction.DefaultTipBoostPercent {
-							t.Fatalf("got boost %d, want %d", boostPercent, transaction.DefaultTipBoostPercent)
-						}
-						if got == nil || got.Cmp(tc.price) != 0 {
-							t.Fatalf("got gas price %v, want %s", got, tc.price)
-						}
-						return tc.feeCap, tc.tip, nil
-					}),
-					backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
-						historyCalled = true
-						if tier != transaction.FeePriorityLow {
-							t.Fatalf("got tier %d, want low", tier)
-						}
-						return historyFeeCap, historyTip, nil
-					}),
-				),
-				signerMockForTransaction(t, signedTx, sender, chainID),
-				storemock.NewStateStore(),
-				chainID,
-				monitormock.New(
-					monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-						return nil, nil, nil
-					}),
-				),
-				0,
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			testutil.CleanupCloser(t, svc)
+	txHash, err := svc.Send(context.Background(), &transaction.TxRequest{
+		To:          &recipient,
+		Data:        txData,
+		Value:       value,
+		GasPrice:    gasPrice,
+		FeePriority: transaction.FeePriorityLow,
+	}, transaction.DefaultTipBoostPercent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txHash != signedTx.Hash() {
+		t.Fatalf("got hash %s, want %s", txHash, signedTx.Hash())
+	}
+	if !historyCalled {
+		t.Fatal("fee history was not queried")
+	}
 
-			txHash, err := svc.Send(context.Background(), &transaction.TxRequest{
-				To:          &recipient,
-				Data:        txData,
-				Value:       value,
-				GasPrice:    tc.price,
-				FeePriority: tc.feePriority,
-			}, transaction.DefaultTipBoostPercent)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if txHash != signedTx.Hash() {
-				t.Fatalf("got hash %s, want %s", txHash, signedTx.Hash())
-			}
-			if suggestedCalled == tc.wantHistory || historyCalled != tc.wantHistory {
-				t.Fatalf("suggested=%t history=%t, want history %t", suggestedCalled, historyCalled, tc.wantHistory)
-			}
-
-			stored, err := svc.StoredTransaction(txHash)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if stored.GasTipCap.Cmp(tc.tip) != 0 {
-				t.Fatalf("stored tip %s, want %s", stored.GasTipCap, tc.tip)
-			}
-		})
+	stored, err := svc.StoredTransaction(txHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.GasTipCap.Cmp(historyTip) != 0 {
+		t.Fatalf("stored tip %s, want %s", stored.GasTipCap, historyTip)
+	}
+	if stored.FeePriority != transaction.FeePriorityLow {
+		t.Fatalf("stored fee priority %d, want low", stored.FeePriority)
 	}
 }

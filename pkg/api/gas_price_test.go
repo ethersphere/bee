@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"context"
+	"io"
 	"math/big"
 	"net/http"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/log"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -33,7 +33,7 @@ func TestFeePriorityHeader(t *testing.T) {
 	}{
 		{name: "omitted", wantStatus: http.StatusCreated},
 		{name: "low", header: "low", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityLow},
-		{name: "mixed case", header: " Market ", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
+		{name: "aggressive under default maximum", header: "aggressive", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityAggressive},
 		{name: "unknown", header: "banana", wantStatus: http.StatusBadRequest},
 		{name: "above maximum", header: "aggressive", max: "market", wantStatus: http.StatusBadRequest},
 		{name: "at maximum", header: "market", max: "market", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
@@ -56,9 +56,11 @@ func TestFeePriorityHeader(t *testing.T) {
 			)
 			client, _, _, _, svc := newTestServer(t, testServerOptions{PostageContract: contract})
 			if tc.max != "" {
-				if err := svc.SetMaxFeePriority(tc.max); err != nil {
+				tier, err := transaction.ParseFeePriority(tc.max)
+				if err != nil {
 					t.Fatal(err)
 				}
+				svc.SetMaxFeePriority(tier)
 			}
 
 			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
@@ -95,56 +97,48 @@ func TestFeePriorityHeader(t *testing.T) {
 	}
 }
 
-func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
+func TestFeePriorityRejectsGasPrice(t *testing.T) {
 	t.Parallel()
 
-	// Outside the accepted Gas-Price range. Fee-Priority still wins, so the range check is skipped.
-	gasPrice := new(big.Int).Lsh(big.NewInt(1), 200)
 	var (
-		mu       sync.Mutex
-		gotTier  int
-		gotPrice *big.Int
+		mu     sync.Mutex
+		called bool
 	)
 	contract := contractMock.New(
-		contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
+		contractMock.WithCreateBatchFunc(func(context.Context, *big.Int, uint8, bool, string) (common.Hash, []byte, error) {
 			mu.Lock()
 			defer mu.Unlock()
-			gotTier = sctx.GetFeePriority(ctx)
-			gotPrice = sctx.GetGasPrice(ctx)
+			called = true
 			return common.HexToHash("0xabcd"), []byte{0xab}, nil
 		}),
 	)
-	sink := new(syncBuffer)
-	client, _, _, _, _ := newTestServer(t, testServerOptions{
-		PostageContract: contract,
-		Logger:          log.NewLogger("test", log.WithSink(sink), log.WithVerbosity(log.VerbosityDebug)),
-	})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{PostageContract: contract})
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set(api.GasPriceHeader, gasPrice.String())
+	req.Header.Set(api.GasPriceHeader, "1000000000")
 	req.Header.Set(api.FeePriorityHeader, "low")
 	res, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusCreated)
+	if err != nil {
+		t.Fatal(err)
 	}
-
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
+	if !strings.Contains(string(body), api.FeePriorityHeader+" cannot be combined with "+api.GasPriceHeader) {
+		t.Fatalf("got body %s, want the header conflict", body)
+	}
 	mu.Lock()
 	defer mu.Unlock()
-	if gotTier != transaction.FeePriorityLow {
-		t.Fatalf("got fee priority %d, want low", gotTier)
-	}
-	if gotPrice == nil || gotPrice.Cmp(gasPrice) != 0 {
-		t.Fatalf("got gas price %v, want %s", gotPrice, gasPrice)
-	}
-	if !strings.Contains(sink.String(), "fee priority overrides gas price") {
-		t.Fatalf("override was not logged: %s", sink.String())
+	if called {
+		t.Fatal("rejected request reached the contract")
 	}
 }
 

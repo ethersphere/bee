@@ -98,7 +98,7 @@ func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier int) (*big.
 			return nil, nil, err
 		}
 		b.metrics.FeeHistoryFallbacks.Inc()
-		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, transaction.FallbackTipBoostPercent(tier))
+		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, fallbackTipBoostPercent(tier))
 		if fallbackErr != nil {
 			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
 		}
@@ -148,6 +148,19 @@ func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
 		return fh.AggressiveTip
 	default:
 		return fh.MarketTip
+	}
+}
+
+// fallbackTipBoostPercent is the boost applied to the default tip suggestion when eth_feeHistory is unusable.
+// It follows the same scale as tipForPriority: low, market, aggressive.
+func fallbackTipBoostPercent(tier int) int {
+	switch tier {
+	case transaction.FeePriorityLow:
+		return 10
+	case transaction.FeePriorityAggressive:
+		return 90
+	default:
+		return 50
 	}
 }
 

@@ -73,7 +73,7 @@ type StoredTransaction struct {
 	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
-	FeePriority int             // fee priority that priced the transaction; resend reuses the stored caps
+	FeePriority int             // fee priority that priced the transaction; resend prices it again from fee history
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -505,15 +505,12 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 
 	var gasFeeCap, gasTipCap *big.Int
 	if storedTransaction.FeePriority != 0 {
-		// fee_history caps change faster, so with new requests highly likely price would change.
-		// change even on 1 wei changes hash
-		gasFeeCap = storedTransaction.GasFeeCap
-		gasTipCap = storedTransaction.GasTipCap
+		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, storedTransaction.FeePriority)
 	} else {
 		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-		if err != nil {
-			return err
-		}
+	}
+	if err != nil {
+		return err
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{

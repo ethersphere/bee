@@ -58,6 +58,10 @@ func NewBackend(
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
 	}
+	// Zero means unset, the same way a zero block sync interval means the default.
+	if feeHistoryBlockCount == 0 {
+		feeHistoryBlockCount = DefaultFeeHistoryBlockCount
+	}
 	if feeHistoryBlockCount > MaxFeeHistoryBlockCount {
 		feeHistoryBlockCount = MaxFeeHistoryBlockCount
 	}

@@ -53,6 +53,8 @@
 # BEE_DB_OPEN_FILES_LIMIT=200
 ## size of the database write buffer in bytes (default 33554432)
 # BEE_DB_WRITE_BUFFER_SIZE=33554432
+## eth_feeHistory block count for fee hints; values above 1000 are capped (default 100)
+# BEE_FEE_HISTORY_BLOCK_COUNT=100
 ## cause the node to start in full mode (deprecated: use BEE_NODE_MODE=full) (default false)
 # BEE_FULL_NODE=false
 ## gas limit fallback when estimation fails for contract transactions (default 500000)
@@ -103,6 +105,8 @@
 # BEE_PRICE_ORACLE_ADDRESS=
 ## redistribution contract address (default empty)
 # BEE_REDISTRIBUTION_ADDRESS=
+## fee priority for redistribution game transactions (low, market, aggressive); empty keeps the default tip suggestion (default empty)
+# BEE_REDISTRIBUTION_GAME_FEE_PRIORITY=
 ## reserve capacity doubling (default 0)
 # BEE_RESERVE_CAPACITY_DOUBLING=0
 ## ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry (default [])
@@ -129,6 +133,8 @@
 # BEE_TARGET_NEIGHBORHOOD=
 ## skips the gas estimate step for contract transactions (default false)
 # BEE_TRANSACTION_DEBUG_MODE=false
+## maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution (default aggressive)
+# BEE_TRANSACTION_FEE_PRIORITY_MAX=aggressive
 ## enable tracing (default false)
 # BEE_TRACING_ENABLE=false
 ## endpoint to send tracing data (default 127.0.0.1:6831)

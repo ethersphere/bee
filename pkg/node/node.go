@@ -479,6 +479,10 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("redistribution game fee priority: %w", err)
 	}
+	maxFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMax)
+	if err != nil {
+		return nil, fmt.Errorf("transaction fee priority max: %w", err)
+	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
@@ -569,9 +573,7 @@ func NewBee(
 		)
 
 		apiService.Mount()
-		if err = apiService.SetMaxFeePriority(o.TransactionFeePriorityMax); err != nil {
-			return nil, fmt.Errorf("transaction fee priority max: %w", err)
-		}
+		apiService.SetMaxFeePriority(maxFeePriority)
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)

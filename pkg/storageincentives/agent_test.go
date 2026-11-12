@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
@@ -45,6 +46,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls   bool
 		balance         *big.Int
 		doubling        uint8
+		feePriority     int
 		isReserveSynced func(depth uint8) bool
 		sisterAnchor    bool // round anchor at PO radius from the overlay instead of within committed depth
 	}{
@@ -138,6 +140,16 @@ func TestAgent(t *testing.T) {
 			doubling:        1,
 			isReserveSynced: func(depth uint8) bool { return depth >= 8 },
 			sisterAnchor:    true,
+		}, {
+			name:           "expected calls use the configured fee priority",
+			blocksPerRound: 12,
+			blocksPerPhase: 4,
+			incrementBy:    2,
+			expectedCalls:  true,
+			limit:          144,
+			balance:        bigBalance,
+			doubling:       1,
+			feePriority:    transaction.FeePriorityLow,
 		},
 	}
 
@@ -165,7 +177,7 @@ func TestAgent(t *testing.T) {
 					contract.anchor[radius/8] ^= 0x80 >> (radius % 8)
 				}
 
-				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, 0, tc.isReserveSynced)
+				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.feePriority, tc.isReserveSynced)
 				testutil.CleanupCloser(t, service)
 
 				<-wait
@@ -205,6 +217,16 @@ func TestAgent(t *testing.T) {
 					}
 
 					prevCall = calls[i]
+				}
+
+				priorities := contract.feePriorities()
+				if len(priorities) == 0 {
+					t.Fatal("commit and reveal did not record a fee priority")
+				}
+				for _, got := range priorities {
+					if got != tc.feePriority {
+						t.Fatalf("got fee priority %d, want %d", got, tc.feePriority)
+					}
 				}
 			})
 		})
@@ -712,6 +734,7 @@ const (
 
 type mockContract struct {
 	callsList       []contractCall
+	priorities      []int
 	mtx             sync.Mutex
 	expectedRadius  uint8
 	t               *testing.T
@@ -731,6 +754,14 @@ func (m *mockContract) getCalls() []contractCall {
 	calls := make([]contractCall, len(m.callsList))
 	copy(calls, m.callsList)
 	return calls
+}
+
+func (m *mockContract) feePriorities() []int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	priorities := make([]int, len(m.priorities))
+	copy(priorities, m.priorities)
+	return priorities
 }
 
 func (m *mockContract) countCalls(call contractCall) int {
@@ -780,17 +811,18 @@ func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProof
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {
+func (m *mockContract) Commit(ctx context.Context, _ []byte, _ uint64) (common.Hash, error) {
 	if m.beforeCommit != nil {
 		m.beforeCommit()
 	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
+	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
+func (m *mockContract) Reveal(ctx context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -799,6 +831,7 @@ func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (c
 	}
 
 	m.callsList = append(m.callsList, revealCall)
+	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
 	return common.Hash{}, nil
 }
 

@@ -27,21 +27,9 @@ func FeePriorityName(tier int) string {
 	case FeePriorityAggressive:
 		return "aggressive"
 	case 0:
-		return "unset"
+		return ""
 	default:
 		return "unknown"
-	}
-}
-
-// FallbackTipBoostPercent is the boost applied to the default tip suggestion when eth_feeHistory is unusable.
-func FallbackTipBoostPercent(tier int) int {
-	switch tier {
-	case FeePriorityLow:
-		return 10
-	case FeePriorityAggressive:
-		return 90
-	default:
-		return 50
 	}
 }
 

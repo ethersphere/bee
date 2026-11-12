@@ -24,6 +24,8 @@
 # block-time: "5"
 ## block number cache sync interval in blocks
 # block-sync-interval: 10
+## eth_feeHistory block count for fee hints; values above 1000 are capped
+# fee-history-block-count: 100
 
 ## ── Swap / chequebook (full and light nodes only) ────────────────────────────
 ## enable swap
@@ -52,6 +54,8 @@
 # redistribution-address: ""
 ## staking contract address
 # staking-address: ""
+## fee priority for redistribution game transactions (low, market, aggressive); empty keeps the default tip suggestion
+# redistribution-game-fee-priority: ""
 
 ## ── Network ───────────────────────────────────────────────────────────────────
 ## triggers connect to main net bootnodes
@@ -138,6 +142,8 @@ data-dir: "./data"
 # minimum-gas-tip-cap: 0
 ## gas limit fallback when estimation fails for contract transactions (default 900000)
 # gas-limit-fallback: 900000
+## maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution
+# transaction-fee-priority-max: aggressive
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
 ## withdrawal target addresses

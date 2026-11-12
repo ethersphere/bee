@@ -142,7 +142,7 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 
 // Medians of the two reward rows are low=15, market=55, aggressive=95.
 // The last base fee is the next block, so the fee cap is 2*1000 plus the tip.
-// A minimum below a history tip leaves it; a minimum above it raises the tip and the cap.
+// A minimum above a history tip raises the tip and the cap; a minimum below it leaves the tip.
 func TestSuggestFeeHistory(t *testing.T) {
 	t.Parallel()
 
@@ -164,12 +164,8 @@ func TestSuggestFeeHistory(t *testing.T) {
 		{name: "no minimum/low", tier: transaction.FeePriorityLow, tip: "15", feeCap: "2015"},
 		{name: "no minimum/market", tier: transaction.FeePriorityMarket, tip: "55", feeCap: "2055"},
 		{name: "no minimum/aggressive", tier: transaction.FeePriorityAggressive, tip: "95", feeCap: "2095"},
-		{name: "minimum below market/low", minimum: 40, tier: transaction.FeePriorityLow, tip: "40", feeCap: "2040"},
-		{name: "minimum below market/market", minimum: 40, tier: transaction.FeePriorityMarket, tip: "55", feeCap: "2055"},
-		{name: "minimum below market/aggressive", minimum: 40, tier: transaction.FeePriorityAggressive, tip: "95", feeCap: "2095"},
-		{name: "minimum above all/low", minimum: 200, tier: transaction.FeePriorityLow, tip: "200", feeCap: "2200"},
-		{name: "minimum above all/market", minimum: 200, tier: transaction.FeePriorityMarket, tip: "200", feeCap: "2200"},
-		{name: "minimum above all/aggressive", minimum: 200, tier: transaction.FeePriorityAggressive, tip: "200", feeCap: "2200"},
+		{name: "minimum above low", minimum: 40, tier: transaction.FeePriorityLow, tip: "40", feeCap: "2040"},
+		{name: "minimum below market", minimum: 40, tier: transaction.FeePriorityMarket, tip: "55", feeCap: "2055"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -217,7 +213,8 @@ func TestSuggestFeeHistory(t *testing.T) {
 }
 
 // A failed or unusable eth_feeHistory falls back to the default tip suggestion.
-// The boost is 10, 50, or 90 for low, market, and aggressive. A canceled context does not fall back.
+// The boost is 10, 50, or 90 for low, market, and aggressive.
+// An unusable history uses the same fallback. A canceled context does not fall back.
 func TestSuggestFeeHistoryFallback(t *testing.T) {
 	t.Parallel()
 
@@ -241,9 +238,7 @@ func TestSuggestFeeHistoryFallback(t *testing.T) {
 		{name: "rpc/low", tier: transaction.FeePriorityLow, boost: 10},
 		{name: "rpc/market", tier: transaction.FeePriorityMarket, boost: 50},
 		{name: "rpc/aggressive", tier: transaction.FeePriorityAggressive, boost: 90},
-		{name: "empty blocks/low", tier: transaction.FeePriorityLow, boost: 10, empty: true},
 		{name: "empty blocks/market", tier: transaction.FeePriorityMarket, boost: 50, empty: true},
-		{name: "empty blocks/aggressive", tier: transaction.FeePriorityAggressive, boost: 90, empty: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

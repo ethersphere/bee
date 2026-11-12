@@ -1216,7 +1216,7 @@ components:
       description: >
         Fee priority for this transaction: low, market, or aggressive.
         A priority above the node's transaction-fee-priority-max is rejected.
-        When set, it takes precedence over the gas-price header.
+        It cannot be combined with the gas-price header.
         When omitted, the node keeps its default gas price suggestion.
 
     GasLimitParameter:
