@@ -101,6 +101,7 @@ const (
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
 	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
+	SwarmCacheHeader                  = "Swarm-Cache"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -647,7 +648,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
-		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
+		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader, SwarmCacheHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
