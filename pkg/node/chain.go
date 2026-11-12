@@ -365,10 +365,10 @@ func (m *noOpChequebookService) Issue(context.Context, common.Address, *big.Int,
 	return nil, postagecontract.ErrChainDisabled
 }
 
-func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCheque, error) {
+func (m *noOpChequebookService) LastIssuedCheque(common.Address) (*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
 
-func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
+func (m *noOpChequebookService) LastIssuedCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }

@@ -377,6 +377,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	return b, err
 }
 
+// nodeModeBootnode is the node-mode value for bootnodes. It is a config-level
+// mode: the node runs as a full node with bootnode-mode set, exactly as a full
+// node configured with the deprecated bootnode-mode option.
+const nodeModeBootnode = "bootnode"
+
 // legacyNodeModeRemovalVersion is the release in which node-mode inference from
 // the deprecated full-node option and blockchain-rpc-endpoint presence is
 // removed. From that release on, node-mode is required.
@@ -393,12 +398,13 @@ const legacyNodeModeRemovalVersion = "v2.11.0"
 // node-mode is set, and the release in which the inference is removed.
 //
 // node-mode set: the mode owns the config. Options the mode implies are
-// enabled unless the operator explicitly disabled them (full bootnodes are
-// exempt), options the mode cannot support are rejected when explicitly enabled
+// enabled unless the operator explicitly disabled them (bootnodes are exempt),
+// options the mode cannot support are rejected when explicitly enabled
 // (overriding the pflag defaults of true when unset), and
-// blockchain-rpc-endpoint is required for light and full nodes. An unset
-// chequebook-enable follows swap-enable. Implied values are written back to
-// config so the rest of node startup picks them up.
+// blockchain-rpc-endpoint is required for light, full and bootnodes. An unset
+// chequebook-enable follows swap-enable. node-mode: bootnode runs as a full
+// node with bootnode-mode set. Implied values are written back to config so the
+// rest of node startup picks them up.
 //
 // In both regimes, options the resolved mode cannot run with are rejected
 // before the node is built.
@@ -430,12 +436,24 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 // resolveExplicitNodeMode applies the regime in which node-mode is set. The
 // value is matched case-insensitively, ignoring surrounding whitespace.
 func (c *command) resolveExplicitNodeMode(logger log.Logger, raw string) (node.NodeMode, error) {
-	mode := node.NodeMode(strings.ToLower(strings.TrimSpace(raw)))
+	value := strings.ToLower(strings.TrimSpace(raw))
+	bootnodeValue := value == nodeModeBootnode
+	if bootnodeValue {
+		if c.config.IsSet(optionNameBootnodeMode) && !c.config.GetBool(optionNameBootnodeMode) {
+			logger.Warning("bootnode-mode=false is ignored with node-mode: bootnode")
+		}
+		c.config.Set(optionNameBootnodeMode, true)
+		value = string(node.FullMode)
+	}
+	mode := node.NodeMode(value)
 	if !mode.IsValid() {
-		return "", fmt.Errorf("invalid node-mode %q: must be one of full, light, ultra-light", raw)
+		return "", fmt.Errorf("invalid node-mode %q: must be one of full, light, ultra-light, bootnode", raw)
 	}
 	if c.config.GetBool(optionNameFullNode) {
 		logger.Warning("--full-node is set alongside --node-mode; --full-node is ignored")
+	}
+	if !bootnodeValue && mode == node.FullMode && c.config.GetBool(optionNameBootnodeMode) {
+		logger.Warning("bootnode-mode is deprecated; use node-mode: bootnode instead of node-mode: full with bootnode-mode")
 	}
 
 	// Surrounding whitespace is not significant: a whitespace-only endpoint
@@ -447,23 +465,30 @@ func (c *command) resolveExplicitNodeMode(logger log.Logger, raw string) (node.N
 
 	switch mode {
 	case node.FullMode:
+		bootnode := c.config.GetBool(optionNameBootnodeMode)
 		if rpcEndpoint == "" {
-			return "", errors.New("full node requires blockchain-rpc-endpoint to be set")
+			kind := "full node"
+			if bootnode {
+				kind = "bootnode"
+			}
+			return "", fmt.Errorf("%s requires blockchain-rpc-endpoint to be set", kind)
 		}
 		// A full node implies swap, chequebook and storage incentives. Bootnodes
 		// are exempt: NewBee never runs the reserve or the incentives agent for
 		// them, so they have no use for the implied options. Swap still starts on
 		// a bootnode when explicitly enabled, and chequebook follows it.
-		if !c.config.GetBool(optionNameBootnodeMode) {
+		if !bootnode {
 			c.enableImpliedOption(logger, mode, optionNameSwapEnable)
 			if c.config.GetBool(optionNameSwapEnable) {
 				c.enableImpliedOption(logger, mode, optionNameChequebookEnable)
 			}
 			c.enableImpliedOption(logger, mode, optionNameStorageIncentivesEnable)
-		} else if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			break
+		}
+		if !c.config.IsSet(optionNameStorageIncentivesEnable) {
 			c.config.Set(optionNameStorageIncentivesEnable, false)
 		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
-			logger.Warning("storage-incentives-enable has no effect on a bootnode", "node_mode", mode)
+			logger.Warning("storage-incentives-enable has no effect on a bootnode", "node_mode", nodeModeBootnode)
 		}
 	case node.LightMode:
 		if rpcEndpoint == "" {
@@ -561,7 +586,7 @@ func (c *command) validateNodeModeOptions(mode node.NodeMode) error {
 	chainEnabled := mode == node.FullMode || mode == node.LightMode
 	switch {
 	case c.config.GetBool(optionNameBootnodeMode) && mode != node.FullMode:
-		return errors.New("boot node must be started as a full node")
+		return errors.New("boot node must be started as a full node; use node-mode: bootnode")
 	case mode != node.FullMode && c.config.GetInt(optionReserveCapacityDoubling) != 0:
 		return errors.New("reserve capacity doubling is only allowed for full nodes")
 	case c.config.GetBool(optionNameSwapEnable) && !chainEnabled:
@@ -588,9 +613,16 @@ func (c *command) legacyMigration(mode node.NodeMode) legacyNodeModeMigration {
 	bootnode := c.config.GetBool(optionNameBootnodeMode)
 	swap := c.config.GetBool(optionNameSwapEnable)
 
-	m.set = append(m.set, optionNameNodeMode+"="+string(mode))
+	if bootnode {
+		m.set = append(m.set, optionNameNodeMode+"="+nodeModeBootnode)
+	} else {
+		m.set = append(m.set, optionNameNodeMode+"="+string(mode))
+	}
 	if c.config.IsSet(optionNameFullNode) {
 		m.remove = append(m.remove, optionNameFullNode)
+	}
+	if c.config.IsSet(optionNameBootnodeMode) {
+		m.remove = append(m.remove, optionNameBootnodeMode)
 	}
 	// node-mode: full implies swap, which legacy full nodes did not.
 	if mode == node.FullMode && !bootnode && !c.config.IsSet(optionNameSwapEnable) {
@@ -618,8 +650,12 @@ func (c *command) legacyMigration(mode node.NodeMode) legacyNodeModeMigration {
 // config changes that keep the node's behavior once node-mode is set.
 func (c *command) logLegacyNodeModeMigration(logger log.Logger, mode node.NodeMode) {
 	m := c.legacyMigration(mode)
+	inferred := string(mode)
+	if c.config.GetBool(optionNameBootnodeMode) {
+		inferred = nodeModeBootnode
+	}
 	kv := []any{
-		"node_mode", mode,
+		"node_mode", inferred,
 		"removed_in", legacyNodeModeRemovalVersion,
 		"set", m.set,
 	}

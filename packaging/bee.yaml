@@ -4,15 +4,18 @@
 ## Selects the operational mode of this node.
 ##   full        - participates in storage and incentives; requires blockchain-rpc;
 ##                 implies swap-enable, chequebook-enable and storage-incentives-enable
-##                 (bootnodes are exempt: swap only when set, chequebook follows swap)
 ##   light       - uploads and downloads only; requires blockchain-rpc; beyond the
 ##                 free allowance also needs swap-enable and a funded chequebook
 ##   ultra-light - free-tier downloads only; no blockchain connection needed
+##   bootnode    - always accepts incoming connections to help peers join;
+##                 requires blockchain-rpc; implies no swap, chequebook or
+##                 storage incentives (chequebook follows swap when it is set)
 ## When unset (the default), the mode is inferred from the deprecated full-node
-## option and blockchain-rpc presence (deprecated, removed in v2.11.0).
+## and bootnode-mode options and blockchain-rpc presence (deprecated, removed in
+## v2.11.0).
 # node-mode: ""
 
-## ── Blockchain / RPC (required for full and light nodes) ─────────────────────
+## ── Blockchain / RPC (required for full, light and bootnodes) ────────────────
 ## blockchain rpc configuration
 # blockchain-rpc:
 #   endpoint: ""
@@ -64,7 +67,7 @@
 # network-id: "1"
 ## initial nodes to connect to
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
-## cause the node to always accept incoming connections
+## cause the node to always accept incoming connections (deprecated: use node-mode: bootnode)
 # bootnode-mode: false
 ## protect nodes from getting kicked out on bootnode
 # static-nodes: []

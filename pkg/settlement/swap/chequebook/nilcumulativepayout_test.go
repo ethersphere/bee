@@ -45,10 +45,10 @@ func pendingBackend() transaction.Backend {
 	)
 }
 
-// TestCashoutStatusNilCumulativePayoutLastCheque covers a last-received-cheque
-// entry of `{}`. LastCheque rejects the nil payout before CashoutStatus does
+// TestCashoutStatusNilCumulativePayoutLastReceivedCheque covers a last-received-cheque
+// entry of `{}`. LastReceivedCheque rejects the nil payout before CashoutStatus does
 // arithmetic on it. Reachable from GET /chequebook/cashout/{peer}.
-func TestCashoutStatusNilCumulativePayoutLastCheque(t *testing.T) {
+func TestCashoutStatusNilCumulativePayoutLastReceivedCheque(t *testing.T) {
 	t.Parallel()
 
 	chequebookAddress := common.HexToAddress("0xcb")
@@ -134,7 +134,7 @@ func TestCashoutStatusNilCumulativePayoutAction(t *testing.T) {
 }
 
 // TestCashChequeNilCumulativePayout covers a last-received cheque with a nil
-// payout. LastCheque rejects it before CashCheque packs the amount for the chain.
+// payout. LastReceivedCheque rejects it before CashCheque packs the amount for the chain.
 func TestCashChequeNilCumulativePayout(t *testing.T) {
 	t.Parallel()
 
@@ -162,7 +162,7 @@ func TestCashChequeNilCumulativePayout(t *testing.T) {
 }
 
 // TestChequebookIssueNilCumulativePayout covers a corrupt last-issued cheque.
-// LastCheque rejects the nil payout with its own error, so Issue must not send
+// LastIssuedCheque rejects the nil payout with its own error, so Issue must not send
 // a new cheque and must not treat the row as a first cheque starting at zero.
 func TestChequebookIssueNilCumulativePayout(t *testing.T) {
 	t.Parallel()

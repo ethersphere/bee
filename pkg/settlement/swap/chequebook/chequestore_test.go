@@ -86,7 +86,7 @@ func TestReceiveCheque(t *testing.T) {
 		t.Fatalf("calculated wrong received cumulativePayout. wanted %d, got %d", cumulativePayout, received)
 	}
 
-	lastCheque, err := chequestore.LastCheque(chequebookAddress)
+	lastCheque, err := chequestore.LastReceivedCheque(chequebookAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

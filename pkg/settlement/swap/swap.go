@@ -172,7 +172,7 @@ func (s *Service) TotalSent(peer swarm.Address) (totalSent *big.Int, err error) 
 	if s.chequebook == nil {
 		return big.NewInt(0), nil
 	}
-	cheque, err := s.chequebook.LastCheque(beneficiary)
+	cheque, err := s.chequebook.LastIssuedCheque(beneficiary)
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
 			return nil, settlement.ErrPeerNoSettlements
@@ -192,7 +192,7 @@ func (s *Service) TotalReceived(peer swarm.Address) (totalReceived *big.Int, err
 		return nil, settlement.ErrPeerNoSettlements
 	}
 
-	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
+	cheque, err := s.chequeStore.LastReceivedCheque(chequebookAddress)
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
 			return nil, settlement.ErrPeerNoSettlements
@@ -208,7 +208,7 @@ func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
 	if s.chequebook == nil {
 		return result, nil
 	}
-	cheques, err := s.chequebook.LastCheques()
+	cheques, err := s.chequebook.LastIssuedCheques()
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (s *Service) SettlementsSent() (map[string]*big.Int, error) {
 // SettlementsReceived returns received settlements for each individual known peer.
 func (s *Service) SettlementsReceived() (map[string]*big.Int, error) {
 	result := make(map[string]*big.Int)
-	cheques, err := s.chequeStore.LastCheques()
+	cheques, err := s.chequeStore.LastReceivedCheques()
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (s *Service) LastSentCheque(peer swarm.Address) (*chequebook.SignedCheque, 
 		return nil, ErrNoChequebook
 	}
 
-	return s.chequebook.LastCheque(common)
+	return s.chequebook.LastIssuedCheque(common)
 }
 
 // LastReceivedCheque returns the last received cheque for the peer
@@ -302,7 +302,7 @@ func (s *Service) LastReceivedCheque(peer swarm.Address) (*chequebook.SignedCheq
 		return nil, chequebook.ErrNoCheque
 	}
 
-	return s.chequeStore.LastCheque(common)
+	return s.chequeStore.LastReceivedCheque(common)
 }
 
 // LastSentCheques returns the list of last sent cheques for all peers
@@ -310,7 +310,7 @@ func (s *Service) LastSentCheques() (map[string]*chequebook.SignedCheque, error)
 	if s.chequebook == nil {
 		return nil, ErrNoChequebook
 	}
-	lastcheques, err := s.chequebook.LastCheques()
+	lastcheques, err := s.chequebook.LastIssuedCheques()
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func (s *Service) LastSentCheques() (map[string]*chequebook.SignedCheque, error)
 
 // LastReceivedCheques returns the list of last received cheques for all peers
 func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, error) {
-	lastcheques, err := s.chequeStore.LastCheques()
+	lastcheques, err := s.chequeStore.LastReceivedCheques()
 	if err != nil {
 		return nil, err
 	}
