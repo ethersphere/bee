@@ -88,9 +88,10 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 // gasFeeCap is twice the next block base fee carried in that response plus the tier tip.
 // When eth_feeHistory fails or has no usable rewards, it falls back to SuggestedFeeAndTip
 // with the tier's fallback tip boost.
+// It returns ErrEIP1559NotSupported when the latest block header has no base fee.
 func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
-	if tier == 0 {
-		return nil, nil, errors.New("fee priority is required")
+	if err := transaction.ValidateFeePriority(tier); err != nil {
+		return nil, nil, err
 	}
 	tips, baseFee, err := b.suggestedFeeAndTipsFromHistory(ctx)
 	if err != nil {
@@ -103,6 +104,16 @@ func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier int) (*big.
 			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
 		}
 		return gasFeeCap, gasTipCap, nil
+	}
+	// eth_feeHistory reports zero base fees instead of an error on networks without EIP-1559.
+	if baseFee.Sign() == 0 {
+		latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+		}
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+			return nil, nil, ErrEIP1559NotSupported
+		}
 	}
 	gasTipCap := new(big.Int).Set(tipForPriority(tier, tips))
 	gasFeeCap := new(big.Int).Mul(baseFee, big.NewInt(int64(baseFeeMultiplier)))
@@ -140,6 +151,7 @@ type feeHistorySuggestedFeeAndTips struct {
 	AggressiveTip *big.Int
 }
 
+// tipForPriority expects a tier already checked by transaction.ValidateFeePriority.
 func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
 	switch tier {
 	case transaction.FeePriorityLow:
@@ -152,15 +164,16 @@ func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
 }
 
 // fallbackTipBoostPercent is the boost applied to the default tip suggestion when eth_feeHistory is unusable.
-// It follows the same scale as tipForPriority: low, market, aggressive.
+// Market uses the same boost as a transaction without a fee priority.
+// It expects a tier already checked by transaction.ValidateFeePriority.
 func fallbackTipBoostPercent(tier int) int {
 	switch tier {
 	case transaction.FeePriorityLow:
-		return 10
+		return 15
 	case transaction.FeePriorityAggressive:
-		return 90
+		return 80
 	default:
-		return 50
+		return transaction.DefaultTipBoostPercent
 	}
 }
 

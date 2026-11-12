@@ -209,12 +209,18 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 	txHash = signedTx.Hash()
 
+	// A fee priority prices the transaction without the tip boost.
+	gasTipBoost := boostPercent
+	if request.FeePriority != 0 {
+		gasTipBoost = 0
+	}
+
 	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
 		To:          signedTx.To(),
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
-		GasTipBoost: boostPercent,
+		GasTipBoost: gasTipBoost,
 		GasTipCap:   signedTx.GasTipCap(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
@@ -576,7 +582,8 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 	return result
 }
 
-// не поддерживает изменения для fee priority, т.к. практически нерабочий в текущем виде, и нуждается в исправлении
+// ResendTransaction does not honor fee priority. It is effectively broken in its
+// current form and needs to be fixed.
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
 	storedTransaction, err := t.StoredTransaction(txHash)
 	if err != nil {

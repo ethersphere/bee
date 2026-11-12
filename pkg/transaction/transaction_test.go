@@ -1787,4 +1787,7 @@ func TestSendUsesFeeHistoryForTier(t *testing.T) {
 	if stored.FeePriority != transaction.FeePriorityLow {
 		t.Fatalf("stored fee priority %d, want low", stored.FeePriority)
 	}
+	if stored.GasTipBoost != 0 {
+		t.Fatalf("stored tip boost %d, want none for a fee priority", stored.GasTipBoost)
+	}
 }

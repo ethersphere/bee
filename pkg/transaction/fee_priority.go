@@ -5,6 +5,7 @@
 package transaction
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -16,6 +17,18 @@ const (
 	FeePriorityMarket
 	FeePriorityAggressive
 )
+
+var ErrUnknownFeePriority = errors.New("unknown fee priority")
+
+// ValidateFeePriority returns ErrUnknownFeePriority for any tier other than low, market, or aggressive.
+func ValidateFeePriority(tier int) error {
+	switch tier {
+	case FeePriorityLow, FeePriorityMarket, FeePriorityAggressive:
+		return nil
+	default:
+		return fmt.Errorf("%w %d", ErrUnknownFeePriority, tier)
+	}
+}
 
 // FeePriorityName returns the priority name. The zero value returns an empty string.
 func FeePriorityName(tier int) string {
@@ -46,6 +59,6 @@ func ParseFeePriority(s string) (int, error) {
 	case "aggressive":
 		return FeePriorityAggressive, nil
 	default:
-		return 0, fmt.Errorf("unknown fee priority %q (valid: low, market, aggressive)", s)
+		return 0, fmt.Errorf("%w %q (valid: low, market, aggressive)", ErrUnknownFeePriority, s)
 	}
 }

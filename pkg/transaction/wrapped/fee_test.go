@@ -196,24 +196,96 @@ func TestSuggestFeeHistory(t *testing.T) {
 		})
 	}
 
-	t.Run("unset", func(t *testing.T) {
+	t.Run("invalid tier", func(t *testing.T) {
 		t.Parallel()
 
 		backend := wrapped.NewBackend(
-			backendmock.New(),
+			backendmock.New(
+				backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+					t.Fatal("invalid tier must be rejected before eth_feeHistory")
+					return nil, nil
+				}),
+			),
 			0,
 			5*time.Second,
 			90,
 			wrapped.DefaultFeeHistoryBlockCount,
 		)
-		if _, _, err := backend.SuggestFeeHistory(context.Background(), 0); err == nil {
-			t.Fatal("unset tier should be rejected")
+		for _, tier := range []int{0, -1, transaction.FeePriorityAggressive + 1} {
+			if _, _, err := backend.SuggestFeeHistory(context.Background(), tier); !errors.Is(err, transaction.ErrUnknownFeePriority) {
+				t.Fatalf("tier %d: got %v, want %v", tier, err, transaction.ErrUnknownFeePriority)
+			}
 		}
 	})
 }
 
+// eth_feeHistory reports zero base fees on a network without EIP-1559, and a node
+// may not implement the method at all. Both return ErrEIP1559NotSupported when the
+// latest header has no base fee, and a zero base fee on an EIP-1559 header is used as is.
+func TestSuggestFeeHistoryEIP1559(t *testing.T) {
+	t.Parallel()
+
+	legacy := &ethereum.FeeHistory{
+		BaseFee:      []*big.Int{big.NewInt(0), big.NewInt(0)},
+		GasUsedRatio: []float64{0.5},
+		Reward:       [][]*big.Int{{big.NewInt(10), big.NewInt(50), big.NewInt(90)}},
+	}
+
+	for _, tc := range []struct {
+		name       string
+		historyErr error
+		header     *types.Header
+		wantErr    error
+		wantFeeCap string
+	}{
+		{name: "zero base fee without header base fee", header: &types.Header{}, wantErr: wrapped.ErrEIP1559NotSupported},
+		{name: "zero base fee without header", wantErr: wrapped.ErrEIP1559NotSupported},
+		{name: "method unsupported without header base fee", historyErr: errors.New("the method eth_feeHistory does not exist"), header: &types.Header{}, wantErr: wrapped.ErrEIP1559NotSupported},
+		{name: "zero base fee with header base fee", header: &types.Header{BaseFee: big.NewInt(0)}, wantFeeCap: "50"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := wrapped.NewBackend(
+				backendmock.New(
+					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+						if tc.historyErr != nil {
+							return nil, tc.historyErr
+						}
+						return legacy, nil
+					}),
+					backendmock.WithSuggestGasTipCapFunc(func(context.Context) (*big.Int, error) {
+						return big.NewInt(100), nil
+					}),
+					backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+						return tc.header, nil
+					}),
+				),
+				0,
+				5*time.Second,
+				90,
+				wrapped.DefaultFeeHistoryBlockCount,
+			)
+
+			feeCap, _, err := backend.SuggestFeeHistory(context.Background(), transaction.FeePriorityMarket)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("got %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if feeCap.String() != tc.wantFeeCap {
+				t.Fatalf("got fee cap %s, want %s", feeCap, tc.wantFeeCap)
+			}
+		})
+	}
+}
+
 // A failed or unusable eth_feeHistory falls back to the default tip suggestion.
-// The boost is 10, 50, or 90 for low, market, and aggressive.
+// The boost is 15, DefaultTipBoostPercent, or 80 for low, market, and aggressive.
 // An unusable history uses the same fallback. A canceled context does not fall back.
 func TestSuggestFeeHistoryFallback(t *testing.T) {
 	t.Parallel()
@@ -235,10 +307,10 @@ func TestSuggestFeeHistoryFallback(t *testing.T) {
 		boost int
 		empty bool
 	}{
-		{name: "rpc/low", tier: transaction.FeePriorityLow, boost: 10},
-		{name: "rpc/market", tier: transaction.FeePriorityMarket, boost: 50},
-		{name: "rpc/aggressive", tier: transaction.FeePriorityAggressive, boost: 90},
-		{name: "empty blocks/market", tier: transaction.FeePriorityMarket, boost: 50, empty: true},
+		{name: "rpc/low", tier: transaction.FeePriorityLow, boost: 15},
+		{name: "rpc/market", tier: transaction.FeePriorityMarket, boost: transaction.DefaultTipBoostPercent},
+		{name: "rpc/aggressive", tier: transaction.FeePriorityAggressive, boost: 80},
+		{name: "empty blocks/market", tier: transaction.FeePriorityMarket, boost: transaction.DefaultTipBoostPercent, empty: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -833,6 +833,8 @@ components:
           type: integer
         gasFeeCap:
           $ref: "#/components/schemas/BigInt"
+        feePriority:
+          $ref: "#/components/schemas/FeePriority"
         data:
           type: string
         created:
