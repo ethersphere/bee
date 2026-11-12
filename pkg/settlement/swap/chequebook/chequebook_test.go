@@ -254,7 +254,7 @@ func TestChequebookIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lastCheque, err := chequebookService.LastCheque(beneficiary)
+	lastCheque, err := chequebookService.LastIssuedCheque(beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestChequebookIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lastCheque, err = chequebookService.LastCheque(beneficiary)
+	lastCheque, err = chequebookService.LastIssuedCheque(beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestChequebookIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lastCheque, err = chequebookService.LastCheque(ownerAdress)
+	lastCheque, err = chequebookService.LastIssuedCheque(ownerAdress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestChequebookIssue(t *testing.T) {
 	}
 
 	// finally check this did not interfere with the beneficiary cheque
-	lastCheque, err = chequebookService.LastCheque(beneficiary)
+	lastCheque, err = chequebookService.LastIssuedCheque(beneficiary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestChequebookIssueErrorSend(t *testing.T) {
 	}
 
 	// verify the cheque was not saved
-	_, err = chequebookService.LastCheque(beneficiary)
+	_, err = chequebookService.LastIssuedCheque(beneficiary)
 	if !errors.Is(err, chequebook.ErrNoCheque) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNoCheque, err)
 	}
@@ -424,7 +424,7 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 	}
 
 	// verify the cheque was not saved
-	_, err = chequebookService.LastCheque(beneficiary)
+	_, err = chequebookService.LastIssuedCheque(beneficiary)
 
 	if !errors.Is(err, chequebook.ErrNoCheque) {
 		t.Fatalf("wrong error. wanted %v, got %v", chequebook.ErrNoCheque, err)
