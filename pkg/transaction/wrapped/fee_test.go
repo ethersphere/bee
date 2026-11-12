@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
 	"github.com/google/go-cmp/cmp"
@@ -139,65 +140,9 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 	}
 }
 
-// History tips below the node minimum are raised to it. Tips already above it stay put.
-func TestSuggestedFeeAndTipsFromHistory_MinimumTip(t *testing.T) {
-	t.Parallel()
-
-	// Two reward rows make the medians low=15, market=55, aggressive=95.
-	history := &ethereum.FeeHistory{
-		BaseFee: []*big.Int{big.NewInt(1), big.NewInt(1000)},
-		Reward: [][]*big.Int{
-			{big.NewInt(10), big.NewInt(50), big.NewInt(90)},
-			{big.NewInt(20), big.NewInt(60), big.NewInt(100)},
-		},
-	}
-
-	tests := []struct {
-		name                    string
-		minimum                 uint64
-		low, market, aggressive string
-	}{
-		{name: "no minimum leaves history tips", minimum: 0, low: "15", market: "55", aggressive: "95"},
-		{name: "minimum raises only the tip below it", minimum: 40, low: "40", market: "55", aggressive: "95"},
-		{name: "minimum above every tier raises all of them", minimum: 200, low: "200", market: "200", aggressive: "200"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			backend := wrapped.NewBackend(
-				backendmock.New(
-					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
-						return history, nil
-					}),
-					backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
-						return &types.Header{BaseFee: big.NewInt(1000)}, nil
-					}),
-				),
-				tc.minimum,
-				5*time.Second,
-				90,
-				wrapped.DefaultFeeHistoryBlockCount,
-			)
-
-			for _, tier := range []struct{ name, want string }{
-				{"low", tc.low},
-				{"market", tc.market},
-				{"aggressive", tc.aggressive},
-			} {
-				_, tip, err := backend.SuggestFeeHistory(context.Background(), tier.name)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if tip.String() != tier.want {
-					t.Fatalf("%s tip %s, want %s", tier.name, tip, tier.want)
-				}
-			}
-		})
-	}
-}
-
+// Medians of the two reward rows are low=15, market=55, aggressive=95.
+// The last base fee is the next block, so the fee cap is 2*1000 plus the tip.
+// A minimum below a history tip leaves it; a minimum above it raises the tip and the cap.
 func TestSuggestFeeHistory(t *testing.T) {
 	t.Parallel()
 
@@ -208,36 +153,170 @@ func TestSuggestFeeHistory(t *testing.T) {
 			{big.NewInt(20), big.NewInt(60), big.NewInt(100)},
 		},
 	}
-	header := &types.Header{BaseFee: big.NewInt(1000)}
 
-	backend := wrapped.NewBackend(
-		backendmock.New(
-			backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
-				return history, nil
-			}),
-			backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
-				return header, nil
-			}),
-		),
-		0,
-		5*time.Second,
-		90,
-		wrapped.DefaultFeeHistoryBlockCount,
-	)
+	for _, tc := range []struct {
+		name    string
+		minimum uint64
+		tier    int
+		tip     string
+		feeCap  string
+	}{
+		{name: "no minimum/low", tier: transaction.FeePriorityLow, tip: "15", feeCap: "2015"},
+		{name: "no minimum/market", tier: transaction.FeePriorityMarket, tip: "55", feeCap: "2055"},
+		{name: "no minimum/aggressive", tier: transaction.FeePriorityAggressive, tip: "95", feeCap: "2095"},
+		{name: "minimum below market/low", minimum: 40, tier: transaction.FeePriorityLow, tip: "40", feeCap: "2040"},
+		{name: "minimum below market/market", minimum: 40, tier: transaction.FeePriorityMarket, tip: "55", feeCap: "2055"},
+		{name: "minimum below market/aggressive", minimum: 40, tier: transaction.FeePriorityAggressive, tip: "95", feeCap: "2095"},
+		{name: "minimum above all/low", minimum: 200, tier: transaction.FeePriorityLow, tip: "200", feeCap: "2200"},
+		{name: "minimum above all/market", minimum: 200, tier: transaction.FeePriorityMarket, tip: "200", feeCap: "2200"},
+		{name: "minimum above all/aggressive", minimum: 200, tier: transaction.FeePriorityAggressive, tip: "200", feeCap: "2200"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Medians are low=15, market=55, aggressive=95. Fee cap is 2*baseFee + tip.
-	feeCap, tip, err := backend.SuggestFeeHistory(context.Background(), "market")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tip.String() != "55" || feeCap.String() != "2055" {
-		t.Fatalf("got tip %s fee cap %s, want 55 and 2055", tip, feeCap)
+			backend := wrapped.NewBackend(
+				backendmock.New(
+					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+						return history, nil
+					}),
+					backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+						t.Fatal("fee history already carries the next base fee")
+						return nil, nil
+					}),
+				),
+				tc.minimum,
+				5*time.Second,
+				90,
+				wrapped.DefaultFeeHistoryBlockCount,
+			)
+
+			feeCap, tip, err := backend.SuggestFeeHistory(context.Background(), tc.tier)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tip.String() != tc.tip || feeCap.String() != tc.feeCap {
+				t.Fatalf("got tip %s fee cap %s, want %s and %s", tip, feeCap, tc.tip, tc.feeCap)
+			}
+		})
 	}
 
-	if _, _, err := backend.SuggestFeeHistory(context.Background(), ""); err == nil {
-		t.Fatal("empty tier should be rejected")
+	t.Run("unset", func(t *testing.T) {
+		t.Parallel()
+
+		backend := wrapped.NewBackend(
+			backendmock.New(),
+			0,
+			5*time.Second,
+			90,
+			wrapped.DefaultFeeHistoryBlockCount,
+		)
+		if _, _, err := backend.SuggestFeeHistory(context.Background(), 0); err == nil {
+			t.Fatal("unset tier should be rejected")
+		}
+	})
+}
+
+// A failed or unusable eth_feeHistory falls back to the default tip suggestion.
+// The boost is 10, 50, or 90 for low, market, and aggressive. A canceled context does not fall back.
+func TestSuggestFeeHistoryFallback(t *testing.T) {
+	t.Parallel()
+
+	suggestedTip := big.NewInt(100)
+	baseFee := big.NewInt(1000)
+	empty := &ethereum.FeeHistory{
+		BaseFee:      []*big.Int{big.NewInt(1), new(big.Int).Set(baseFee)},
+		GasUsedRatio: []float64{0, 0},
+		Reward: [][]*big.Int{
+			{big.NewInt(10), big.NewInt(50), big.NewInt(90)},
+			{big.NewInt(20), big.NewInt(60), big.NewInt(100)},
+		},
 	}
-	if _, _, err := backend.SuggestFeeHistory(context.Background(), "banana"); err == nil {
-		t.Fatal("unknown tier should be rejected")
+
+	for _, tc := range []struct {
+		name  string
+		tier  int
+		boost int
+		empty bool
+	}{
+		{name: "rpc/low", tier: transaction.FeePriorityLow, boost: 10},
+		{name: "rpc/market", tier: transaction.FeePriorityMarket, boost: 50},
+		{name: "rpc/aggressive", tier: transaction.FeePriorityAggressive, boost: 90},
+		{name: "empty blocks/low", tier: transaction.FeePriorityLow, boost: 10, empty: true},
+		{name: "empty blocks/market", tier: transaction.FeePriorityMarket, boost: 50, empty: true},
+		{name: "empty blocks/aggressive", tier: transaction.FeePriorityAggressive, boost: 90, empty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var historyCalls, tipCalls int
+			backend := wrapped.NewBackend(
+				backendmock.New(
+					backendmock.WithFeeHistoryFunc(func(context.Context, uint64, *big.Int, []float64) (*ethereum.FeeHistory, error) {
+						historyCalls++
+						if tc.empty {
+							return empty, nil
+						}
+						return nil, errors.New("rpc down")
+					}),
+					backendmock.WithSuggestGasTipCapFunc(func(context.Context) (*big.Int, error) {
+						tipCalls++
+						return suggestedTip, nil
+					}),
+					backendmock.WithHeaderbyNumberFunc(func(context.Context, *big.Int) (*types.Header, error) {
+						return &types.Header{BaseFee: baseFee}, nil
+					}),
+				),
+				0,
+				5*time.Second,
+				90,
+				wrapped.DefaultFeeHistoryBlockCount,
+			)
+
+			feeCap, tip, err := backend.SuggestFeeHistory(context.Background(), tc.tier)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantTip := new(big.Int).Mul(new(big.Int).Set(suggestedTip), big.NewInt(int64(100+tc.boost)))
+			wantTip.Div(wantTip, big.NewInt(100))
+			wantFee := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), wantTip)
+			if tip.Cmp(wantTip) != 0 || feeCap.Cmp(wantFee) != 0 {
+				t.Fatalf("got tip %s fee cap %s, want %s and %s", tip, feeCap, wantTip, wantFee)
+			}
+			if historyCalls != 1 || tipCalls != 1 {
+				t.Fatalf("history calls %d tip calls %d, want fallback after one history request", historyCalls, tipCalls)
+			}
+		})
 	}
+
+	t.Run("canceled", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		var tipCalls int
+		backend := wrapped.NewBackend(
+			backendmock.New(
+				backendmock.WithFeeHistoryFunc(func(ctx context.Context, _ uint64, _ *big.Int, _ []float64) (*ethereum.FeeHistory, error) {
+					return nil, ctx.Err()
+				}),
+				backendmock.WithSuggestGasTipCapFunc(func(context.Context) (*big.Int, error) {
+					tipCalls++
+					return suggestedTip, nil
+				}),
+			),
+			0,
+			5*time.Second,
+			90,
+			wrapped.DefaultFeeHistoryBlockCount,
+		)
+
+		_, _, err := backend.SuggestFeeHistory(ctx, transaction.FeePriorityMarket)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v, want context canceled", err)
+		}
+		if tipCalls != 0 {
+			t.Fatal("canceled context used the fee suggestion fallback")
+		}
+	})
 }

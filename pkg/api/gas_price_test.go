@@ -8,14 +8,17 @@ import (
 	"context"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 func TestFeePriorityHeader(t *testing.T) {
@@ -26,14 +29,14 @@ func TestFeePriorityHeader(t *testing.T) {
 		header     string
 		max        string
 		wantStatus int
-		wantTier   string
+		wantTier   int
 	}{
 		{name: "omitted", wantStatus: http.StatusCreated},
-		{name: "low", header: "low", wantStatus: http.StatusCreated, wantTier: "low"},
-		{name: "mixed case", header: " Market ", wantStatus: http.StatusCreated, wantTier: "market"},
+		{name: "low", header: "low", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityLow},
+		{name: "mixed case", header: " Market ", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
 		{name: "unknown", header: "banana", wantStatus: http.StatusBadRequest},
 		{name: "above maximum", header: "aggressive", max: "market", wantStatus: http.StatusBadRequest},
-		{name: "at maximum", header: "market", max: "market", wantStatus: http.StatusCreated, wantTier: "market"},
+		{name: "at maximum", header: "market", max: "market", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -41,7 +44,7 @@ func TestFeePriorityHeader(t *testing.T) {
 			var (
 				mu     sync.Mutex
 				called bool
-				got    string
+				got    int
 			)
 			contract := contractMock.New(
 				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
@@ -86,7 +89,7 @@ func TestFeePriorityHeader(t *testing.T) {
 				t.Fatal("create batch was not called")
 			}
 			if got != tc.wantTier {
-				t.Fatalf("got fee priority %q, want %q", got, tc.wantTier)
+				t.Fatalf("got fee priority %d, want %d", got, tc.wantTier)
 			}
 		})
 	}
@@ -98,7 +101,7 @@ func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 	gasPrice := big.NewInt(1000)
 	var (
 		mu       sync.Mutex
-		gotTier  string
+		gotTier  int
 		gotPrice *big.Int
 	)
 	contract := contractMock.New(
@@ -107,6 +110,56 @@ func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 			defer mu.Unlock()
 			gotTier = sctx.GetFeePriority(ctx)
 			gotPrice = sctx.GetGasPrice(ctx)
+			return common.HexToHash("0xabcd"), []byte{0xab}, nil
+		}),
+	)
+	sink := new(syncBuffer)
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		PostageContract: contract,
+		Logger:          log.NewLogger("test", log.WithSink(sink), log.WithVerbosity(log.VerbosityDebug)),
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.GasPriceHeader, gasPrice.String())
+	req.Header.Set(api.FeePriorityHeader, "low")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusCreated)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotTier != transaction.FeePriorityLow {
+		t.Fatalf("got fee priority %d, want low", gotTier)
+	}
+	if gotPrice == nil || gotPrice.Cmp(gasPrice) != 0 {
+		t.Fatalf("got gas price %v, want %s", gotPrice, gasPrice)
+	}
+	if !strings.Contains(sink.String(), "fee priority overrides gas price") {
+		t.Fatalf("override was not logged: %s", sink.String())
+	}
+}
+
+func TestFeePrioritySkipsGasPriceRange(t *testing.T) {
+	t.Parallel()
+
+	gasPrice := new(big.Int).Lsh(big.NewInt(1), 200)
+	var (
+		mu      sync.Mutex
+		gotTier int
+	)
+	contract := contractMock.New(
+		contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			gotTier = sctx.GetFeePriority(ctx)
 			return common.HexToHash("0xabcd"), []byte{0xab}, nil
 		}),
 	)
@@ -129,11 +182,8 @@ func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if gotTier != "low" {
-		t.Fatalf("got fee priority %q, want %q", gotTier, "low")
-	}
-	if gotPrice == nil || gotPrice.Cmp(gasPrice) != 0 {
-		t.Fatalf("got gas price %v, want %s", gotPrice, gasPrice)
+	if gotTier != transaction.FeePriorityLow {
+		t.Fatalf("got fee priority %d, want low", gotTier)
 	}
 }
 

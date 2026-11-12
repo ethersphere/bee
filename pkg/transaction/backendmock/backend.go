@@ -21,7 +21,7 @@ type backendMock struct {
 	callContract       func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
 	suggestedFeeAndTip func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	suggestFeeHistory  func(ctx context.Context, tier string) (*big.Int, *big.Int, error)
+	suggestFeeHistory  func(ctx context.Context, tier int) (*big.Int, *big.Int, error)
 	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
 	estimateGas        func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
@@ -56,7 +56,7 @@ func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int,
 	return nil, nil, ErrNotImplemented
 }
 
-func (m *backendMock) SuggestFeeHistory(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
+func (m *backendMock) SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
 	if m.suggestFeeHistory != nil {
 		return m.suggestFeeHistory(ctx, tier)
 	}
@@ -251,7 +251,7 @@ func WithFeeHistoryFunc(f func(ctx context.Context, blockCount uint64, lastBlock
 	})
 }
 
-func WithSuggestFeeHistoryFunc(f func(ctx context.Context, tier string) (*big.Int, *big.Int, error)) Option {
+func WithSuggestFeeHistoryFunc(f func(ctx context.Context, tier int) (*big.Int, *big.Int, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.suggestFeeHistory = f
 	})

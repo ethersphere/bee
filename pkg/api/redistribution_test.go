@@ -50,9 +50,6 @@ func TestRedistributionStatus(t *testing.T) {
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
 					return big.NewInt(1), big.NewInt(2), nil
 				}),
-				backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, priority string) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
-				}),
 			},
 		})
 		var got api.RedistributionStatusResponse
@@ -103,9 +100,6 @@ func TestRedistributionStatus(t *testing.T) {
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
 					return big.NewInt(1), big.NewInt(2), nil
 				}),
-				backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, priority string) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
-				}),
 			},
 		})
 		var got api.RedistributionStatusResponse
@@ -147,9 +141,6 @@ func TestRedistributionStatus(t *testing.T) {
 					return big.NewInt(100000000), nil
 				}),
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
-				}),
-				backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, priority string) (*big.Int, *big.Int, error) {
 					return big.NewInt(1), big.NewInt(2), nil
 				}),
 			},
@@ -211,9 +202,6 @@ func redistributionTestOpts(t *testing.T) testServerOptions {
 				return big.NewInt(100000000), nil
 			}),
 			backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-				return big.NewInt(1), big.NewInt(2), nil
-			}),
-			backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, priority string) (*big.Int, *big.Int, error) {
 				return big.NewInt(1), big.NewInt(2), nil
 			}),
 		},

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +29,7 @@ type Contract interface {
 	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
-	FeePriority() string
+	FeePriority() int
 }
 
 type contract struct {
@@ -41,7 +40,7 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
-	feePriority               string
+	feePriority               int
 }
 
 func New(
@@ -52,11 +51,8 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
-	feePriority string,
+	feePriority int,
 ) Contract {
-	if strings.TrimSpace(feePriority) == "" {
-		feePriority = transaction.FeePriorityMarket.String()
-	}
 	return &contract{
 		overlay:                   overlay,
 		owner:                     owner,
@@ -200,7 +196,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) FeePriority() string {
+func (c *contract) FeePriority() int {
 	return c.feePriority
 }
 

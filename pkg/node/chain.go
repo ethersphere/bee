@@ -66,10 +66,6 @@ func InitChain(
 	blockSyncInterval uint64,
 	feeHistoryBlockCount uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	if feeHistoryBlockCount == 0 {
-		feeHistoryBlockCount = wrapped.DefaultFeeHistoryBlockCount
-	}
-
 	backend := backendnoop.New(chainID)
 
 	if chainEnabled {

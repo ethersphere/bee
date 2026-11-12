@@ -23,8 +23,12 @@ const maxAverageBlockTime = 30 * time.Second
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
 // DefaultFeeHistoryBlockCount is the default eth_feeHistory block window.
-// Callers pass it explicitly. NewBackend stores the supplied count as-is.
 const DefaultFeeHistoryBlockCount = 100
+
+// MaxFeeHistoryBlockCount is the largest eth_feeHistory window Bee requests.
+// Geth and Nethermind reject counts above 1024, and that rejection makes every
+// fee-priority price fall back, so a higher configuration value is clamped here.
+const MaxFeeHistoryBlockCount = 1000
 
 var feeHistoryRewardPercentiles = []float64{10, 50, 90}
 
@@ -53,6 +57,9 @@ func NewBackend(
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
+	}
+	if feeHistoryBlockCount > MaxFeeHistoryBlockCount {
+		feeHistoryBlockCount = MaxFeeHistoryBlockCount
 	}
 
 	return &wrappedBackend{

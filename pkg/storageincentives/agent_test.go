@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	resMock "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
@@ -484,6 +485,64 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
+func TestHasEnoughFundsFeePriority(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		tier int
+	}{
+		{name: "default suggestion"},
+		{name: "configured priority", tier: transaction.FeePriorityLow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := &feeProbeBackend{mockchainBackend: mockchainBackend{balance: big.NewInt(4_000_000_000)}}
+			agent, err := createService(
+				t,
+				swarm.ZeroAddress,
+				backend,
+				&mockContract{t: t, feePriority: tc.tier},
+				152,
+				38,
+				0,
+				0,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := agent.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+
+			if _, _, err := agent.HasEnoughFundsToPlay(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			backend.mu.Lock()
+			defer backend.mu.Unlock()
+			if tc.tier == 0 {
+				if backend.suggested == 0 || backend.history != 0 {
+					t.Fatalf("suggested=%d history=%d, want the default tip suggestion", backend.suggested, backend.history)
+				}
+				if backend.boost != redistribution.BoostTipPercent || backend.gasPrice != nil {
+					t.Fatalf("boost %d gas price %v, want boost %d and no gas price", backend.boost, backend.gasPrice, redistribution.BoostTipPercent)
+				}
+				return
+			}
+			if backend.history == 0 || backend.suggested != 0 {
+				t.Fatalf("suggested=%d history=%d, want fee history for %d", backend.suggested, backend.history, tc.tier)
+			}
+			if backend.tier != tc.tier {
+				t.Fatalf("fee history tier %d, want %d", backend.tier, tc.tier)
+			}
+		})
+	}
+}
+
 func waitUntilStatus(t *testing.T, agent *storageincentives.Agent, pred func(*storageincentives.Status) bool) {
 	t.Helper()
 
@@ -593,7 +652,35 @@ func (m *mockchainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return big.NewInt(4), big.NewInt(5), nil
 }
 
-func (m *mockchainBackend) SuggestFeeHistory(context.Context, string) (*big.Int, *big.Int, error) {
+func (m *mockchainBackend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
+// feeProbeBackend records which pricing method HasEnoughFundsToPlay uses.
+type feeProbeBackend struct {
+	mockchainBackend
+	mu        sync.Mutex
+	suggested int
+	history   int
+	boost     int
+	tier      int
+	gasPrice  *big.Int
+}
+
+func (b *feeProbeBackend) SuggestedFeeAndTip(_ context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.suggested++
+	b.boost = boostPercent
+	b.gasPrice = gasPrice
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
+func (b *feeProbeBackend) SuggestFeeHistory(_ context.Context, tier int) (*big.Int, *big.Int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.history++
+	b.tier = tier
 	return big.NewInt(4), big.NewInt(5), nil
 }
 
@@ -629,6 +716,7 @@ type mockContract struct {
 	beforeIsPlaying func()
 	beforeCommit    func()
 	anchor          []byte
+	feePriority     int
 }
 
 // getCalls returns a snapshot of the calls list
@@ -659,7 +747,7 @@ func (m *mockContract) playingCount() int {
 	return m.isPlayingCount
 }
 
-func (m *mockContract) FeePriority() string { return "" }
+func (m *mockContract) FeePriority() int { return m.feePriority }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return m.anchor, nil

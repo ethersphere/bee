@@ -757,7 +757,7 @@ func (m *mockContract) Fee(ctx context.Context, txHash common.Hash) *big.Int {
 	return big.NewInt(1000)
 }
 
-func (m *mockContract) FeePriority() string { return "" }
+func (m *mockContract) FeePriority() int { return 0 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return nil, nil

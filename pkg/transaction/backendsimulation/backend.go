@@ -101,7 +101,7 @@ func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return nil, nil, ErrNotImplemented
 }
 
-func (m *simulatedBackend) SuggestFeeHistory(context.Context, string) (*big.Int, *big.Int, error) {
+func (m *simulatedBackend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
 	return nil, nil, ErrNotImplemented
 }
 

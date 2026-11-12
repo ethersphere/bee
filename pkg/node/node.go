@@ -476,8 +476,10 @@ func NewBee(
 		}
 	}
 
+	var redistributionFeePriority int
 	if strings.TrimSpace(o.RedistributionGameFeePriority) != "" {
-		if _, err := transaction.ParseFeePriority(o.RedistributionGameFeePriority); err != nil {
+		redistributionFeePriority, err = transaction.ParseFeePriority(o.RedistributionGameFeePriority)
+		if err != nil {
 			return nil, fmt.Errorf("redistribution game fee priority: %w", err)
 		}
 	}
@@ -1360,7 +1362,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit, o.RedistributionGameFeePriority)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit, redistributionFeePriority)
 
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10

@@ -60,7 +60,7 @@ type TxRequest struct {
 	GasLimit             uint64          // gas limit or 0 if it should be estimated
 	MinEstimatedGasLimit uint64          // minimum gas limit to use if the gas limit was estimated; it will not apply when this value is 0 or when GasLimit is not 0
 	GasFeeCap            *big.Int        // adds a cap to maximum fee user is willing to pay
-	FeePriority          string          // fee priority (low, market, aggressive); when set, it takes precedence over GasPrice
+	FeePriority          int             // fee priority; when set, it takes precedence over GasPrice
 	Value                *big.Int        // amount of wei to send
 	Description          string          // optional description
 }
@@ -73,7 +73,7 @@ type StoredTransaction struct {
 	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
-	FeePriority string          // fee priority that priced the transaction; resend recalculates from it
+	FeePriority int             // fee priority that priced the transaction; resend reuses the stored caps
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -352,7 +352,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	*/
 
 	var gasFeeCap, gasTipCap *big.Int
-	if request.FeePriority != "" {
+	if request.FeePriority != 0 {
 		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, request.FeePriority)
 	} else {
 		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
@@ -367,7 +367,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		"gas_limit", gasLimit,
 		"gas_fee_cap", gasFeeCap,
 		"gas_tip_cap", gasTipCap,
-		"fee_priority", request.FeePriority,
+		"fee_priority", FeePriorityName(request.FeePriority),
 		"nonce", nonce,
 		"description", request.Description,
 	)
@@ -504,13 +504,16 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	}
 
 	var gasFeeCap, gasTipCap *big.Int
-	if storedTransaction.FeePriority != "" {
-		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, storedTransaction.FeePriority)
+	if storedTransaction.FeePriority != 0 {
+		// fee_history caps change faster, so with new requests highly likely price would change.
+		// change even on 1 wei changes hash
+		gasFeeCap = storedTransaction.GasFeeCap
+		gasTipCap = storedTransaction.GasTipCap
 	} else {
 		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{

@@ -55,7 +55,7 @@ func (b *Backend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boo
 	return nil, nil, postagecontract.ErrChainDisabled
 }
 
-func (b *Backend) SuggestFeeHistory(context.Context, string) (*big.Int, *big.Int, error) {
+func (b *Backend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
 	return nil, nil, postagecontract.ErrChainDisabled
 }
 

@@ -240,7 +240,7 @@ type Service struct {
 	chainID      int64
 
 	whitelistedWithdrawalAddress []common.Address
-	maxFeePriority               string
+	maxFeePriority               int
 
 	preMapHooks              map[string]func(v string) (string, error)
 	customValidationMessages map[string]func(err validator.FieldError) error
@@ -275,7 +275,7 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 func (s *Service) SetMaxFeePriority(tier string) error {
 	if strings.TrimSpace(tier) == "" {
 		if s != nil {
-			s.maxFeePriority = ""
+			s.maxFeePriority = 0
 		}
 		return nil
 	}
@@ -284,7 +284,7 @@ func (s *Service) SetMaxFeePriority(tier string) error {
 		return err
 	}
 	if s != nil {
-		s.maxFeePriority = parsed.String()
+		s.maxFeePriority = parsed
 	}
 	return nil
 }
@@ -633,6 +633,7 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
 // gas price, gas limit, and an optional fee priority through the HTTP API headers.
 // An absent fee priority is left unset. A priority above the configured maximum is rejected.
+// When a fee priority is set it overrides Gas-Price, and that gas price is not range-checked.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -647,14 +648,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				response("invalid header params", logger, w)
 				return
 			}
-			if gasPriceOutOfRange(headers.GasPrice) {
-				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
-				jsonhttp.BadRequest(w, "gas price out of range")
-				return
-			}
 			ctx := r.Context()
-			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
-			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 			if tierName := strings.TrimSpace(headers.FeePriority); tierName != "" {
 				tier, err := transaction.ParseFeePriority(tierName)
 				if err != nil {
@@ -670,29 +664,32 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 					return
 				}
 				maxTier := s.maxFeePriority
-				if maxTier == "" {
-					maxTier = transaction.FeePriorityAggressive.String()
+				if maxTier == 0 {
+					maxTier = transaction.FeePriorityAggressive
 				}
-				above, err := transaction.FeePriorityAboveMax(tier.String(), maxTier)
-				if err != nil {
-					logger.Debug("invalid fee priority", "error", err)
-					jsonhttp.InternalServerError(w, nil)
-					return
-				}
-				if above {
-					logger.Debug("fee priority above configured maximum", "fee_priority", tier.String(), "maximum", maxTier)
+				if tier > maxTier {
+					logger.Debug("fee priority above configured maximum", "fee_priority", transaction.FeePriorityName(tier), "maximum", transaction.FeePriorityName(maxTier))
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
 						Message: "invalid header params",
 						Code:    http.StatusBadRequest,
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,
-							Error: fmt.Sprintf("fee priority %q is above maximum %q", tier.String(), maxTier),
+							Error: fmt.Sprintf("fee priority %q is above maximum %q", transaction.FeePriorityName(tier), transaction.FeePriorityName(maxTier)),
 						}},
 					})
 					return
 				}
-				ctx = sctx.SetFeePriority(ctx, tier.String())
+				if headers.GasPrice != nil {
+					logger.Debug("fee priority overrides gas price", "fee_priority", transaction.FeePriorityName(tier), "gas_price", headers.GasPrice)
+				}
+				ctx = sctx.SetFeePriority(ctx, tier)
+			} else if gasPriceOutOfRange(headers.GasPrice) {
+				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+				jsonhttp.BadRequest(w, "gas price out of range")
+				return
 			}
+			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
+			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})

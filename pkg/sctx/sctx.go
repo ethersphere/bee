@@ -69,14 +69,14 @@ func GetGasPrice(ctx context.Context) *big.Int {
 	return nil
 }
 
-func SetFeePriority(ctx context.Context, tier string) context.Context {
+func SetFeePriority(ctx context.Context, tier int) context.Context {
 	return context.WithValue(ctx, feePriorityKey{}, tier)
 }
 
-func GetFeePriority(ctx context.Context) string {
-	v, ok := ctx.Value(feePriorityKey{}).(string)
+func GetFeePriority(ctx context.Context) int {
+	v, ok := ctx.Value(feePriorityKey{}).(int)
 	if ok {
 		return v
 	}
-	return ""
+	return 0
 }

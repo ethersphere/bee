@@ -85,54 +85,70 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 }
 
 // SuggestFeeHistory calculates gasFeeCap and gasTipCap for tier from eth_feeHistory.
-// gasFeeCap is twice the latest base fee plus the tier tip.
+// gasFeeCap is twice the next block base fee carried in that response plus the tier tip.
 // When eth_feeHistory fails or has no usable rewards, it falls back to SuggestedFeeAndTip
 // with the tier's fallback tip boost.
-func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier string) (*big.Int, *big.Int, error) {
-	parsed, err := transaction.ParseFeePriority(tier)
-	if err != nil {
-		return nil, nil, err
+func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
+	if tier == 0 {
+		return nil, nil, errors.New("fee priority is required")
 	}
-	tips, err := b.suggestedFeeAndTipsFromHistory(ctx)
+	tips, baseFee, err := b.suggestedFeeAndTipsFromHistory(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, err
 		}
 		b.metrics.FeeHistoryFallbacks.Inc()
-		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, parsed.FallbackTipBoostPercent())
+		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, transaction.FallbackTipBoostPercent(tier))
 		if fallbackErr != nil {
 			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
 		}
 		return gasFeeCap, gasTipCap, nil
 	}
-	latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
-	}
-	if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
-		return nil, nil, ErrEIP1559NotSupported
-	}
-	gasTipCap := new(big.Int).Set(transaction.TipForPriority(parsed, tips))
-	gasFeeCap := new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasTipCap := new(big.Int).Set(tipForPriority(tier, tips))
+	gasFeeCap := new(big.Int).Mul(baseFee, big.NewInt(int64(baseFeeMultiplier)))
 	gasFeeCap.Add(gasFeeCap, gasTipCap)
 	return gasFeeCap, gasTipCap, nil
 }
 
-func (b *wrappedBackend) suggestedFeeAndTipsFromHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+func (b *wrappedBackend) suggestedFeeAndTipsFromHistory(ctx context.Context) (*feeHistorySuggestedFeeAndTips, *big.Int, error) {
 	fh, err := b.FeeHistory(ctx, b.feeHistoryBlocks, nil, feeHistoryRewardPercentiles)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh)
 	if err != nil {
 		b.metrics.FeeHistoryParseErrors.Inc()
-		return nil, err
+		return nil, nil, err
 	}
-	return &transaction.FeeHistorySuggestedFeeAndTips{
+	// eth_feeHistory appends the next block's base fee after the requested blocks.
+	baseFee := fh.BaseFee[len(fh.BaseFee)-1]
+	if baseFee == nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, nil, errors.New("fee history: missing next base fee")
+	}
+	return &feeHistorySuggestedFeeAndTips{
 		LowTip:        clampTip(low, b.minimumGasTipCap),
 		MarketTip:     clampTip(market, b.minimumGasTipCap),
 		AggressiveTip: clampTip(aggressive, b.minimumGasTipCap),
-	}, nil
+	}, new(big.Int).Set(baseFee), nil
+}
+
+// feeHistorySuggestedFeeAndTips holds the median priority fee at the 10th, 50th, and 90th reward percentiles.
+type feeHistorySuggestedFeeAndTips struct {
+	LowTip        *big.Int
+	MarketTip     *big.Int
+	AggressiveTip *big.Int
+}
+
+func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
+	switch tier {
+	case transaction.FeePriorityLow:
+		return fh.LowTip
+	case transaction.FeePriorityAggressive:
+		return fh.AggressiveTip
+	default:
+		return fh.MarketTip
+	}
 }
 
 // clampTip raises tip to minimum when the history tip is below the node floor.

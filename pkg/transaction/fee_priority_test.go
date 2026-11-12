@@ -15,14 +15,15 @@ func TestParseFeePriority(t *testing.T) {
 
 	for _, tc := range []struct {
 		in   string
-		want string
+		want int
+		name string
 		err  bool
 	}{
-		{"low", "low", false},
-		{" Market ", "market", false},
-		{"AGGRESSIVE", "aggressive", false},
-		{"", "", true},
-		{"banana", "", true},
+		{"low", transaction.FeePriorityLow, "low", false},
+		{" Market ", transaction.FeePriorityMarket, "market", false},
+		{"AGGRESSIVE", transaction.FeePriorityAggressive, "aggressive", false},
+		{"", 0, "", true},
+		{"banana", 0, "", true},
 	} {
 		tier, err := transaction.ParseFeePriority(tc.in)
 		if tc.err {
@@ -34,8 +35,11 @@ func TestParseFeePriority(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseFeePriority(%q): %v", tc.in, err)
 		}
-		if got := tier.String(); got != tc.want {
-			t.Fatalf("ParseFeePriority(%q) = %q, want %q", tc.in, got, tc.want)
+		if tier != tc.want {
+			t.Fatalf("ParseFeePriority(%q) = %d, want %d", tc.in, tier, tc.want)
+		}
+		if got := transaction.FeePriorityName(tier); got != tc.name {
+			t.Fatalf("FeePriorityName(%d) = %q, want %q", tier, got, tc.name)
 		}
 	}
 }
