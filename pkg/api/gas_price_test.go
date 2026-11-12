@@ -98,7 +98,8 @@ func TestFeePriorityHeader(t *testing.T) {
 func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 	t.Parallel()
 
-	gasPrice := big.NewInt(1000)
+	// Outside the accepted Gas-Price range. Fee-Priority still wins, so the range check is skipped.
+	gasPrice := new(big.Int).Lsh(big.NewInt(1), 200)
 	var (
 		mu       sync.Mutex
 		gotTier  int
@@ -144,46 +145,6 @@ func TestGasPriceHeaderRemainsWithFeePriority(t *testing.T) {
 	}
 	if !strings.Contains(sink.String(), "fee priority overrides gas price") {
 		t.Fatalf("override was not logged: %s", sink.String())
-	}
-}
-
-func TestFeePrioritySkipsGasPriceRange(t *testing.T) {
-	t.Parallel()
-
-	gasPrice := new(big.Int).Lsh(big.NewInt(1), 200)
-	var (
-		mu      sync.Mutex
-		gotTier int
-	)
-	contract := contractMock.New(
-		contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			gotTier = sctx.GetFeePriority(ctx)
-			return common.HexToHash("0xabcd"), []byte{0xab}, nil
-		}),
-	)
-	client, _, _, _, _ := newTestServer(t, testServerOptions{PostageContract: contract})
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set(api.GasPriceHeader, gasPrice.String())
-	req.Header.Set(api.FeePriorityHeader, "low")
-	res, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusCreated)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if gotTier != transaction.FeePriorityLow {
-		t.Fatalf("got fee priority %d, want low", gotTier)
 	}
 }
 

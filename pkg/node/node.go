@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -476,12 +475,9 @@ func NewBee(
 		}
 	}
 
-	var redistributionFeePriority int
-	if strings.TrimSpace(o.RedistributionGameFeePriority) != "" {
-		redistributionFeePriority, err = transaction.ParseFeePriority(o.RedistributionGameFeePriority)
-		if err != nil {
-			return nil, fmt.Errorf("redistribution game fee priority: %w", err)
-		}
+	redistributionFeePriority, err := transaction.ParseFeePriority(o.RedistributionGameFeePriority)
+	if err != nil {
+		return nil, fmt.Errorf("redistribution game fee priority: %w", err)
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
@@ -1362,7 +1358,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit, redistributionFeePriority)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
@@ -1388,6 +1384,7 @@ func NewBee(
 				transactionService,
 				saludService,
 				logger,
+				redistributionFeePriority,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)

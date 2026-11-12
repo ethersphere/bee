@@ -27,7 +27,7 @@ func FeePriorityName(tier int) string {
 	case FeePriorityAggressive:
 		return "aggressive"
 	case 0:
-		return ""
+		return "unset"
 	default:
 		return "unknown"
 	}
@@ -46,9 +46,11 @@ func FallbackTipBoostPercent(tier int) int {
 }
 
 // ParseFeePriority validates a fee priority name (for API headers and config).
-// An empty name is rejected. Callers apply their own default for an unset priority.
+// An empty name returns 0, which means the priority is unset.
 func ParseFeePriority(s string) (int, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "":
+		return 0, nil
 	case "low":
 		return FeePriorityLow, nil
 	case "market":

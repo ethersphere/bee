@@ -271,17 +271,14 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 }
 
 // SetMaxFeePriority stores the highest fee priority a request may select.
-// An empty tier leaves requests unrestricted.
+// An empty tier is aggressive, the highest one, so every priority is allowed.
 func (s *Service) SetMaxFeePriority(tier string) error {
-	if strings.TrimSpace(tier) == "" {
-		if s != nil {
-			s.maxFeePriority = 0
-		}
-		return nil
-	}
 	parsed, err := transaction.ParseFeePriority(tier)
 	if err != nil {
 		return err
+	}
+	if parsed == 0 {
+		parsed = transaction.FeePriorityAggressive
 	}
 	if s != nil {
 		s.maxFeePriority = parsed
@@ -367,6 +364,7 @@ func New(
 	})
 	s.setupValidation()
 	s.stamperStore = stamperStore
+	_ = s.SetMaxFeePriority("")
 
 	for _, v := range whitelistedWithdrawalAddress {
 		s.whitelistedWithdrawalAddress = append(s.whitelistedWithdrawalAddress, common.HexToAddress(v))
@@ -649,32 +647,28 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				return
 			}
 			ctx := r.Context()
-			if tierName := strings.TrimSpace(headers.FeePriority); tierName != "" {
-				tier, err := transaction.ParseFeePriority(tierName)
-				if err != nil {
-					logger.Debug("invalid fee priority header", "error", err)
+			tier, err := transaction.ParseFeePriority(headers.FeePriority)
+			if err != nil {
+				logger.Debug("invalid fee priority header", "error", err)
+				jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+					Message: "invalid header params",
+					Code:    http.StatusBadRequest,
+					Reasons: []jsonhttp.Reason{{
+						Field: FeePriorityHeader,
+						Error: err.Error(),
+					}},
+				})
+				return
+			}
+			if tier != 0 {
+				if tier > s.maxFeePriority {
+					logger.Debug("fee priority above configured maximum", "fee_priority", transaction.FeePriorityName(tier), "maximum", transaction.FeePriorityName(s.maxFeePriority))
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
 						Message: "invalid header params",
 						Code:    http.StatusBadRequest,
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,
-							Error: err.Error(),
-						}},
-					})
-					return
-				}
-				maxTier := s.maxFeePriority
-				if maxTier == 0 {
-					maxTier = transaction.FeePriorityAggressive
-				}
-				if tier > maxTier {
-					logger.Debug("fee priority above configured maximum", "fee_priority", transaction.FeePriorityName(tier), "maximum", transaction.FeePriorityName(maxTier))
-					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-						Message: "invalid header params",
-						Code:    http.StatusBadRequest,
-						Reasons: []jsonhttp.Reason{{
-							Field: FeePriorityHeader,
-							Error: fmt.Sprintf("fee priority %q is above maximum %q", transaction.FeePriorityName(tier), transaction.FeePriorityName(maxTier)),
+							Error: fmt.Sprintf("fee priority %q is above maximum %q", transaction.FeePriorityName(tier), transaction.FeePriorityName(s.maxFeePriority)),
 						}},
 					})
 					return

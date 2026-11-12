@@ -22,7 +22,8 @@ func TestParseFeePriority(t *testing.T) {
 		{"low", transaction.FeePriorityLow, "low", false},
 		{" Market ", transaction.FeePriorityMarket, "market", false},
 		{"AGGRESSIVE", transaction.FeePriorityAggressive, "aggressive", false},
-		{"", 0, "", true},
+		{"", 0, "", false},
+		{"   ", 0, "", false},
 		{"banana", 0, "", true},
 	} {
 		tier, err := transaction.ParseFeePriority(tc.in)

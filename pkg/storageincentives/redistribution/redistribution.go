@@ -29,7 +29,6 @@ type Contract interface {
 	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
-	FeePriority() int
 }
 
 type contract struct {
@@ -40,7 +39,6 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
-	feePriority               int
 }
 
 func New(
@@ -51,7 +49,6 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
-	feePriority int,
 ) Contract {
 	return &contract{
 		overlay:                   overlay,
@@ -61,7 +58,6 @@ func New(
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
 		gasLimit:                  gasLimit,
-		feePriority:               feePriority,
 	}
 }
 
@@ -115,7 +111,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          c.feePriority,
+		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
@@ -139,7 +135,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          c.feePriority,
+		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
@@ -163,7 +159,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          c.feePriority,
+		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
@@ -194,10 +190,6 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	}
 	salt := results[0].([32]byte)
 	return salt[:], nil
-}
-
-func (c *contract) FeePriority() int {
-	return c.feePriority
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {

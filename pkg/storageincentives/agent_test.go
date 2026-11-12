@@ -165,7 +165,7 @@ func TestAgent(t *testing.T) {
 					contract.anchor[radius/8] ^= 0x80 >> (radius % 8)
 				}
 
-				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.isReserveSynced)
+				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, 0, tc.isReserveSynced)
 				testutil.CleanupCloser(t, service)
 
 				<-wait
@@ -222,7 +222,7 @@ func TestAgentEnabledDefault(t *testing.T) {
 			balance:     big.NewInt(4_000_000_000),
 		}
 		contract := &mockContract{t: t, expectedRadius: 8}
-		service, err := createService(t, swarm.RandAddress(t), backend, contract, 9, 3, 8, 0)
+		service, err := createService(t, swarm.RandAddress(t), backend, contract, 9, 3, 8, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,7 +267,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 				balance:     bigBalance,
 			}
 			contract := &mockContract{t: t, expectedRadius: 8}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -313,7 +313,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -356,7 +356,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					once.Do(func() { close(committed) })
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -403,7 +403,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -448,7 +448,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -503,11 +503,12 @@ func TestHasEnoughFundsFeePriority(t *testing.T) {
 				t,
 				swarm.ZeroAddress,
 				backend,
-				&mockContract{t: t, feePriority: tc.tier},
+				&mockContract{t: t},
 				152,
 				38,
 				0,
 				0,
+				tc.tier,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -568,6 +569,7 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+	feePriority int,
 	isReserveSynced ...func(uint8) bool,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
@@ -608,6 +610,7 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
+		feePriority,
 	)
 }
 
@@ -716,7 +719,6 @@ type mockContract struct {
 	beforeIsPlaying func()
 	beforeCommit    func()
 	anchor          []byte
-	feePriority     int
 }
 
 // getCalls returns a snapshot of the calls list
@@ -746,8 +748,6 @@ func (m *mockContract) playingCount() int {
 	defer m.mtx.Unlock()
 	return m.isPlayingCount
 }
-
-func (m *mockContract) FeePriority() int { return m.feePriority }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return m.anchor, nil

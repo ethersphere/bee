@@ -89,7 +89,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -122,7 +121,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -153,7 +151,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -180,7 +177,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -228,7 +224,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		_, err = contract.Claim(ctx, proofs)
@@ -270,7 +265,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -314,7 +308,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -361,7 +354,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		_, err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
@@ -387,7 +379,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -418,7 +409,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -453,7 +443,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), 0)
@@ -473,10 +462,9 @@ func TestRedistributionFeePriority(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		in   int
-		want int
 	}{
 		{name: "unset"},
-		{name: "configured", in: transaction.FeePriorityLow, want: transaction.FeePriorityLow},
+		{name: "configured", in: transaction.FeePriorityLow},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -502,17 +490,17 @@ func TestRedistributionFeePriority(t *testing.T) {
 				redistributionContractAddress,
 				redistributionContractABI,
 				0,
-				tc.in,
 			)
 
-			if contract.FeePriority() != tc.want {
-				t.Fatalf("FeePriority() = %d, want %d", contract.FeePriority(), tc.want)
+			ctx := context.Background()
+			if tc.in != 0 {
+				ctx = sctx.SetFeePriority(ctx, tc.in)
 			}
-			if _, err := contract.Commit(context.Background(), common.Hex2Bytes("hash"), 0); err != nil {
+			if _, err := contract.Commit(ctx, common.Hex2Bytes("hash"), 0); err != nil {
 				t.Fatal(err)
 			}
-			if got != tc.want {
-				t.Fatalf("commit fee priority %d, want %d", got, tc.want)
+			if got != tc.in {
+				t.Fatalf("commit fee priority %d, want %d", got, tc.in)
 			}
 			if boost != redistribution.BoostTipPercent {
 				t.Fatalf("tip boost %d, want %d", boost, redistribution.BoostTipPercent)
