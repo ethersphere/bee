@@ -386,6 +386,7 @@ type accBootResult struct {
 	fetchLatP99, latMax  time.Duration
 	limiterBound         time.Duration // the chunks at the fetch limiter's 1000 per second
 	holdersMeta, holders float64       // bytes_metadata{in} summed over the holders
+	reserves             *accReserves  // every node's reserve at the end (compareReserves)
 }
 
 // TestAcceptanceBootstrap runs the Bootstrap scenario for each size of
@@ -407,8 +408,11 @@ type accBootResult struct {
 //   - AC-C1, AC-K3; and AC-N5's T6.1 part: its reserve sample equals a
 //     holder's.
 //
-// The bootstrap times of both joiners (AC-V3) are logged, as are the other
-// numbers; with accLong, both joiners' sync rates are awaited back at 0.
+// Every node ends with the same reserve in each network that ran (AC-C1
+// across protocols, compareReserves; the nested-root joiner, at another
+// radius, is left out). The bootstrap times of both joiners (AC-V3) are
+// logged, as are the other numbers; with accLong, both joiners' sync rates
+// are awaited back at 0.
 func TestAcceptanceBootstrap(t *testing.T) {
 	for _, n := range accScenarioSizes(t) {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
@@ -422,8 +426,12 @@ func TestAcceptanceBootstrap(t *testing.T) {
 				ReserveCapacity: 2 * base,
 			}
 			var results [3]*accBootResult
+			var reserves [3]*accReserves
 			// after the subtests, which run in parallel in long runs
-			t.Cleanup(func() { logBootTable(t, results[:]) })
+			t.Cleanup(func() {
+				logBootTable(t, results[:])
+				compareReserves(t, reserves[:]...)
+			})
 			for k, c := range []struct {
 				name   string
 				mode   accMode
@@ -443,6 +451,7 @@ func TestAcceptanceBootstrap(t *testing.T) {
 					bo := o
 					bo.Mode = func(int) accMode { return c.mode }
 					results[k] = runBootstrap(t, c.name, bo, c.mode, c.nested)
+					reserves[k] = results[k].reserves
 				})
 			}
 		})
@@ -539,6 +548,7 @@ func runBootstrap(t *testing.T, name string, o accOptions, mode accMode, nested 
 	}
 
 	h.checkUnion()
+	r.reserves = h.reserves(name)
 	r.sampleEqual = sampleEqual(t, j, h.nodes[0])
 	checkBootstrap(t, r)
 
@@ -783,6 +793,9 @@ type accRadiusResult struct {
 	// part 2, logged); and the uploads within accStatusBound (asserted)
 	v1Within, v1WithinLeast, v1WithinStatus int
 	v1Bound, v1BoundLeast                   time.Duration
+	// reserves is every node's reserve once the new half arrived, before
+	// the upload phase, which the pullsync network skips (compareReserves)
+	reserves *accReserves
 }
 
 // radiusOverlay returns the overlays of the Radius decrease network: node i
@@ -842,6 +855,10 @@ func radiusOverlay(highest bool) func(i int, random, prefix swarm.Address) swarm
 //     half's nodes sync only their own root with the decreaser);
 //   - AC-C1, AC-K3; and, in the upload phase with the mixed radii (accFull),
 //     AC-V1 and AC-D1.
+//
+// Once the new half arrived, every node holds the same reserve on rangesync
+// (the decreaser lowest) as on pullsync (AC-C1 across protocols,
+// compareReserves).
 func TestAcceptanceRadius(t *testing.T) {
 	o := accOptions{
 		Nodes: 2 * accRadiusSide, Seed: 200, Radius: 1, Base: 9000,
@@ -856,8 +873,12 @@ func TestAcceptanceRadius(t *testing.T) {
 		Window: accWindow, LargeDiff: accLargeDiff, Tail: accTail,
 	}
 	var results [3]*accRadiusResult
+	var reserves [3]*accReserves
 	// after the subtests, which run in parallel in long runs
-	t.Cleanup(func() { logRadiusTable(t, results[:]) })
+	t.Cleanup(func() {
+		logRadiusTable(t, results[:])
+		compareReserves(t, reserves[:]...)
+	})
 	for k, c := range []struct {
 		name    string
 		mode    accMode
@@ -878,6 +899,10 @@ func TestAcceptanceRadius(t *testing.T) {
 			ro.Mode = func(int) accMode { return c.mode }
 			ro.Overlay = radiusOverlay(c.highest)
 			results[k] = runRadius(t, c.name, ro, c.mode, c.highest)
+			if !c.highest {
+				// the decreaser-highest network has other overlays
+				reserves[k] = results[k].reserves
+			}
 		})
 	}
 }
@@ -958,6 +983,7 @@ func runRadius(t *testing.T, name string, o accOptions, mode accMode, highest bo
 	h.waitQuiet(doneAt)
 	endAt := time.Now()
 	s1 := h.snapshot()
+	r.reserves = h.reserves(name)
 	// AC-N1 from the transfer's first chunk: between the decrease and the
 	// round that tracks the new root the reconciler reads 0, as the puller
 	// does until its first page
@@ -1378,7 +1404,8 @@ type accStaleResult struct {
 	staleSessions                           []int64
 	rejected                                []float64
 	claims                                  map[string]float64
-	zeroAfterTTL                            []int // long runs: deliveries of the older stamp within RejectTTL + 1 min
+	zeroAfterTTL                            []int        // long runs: deliveries of the older stamp within RejectTTL + 1 min
+	reserves                                *accReserves // every node's reserve at the end (compareReserves)
 }
 
 // TestAcceptanceStaleStamp runs the Stale stamp scenario (§7.7): one chunk
@@ -1391,14 +1418,20 @@ type accStaleResult struct {
 // after the convergence although every round lists it (the rejected cache);
 // rejected_cache_size stays at most the one stale ID. AC-C1 holds among the
 // nodes. On pullsync-only nodes (the Baseline, without the stale peer;
-// accFull) it logs whether the nodes end with the newer stamp. With accLong it also
+// accFull) it logs whether the nodes end with the newer stamp; every node
+// then holds the same reserve, the same stamp of the chunk included, on both
+// (AC-C1 across protocols, compareReserves). With accLong it also
 // watches the rounds past RejectTTL: an ID leaves the rejected cache after
 // it, and is fetched (and rejected) once more.
 func TestAcceptanceStaleStamp(t *testing.T) {
 	o := accOptions{Nodes: 4, Seed: 300, Radius: 2, Window: accWindow, LargeDiff: accLargeDiff, Tail: accTail}
 	var results [2]*accStaleResult
+	var reserves [2]*accReserves
 	// after the subtests, which run in parallel in long runs
-	t.Cleanup(func() { logStaleTable(t, results[:]) })
+	t.Cleanup(func() {
+		logStaleTable(t, results[:])
+		compareReserves(t, reserves[:]...)
+	})
 	for k, m := range []accMode{accPullsyncOnly, accRangesyncOnly} {
 		name := map[accMode]string{accPullsyncOnly: "baseline", accRangesyncOnly: "rangesync"}[m]
 		t.Run(name, func(t *testing.T) {
@@ -1411,6 +1444,7 @@ func TestAcceptanceStaleStamp(t *testing.T) {
 			so := o
 			so.Mode = func(int) accMode { return m }
 			results[k] = runStale(t, name, so, m)
+			reserves[k] = results[k].reserves
 		})
 	}
 }
@@ -1559,6 +1593,7 @@ func runStale(t *testing.T, name string, o accOptions, mode accMode) *accStaleRe
 			t.Errorf("AC-C3: the rejected cache skipped no fetch (want_claims %v)", r.claims)
 		}
 	}
+	r.reserves = h.reserves(name)
 	if accLong() && stale != nil {
 		before := count(olderID)
 		time.Sleep(rangesync.RejectTTL + time.Minute)
@@ -1895,8 +1930,9 @@ func logChurnTable(t *testing.T, r *accChurnResult) {
 // one-way latency on every stream (RANGESYNC_ACCEPTANCE_LATENCY, for example
 // 50ms) and the bounded window of the part-2 scenarios (accWindow): it shows
 // how both protocols' upload latency and duplicates depend on a round trip,
-// and checks accPushRaceWindow against the fetch latency it reports. It is
-// skipped without the variable.
+// and checks accPushRaceWindow against the fetch latency it reports; every
+// node ends with the same reserve on both (compareReserves). It is skipped
+// without the variable.
 func TestAcceptanceLatency(t *testing.T) {
 	v := os.Getenv("RANGESYNC_ACCEPTANCE_LATENCY")
 	if v == "" {
@@ -1915,14 +1951,17 @@ func TestAcceptanceLatency(t *testing.T) {
 				Latency: latency, Window: accWindow,
 			}
 			var baseline, rangesyncOnly *accResult
+			var reserves [2]*accReserves
 			t.Run("baseline", func(t *testing.T) {
 				baseline = runAccScenario(t, "baseline", o)
+				reserves[0] = baseline.reserves
 				checkBaseline(t, baseline)
 			})
 			t.Run("rangesync", func(t *testing.T) {
 				ro := o
 				ro.Mode = func(int) accMode { return accRangesyncOnly }
 				rangesyncOnly = runAccScenario(t, "rangesync", ro)
+				reserves[1] = rangesyncOnly.reserves
 				checkRangesyncOnly(t, rangesyncOnly)
 				if rangesyncOnly.fetchLatMax >= accPushRaceWindow/2 {
 					t.Logf("the largest fetch latency %v is more than half accPushRaceWindow (%v)", rangesyncOnly.fetchLatMax, accPushRaceWindow)
@@ -1930,6 +1969,7 @@ func TestAcceptanceLatency(t *testing.T) {
 			})
 			t.Logf("one-way latency %v, window %d B", latency, accWindow)
 			logAccTable(t, baseline, rangesyncOnly, nil)
+			compareReserves(t, reserves[:]...)
 		})
 	}
 }

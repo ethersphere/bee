@@ -98,7 +98,10 @@ func accMixedMode(i int) accMode {
 //     node rangesync meets AC-D1 as above, and the pullsync-only nodes pull
 //     from it (AC-S3); AC-V1, AC-K3 and AC-N1's steady state.
 //
-// The upload rate is accRate(N), the reference load.
+// The three networks share the seed, so they have the same overlays and
+// uploads: every node must end with the same reserve in each of them, stamps
+// included (AC-C1 across protocols, compareReserves). The upload rate is
+// accRate(N), the reference load.
 func TestAcceptance(t *testing.T) {
 	for _, n := range accSizes(t) {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
@@ -106,27 +109,67 @@ func TestAcceptance(t *testing.T) {
 			rate := accRate(n)
 			o := accOptions{Nodes: n, Seed: seed, Radius: 2, Rate: rate, Uploads: int(math.Round(rate * accUploadPhase.Seconds()))}
 			var baseline, rangesyncOnly, mixed *accResult
+			var reserves [3]*accReserves
 			t.Run("baseline", func(t *testing.T) {
 				if !accFull() {
 					t.Skip("the Baseline runs with RANGESYNC_ACCEPTANCE_FULL or RANGESYNC_ACCEPTANCE_LONG set")
 				}
 				baseline = runAccScenario(t, "baseline", o)
+				reserves[0] = baseline.reserves
 				checkBaseline(t, baseline)
 			})
 			t.Run("rangesync", func(t *testing.T) {
 				ro := o
 				ro.Mode = func(int) accMode { return accRangesyncOnly }
 				rangesyncOnly = runAccScenario(t, "rangesync", ro)
+				reserves[1] = rangesyncOnly.reserves
 				checkRangesyncOnly(t, rangesyncOnly)
 			})
 			t.Run("mixed", func(t *testing.T) {
 				mo := o
 				mo.Mode = accMixedMode
 				mixed = runAccScenario(t, "mixed", mo)
+				reserves[2] = mixed.reserves
 				checkMixed(t, mixed)
 			})
 			logAccTable(t, baseline, rangesyncOnly, mixed)
+			compareReserves(t, reserves[:]...)
 		})
+	}
+}
+
+// TestAccDiffReserves checks the suite's comparison of a node's reserve
+// across networks (diffReserves): an ID is a chunk with a stamp generation,
+// so a chunk held with another stamp counts on both sides, and as another
+// stamp.
+func TestAccDiffReserves(t *testing.T) {
+	t.Parallel()
+
+	key := func(b byte, gen int) accStampKey {
+		var k accStampKey
+		k.addr[0] = b
+		k.index[len(k.index)-1] = b
+		k.gen = gen
+		return k
+	}
+	set := func(ks ...accStampKey) map[accStampKey]struct{} {
+		out := make(map[accStampKey]struct{}, len(ks))
+		for _, k := range ks {
+			out[k] = struct{}{}
+		}
+		return out
+	}
+	a := set(key(1, 0), key(2, 0), key(3, 0), key(4, 1))
+	b := set(key(1, 0), key(3, 1), key(4, 1), key(5, 0))
+
+	if got, want := diffReserves(a, b), (accReserveDiff{onlyA: 2, onlyB: 2, otherStamp: 1}); got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if got, want := diffReserves(b, a), (accReserveDiff{onlyA: 2, onlyB: 2, otherStamp: 1}); got != want {
+		t.Errorf("reversed: got %+v, want %+v", got, want)
+	}
+	if got := diffReserves(a, a); got != (accReserveDiff{}) {
+		t.Errorf("equal sets: got %+v, want no difference", got)
 	}
 }
 
@@ -321,6 +364,7 @@ type accResult struct {
 	disconnects, blocklists                  int64
 	lastReason                               string
 	perNode                                  []accNodeResult
+	reserves                                 *accReserves // every node's reserve at the end (compareReserves)
 }
 
 // accNodeResult is what one node measured.
@@ -337,7 +381,8 @@ type accNodeResult struct {
 // runAccScenario builds the network of o, waits until it is ready, pushes
 // the uploads at the reference rate, waits until every node holds its
 // root's union and the network is quiet, and returns what it measured. It
-// then checks AC-C1 (checkUnion) and shuts the network down.
+// then checks AC-C1 (checkUnion), records every node's reserve for the
+// comparison across protocols (compareReserves) and shuts the network down.
 func runAccScenario(t *testing.T, name string, o accOptions) *accResult {
 	t.Helper()
 
@@ -378,6 +423,7 @@ func runAccScenario(t *testing.T, name string, o accOptions) *accResult {
 	r := h.result(name, s0, s1, lastUpload, convergedAt, quietAt)
 	r.setup = setup
 	h.checkUnion()
+	r.reserves = h.reserves(name)
 	r.run = time.Since(begin)
 	t.Logf("%s: %d nodes (%s), setup %v, run %v", name, r.nodes, r.modes, r.setup.Round(time.Millisecond), r.run.Round(time.Millisecond))
 	return r

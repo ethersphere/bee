@@ -127,7 +127,8 @@ type accOptions struct {
 	Replication int
 	// Seed seeds the overlays and the chunk contents: two runs with the same
 	// seed and sizes see the same overlays and upload the same chunks (their
-	// stamps differ: the batch key and the timestamps are new each run).
+	// stamps differ: the batch key and the timestamps are new each run;
+	// accStampKey is what they share).
 	Seed uint64
 	// Latency is the one-way latency of every stream (default 0).
 	Latency time.Duration
@@ -349,6 +350,10 @@ type accHarness struct {
 	validStamp postage.ValidStampFn
 	slots      map[uint32]uint32
 	stampTime  uint64
+	// stampGen is the generation of every stamp the harness made
+	// (accStampKey), stampsOf the number of stamps it made per chunk address
+	stampGen map[fingerprint.ID]int
+	stampsOf map[string]int
 
 	process *prometheus.Registry // bee_process_* of the test process
 
@@ -383,13 +388,15 @@ func newAccHarness(t *testing.T, o accOptions) *accHarness {
 	var seed [32]byte
 	binary.BigEndian.PutUint64(seed[:], o.Seed)
 	h := &accHarness{
-		tb:      t,
-		o:       o,
-		logger:  accLogger(),
-		net:     newAccNet(o.Latency, o.Window),
-		rng:     rand.NewChaCha8(seed),
-		slots:   make(map[uint32]uint32),
-		process: prometheus.NewRegistry(),
+		tb:       t,
+		o:        o,
+		logger:   accLogger(),
+		net:      newAccNet(o.Latency, o.Window),
+		rng:      rand.NewChaCha8(seed),
+		slots:    make(map[uint32]uint32),
+		stampGen: make(map[fingerprint.ID]int),
+		stampsOf: make(map[string]int),
+		process:  prometheus.NewRegistry(),
 	}
 	h.process.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{Namespace: "bee"}))
 
@@ -540,7 +547,9 @@ func (h *accHarness) newStamp(addr swarm.Address) *postage.Stamp {
 	if err != nil {
 		h.tb.Fatal(err)
 	}
-	return postage.NewStamp(h.batch.ID, index, ts, sig)
+	st := postage.NewStamp(h.batch.ID, index, ts, sig)
+	h.issued(addr, st)
+	return st
 }
 
 // restamp returns ch with a newer stamp of the same batch and index: a later
@@ -558,7 +567,22 @@ func (h *accHarness) restamp(ch swarm.Chunk) swarm.Chunk {
 	if err != nil {
 		h.tb.Fatal(err)
 	}
-	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(postage.NewStamp(st.BatchID(), st.Index(), ts, sig))
+	newer := postage.NewStamp(st.BatchID(), st.Index(), ts, sig)
+	h.issued(ch.Address(), newer)
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(newer)
+}
+
+// issued records st, a stamp the harness made for addr, with its generation:
+// the number of stamps the harness made for addr before it. Stamps are made
+// on the test goroutine only, as the slots are.
+func (h *accHarness) issued(addr swarm.Address, st *postage.Stamp) {
+	sh, err := st.Hash()
+	if err != nil {
+		h.tb.Fatal(err)
+	}
+	k := addr.ByteString()
+	h.stampGen[fingerprint.NewID(addr, sh)] = h.stampsOf[k]
+	h.stampsOf[k]++
 }
 
 func chunkIDOf(ch swarm.Chunk) (fingerprint.ID, error) {
@@ -1487,6 +1511,170 @@ func (h *accHarness) checkUnionProbe(probe bool) {
 		if probe {
 			h.checkCaches(n)
 		}
+	}
+}
+
+// accStampKey is an ID (a chunk with its stamp) as networks of one seed
+// share it. They make the same chunks with the same batch ID and stamp
+// indexes, but the stamps' signatures and timestamps differ (the batch key
+// and the clock are new each run), and so do their hashes. Gen tells the
+// stamps of one chunk apart: 0 for the stamp newChunk made, 1 for the first
+// restamp, and so on; -1 for a stamp the harness did not make.
+type accStampKey struct {
+	addr  [swarm.HashSize]byte
+	batch [swarm.HashSize]byte
+	index [swarm.StampIndexSize]byte
+	gen   int
+}
+
+// stampKey returns ch's accStampKey.
+func (h *accHarness) stampKey(ch swarm.Chunk) (accStampKey, error) {
+	id, err := chunkIDOf(ch)
+	if err != nil {
+		return accStampKey{}, err
+	}
+	k := accStampKey{gen: -1}
+	if gen, ok := h.stampGen[id]; ok {
+		k.gen = gen
+	}
+	copy(k.addr[:], ch.Address().Bytes())
+	copy(k.batch[:], ch.Stamp().BatchID())
+	copy(k.index[:], ch.Stamp().Index())
+	return k, nil
+}
+
+// accReserve is one node's reserve at the end of a scenario, with the
+// node's overlay, flags and storage radius.
+type accReserve struct {
+	overlay swarm.Address
+	mode    accMode
+	radius  uint8
+	ids     map[accStampKey]struct{}
+}
+
+// accReserves is every node's reserve of one network (accHarness.reserves).
+type accReserves struct {
+	name  string
+	nodes []accReserve
+}
+
+// reserves returns every node's reserve, the whole reserve and not only its
+// root, keyed as networks of one seed share it (accStampKey). Every stamp in
+// a reserve must be one the harness made: otherwise the generations could
+// not tell a chunk's stamps apart.
+func (h *accHarness) reserves(name string) *accReserves {
+	tb := h.tb
+	tb.Helper()
+
+	out := &accReserves{name: name, nodes: make([]accReserve, len(h.nodes))}
+	for _, n := range h.nodes {
+		ids := make(map[accStampKey]struct{})
+		unknown := 0
+		err := n.db.ReserveIterateChunks(func(ch swarm.Chunk) (bool, error) {
+			k, err := h.stampKey(ch)
+			if err != nil {
+				return true, err
+			}
+			if k.gen < 0 {
+				unknown++
+			}
+			ids[k] = struct{}{}
+			return false, nil
+		})
+		if err != nil {
+			tb.Fatalf("node %d: reserve: %v", n.i, err)
+		}
+		if unknown != 0 {
+			tb.Errorf("node %d: %d IDs in the reserve with a stamp the harness did not make", n.i, unknown)
+		}
+		out.nodes[n.i] = accReserve{overlay: n.overlay, mode: n.mode, radius: n.db.StorageRadius(), ids: ids}
+	}
+	return out
+}
+
+// accReserveDiff is how one node's reserve differs between two networks:
+// the IDs only the first or only the second holds, and the chunks among
+// them that both hold with another stamp (the same batch and index, another
+// generation).
+type accReserveDiff struct {
+	onlyA, onlyB, otherStamp int
+}
+
+func diffReserves(a, b map[accStampKey]struct{}) accReserveDiff {
+	noGen := func(k accStampKey) accStampKey {
+		k.gen = 0
+		return k
+	}
+	inB := make(map[accStampKey]bool, len(b)) // the chunks b holds, whatever the stamp generation
+	for k := range b {
+		inB[noGen(k)] = true
+	}
+	var d accReserveDiff
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			d.onlyA++
+			if inB[noGen(k)] {
+				d.otherStamp++
+			}
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			d.onlyB++
+		}
+	}
+	return d
+}
+
+// compareReserves checks AC-C1 across protocols: networks of one seed and
+// layout (the same overlays, chunks and pushes), run with other sync flags,
+// end with the same reserve on every node, stamps included. Each network's
+// own check (checkUnion) cannot see a chunk or a stamp that a protocol
+// drops, keeps or replaces on all its nodes alike. It compares every
+// network with the first, node by node; a node whose radius differs between
+// the two (the nested-root joiner of Bootstrap) is skipped. A nil network (a
+// subtest that was skipped or stopped) is left out.
+func compareReserves(t *testing.T, nets ...*accReserves) {
+	t.Helper()
+
+	var ran []*accReserves
+	for _, r := range nets {
+		if r != nil {
+			ran = append(ran, r)
+		}
+	}
+	if len(ran) < 2 {
+		return
+	}
+	ref := ran[0]
+	for _, r := range ran[1:] {
+		if len(r.nodes) != len(ref.nodes) {
+			t.Errorf("reserves: %s has %d nodes, %s %d: not one layout", ref.name, len(ref.nodes), r.name, len(r.nodes))
+			continue
+		}
+		compared, ids := 0, 0
+		var skipped []int
+		for i, a := range ref.nodes {
+			b := r.nodes[i]
+			if !a.overlay.Equal(b.overlay) {
+				t.Errorf("reserves: node %d has the overlay %s in %s and %s in %s: not one seed", i, a.overlay, ref.name, b.overlay, r.name)
+				continue
+			}
+			if a.radius != b.radius {
+				skipped = append(skipped, i)
+				continue
+			}
+			compared++
+			ids += len(a.ids)
+			if d := diffReserves(a.ids, b.ids); d != (accReserveDiff{}) {
+				t.Errorf("AC-C1 across protocols: node %d (%s in %s, %s in %s): %d IDs only in %s, %d only in %s; %d of the chunks with another stamp", i, a.mode, ref.name, b.mode, r.name, d.onlyA, ref.name, d.onlyB, r.name, d.otherStamp)
+			}
+		}
+		if compared == 0 {
+			t.Errorf("reserves: %s and %s have no node at the same radius", ref.name, r.name)
+			continue
+		}
+		t.Logf("reserves: %s and %s compared on %d nodes, %d IDs in %s (skipped, another radius: %v)", ref.name, r.name, compared, ids, ref.name, skipped)
 	}
 }
 
