@@ -125,6 +125,7 @@ const (
 	multiPartFormData      = "multipart/form-data"
 	contentTypeTar         = "application/x-tar"
 	contentTypeOctetStream = "application/octet-stream"
+	invalidHeaderParams    = "invalid header params"
 )
 
 var (
@@ -638,7 +639,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				FeePriority string   `map:"Fee-Priority"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
-				response("invalid header params", logger, w)
+				response(invalidHeaderParams, logger, w)
 				return
 			}
 			ctx := r.Context()
@@ -646,7 +647,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			if err != nil {
 				logger.Debug("invalid fee priority header", "error", err)
 				jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-					Message: "invalid header params",
+					Message: invalidHeaderParams,
 					Code:    http.StatusBadRequest,
 					Reasons: []jsonhttp.Reason{{
 						Field: FeePriorityHeader,
@@ -659,7 +660,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				if headers.GasPrice != nil {
 					logger.Debug("fee priority and gas price set together", "fee_priority", transaction.FeePriorityName(tier), "gas_price", headers.GasPrice)
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-						Message: "invalid header params",
+						Message: invalidHeaderParams,
 						Code:    http.StatusBadRequest,
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,
@@ -671,7 +672,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				if tier > s.maxFeePriority {
 					logger.Debug("fee priority above configured maximum", "fee_priority", transaction.FeePriorityName(tier), "maximum", transaction.FeePriorityName(s.maxFeePriority))
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-						Message: "invalid header params",
+						Message: invalidHeaderParams,
 						Code:    http.StatusBadRequest,
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,

@@ -73,7 +73,7 @@ type StoredTransaction struct {
 	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
-	FeePriority int             // fee priority that priced the transaction; resend prices it again from fee history
+	FeePriority int             // fee priority that priced the transaction
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -576,18 +576,14 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 	return result
 }
 
+// не поддерживает изменения для fee priority, т.к. практически нерабочий в текущем виде, и нуждается в исправлении
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
 	storedTransaction, err := t.StoredTransaction(txHash)
 	if err != nil {
 		return err
 	}
 
-	var gasFeeCap, gasTipCap *big.Int
-	if storedTransaction.FeePriority != 0 {
-		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, storedTransaction.FeePriority)
-	} else {
-		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-	}
+	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return err
 	}
