@@ -40,9 +40,6 @@ const (
 	// chunkDownloadRequestTimeout bounds a single chunk retrieval.
 	chunkDownloadRequestTimeout = getter.DefaultFetchTimeout
 
-	// chunkUploadRequestTimeout bounds a single chunk upload/push.
-	chunkUploadRequestTimeout = 30 * time.Second
-
 	// chunkStreamCloseDeadline bounds a close frame write. It is kept short
 	// because gorilla queues a control frame behind an in-progress write, and
 	// the goroutine sending it also watches for node shutdown.
@@ -501,12 +498,14 @@ func (cs *chunkStream) handlePut(streamCtx context.Context, req *pb.PutRequest) 
 		stamp = st
 	}
 
-	// Uploads are always direct: the reply waits for the push to complete.
-	putCtx, cancel := context.WithTimeout(streamCtx, chunkUploadRequestTimeout)
-	defer cancel()
-
+	// Uploads are always direct: the reply waits for the push to complete. The
+	// wait has no time limit of its own, as with an HTTP direct upload. A push
+	// carries on after its caller stops waiting, and the pusher answers a
+	// repeated upload of a chunk still in flight with success at once, so a
+	// timeout here could turn a retry of a timed-out chunk into STATUS_OK
+	// before the chunk is pushed.
 	session := s.storer.DirectUpload()
-	putErr := session.Put(putCtx, chunk.WithStamp(stamp))
+	putErr := session.Put(streamCtx, chunk.WithStamp(stamp))
 	var pushErr error
 	if putErr == nil {
 		pushErr = session.Done(swarm.ZeroAddress)

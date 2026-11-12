@@ -537,6 +537,60 @@ func TestChunkBidirectionalStream_Fairness(t *testing.T) {
 	}
 }
 
+// deadlineRecordingStorer records whether the context of each direct upload
+// Put has a deadline.
+type deadlineRecordingStorer struct {
+	api.Storer
+	hasDeadline chan bool
+}
+
+func (d *deadlineRecordingStorer) DirectUpload() storer.PutterSession {
+	return &deadlineRecordingPutterSession{
+		PutterSession: d.Storer.DirectUpload(),
+		hasDeadline:   d.hasDeadline,
+	}
+}
+
+type deadlineRecordingPutterSession struct {
+	storer.PutterSession
+	hasDeadline chan bool
+}
+
+func (d *deadlineRecordingPutterSession) Put(ctx context.Context, ch swarm.Chunk) error {
+	_, ok := ctx.Deadline()
+	d.hasDeadline <- ok
+	return d.PutterSession.Put(ctx, ch)
+}
+
+// An upload waits for the push without a time limit of its own, like an HTTP
+// direct upload. A push carries on after its caller stops waiting, and the
+// pusher answers a repeated upload of a chunk still in flight with success at
+// once, so a timeout would let a client's retry get STATUS_OK before the chunk
+// is pushed.
+// nolint:paralleltest
+func TestChunkBidirectionalStream_UploadWaitHasNoTimeout(t *testing.T) {
+	storerMock := &deadlineRecordingStorer{
+		Storer:      mockstorer.New(),
+		hasDeadline: make(chan bool, 1),
+	}
+
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:       storerMock,
+		Post:         mockpost.New(mockpost.WithAcceptAll()),
+		WsPath:       "/chunks/stream",
+		WsHeaders:    streamHeaders(true),
+		DirectUpload: true,
+	})
+
+	sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
+	if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_OK {
+		t.Fatalf("expected STATUS_OK, got %v: %s", resp.Status, resp.Error)
+	}
+	if <-storerMock.hasDeadline {
+		t.Fatal("upload context has a deadline; the wait for the push must be bounded only by the stream")
+	}
+}
+
 // nolint:paralleltest
 func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 	blockCh := make(chan struct{})
