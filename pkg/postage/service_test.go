@@ -11,8 +11,10 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"sync"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
@@ -471,4 +473,268 @@ func TestUpdateIssuerLabel(t *testing.T) {
 			t.Fatalf("persisted label: got %q, want %q", item.Issuer.Label(), newLabel)
 		}
 	})
+}
+
+func TestResetStampIssuer(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	pstore := pstoremock.New(pstoremock.WithChainState(&postage.ChainState{Block: 1000}))
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, ps)
+
+	batchID := make([]byte, 32)
+	batchID[0] = 42
+
+	mutableIssuer := postage.NewStampIssuer("label", "keyID", batchID, big.NewInt(3), 16, 8, 0, false)
+	if err := ps.Add(mutableIssuer); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := swarm.NewAddress([]byte{1, 2, 3, 4})
+	for range mutableIssuer.BucketUpperBound() {
+		if _, _, err := mutableIssuer.Increment(addr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := mutableIssuer.Increment(addr); !errors.Is(err, postage.ErrBucketFull) {
+		t.Fatalf("want %v, got %v", postage.ErrBucketFull, err)
+	}
+
+	if err := ps.ResetStampIssuer(batchID); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got := mutableIssuer.Generation(); got != 1 {
+		t.Fatalf("generation: want 1, got %d", got)
+	}
+	if got := mutableIssuer.Utilization(); got != 0 {
+		t.Fatalf("utilization: want 0, got %d", got)
+	}
+	if _, _, err := mutableIssuer.Increment(addr); err != nil {
+		t.Fatalf("increment after reset: %v", err)
+	}
+
+	// The reset is persisted immediately, not on the next periodic save.
+	item := &postage.StampIssuerItem{Issuer: postage.NewStampIssuer("", "", batchID, nil, 0, 0, 0, false)}
+	if err := store.Get(item); err != nil {
+		t.Fatal(err)
+	}
+	if got := item.Issuer.Generation(); got != 1 {
+		t.Fatalf("persisted generation: want 1, got %d", got)
+	}
+
+	notFoundID := make([]byte, 32)
+	notFoundID[0] = 99
+	if err := ps.ResetStampIssuer(notFoundID); !errors.Is(err, postage.ErrNotFound) {
+		t.Fatalf("want %v, got %v", postage.ErrNotFound, err)
+	}
+
+	immutableBatchID := make([]byte, 32)
+	immutableBatchID[0] = 77
+	immutableIssuer := postage.NewStampIssuer("label", "keyID", immutableBatchID, big.NewInt(3), 16, 8, 0, true)
+	if err := ps.Add(immutableIssuer); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.ResetStampIssuer(immutableBatchID); !errors.Is(err, postage.ErrBatchImmutable) {
+		t.Fatalf("want %v, got %v", postage.ErrBatchImmutable, err)
+	}
+	if got := immutableIssuer.Generation(); got != 0 {
+		t.Fatalf("immutable generation: want 0, got %d", got)
+	}
+}
+
+// resetTestSetup creates a service with a mutable issuer whose buckets hold
+// two chunks each, and returns three addresses that fall into bucket 0.
+func resetTestSetup(t *testing.T, store storage.Store) (postage.Service, *postage.StampIssuer, crypto.Signer, [3]swarm.Address) {
+	t.Helper()
+
+	pstore := pstoremock.New(pstoremock.WithChainState(&postage.ChainState{Block: 1000}))
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batchID := make([]byte, 32)
+	batchID[0] = 42
+	// batch depth 16, bucket depth 15: each bucket holds two chunks.
+	issuer := postage.NewStampIssuer("label", "keyID", batchID, big.NewInt(3), 16, 15, 0, false)
+	if err := ps.Add(issuer); err != nil {
+		t.Fatal(err)
+	}
+
+	return ps, issuer, crypto.NewDefaultSigner(privKey), [3]swarm.Address{
+		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001"),
+		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000002"),
+		swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000003"),
+	}
+}
+
+func mustStamp(t *testing.T, stamper postage.Stamper, addr swarm.Address) []byte {
+	t.Helper()
+	st, err := stamper.Stamp(addr, addr)
+	if err != nil {
+		t.Fatalf("stamp %s: %v", addr, err)
+	}
+	return st.Index()
+}
+
+// TestResetStampIssuerReindexesOldChunks checks that after a reset a chunk
+// stamped before the reset does not reuse its old batch index, which may by
+// then be assigned to a different chunk.
+func TestResetStampIssuerReindexesOldChunks(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	ps, issuer, signer, addrs := resetTestSetup(t, store)
+	testutil.CleanupCloser(t, ps)
+	a, b, c := addrs[0], addrs[1], addrs[2]
+
+	stamper := postage.NewStamper(store, issuer, signer)
+	mustStamp(t, stamper, a)
+	mustStamp(t, stamper, c)
+	if _, err := stamper.Stamp(b, b); !errors.Is(err, postage.ErrBucketFull) {
+		t.Fatalf("want %v, got %v", postage.ErrBucketFull, err)
+	}
+
+	if err := ps.ResetStampIssuer(issuer.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	stamper = postage.NewStamper(store, issuer, signer)
+	idxB := mustStamp(t, stamper, b)
+	idxA := mustStamp(t, stamper, a)
+	if bytes.Equal(idxA, idxB) {
+		t.Fatalf("chunk stamped before reset reused index %x already assigned after reset", idxA)
+	}
+	// Re-stamping within the same generation keeps the index.
+	if idx := mustStamp(t, stamper, a); !bytes.Equal(idx, idxA) {
+		t.Fatalf("re-stamp in same generation: want index %x, got %x", idxA, idx)
+	}
+}
+
+// TestResetStampIssuerInvalidatesStampers checks that a stamper created
+// before a reset, as held by an in-flight upload, stops issuing stamps
+// instead of reusing indices it has already issued.
+func TestResetStampIssuerInvalidatesStampers(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	ps, issuer, signer, addrs := resetTestSetup(t, store)
+	testutil.CleanupCloser(t, ps)
+
+	stamper := postage.NewStamper(store, issuer, signer)
+	mustStamp(t, stamper, addrs[0])
+
+	if err := ps.ResetStampIssuer(issuer.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, addr := range addrs {
+		if _, err := stamper.Stamp(addr, addr); !errors.Is(err, postage.ErrStampIssuerReset) {
+			t.Fatalf("stamp %s: want %v, got %v", addr, postage.ErrStampIssuerReset, err)
+		}
+	}
+	mustStamp(t, postage.NewStamper(store, issuer, signer), addrs[1])
+}
+
+// TestResetStampIssuerCrashRecovery checks that crash recovery after a reset
+// restores the bucket counts from stamps of the current generation only.
+// Counting stale stamps would mark the bucket full again.
+func TestResetStampIssuerCrashRecovery(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	ps, issuer, signer, addrs := resetTestSetup(t, store)
+	// Closed only after the assertions, as closing persists the issuer.
+	testutil.CleanupCloser(t, ps)
+	bucket := postage.ToBucket(issuer.BucketDepth(), addrs[0])
+
+	stamper := postage.NewStamper(store, issuer, signer)
+	mustStamp(t, stamper, addrs[0])
+	mustStamp(t, stamper, addrs[1])
+
+	if err := ps.ResetStampIssuer(issuer.ID()); err != nil {
+		t.Fatal(err)
+	}
+	mustStamp(t, postage.NewStamper(store, issuer, signer), addrs[2])
+
+	// Simulate an unclean shutdown: the issuer was last persisted by the
+	// reset, so the stamp issued afterwards is only recorded as a stamp item.
+	pstore := pstoremock.New(pstoremock.WithChainState(&postage.ChainState{Block: 1000}))
+	ps2, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, ps2)
+
+	issuers := ps2.StampIssuers()
+	if len(issuers) != 1 {
+		t.Fatalf("want 1 issuer, got %d", len(issuers))
+	}
+	recovered := issuers[0]
+	if got := recovered.Generation(); got != 1 {
+		t.Fatalf("generation: want 1, got %d", got)
+	}
+	if got := recovered.Buckets()[bucket]; got != 1 {
+		t.Fatalf("bucket %d: want 1, got %d", bucket, got)
+	}
+
+	// The re-opened issuer still treats pre-reset stamps as stale.
+	stamper = postage.NewStamper(store, recovered, signer)
+	idxA := mustStamp(t, stamper, addrs[0])
+	idxC := mustStamp(t, stamper, addrs[2])
+	if bytes.Equal(idxA, idxC) {
+		t.Fatalf("pre-reset chunk reused index %x of a post-reset chunk", idxA)
+	}
+}
+
+// TestResetStampIssuerConcurrentStamping runs resets concurrently with
+// stamping to exercise the locking between the service and its stampers.
+func TestResetStampIssuerConcurrentStamping(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	ps, issuer, signer, _ := resetTestSetup(t, store)
+	testutil.CleanupCloser(t, ps)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for range 4 {
+		wg.Go(func() {
+			stamper := postage.NewStamper(store, issuer, signer)
+			for range 200 {
+				addr := swarm.RandAddress(t)
+				_, err := stamper.Stamp(addr, addr)
+				switch {
+				case err == nil, errors.Is(err, postage.ErrBucketFull):
+				case errors.Is(err, postage.ErrStampIssuerReset):
+					stamper = postage.NewStamper(store, issuer, signer)
+				default:
+					errs <- err
+					return
+				}
+			}
+		})
+	}
+	for range 20 {
+		if err := ps.ResetStampIssuer(issuer.ID()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("stamp: %v", err)
+	}
+	if got := issuer.Generation(); got != 20 {
+		t.Fatalf("generation: want 20, got %d", got)
+	}
 }

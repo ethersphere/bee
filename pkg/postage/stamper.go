@@ -30,11 +30,20 @@ type stamper struct {
 	store  storage.Store
 	issuer *StampIssuer
 	signer crypto.Signer
+	// generation is the issuer generation the stamper was created in.
+	// Once the issuer is reset the stamper refuses to issue stamps, so
+	// an upload session never reuses indices it has already issued.
+	generation uint32
 }
 
 // NewStamper constructs a Stamper.
 func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) Stamper {
-	return &stamper{store, issuer, signer}
+	return &stamper{
+		store:      store,
+		issuer:     issuer,
+		signer:     signer,
+		generation: issuer.Generation(),
+	}
 }
 
 // Stamp takes chunk, see if the chunk can be included in the batch and
@@ -43,17 +52,29 @@ func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 	st.issuer.mtx.Lock()
 	defer st.issuer.mtx.Unlock()
 
+	generation := st.issuer.data.Generation
+	if generation != st.generation {
+		return nil, ErrStampIssuerReset
+	}
+
 	item := &StampItem{
 		BatchID:      st.issuer.data.BatchID,
 		chunkAddress: idAddr,
 	}
-	switch err := st.store.Get(item); {
+	err := st.store.Get(item)
+	if err == nil && item.Generation != generation {
+		// The index was issued before the last reset and may since have
+		// been issued to another chunk, so a new one is needed.
+		err = storage.ErrNotFound
+	}
+	switch {
 	case err == nil:
 		item.BatchTimestamp = unixTime()
 		if err = st.store.Put(item); err != nil {
 			return nil, err
 		}
 	case errors.Is(err, storage.ErrNotFound):
+		item.Generation = generation
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
 			return nil, err

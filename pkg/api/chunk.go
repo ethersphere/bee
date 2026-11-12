@@ -172,6 +172,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(ow, "batch is overissued")
+		case errors.Is(err, postage.ErrStampIssuerReset):
+			jsonhttp.Conflict(ow, "postage batch was reset during upload")
 		case errors.Is(err, postage.ErrInvalidBatchSignature):
 			jsonhttp.BadRequest(ow, "stamp signature is invalid")
 		default:

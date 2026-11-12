@@ -47,6 +47,7 @@ type Service interface {
 	GetStampIssuer([]byte) (*StampIssuer, func() error, error)
 	IssuerUsable(*StampIssuer) bool
 	UpdateIssuerLabel([]byte, string) error
+	ResetStampIssuer([]byte) error
 	BatchEventListener
 	BatchExpiryHandler
 	io.Closer
@@ -115,7 +116,7 @@ func (s *service) recoverBuckets() error {
 			item := result.Entry.(*StampItem)
 			for _, issuer := range s.issuers {
 				if bytes.Equal(issuer.data.BatchID, item.BatchID) {
-					if err := issuer.recover(item.BatchIndex); err != nil {
+					if err := issuer.recover(item.BatchIndex, item.Generation); err != nil {
 						s.logger.Error(err, "postage recovery of bucket count failed")
 					} else {
 						issuer.dirty = true
@@ -262,6 +263,51 @@ func (ps *service) UpdateIssuerLabel(batchID []byte, label string) error {
 		}
 	}
 	return ErrNotFound
+}
+
+// ResetStampIssuer starts a new generation of the mutable stamp issuer with
+// the given batch ID and persists it. The collision bucket counters are
+// zeroed so the batch can be reused, stamps issued before the reset become
+// stale, and stampers created before the reset stop issuing stamps.
+// Chunks stamped before the reset may subsequently be displaced.
+func (ps *service) ResetStampIssuer(batchID []byte) error {
+	ps.mtx.Lock()
+	var st *StampIssuer
+	for _, issuer := range ps.issuers {
+		if bytes.Equal(batchID, issuer.data.BatchID) {
+			st = issuer
+			break
+		}
+	}
+	ps.mtx.Unlock()
+
+	if st == nil {
+		return ErrNotFound
+	}
+	return ps.reset(st)
+}
+
+// reset starts a new issuer generation and persists it while holding the
+// issuer lock, so that no stamp can be issued in the new generation before
+// the generation is stored. On a failed store the previous state is restored.
+func (ps *service) reset(st *StampIssuer) error {
+	st.mtx.Lock()
+	defer st.mtx.Unlock()
+
+	if st.data.ImmutableFlag {
+		return ErrBatchImmutable
+	}
+
+	buckets := append([]uint32(nil), st.data.Buckets...)
+	maxBucketCount, generation, dirty := st.data.MaxBucketCount, st.data.Generation, st.dirty
+
+	st.resetLocked()
+	if err := ps.store.Put(&StampIssuerItem{Issuer: st}); err != nil {
+		st.data.Buckets, st.data.MaxBucketCount, st.data.Generation, st.dirty = buckets, maxBucketCount, generation, dirty
+		return fmt.Errorf("store stamp issuer: %w", err)
+	}
+	st.dirty = false
+	return nil
 }
 
 // save persists the specified stamp issuer to the stamperstore.

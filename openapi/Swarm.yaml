@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.2
+  version: 8.3.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -159,6 +159,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -327,6 +333,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -421,6 +433,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -990,6 +1008,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1110,6 +1134,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -1208,6 +1238,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1325,8 +1361,16 @@ paths:
           description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1602,6 +1646,12 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "409":
+          description: The postage batch was reset while the upload was in progress.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ProblemDetails"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2253,6 +2303,44 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+
+  "/stamps/{batch_id}/reset":
+    parameters:
+      - in: path
+        name: batch_id
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        required: true
+        description: ID of the postage batch to reset
+    post:
+      summary: Reset a mutable postage batch for reuse
+      description: |
+        Starts a new generation of a mutable postage batch owned by this node so that it can be reused for new
+        uploads. Uploads that exceed a batch's capacity fail with 402 instead of silently reusing stamp indices;
+        calling this endpoint makes that reuse explicit. The collision bucket counters and the reported utilization
+        are reset to zero. Chunks stamped with this batch before the reset may subsequently be displaced by newly
+        stamped chunks and become unretrievable; re-uploading such content stamps it again. Uploads to this batch
+        that are in progress during the reset fail with 409. Immutable batches cannot be reset.
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          description: The batch was reset.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchID:
+                    $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
