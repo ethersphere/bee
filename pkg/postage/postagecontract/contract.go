@@ -180,31 +180,21 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
 }
 
 func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
+	// The gas cost of postage stamp contract calls changes with the block
+	// number (batch expiry, batch tree insertion), so an estimate can be
+	// short by 200k or more one block later. The floor covers that.
 	request := &transaction.TxRequest{
-		To:          &c.postageStampContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
-		Value:       big.NewInt(0),
-		Description: desc,
+		To:                   &c.postageStampContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
+		MinEstimatedGasLimit: transaction.DefaultGasLimit,
+		Value:                big.NewInt(0),
+		Description:          desc,
 	}
 
 	defer func() {
@@ -216,21 +206,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
 }
 
 func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash, immutable bool) (*types.Receipt, error) {
