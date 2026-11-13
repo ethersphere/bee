@@ -2,145 +2,236 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package snapshot provides a BlockHeightContractFilterer backed by a
-// pre-computed postage batch snapshot, used to rebuild the batch store from an
-// embedded snapshot instead of replaying the whole postage contract history.
+// Package snapshot rebuilds the postage batch store from a pre-computed snapshot
+// of postage contract events instead of replaying the whole contract history
+// from the chain. A snapshot is NDJSON, one types.Log per line, sorted by block
+// number, optionally gzip-compressed.
 package snapshot
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"slices"
 	"sort"
-	"sync"
+	"syscall"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 )
 
-var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
+// blockPage is the number of blocks per FilterLogs call during replay; the
+// snapshot is served from memory, so pages can be large.
+const blockPage = uint64(50000)
 
+var (
+	// ErrParseSnapshot is returned when a snapshot does not decode as sorted
+	// NDJSON of logs.
+	ErrParseSnapshot = errors.New("failed to parse snapshot data")
+	// ErrEmptySnapshot is returned when a strict snapshot holds no logs.
+	ErrEmptySnapshot = errors.New("snapshot: no logs")
+	// ErrContractMismatch is returned when a strict snapshot holds a log from a
+	// contract other than the configured postage contract.
+	ErrContractMismatch = errors.New("snapshot: log from unexpected contract")
+	// ErrBlockHeightTooLow is returned when a strict snapshot does not reach far
+	// enough past the start block for the replay to make progress.
+	ErrBlockHeightTooLow = errors.New("snapshot: max block not ahead of start block")
+)
+
+// SnapshotGetter provides the snapshot blob embedded in the binary.
 type SnapshotGetter interface {
 	GetBatchSnapshot() []byte
 }
 
-type SnapshotLogFilterer struct {
-	logger         log.Logger
-	loadedLogs     []types.Log
-	maxBlockHeight uint64
-	initOnce       sync.Once
-	getter         SnapshotGetter
+// Source is where a snapshot is read from.
+type Source interface {
+	// Name identifies the kind of source in logs: "embedded" or "file".
+	Name() string
+	// Open returns the snapshot as a stream of NDJSON, already decompressed.
+	Open() (io.ReadCloser, error)
 }
 
-func NewSnapshotLogFilterer(logger log.Logger, getter SnapshotGetter) *SnapshotLogFilterer {
-	return &SnapshotLogFilterer{
-		logger: logger,
-		getter: getter,
-	}
+// Embedded returns the source backed by the gzip blob embedded in the binary.
+func Embedded(getter SnapshotGetter) Source {
+	return embeddedSource{getter: getter}
 }
 
-func (f *SnapshotLogFilterer) GetBatchSnapshot() []byte {
-	return f.getter.GetBatchSnapshot()
+type embeddedSource struct {
+	getter SnapshotGetter
 }
 
-// loadSnapshot is responsible for loading and processing the snapshot data.
-// It is intended to be called exactly once by initOnce.Do.
-func (f *SnapshotLogFilterer) loadSnapshot() error {
-	f.logger.Info("loading batch snapshot")
-	data := f.getter.GetBatchSnapshot()
-	dataReader := bytes.NewReader(data)
-	gzipReader, err := gzip.NewReader(dataReader)
+func (embeddedSource) Name() string { return "embedded" }
+
+func (s embeddedSource) Open() (io.ReadCloser, error) {
+	gzipReader, err := gzip.NewReader(bytes.NewReader(s.getter.GetBatchSnapshot()))
 	if err != nil {
-		f.logger.Error(err, "failed to create gzip reader for batch import")
-		return fmt.Errorf("create gzip reader: %w", err)
+		return nil, fmt.Errorf("create gzip reader: %w", err)
 	}
-	defer gzipReader.Close()
-
-	if err := f.parseLogs(gzipReader); err != nil {
-		f.logger.Error(err, "failed to parse logs from snapshot")
-		return err
-	}
-
-	f.logger.Info("batch snapshot loaded successfully", "log_count", len(f.loadedLogs), "max_block_height", f.maxBlockHeight)
-	return nil
+	return gzipReader, nil
 }
 
-// parseLogs decodes the snapshot NDJSON into types.Log entries.
+// File returns the source backed by the snapshot file at path. The content
+// decides the format, not the file name: gzip (possibly multi-member) is
+// recognized by its magic bytes, anything else is read as plain NDJSON.
+func File(path string) Source {
+	return fileSource{path: path}
+}
+
+type fileSource struct {
+	path string
+}
+
+func (fileSource) Name() string { return "file" }
+
+func (s fileSource) Open() (io.ReadCloser, error) {
+	file, err := os.Open(s.path)
+	if err != nil {
+		return nil, err
+	}
+	reader, err := snapshotReader(file)
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return readCloser{reader, file}, nil
+}
+
+// snapshotReader returns a reader that yields the file's content as plain
+// NDJSON.
+func snapshotReader(file *os.File) (io.Reader, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	// Reading a directory fails with an OS-specific error that on Windows does
+	// not say what is wrong, so reject it up front.
+	if info.IsDir() {
+		return nil, &fs.PathError{Op: "open", Path: file.Name(), Err: syscall.EISDIR}
+	}
+
+	buffered := bufio.NewReader(file)
+	magic, err := buffered.Peek(2)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		gzipReader, err := gzip.NewReader(buffered)
+		if err != nil {
+			return nil, fmt.Errorf("create gzip reader: %w", err)
+		}
+		return gzipReader, nil
+	}
+	return buffered, nil
+}
+
+// readCloser pairs a decoding reader with the file it reads from.
+type readCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// Info describes a parsed snapshot.
+type Info struct {
+	LogCount int
+	MaxBlock uint64
+}
+
+// SnapshotLogFilterer serves a parsed snapshot to the postage listener as if it
+// were a chain backend: BlockNumber is the snapshot's max block, and FilterLogs
+// answers from the in-memory, block-sorted logs.
+type SnapshotLogFilterer struct {
+	logger   log.Logger
+	logs     []types.Log // sorted by block number
+	maxBlock uint64
+}
+
+var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
+
+// Parse reads src to the end and indexes its logs, which must be sorted by
+// block number and emitted by contract. Blank lines are skipped. A log from
+// another contract would be filtered out during replay while the chain state
+// still advanced past it, silently skipping history; checking it here also
+// rejects a snapshot for another network at its first line.
 //
-// The snapshot is produced by ethersphere/batch-export, whose default slim
-// encoding carries only the types.Log fields Bee reads today: address, topics,
-// data, blockNumber, transactionHash (and logIndex). Any other field —
-// BlockHash, TxIndex, Removed — decodes to its zero value here with no error.
-// Before consuming a new types.Log field anywhere downstream of this filterer
-// (FilterLogs callers, listener.processEvent, transaction.ParseEvent), extend
-// SlimLog in batch-export's pkg/filestore and republish the snapshot first;
-// otherwise the field is silently empty for snapshot-sourced logs.
-func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
-	var parsedLogs []types.Log
-	var currentMaxBlockHeight uint64
+// The snapshot comes from ethersphere/batch-export in its slim encoding: only
+// address, topics, data, blockNumber, transactionHash and logIndex are set,
+// every other types.Log field decodes to its zero value without error. Extend
+// SlimLog in batch-export before reading a new field from snapshot logs.
+func Parse(logger log.Logger, src Source, contract common.Address) (*SnapshotLogFilterer, Info, error) {
+	reader, err := src.Open()
+	if err != nil {
+		return nil, Info{}, err
+	}
+	defer reader.Close()
 
-	decoder := json.NewDecoder(reader)
-	for {
-		var logEntry types.Log
-		if err := decoder.Decode(&logEntry); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("%w: failed to decode log event at position %d: %w", listener.ErrParseSnapshot, len(parsedLogs), err)
+	var (
+		logs     []types.Log
+		maxBlock uint64
+		line     int
+		parseErr error
+	)
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line++
+		raw := bytes.TrimSpace(scanner.Bytes())
+		if len(raw) == 0 {
+			continue
 		}
-
-		// Validate sorting order (required for binary search in FilterLogs)
-		if logEntry.BlockNumber < currentMaxBlockHeight {
-			return fmt.Errorf("%w: snapshot data is not sorted by block number at index %d (block %d < %d)",
-				listener.ErrParseSnapshot, len(parsedLogs), logEntry.BlockNumber, currentMaxBlockHeight)
+		var l types.Log
+		if err := l.UnmarshalJSON(raw); err != nil {
+			parseErr = fmt.Errorf("%w: line %d: %w", ErrParseSnapshot, line, err)
+			break
 		}
-
-		if logEntry.BlockNumber > currentMaxBlockHeight {
-			currentMaxBlockHeight = logEntry.BlockNumber
+		// FilterLogs binary-searches by block number.
+		if l.BlockNumber < maxBlock {
+			parseErr = fmt.Errorf("%w: line %d: block %d after block %d, snapshot is not sorted by block number", ErrParseSnapshot, line, l.BlockNumber, maxBlock)
+			break
 		}
-		parsedLogs = append(parsedLogs, logEntry)
+		if l.Address != contract {
+			parseErr = fmt.Errorf("%w: line %d has address %s, expected %s", ErrContractMismatch, line, l.Address.Hex(), contract.Hex())
+			break
+		}
+		maxBlock = l.BlockNumber
+		logs = append(logs, l)
+	}
+	// A stream that breaks mid-line hands the partial line to the loop before
+	// the scanner reports the read error, so the read error is checked first.
+	if err := scanner.Err(); err != nil {
+		return nil, Info{}, fmt.Errorf("read snapshot: %w", err)
+	}
+	if parseErr != nil {
+		return nil, Info{}, parseErr
 	}
 
-	f.loadedLogs = parsedLogs
-	f.maxBlockHeight = currentMaxBlockHeight
-	return nil
+	filterer := &SnapshotLogFilterer{logger: logger, logs: logs, maxBlock: maxBlock}
+	return filterer, Info{LogCount: len(logs), MaxBlock: maxBlock}, nil
 }
 
-// ensureLoaded calls loadSnapshot via sync.Once to ensure thread-safe, one-time initialization.
-func (f *SnapshotLogFilterer) ensureLoaded() error {
-	var err error
-	f.initOnce.Do(func() {
-		err = f.loadSnapshot()
-	})
-	return err
-}
-
-func (f *SnapshotLogFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	if err := f.ensureLoaded(); err != nil {
-		return nil, fmt.Errorf("failed to ensure snapshot was loaded for FilterLogs: %w", err)
-	}
-
-	f.logger.Debug("filtering pre-loaded logs", "total_logs", len(f.loadedLogs), "query_from_block", query.FromBlock, "query_to_block", query.ToBlock, "query_addresses_count", len(query.Addresses), "query_topics_count", len(query.Topics))
+func (f *SnapshotLogFilterer) FilterLogs(_ context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	f.logger.Debug("filtering pre-loaded logs", "total_logs", len(f.logs), "query_from_block", query.FromBlock, "query_to_block", query.ToBlock, "query_addresses_count", len(query.Addresses), "query_topics_count", len(query.Topics))
 
 	filtered := make([]types.Log, 0)
 
 	startIndex := 0
 	if query.FromBlock != nil {
 		fromBlockNum := query.FromBlock.Uint64()
-		startIndex = sort.Search(len(f.loadedLogs), func(i int) bool {
-			return f.loadedLogs[i].BlockNumber >= fromBlockNum
+		startIndex = sort.Search(len(f.logs), func(i int) bool {
+			return f.logs[i].BlockNumber >= fromBlockNum
 		})
 	}
 
 	scannedCount := 0
-	for i := startIndex; i < len(f.loadedLogs); i++ {
-		logEntry := f.loadedLogs[i]
+	for i := startIndex; i < len(f.logs); i++ {
+		logEntry := f.logs[i]
 		scannedCount++
 
 		if query.ToBlock != nil && logEntry.BlockNumber > query.ToBlock.Uint64() {
@@ -175,13 +266,10 @@ func (f *SnapshotLogFilterer) FilterLogs(ctx context.Context, query ethereum.Fil
 		filtered = append(filtered, logEntry)
 	}
 
-	f.logger.Debug("filtered logs complete", "input_log_count", len(f.loadedLogs), "potential_logs_in_block_range", scannedCount, "output_count", len(filtered))
+	f.logger.Debug("filtered logs complete", "input_log_count", len(f.logs), "potential_logs_in_block_range", scannedCount, "output_count", len(filtered))
 	return filtered, nil
 }
 
 func (f *SnapshotLogFilterer) BlockNumber(_ context.Context) (uint64, error) {
-	if err := f.ensureLoaded(); err != nil {
-		return 0, fmt.Errorf("failed to ensure snapshot was loaded for BlockNumber: %w", err)
-	}
-	return f.maxBlockHeight, nil
+	return f.maxBlock, nil
 }

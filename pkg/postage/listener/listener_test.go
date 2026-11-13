@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,7 +83,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		synced := l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -96,6 +97,15 @@ func TestListener(t *testing.T) {
 			e.(createArgs).compareF(t, c) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case err := <-synced:
+			if err != nil {
+				t.Fatalf("sync returned %v", err)
+			}
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for sync to complete")
 		}
 	})
 
@@ -124,7 +134,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		synced := l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -138,6 +148,15 @@ func TestListener(t *testing.T) {
 			e.(topupArgs).compareF(t, topup) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case err := <-synced:
+			if err != nil {
+				t.Fatalf("sync returned %v", err)
+			}
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for sync to complete")
 		}
 	})
 
@@ -167,7 +186,7 @@ func TestListener(t *testing.T) {
 		)
 		testutil.CleanupCloser(t, l)
 
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		synced := l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -181,6 +200,15 @@ func TestListener(t *testing.T) {
 			e.(depthArgs).compareF(t, depthIncrease) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case err := <-synced:
+			if err != nil {
+				t.Fatalf("sync returned %v", err)
+			}
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for sync to complete")
 		}
 	})
 
@@ -207,7 +235,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		synced := l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -221,6 +249,15 @@ func TestListener(t *testing.T) {
 			e.(priceArgs).compareF(t, priceUpdate) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
+		}
+
+		select {
+		case err := <-synced:
+			if err != nil {
+				t.Fatalf("sync returned %v", err)
+			}
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for sync to complete")
 		}
 	})
 
@@ -271,7 +308,7 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		synced := l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -330,6 +367,15 @@ func TestListener(t *testing.T) {
 			e.(blockNumberCall).compareF(t, toBatchBlock(blockNumber-uint64(listener.TailSize))) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
+		}
+
+		select {
+		case err := <-synced:
+			if err != nil {
+				t.Fatalf("sync returned %v", err)
+			}
+		case <-time.After(timeout):
+			t.Fatal("timed out waiting for sync to complete")
 		}
 	})
 
@@ -409,7 +455,9 @@ func TestListener(t *testing.T) {
 			listener.DefaultBlockPage,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev) //nolint:errcheck
+		if err := <-l.Listen(context.Background(), 0, ev); err == nil {
+			t.Fatal("expected the processing error from Listen")
+		}
 
 		select {
 		case e := <-ev.eventC:
@@ -426,10 +474,8 @@ func TestListener(t *testing.T) {
 	})
 }
 
-// TestListenerPageSize verifies that the block paging window is selected based
-// on the backend: a plain backend pages by the configured block page, while a
-// backend that also exposes GetBatchSnapshot (the snapshot filterer) pages by
-// blockPageSnapshot.
+// TestListenerPageSize verifies that the block paging window is the configured
+// block page, with zero falling back to the default.
 func TestListenerPageSize(t *testing.T) {
 	t.Parallel()
 
@@ -494,15 +540,6 @@ func TestListenerPageSize(t *testing.T) {
 		const blockPage = 5000
 		to := firstPageTo(t, blockPage, standard)
 		if want := uint64(blockPage - 1); to != want {
-			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
-		}
-	})
-
-	t.Run("snapshot backend uses snapshot page", func(t *testing.T) {
-		to := firstPageTo(t, listener.DefaultBlockPage, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
-			return snapshotPageCaptureFilterer{f}
-		})
-		if want := listener.BlockPageSnapshot - 1; to != want {
 			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
 		}
 	})
@@ -612,14 +649,6 @@ func (f *pageCaptureFilterer) FilterLogs(ctx context.Context, q ethereum.FilterQ
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
-
-// snapshotPageCaptureFilterer additionally exposes GetBatchSnapshot, matching the
-// interface the listener type-asserts against to detect a snapshot backend.
-type snapshotPageCaptureFilterer struct {
-	*pageCaptureFilterer
-}
-
-func (snapshotPageCaptureFilterer) GetBatchSnapshot() []byte { return nil }
 
 func newEventUpdaterMock() *updater {
 	return &updater{
@@ -957,3 +986,94 @@ type Option interface {
 type optionFunc func(*mockFilterer)
 
 func (f optionFunc) apply(r *mockFilterer) { f(r) }
+
+func TestSyncTarget(t *testing.T) {
+	t.Parallel()
+
+	// Tests run with the default batch factor (5) and tail size (4).
+	for _, tc := range []struct {
+		head   uint64
+		want   uint64
+		wantOK bool
+	}{
+		{head: 0, want: 0, wantOK: false},
+		{head: 3, want: 0, wantOK: false},
+		{head: 4, want: 0, wantOK: true},
+		{head: 13, want: 5, wantOK: true},
+		{head: 14, want: 10, wantOK: true},
+		{head: 104, want: 100, wantOK: true},
+	} {
+		got, ok := listener.SyncTarget(tc.head)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("SyncTarget(%d) = (%d, %v), want (%d, %v)", tc.head, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}
+
+// TestListenerFinalPageError verifies that Listen reports a failure on the final
+// page of a paged sync. The synced signal must follow the processing of that
+// page, or a caller sees a clean sync while the listener is still writing and
+// then fails out of band.
+func TestListenerFinalPageError(t *testing.T) {
+	t.Parallel()
+
+	const blockPage = uint64(100)
+
+	l := listener.New(
+		nil,
+		log.Noop,
+		&finalPageErrorFilterer{blockPage: blockPage},
+		postageStampContractAddress,
+		postageStampContractABI,
+		1,
+		stallingTimeout,
+		backoffTime,
+		blockPage,
+	)
+	testutil.CleanupCloser(t, l)
+
+	select {
+	case err := <-l.Listen(t.Context(), 0, noopUpdater{}):
+		if err == nil || !strings.Contains(err.Error(), "unknown event") {
+			t.Fatalf("expected the final page event error, got %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the sync result")
+	}
+}
+
+// finalPageErrorFilterer reports a chain three pages long and serves an
+// unparseable event only on the final, short page.
+type finalPageErrorFilterer struct {
+	blockPage uint64
+}
+
+func (f *finalPageErrorFilterer) BlockNumber(context.Context) (uint64, error) {
+	return f.blockPage*2 + f.blockPage/2, nil
+}
+
+func (f *finalPageErrorFilterer) FilterLogs(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	if q.ToBlock.Uint64()-q.FromBlock.Uint64()+1 >= f.blockPage {
+		return nil, nil // a full page
+	}
+	return []types.Log{{
+		Address:     postageStampContractAddress,
+		Topics:      []common.Hash{hash}, // matches no postage event
+		BlockNumber: q.ToBlock.Uint64(),
+	}}, nil
+}
+
+// noopUpdater accepts every event so a test can drive the listener's paging
+// without consuming per-event notifications.
+type noopUpdater struct{}
+
+func (noopUpdater) Create([]byte, []byte, *big.Int, *big.Int, uint8, uint8, bool, common.Hash) error {
+	return nil
+}
+func (noopUpdater) TopUp([]byte, *big.Int, *big.Int, common.Hash) error    { return nil }
+func (noopUpdater) UpdateDepth([]byte, uint8, *big.Int, common.Hash) error { return nil }
+func (noopUpdater) UpdatePrice(*big.Int, common.Hash) error                { return nil }
+func (noopUpdater) UpdateBlockNumber(uint64) error                         { return nil }
+func (noopUpdater) Start(context.Context, uint64) error                    { return nil }
+func (noopUpdater) TransactionStart() error                                { return nil }
+func (noopUpdater) TransactionEnd() error                                  { return nil }
