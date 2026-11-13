@@ -107,6 +107,8 @@ const (
 	GasLimitHeader  = "Gas-Limit"
 	ETagHeader      = "ETag"
 
+	FeePriorityHeader = "Fee-Priority"
+
 	AuthorizationHeader        = "Authorization"
 	AcceptEncodingHeader       = "Accept-Encoding"
 	ContentTypeHeader          = "Content-Type"
@@ -123,6 +125,7 @@ const (
 	multiPartFormData      = "multipart/form-data"
 	contentTypeTar         = "application/x-tar"
 	contentTypeOctetStream = "application/octet-stream"
+	invalidHeaderParams    = "invalid header params"
 )
 
 var (
@@ -238,6 +241,7 @@ type Service struct {
 	chainID      int64
 
 	whitelistedWithdrawalAddress []common.Address
+	maxFeePriority               int
 
 	preMapHooks              map[string]func(v string) (string, error)
 	customValidationMessages map[string]func(err validator.FieldError) error
@@ -264,6 +268,17 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
 	if s != nil {
 		s.redistributionAgent = redistributionAgent
+	}
+}
+
+// SetMaxFeePriority stores the highest fee priority a request may select.
+// An unset tier is aggressive, the highest one, so every priority is allowed.
+func (s *Service) SetMaxFeePriority(tier int) {
+	if tier == 0 {
+		tier = transaction.FeePriorityAggressive
+	}
+	if s != nil {
+		s.maxFeePriority = tier
 	}
 }
 
@@ -345,6 +360,7 @@ func New(
 	})
 	s.setupValidation()
 	s.stamperStore = stamperStore
+	s.SetMaxFeePriority(0)
 
 	for _, v := range whitelistedWithdrawalAddress {
 		s.whitelistedWithdrawalAddress = append(s.whitelistedWithdrawalAddress, common.HexToAddress(v))
@@ -609,26 +625,68 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 }
 
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
-// gas price and gas limit through the HTTP API headers.
+// gas price, gas limit, and an optional fee priority through the HTTP API headers.
+// An absent fee priority is left unset. A priority above the configured maximum is rejected,
+// and so is a request that sets both a fee priority and a gas price.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := s.logger.WithName(handlerName).Build()
 
 			headers := struct {
-				GasPrice *big.Int `map:"Gas-Price"`
-				GasLimit uint64   `map:"Gas-Limit"`
+				GasPrice    *big.Int `map:"Gas-Price"`
+				GasLimit    uint64   `map:"Gas-Limit"`
+				FeePriority string   `map:"Fee-Priority"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
-				response("invalid header params", logger, w)
+				response(invalidHeaderParams, logger, w)
 				return
 			}
-			if gasPriceOutOfRange(headers.GasPrice) {
+			ctx := r.Context()
+			tier, err := transaction.ParseFeePriority(headers.FeePriority)
+			if err != nil {
+				logger.Debug("invalid fee priority header", "error", err)
+				jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+					Message: invalidHeaderParams,
+					Code:    http.StatusBadRequest,
+					Reasons: []jsonhttp.Reason{{
+						Field: FeePriorityHeader,
+						Error: err.Error(),
+					}},
+				})
+				return
+			}
+			if tier != 0 {
+				if headers.GasPrice != nil {
+					logger.Debug("fee priority and gas price set together", "fee_priority", transaction.FeePriorityName(tier), "gas_price", headers.GasPrice)
+					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+						Message: invalidHeaderParams,
+						Code:    http.StatusBadRequest,
+						Reasons: []jsonhttp.Reason{{
+							Field: FeePriorityHeader,
+							Error: fmt.Sprintf("%s cannot be combined with %s", FeePriorityHeader, GasPriceHeader),
+						}},
+					})
+					return
+				}
+				if tier > s.maxFeePriority {
+					logger.Debug("fee priority above configured maximum", "fee_priority", transaction.FeePriorityName(tier), "maximum", transaction.FeePriorityName(s.maxFeePriority))
+					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+						Message: invalidHeaderParams,
+						Code:    http.StatusBadRequest,
+						Reasons: []jsonhttp.Reason{{
+							Field: FeePriorityHeader,
+							Error: fmt.Sprintf("fee priority %q is above maximum %q", transaction.FeePriorityName(tier), transaction.FeePriorityName(s.maxFeePriority)),
+						}},
+					})
+					return
+				}
+				ctx = sctx.SetFeePriority(ctx, tier)
+			} else if gasPriceOutOfRange(headers.GasPrice) {
 				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
 				jsonhttp.BadRequest(w, "gas price out of range")
 				return
 			}
-			ctx := r.Context()
 			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
 			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 
@@ -645,7 +703,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader,
 		SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader,
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
-		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, FeePriorityHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
 		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
 	}

@@ -6,8 +6,10 @@ package api_test
 
 import (
 	"context"
+	"io"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -16,7 +18,129 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
+
+func TestFeePriorityHeader(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		header     string
+		max        string
+		wantStatus int
+		wantTier   int
+	}{
+		{name: "omitted", wantStatus: http.StatusCreated},
+		{name: "low", header: "low", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityLow},
+		{name: "aggressive under default maximum", header: "aggressive", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityAggressive},
+		{name: "unknown", header: "banana", wantStatus: http.StatusBadRequest},
+		{name: "above maximum", header: "aggressive", max: "market", wantStatus: http.StatusBadRequest},
+		{name: "at maximum", header: "market", max: "market", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				mu     sync.Mutex
+				called bool
+				got    int
+			)
+			contract := contractMock.New(
+				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
+					mu.Lock()
+					defer mu.Unlock()
+					called, got = true, sctx.GetFeePriority(ctx)
+					return common.HexToHash("0xabcd"), []byte{0xab}, nil
+				}),
+			)
+			client, _, _, _, svc := newTestServer(t, testServerOptions{PostageContract: contract})
+			if tc.max != "" {
+				tier, err := transaction.ParseFeePriority(tc.max)
+				if err != nil {
+					t.Fatal(err)
+				}
+				svc.SetMaxFeePriority(tier)
+			}
+
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.header != "" {
+				req.Header.Set(api.FeePriorityHeader, tc.header)
+			}
+			res, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+
+			if res.StatusCode != tc.wantStatus {
+				t.Fatalf("got status %d, want %d", res.StatusCode, tc.wantStatus)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if tc.wantStatus != http.StatusCreated {
+				if called {
+					t.Fatal("rejected fee priority still reached the contract")
+				}
+				return
+			}
+			if !called {
+				t.Fatal("create batch was not called")
+			}
+			if got != tc.wantTier {
+				t.Fatalf("got fee priority %d, want %d", got, tc.wantTier)
+			}
+		})
+	}
+}
+
+func TestFeePriorityRejectsGasPrice(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu     sync.Mutex
+		called bool
+	)
+	contract := contractMock.New(
+		contractMock.WithCreateBatchFunc(func(context.Context, *big.Int, uint8, bool, string) (common.Hash, []byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			called = true
+			return common.HexToHash("0xabcd"), []byte{0xab}, nil
+		}),
+	)
+	client, _, _, _, _ := newTestServer(t, testServerOptions{PostageContract: contract})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/stamps/1000/24", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.GasPriceHeader, "1000000000")
+	req.Header.Set(api.FeePriorityHeader, "low")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
+	if !strings.Contains(string(body), api.FeePriorityHeader+" cannot be combined with "+api.GasPriceHeader) {
+		t.Fatalf("got body %s, want the header conflict", body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if called {
+		t.Fatal("rejected request reached the contract")
+	}
+}
 
 // TestGasPriceHeaderIsBounded checks that Gas-Price values outside the
 // accepted range are rejected before they reach a transaction.

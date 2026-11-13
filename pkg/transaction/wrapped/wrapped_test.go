@@ -440,6 +440,7 @@ func newTestWrappedBackendWithConfig(
 		testMinimumGasTipCap,
 		blockTime,
 		blockSyncInterval,
+		DefaultFeeHistoryBlockCount,
 	).(*wrappedBackend)
 	assert.True(t, ok)
 

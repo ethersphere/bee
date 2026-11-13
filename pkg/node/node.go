@@ -165,6 +165,9 @@ type Options struct {
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
+	FeeHistoryBlockCount          uint64
+	RedistributionGameFeePriority string
+	TransactionFeePriorityMax     string
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -480,6 +483,15 @@ func NewBee(
 		}
 	}
 
+	redistributionFeePriority, err := transaction.ParseFeePriority(o.RedistributionGameFeePriority)
+	if err != nil {
+		return nil, fmt.Errorf("redistribution game fee priority: %w", err)
+	}
+	maxFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMax)
+	if err != nil {
+		return nil, fmt.Errorf("transaction fee priority max: %w", err)
+	}
+
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
 		logger,
@@ -498,6 +510,7 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -568,6 +581,7 @@ func NewBee(
 		)
 
 		apiService.Mount()
+		apiService.SetMaxFeePriority(maxFeePriority)
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
@@ -1403,6 +1417,7 @@ func NewBee(
 				transactionService,
 				saludService,
 				logger,
+				redistributionFeePriority,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)

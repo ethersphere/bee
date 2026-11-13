@@ -60,6 +60,7 @@ type TxRequest struct {
 	GasLimit             uint64          // gas limit or 0 if it should be estimated
 	MinEstimatedGasLimit uint64          // minimum gas limit to use if the gas limit was estimated; it will not apply when this value is 0 or when GasLimit is not 0
 	GasFeeCap            *big.Int        // adds a cap to maximum fee user is willing to pay
+	FeePriority          int             // fee priority; when set, it takes precedence over GasPrice
 	Value                *big.Int        // amount of wei to send
 	Description          string          // optional description
 }
@@ -72,6 +73,7 @@ type StoredTransaction struct {
 	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
+	FeePriority int             // fee priority that priced the transaction
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -207,18 +209,25 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 	txHash = signedTx.Hash()
 
+	// A fee priority prices the transaction without the tip boost.
+	gasTipBoost := boostPercent
+	if request.FeePriority != 0 {
+		gasTipBoost = 0
+	}
+
 	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
 		To:          signedTx.To(),
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
-		GasTipBoost: boostPercent,
+		GasTipBoost: gasTipBoost,
 		GasTipCap:   signedTx.GasTipCap(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
 		Description: request.Description,
+		FeePriority: request.FeePriority,
 	})
 	if err != nil {
 		return common.Hash{}, err
@@ -427,7 +436,12 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
+	var gasFeeCap, gasTipCap *big.Int
+	if request.FeePriority != 0 {
+		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, request.FeePriority)
+	} else {
+		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -438,6 +452,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		"gas_limit", gasLimit,
 		"gas_fee_cap", gasFeeCap,
 		"gas_tip_cap", gasTipCap,
+		"fee_priority", FeePriorityName(request.FeePriority),
 		"nonce", nonce,
 		"description", request.Description,
 	)
@@ -567,6 +582,8 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 	return result
 }
 
+// ResendTransaction does not honor fee priority. It is effectively broken in its
+// current form and needs to be fixed.
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
 	storedTransaction, err := t.StoredTransaction(txHash)
 	if err != nil {
