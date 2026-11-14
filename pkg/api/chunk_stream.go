@@ -355,6 +355,8 @@ func (s *Service) handleUploadStream(
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
 				sendErrorClose(websocket.CloseInternalServerErr, "batch is overissued")
+			case errors.Is(err, postage.ErrStampIssuerReset):
+				sendErrorClose(websocket.CloseInternalServerErr, "postage batch was reset during upload")
 			default:
 				sendErrorClose(websocket.CloseInternalServerErr, "chunk write error")
 			}

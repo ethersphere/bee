@@ -68,7 +68,14 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Debug("re-upload failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "re-upload failed")
-		jsonhttp.InternalServerError(w, "re-upload failed")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
+		case errors.Is(err, postage.ErrStampIssuerReset):
+			jsonhttp.Conflict(w, "postage batch was reset during upload")
+		default:
+			jsonhttp.InternalServerError(w, "re-upload failed")
+		}
 		return
 	}
 

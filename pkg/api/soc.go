@@ -205,7 +205,14 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")
-		jsonhttp.BadRequest(ow, "chunk write error")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
+		case errors.Is(err, postage.ErrStampIssuerReset):
+			jsonhttp.Conflict(ow, "postage batch was reset during upload")
+		default:
+			jsonhttp.BadRequest(ow, "chunk write error")
+		}
 		return
 	}
 

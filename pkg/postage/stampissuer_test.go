@@ -5,8 +5,8 @@
 package postage_test
 
 import (
+	"bytes"
 	crand "crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -168,6 +168,21 @@ func TestStampItem(t *testing.T) {
 			CmpOpts: []cmp.Option{cmp.AllowUnexported(postage.StampItem{})},
 		},
 	}, {
+		name: "with generation",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: func() *postage.StampItem {
+				item := postage.NewStampItem().
+					WithBatchID(storagetest.MaxAddressBytes[:]).
+					WithChunkAddress(swarm.NewAddress(storagetest.MaxAddressBytes[:])).
+					WithBatchIndex(storagetest.MaxStampIndexBytes[:]).
+					WithBatchTimestamp(storagetest.MaxBatchTimestampBytes[:])
+				item.Generation = math.MaxUint32
+				return item
+			}(),
+			Factory: func() storage.Item { return postage.NewStampItem() },
+			CmpOpts: []cmp.Option{cmp.AllowUnexported(postage.StampItem{})},
+		},
+	}, {
 		name: "invalid size",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &storagetest.ItemStub{
@@ -198,6 +213,50 @@ func TestStampItem(t *testing.T) {
 	}
 }
 
+// TestStampItemGenerationEncoding checks that stamp items of generation 0,
+// written for batches that were never reset, keep the stored format that
+// older versions can read.
+func TestStampItemGenerationEncoding(t *testing.T) {
+	t.Parallel()
+
+	item := postage.NewStampItem().
+		WithBatchID([]byte{swarm.HashSize - 1: 9}).
+		WithChunkAddress(swarm.RandAddress(t)).
+		WithBatchIndex([]byte{swarm.StampIndexSize - 1: 9}).
+		WithBatchTimestamp([]byte{swarm.StampTimestampSize - 1: 9})
+
+	legacy, err := item.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := 2*swarm.HashSize + swarm.StampIndexSize + swarm.StampTimestampSize + 1; len(legacy) != want {
+		t.Fatalf("generation 0 size: want %d, got %d", want, len(legacy))
+	}
+
+	item.Generation = 7
+	withGeneration, err := item.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(withGeneration[:len(legacy)], legacy) {
+		t.Fatal("generation must only be appended to the legacy encoding")
+	}
+
+	got := postage.NewStampItem()
+	if err := got.Unmarshal(withGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if got.Generation != 7 {
+		t.Fatalf("generation: want 7, got %d", got.Generation)
+	}
+	if err := got.Unmarshal(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if got.Generation != 0 {
+		t.Fatalf("legacy generation: want 0, got %d", got.Generation)
+	}
+}
+
 func Test_StampIssuer_inc(t *testing.T) {
 	t.Parallel()
 
@@ -217,15 +276,24 @@ func Test_StampIssuer_inc(t *testing.T) {
 			}
 		}
 
-		// Incrementing stamp issuer above upper bound should return index starting from 0
-		for i := range count {
-			idxb, _, err := sti.Increment(addr)
-			if err != nil {
-				t.Fatal(err)
+		// Incrementing stamp issuer above upper bound should return ErrBucketFull
+		for range count {
+			_, _, err := sti.Increment(addr)
+			if !errors.Is(err, postage.ErrBucketFull) {
+				t.Fatal("bucket should be full")
 			}
+		}
 
-			if _, idx := bytesToIndex(idxb); idx != i {
-				t.Fatalf("bucket should be full %v", idx)
+		// Reset bucket counters
+		if err := sti.Reset(); err != nil {
+			t.Fatalf("unexpected error on reset: %v", err)
+		}
+
+		// Should be able to increment again after reset
+		for range count {
+			_, _, err := sti.Increment(addr)
+			if err != nil {
+				t.Fatalf("unexpected error after reset: %v", err)
 			}
 		}
 	})
@@ -250,6 +318,11 @@ func Test_StampIssuer_inc(t *testing.T) {
 			if !errors.Is(err, postage.ErrBucketFull) {
 				t.Fatal("bucket should be full")
 			}
+		}
+
+		// Reset on immutable batch should fail
+		if err := sti.Reset(); !errors.Is(err, postage.ErrBatchImmutable) {
+			t.Fatalf("want %v, got %v", postage.ErrBatchImmutable, err)
 		}
 	})
 }
@@ -327,11 +400,4 @@ func TestUtilizationRatioInvalidDepth(t *testing.T) {
 	if got := sti.UtilizationRatio(); got != 0 {
 		t.Fatalf("invalid depth: want 0, got %v", got)
 	}
-}
-
-func bytesToIndex(buf []byte) (bucket, index uint32) {
-	index64 := binary.BigEndian.Uint64(buf)
-	bucket = uint32(index64 >> 32)
-	index = uint32(index64)
-	return bucket, index
 }

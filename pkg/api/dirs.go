@@ -88,6 +88,8 @@ func (s *Service) dirUploadHandler(
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
+		case errors.Is(err, postage.ErrStampIssuerReset):
+			jsonhttp.Conflict(w, "postage batch was reset during upload")
 		case errors.Is(err, errEmptyDir):
 			jsonhttp.BadRequest(w, errEmptyDir)
 		case errors.Is(err, tar.ErrHeader):

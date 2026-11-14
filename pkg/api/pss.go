@@ -102,6 +102,8 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(w, "batch is overissued")
+		case errors.Is(err, postage.ErrStampIssuerReset):
+			jsonhttp.Conflict(w, "postage batch was reset during upload")
 		default:
 			jsonhttp.InternalServerError(w, "pss send failed")
 		}

@@ -20,6 +20,11 @@ import (
 )
 
 var (
+	// ErrBatchImmutable is returned when attempting to reset an immutable batch.
+	ErrBatchImmutable = errors.New("postage: batch is immutable")
+	// ErrStampIssuerReset is returned when a stamper is used after the
+	// stamp issuer it was created from has been reset.
+	ErrStampIssuerReset = errors.New("postage: stamp issuer was reset")
 	// errStampItemMarshalBatchIDInvalid is returned when trying to
 	// marshal a stampItem with invalid batchID.
 	errStampItemMarshalBatchIDInvalid = errors.New("marshal postage.stampItem: batchID is invalid")
@@ -32,7 +37,16 @@ var (
 	errStampItemUnmarshalInvalidSize = errors.New("unmarshal postage.stampItem: invalid size")
 )
 
-const stampItemSize = swarm.HashSize + swarm.HashSize + swarm.StampIndexSize + swarm.StampTimestampSize
+const (
+	stampItemSize = swarm.HashSize + swarm.HashSize + swarm.StampIndexSize + swarm.StampTimestampSize
+	// stampItemLegacySize is the encoded size of a StampItem without a
+	// generation. It is written for generation 0 to keep the stored format
+	// unchanged for batches that have never been reset.
+	stampItemLegacySize = stampItemSize + 1
+	// stampItemGenerationSize is the encoded size of a StampItem that
+	// carries a non-zero stamp issuer generation.
+	stampItemGenerationSize = stampItemLegacySize + 4
+)
 
 type StampItem struct {
 	// Keys.
@@ -42,6 +56,9 @@ type StampItem struct {
 	// Values.
 	BatchIndex     []byte
 	BatchTimestamp []byte
+	// Generation is the stamp issuer generation the BatchIndex was
+	// issued in. Items from an older generation are stale.
+	Generation uint32
 }
 
 // ID implements the storage.Item interface.
@@ -63,7 +80,11 @@ func (si StampItem) Marshal() ([]byte, error) {
 		return nil, errStampItemMarshalChunkAddressInvalid
 	}
 
-	buf := make([]byte, stampItemSize+1)
+	size := stampItemLegacySize
+	if si.Generation != 0 {
+		size = stampItemGenerationSize
+	}
+	buf := make([]byte, size)
 
 	l := 0
 	copy(buf[l:l+swarm.HashSize], si.BatchID)
@@ -73,13 +94,16 @@ func (si StampItem) Marshal() ([]byte, error) {
 	copy(buf[l:l+swarm.StampIndexSize], si.BatchIndex)
 	l += swarm.StampIndexSize
 	copy(buf[l:l+swarm.StampTimestampSize], si.BatchTimestamp)
+	if si.Generation != 0 {
+		binary.BigEndian.PutUint32(buf[stampItemLegacySize:], si.Generation)
+	}
 
 	return buf, nil
 }
 
 // Unmarshal implements the storage.Item interface.
 func (si *StampItem) Unmarshal(bytes []byte) error {
-	if len(bytes) != stampItemSize+1 {
+	if len(bytes) != stampItemLegacySize && len(bytes) != stampItemGenerationSize {
 		return errStampItemUnmarshalInvalidSize
 	}
 
@@ -93,6 +117,9 @@ func (si *StampItem) Unmarshal(bytes []byte) error {
 	ni.BatchIndex = append(make([]byte, 0, swarm.StampIndexSize), bytes[l:l+swarm.StampIndexSize]...)
 	l += swarm.StampIndexSize
 	ni.BatchTimestamp = append(make([]byte, 0, swarm.StampTimestampSize), bytes[l:l+swarm.StampTimestampSize]...)
+	if len(bytes) == stampItemGenerationSize {
+		ni.Generation = binary.BigEndian.Uint32(bytes[stampItemLegacySize:])
+	}
 
 	*si = *ni
 	return nil
@@ -108,6 +135,7 @@ func (si *StampItem) Clone() storage.Item {
 		chunkAddress:   si.chunkAddress.Clone(),
 		BatchIndex:     append([]byte(nil), si.BatchIndex...),
 		BatchTimestamp: append([]byte(nil), si.BatchTimestamp...),
+		Generation:     si.Generation,
 	}
 }
 
@@ -131,6 +159,7 @@ type stampIssuerData struct {
 	MaxBucketCount uint32   `msgpack:"maxBucketCount"` // the count of the fullest bucket
 	BlockNumber    uint64   `msgpack:"blockNumber"`    // BlockNumber when this batch was created
 	ImmutableFlag  bool     `msgpack:"immutableFlag"`  // Specifies immutability of the created batch.
+	Generation     uint32   `msgpack:"generation"`     // Incremented on every reset; stamp items from older generations are stale.
 }
 
 // Clone returns a deep copy of the stampIssuerData.
@@ -145,6 +174,7 @@ func (s stampIssuerData) Clone() stampIssuerData {
 		Buckets:       append([]uint32(nil), s.Buckets...),
 		BlockNumber:   s.BlockNumber,
 		ImmutableFlag: s.ImmutableFlag,
+		Generation:    s.Generation,
 	}
 }
 
@@ -185,12 +215,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	bCnt := si.data.Buckets[bIdx]
 
 	if bCnt == si.BucketUpperBound() {
-		if si.ImmutableFlag() {
-			return nil, nil, ErrBucketFull
-		}
-
-		bCnt = 0
-		si.data.Buckets[bIdx] = 0
+		return nil, nil, ErrBucketFull
 	}
 
 	si.data.Buckets[bIdx]++
@@ -199,6 +224,38 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	}
 
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
+}
+
+// Reset starts a new generation of the issuer: it zeroes the collision
+// bucket counters so the batch can be reused, and makes every stamp issued
+// before the reset stale, including those held by existing stampers. Chunks
+// stamped before the reset may subsequently be displaced. It returns
+// ErrBatchImmutable if the batch is immutable. Reset does not persist the
+// issuer; Service.ResetStampIssuer does.
+func (si *StampIssuer) Reset() error {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+
+	if si.data.ImmutableFlag {
+		return ErrBatchImmutable
+	}
+	si.resetLocked()
+	return nil
+}
+
+// resetLocked starts a new generation. Must be mutex locked before usage.
+func (si *StampIssuer) resetLocked() {
+	si.data.Generation++
+	clear(si.data.Buckets)
+	si.data.MaxBucketCount = 0
+	si.dirty = true
+}
+
+// Generation returns the current generation of the issuer.
+func (si *StampIssuer) Generation() uint32 {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+	return si.data.Generation
 }
 
 // Label returns the label of the issuer.
@@ -305,10 +362,16 @@ func (si *StampIssuer) isDirty() bool {
 	return si.dirty
 }
 
-// recover restores the bucket count from a stored batchIndex, used during crash recovery.
-func (si *StampIssuer) recover(batchIndex []byte) error {
+// recover restores the bucket count from a stored batchIndex issued in the
+// given generation, used during crash recovery. Indices from an older
+// generation are ignored, as they no longer occupy a bucket slot.
+func (si *StampIssuer) recover(batchIndex []byte, generation uint32) error {
 	si.mtx.Lock()
 	defer si.mtx.Unlock()
+
+	if generation != si.data.Generation {
+		return nil
+	}
 
 	bIdx, bCnt := BucketIndexFromBytes(batchIndex)
 	if bIdx >= uint32(len(si.data.Buckets)) {
