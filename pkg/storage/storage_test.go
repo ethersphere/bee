@@ -4,13 +4,19 @@
 package storage_test
 
 import (
+	"bytes"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -64,7 +70,7 @@ func TestIdentityAddress(t *testing.T) {
 		data := []byte("data")
 		cacChunk, err := cac.New(data)
 		if err != nil {
-			t.Fatalf("failed to create content addressed chunk: %v", err)
+			t.Fatalf("create content addressed chunk: %v", err)
 		}
 
 		// Call IdentityAddress with the CAC
@@ -76,6 +82,313 @@ func TestIdentityAddress(t *testing.T) {
 		// Verify the address matches the CAC address
 		if !addr.Equal(cacChunk.Address()) {
 			t.Fatalf("expected address %s, got %s", cacChunk.Address(), addr)
+		}
+	})
+}
+
+// TestChunkSumVectors pins the SWIP-101 checksum layout with fixed vectors
+// computed independently of this code (keccak256 over the concatenated
+// inputs, first 16 bytes), so that other clients can check for identical sums.
+func TestChunkSumVectors(t *testing.T) {
+	t.Parallel()
+
+	batchID := make([]byte, swarm.HashSize)
+	stampHash := make([]byte, swarm.HashSize)
+	for i := range swarm.HashSize {
+		batchID[i] = byte(i)
+		stampHash[i] = byte(swarm.HashSize + i)
+	}
+
+	// any fixed key except the replicas owner (key 0x01 followed by zeros)
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(append(make([]byte, 31), 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, swarm.HashSize)
+
+	newChunk := func(payload string) swarm.Chunk {
+		t.Helper()
+		ch, err := cac.New([]byte(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+	newSOC := func(payload string) swarm.Chunk {
+		t.Helper()
+		ch, err := soc.New(id, newChunk(payload)).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+
+	socFoo, socBar := newSOC("foo"), newSOC("bar")
+	if !socFoo.Address().Equal(socBar.Address()) {
+		t.Fatal("both single owner chunks must share the address")
+	}
+
+	for _, tc := range []struct {
+		name      string
+		chunk     swarm.Chunk
+		chunkType swarm.ChunkType
+		want      string
+	}{
+		// keccak256(batchID ‖ stampHash)[:16]
+		{"cac", newChunk("foo"), swarm.ChunkTypeContentAddressed, "002030bde3d4cf89919649775cd71875"},
+		// keccak256(batchID ‖ stampHash ‖ 2387e8e7…ea48)[:16], wrapping "foo"
+		{"soc wrapping foo", socFoo, swarm.ChunkTypeSingleOwner, "559bab483cef32e6cac28cfa400eb393"},
+		// keccak256(batchID ‖ stampHash ‖ b59a0deb…a838)[:16], wrapping "bar"
+		{"soc wrapping bar", socBar, swarm.ChunkTypeSingleOwner, "07e63ca829d5450273d911be921a87ad"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := storage.ChunkType(tc.chunk); got != tc.chunkType {
+				t.Fatalf("chunk type %v, want %v", got, tc.chunkType)
+			}
+			sum, err := storage.ChunkSumFromParts(batchID, stampHash, tc.chunk, tc.chunkType)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hex.EncodeToString(sum); got != tc.want {
+				t.Fatalf("sum %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestChunkSum(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cac is deterministic and 16 bytes", func(t *testing.T) {
+		t.Parallel()
+		ch := testingc.GenerateTestRandomChunk()
+
+		sum, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sum) != storage.ChunkSumSize {
+			t.Fatalf("expected sum length %d, got %d", storage.ChunkSumSize, len(sum))
+		}
+
+		again, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(sum, again) {
+			t.Fatal("expected deterministic sum")
+		}
+	})
+
+	t.Run("divergent socs share address but produce different sums", func(t *testing.T) {
+		t.Parallel()
+
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+		id := make([]byte, swarm.HashSize)
+
+		inner1, err := cac.New([]byte("content-one"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inner2, err := cac.New([]byte("content-two"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		soc1, err := soc.New(id, inner1).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		soc2, err := soc.New(id, inner2).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// same owner and id yield the same SOC address despite different content
+		if !soc1.Address().Equal(soc2.Address()) {
+			t.Fatalf("expected equal soc addresses, got %s and %s", soc1.Address(), soc2.Address())
+		}
+
+		// stamp both with the same stamp so batchID and stampHash are identical;
+		// only the folded wrapped-CAC address should differ the sums.
+		stamp := postagetesting.MustNewStamp()
+
+		sum1, err := storage.ChunkSum(soc1.WithStamp(stamp))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum2, err := storage.ChunkSum(soc2.WithStamp(stamp))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if bytes.Equal(sum1, sum2) {
+			t.Fatal("divergent socs must produce different sums")
+		}
+	})
+
+	t.Run("cac sum survives stamp marshal round-trip", func(t *testing.T) {
+		t.Parallel()
+		ch := testingc.GenerateTestRandomChunk()
+
+		s1, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		raw, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := new(postage.Stamp)
+		if err := st.UnmarshalBinary(raw); err != nil {
+			t.Fatal(err)
+		}
+
+		s2, err := storage.ChunkSum(swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(st))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(s1, s2) {
+			t.Fatal("sum must be stable across stamp marshal round-trip")
+		}
+	})
+}
+
+// FuzzChunkSum exercises the checksum computation with fully arbitrary chunk
+// data and stamp fields. Pullsync recomputes the sum on delivered chunks
+// before their validity is checked, so this path processes attacker-controlled
+// bytes and must never panic. It also pins the equivalence of ChunkSum and
+// ChunkSumFromParts whenever a sum is computable at all.
+func FuzzChunkSum(f *testing.F) {
+	inner, err := cac.New([]byte("seed payload"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	validSoc := testingc.GenerateTestRandomSoChunk(f, inner)
+	f.Add(validSoc.Data(), []byte("batch"), []byte("index"), []byte("ts"), []byte("sig"))
+	f.Add([]byte{}, []byte{}, []byte{}, []byte{}, []byte{})
+	f.Add(make([]byte, swarm.ChunkWithSpanSize), make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
+
+	f.Fuzz(func(t *testing.T, data, batchID, index, ts, sig []byte) {
+		if len(data) > swarm.SocMaxChunkSize {
+			t.Skip()
+		}
+
+		hasher := swarm.NewHasher()
+		_, _ = hasher.Write(data)
+		ch := swarm.NewChunk(swarm.NewAddress(hasher.Sum(nil)), data).
+			WithStamp(postage.NewStamp(batchID, index, ts, sig))
+
+		sum, err := storage.ChunkSum(ch) // must not panic on any input
+		if err != nil {
+			return
+		}
+		if len(sum) != storage.ChunkSumSize {
+			t.Fatalf("sum length %d, want %d", len(sum), storage.ChunkSumSize)
+		}
+
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatalf("sum computed but stamp hash failed: %v", err)
+		}
+		fromParts, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch, storage.ChunkType(ch))
+		if err != nil {
+			t.Fatalf("sum computed but parts variant failed: %v", err)
+		}
+		if !bytes.Equal(sum, fromParts) {
+			t.Fatal("ChunkSum and ChunkSumFromParts disagree")
+		}
+	})
+}
+
+func TestDivergentSocChunkWins(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, swarm.HashSize)
+
+	newSOC := func(data string) swarm.Chunk {
+		t.Helper()
+		inner, err := cac.New([]byte(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ch, err := soc.New(id, inner).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch.WithStamp(postagetesting.MustNewStamp())
+	}
+
+	lower, higher := newSOC("content-one"), newSOC("content-two")
+	lowerInner, err := soc.UnwrapCAC(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	higherInner, err := soc.UnwrapCAC(higher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Compare(lowerInner.Address().Bytes(), higherInner.Address().Bytes()) > 0 {
+		lower, higher = higher, lower
+	}
+
+	t.Run("lower wrapped address wins", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(higher, lower)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !wins {
+			t.Fatal("expected the chunk wrapping the lower cac address to win")
+		}
+	})
+
+	t.Run("tie-break is antisymmetric", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(lower, higher)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wins {
+			t.Fatal("expected the chunk wrapping the higher cac address to lose")
+		}
+	})
+
+	t.Run("a chunk does not displace itself", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(lower, lower)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wins {
+			t.Fatal("expected an identical chunk not to win")
+		}
+	})
+
+	t.Run("content addressed chunks cannot diverge", func(t *testing.T) {
+		t.Parallel()
+
+		cac := testingc.GenerateTestRandomChunk()
+		if _, err := storage.DivergentSocChunkWins(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
+			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
+		}
+		if _, err := storage.DivergentSocChunkWins(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
+			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
 	})
 }

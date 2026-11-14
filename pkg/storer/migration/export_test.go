@@ -4,4 +4,4 @@
 
 package migration
 
-var RemoveRogueChunks = removeRogueChunks
+var Step09 = step_09
