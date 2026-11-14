@@ -17,7 +17,7 @@ env:
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_BRANCH: "feat/chunk-stream-protobuf-check"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -174,6 +174,9 @@ jobs:
       - name: Test gsoc
         id: gsoc
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
+      - name: Test chunk stream
+        id: chunk-stream
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-chunk-stream
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
@@ -247,6 +250,7 @@ jobs:
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
           if ${{ steps.gsoc.outcome=='failure' }}; then FAILED=gsoc; fi
+          if ${{ steps.chunk-stream.outcome=='failure' }}; then FAILED=chunk-stream; fi
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
