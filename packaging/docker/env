@@ -133,6 +133,8 @@
 # BEE_TARGET_NEIGHBORHOOD=
 ## skips the gas estimate step for contract transactions (default false)
 # BEE_TRANSACTION_DEBUG_MODE=false
+## minimum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution (default low)
+# BEE_TRANSACTION_FEE_PRIORITY_MIN=low
 ## maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution (default aggressive)
 # BEE_TRANSACTION_FEE_PRIORITY_MAX=aggressive
 ## enable tracing (default false)

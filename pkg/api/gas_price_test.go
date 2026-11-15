@@ -27,6 +27,7 @@ func TestFeePriorityHeader(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		header     string
+		min        string
 		max        string
 		wantStatus int
 		wantTier   int
@@ -37,6 +38,8 @@ func TestFeePriorityHeader(t *testing.T) {
 		{name: "unknown", header: "banana", wantStatus: http.StatusBadRequest},
 		{name: "above maximum", header: "aggressive", max: "market", wantStatus: http.StatusBadRequest},
 		{name: "at maximum", header: "market", max: "market", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
+		{name: "below minimum", header: "low", min: "market", wantStatus: http.StatusBadRequest},
+		{name: "at minimum", header: "market", min: "market", wantStatus: http.StatusCreated, wantTier: transaction.FeePriorityMarket},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -55,6 +58,13 @@ func TestFeePriorityHeader(t *testing.T) {
 				}),
 			)
 			client, _, _, _, svc := newTestServer(t, testServerOptions{PostageContract: contract})
+			if tc.min != "" {
+				tier, err := transaction.ParseFeePriority(tc.min)
+				if err != nil {
+					t.Fatal(err)
+				}
+				svc.SetMinFeePriority(tier)
+			}
 			if tc.max != "" {
 				tier, err := transaction.ParseFeePriority(tc.max)
 				if err != nil {

@@ -167,6 +167,7 @@ type Options struct {
 	BlockSyncInterval             uint64
 	FeeHistoryBlockCount          uint64
 	RedistributionGameFeePriority string
+	TransactionFeePriorityMin     string
 	TransactionFeePriorityMax     string
 	BootnodeMode                  bool
 	Bootnodes                     []string
@@ -479,9 +480,22 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("redistribution game fee priority: %w", err)
 	}
+	minFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMin)
+	if err != nil {
+		return nil, fmt.Errorf("transaction fee priority min: %w", err)
+	}
 	maxFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMax)
 	if err != nil {
 		return nil, fmt.Errorf("transaction fee priority max: %w", err)
+	}
+	if minFeePriority == 0 {
+		minFeePriority = transaction.FeePriorityLow
+	}
+	if maxFeePriority == 0 {
+		maxFeePriority = transaction.FeePriorityAggressive
+	}
+	if minFeePriority > maxFeePriority {
+		return nil, fmt.Errorf("transaction fee priority min %q is above max %q", transaction.FeePriorityName(minFeePriority), transaction.FeePriorityName(maxFeePriority))
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
@@ -573,6 +587,7 @@ func NewBee(
 		)
 
 		apiService.Mount()
+		apiService.SetMinFeePriority(minFeePriority)
 		apiService.SetMaxFeePriority(maxFeePriority)
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)

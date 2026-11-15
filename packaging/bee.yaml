@@ -145,6 +145,8 @@ data-dir: "/var/lib/bee"
 # minimum-gas-tip-cap: 0
 ## gas limit fallback when estimation fails for contract transactions (default 900000)
 # gas-limit-fallback: 900000
+## minimum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution
+# transaction-fee-priority-min: low
 ## maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution
 # transaction-fee-priority-max: aggressive
 ## skips the gas estimate step for contract transactions

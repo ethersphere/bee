@@ -95,6 +95,7 @@ const (
 	optionNameGasLimitFallback             = "gas-limit-fallback"
 	optionNameFeeHistoryBlockCount         = "fee-history-block-count"
 	optionNameRedistributionFeePriority    = "redistribution-game-fee-priority"
+	optionNameTransactionFeePriorityMin    = "transaction-fee-priority-min"
 	optionNameTransactionFeePriorityMax    = "transaction-fee-priority-max"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
@@ -403,6 +404,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 900_000, "gas limit fallback when estimation fails for contract transactions")
 	cmd.Flags().String(optionNameRedistributionFeePriority, "", "fee priority for redistribution game transactions (low, market, aggressive); empty keeps the default tip suggestion")
+	cmd.Flags().String(optionNameTransactionFeePriorityMin, "low", "minimum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution")
 	cmd.Flags().String(optionNameTransactionFeePriorityMax, "aggressive", "maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")

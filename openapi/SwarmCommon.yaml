@@ -1217,7 +1217,8 @@ components:
       required: false
       description: >
         Fee priority for this transaction: low, market, or aggressive.
-        A priority above the node's transaction-fee-priority-max is rejected.
+        A priority outside the node's transaction-fee-priority-min and
+        transaction-fee-priority-max is rejected.
         It cannot be combined with the gas-price header.
         When omitted, the node keeps its default gas price suggestion.
 

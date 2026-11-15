@@ -241,6 +241,7 @@ type Service struct {
 	chainID      int64
 
 	whitelistedWithdrawalAddress []common.Address
+	minFeePriority               int
 	maxFeePriority               int
 
 	preMapHooks              map[string]func(v string) (string, error)
@@ -268,6 +269,17 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
 	if s != nil {
 		s.redistributionAgent = redistributionAgent
+	}
+}
+
+// SetMinFeePriority stores the lowest fee priority a request may select.
+// An unset tier is low, the lowest one, so every priority is allowed.
+func (s *Service) SetMinFeePriority(tier int) {
+	if tier == 0 {
+		tier = transaction.FeePriorityLow
+	}
+	if s != nil {
+		s.minFeePriority = tier
 	}
 }
 
@@ -360,6 +372,7 @@ func New(
 	})
 	s.setupValidation()
 	s.stamperStore = stamperStore
+	s.SetMinFeePriority(0)
 	s.SetMaxFeePriority(0)
 
 	for _, v := range whitelistedWithdrawalAddress {
@@ -626,8 +639,8 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
 // gas price, gas limit, and an optional fee priority through the HTTP API headers.
-// An absent fee priority is left unset. A priority above the configured maximum is rejected,
-// and so is a request that sets both a fee priority and a gas price.
+// An absent fee priority is left unset. A priority outside the configured minimum and maximum
+// is rejected, and so is a request that sets both a fee priority and a gas price.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -665,6 +678,18 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 						Reasons: []jsonhttp.Reason{{
 							Field: FeePriorityHeader,
 							Error: fmt.Sprintf("%s cannot be combined with %s", FeePriorityHeader, GasPriceHeader),
+						}},
+					})
+					return
+				}
+				if tier < s.minFeePriority {
+					logger.Debug("fee priority below configured minimum", "fee_priority", transaction.FeePriorityName(tier), "minimum", transaction.FeePriorityName(s.minFeePriority))
+					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+						Message: invalidHeaderParams,
+						Code:    http.StatusBadRequest,
+						Reasons: []jsonhttp.Reason{{
+							Field: FeePriorityHeader,
+							Error: fmt.Sprintf("fee priority %q is below minimum %q", transaction.FeePriorityName(tier), transaction.FeePriorityName(s.minFeePriority)),
 						}},
 					})
 					return
