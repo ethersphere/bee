@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -71,16 +72,17 @@ func (s *Service) chunkStreamHandler(w http.ResponseWriter, r *http.Request) {
 		// neither a pre-signed stamp nor a batch of its own.
 		BatchID []byte `map:"Swarm-Postage-Batch-Id"`
 		Cache   *bool  `map:"Swarm-Cache"`
+		// Uploads on the stream are always direct, so a tag would have no
+		// effect. It is rejected rather than ignored, so a client expecting
+		// deferred uploads finds out at the handshake.
+		Tag *uint64 `map:"Swarm-Tag"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
-	// Uploads on the stream are always direct, so a tag would have no effect.
-	// Reject it rather than ignore it, so a client expecting deferred uploads
-	// finds out at the handshake.
-	if r.Header.Get(SwarmTagHeader) != "" || r.URL.Query().Get("swarm-tag") != "" {
+	if headers.Tag != nil || r.URL.Query().Get("swarm-tag") != "" {
 		logger.Debug("chunk stream: swarm-tag is not supported")
 		jsonhttp.BadRequest(w, "swarm-tag is not supported on the chunk stream")
 		return
@@ -97,7 +99,8 @@ func (s *Service) chunkStreamHandler(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, postage.ErrNotFound):
 				jsonhttp.NotFound(w, "batch with id not found")
 			default:
-				jsonhttp.BadRequest(w, "invalid batch id")
+				// The batch store or the stamp issuer lookup failed.
+				jsonhttp.InternalServerError(w, "cannot get batch")
 			}
 			return
 		}
@@ -223,13 +226,24 @@ func (cs *chunkStream) ping(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			// A ping can block for as long as a reply, behind replies to a
-			// client that has paused reading; a failed one is not fatal.
-			if err := cs.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(cs.s.chunkDeliveryWriteDeadline)); err != nil {
-				cs.logger.Debug("chunk stream: ping failed", "error", err)
+			err := cs.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(cs.s.chunkDeliveryWriteDeadline))
+			if keepaliveWriteFailed(err) {
+				return fmt.Errorf("write ping: %w", err)
 			}
 		}
 	}
+}
+
+// keepaliveWriteFailed reports whether a keepalive write error ends the stream.
+// A keepalive can wait for as long as a reply, behind replies to a client that
+// has paused reading, so a timeout does not end it. Neither does a write after
+// the close frame: the stream is already ending.
+func keepaliveWriteFailed(err error) bool {
+	if err == nil || errors.Is(err, websocket.ErrCloseSent) {
+		return false
+	}
+	var netErr net.Error
+	return !errors.As(err, &netErr) || !netErr.Timeout()
 }
 
 // setKeepaliveHandlers makes pongs and client pings extend the read deadline,
@@ -244,14 +258,10 @@ func (cs *chunkStream) setKeepaliveHandlers() {
 	cs.conn.SetPingHandler(func(data string) error {
 		_ = extend()
 		err := cs.conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(cs.s.chunkDeliveryWriteDeadline))
-		if err == nil || errors.Is(err, websocket.ErrCloseSent) {
-			return nil
+		if keepaliveWriteFailed(err) {
+			return fmt.Errorf("write pong: %w", err)
 		}
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			return nil
-		}
-		return err
+		return nil
 	})
 }
 
@@ -260,45 +270,37 @@ func (cs *chunkStream) setKeepaliveHandlers() {
 func (cs *chunkStream) read(ctx context.Context) error {
 	for {
 		if err := cs.conn.SetReadDeadline(time.Now().Add(cs.s.chunkStreamReadTimeout)); err != nil {
-			return err
+			return fmt.Errorf("set read deadline: %w", err)
 		}
 		mt, msg, err := cs.conn.ReadMessage()
 		if err != nil {
-			return err
+			return fmt.Errorf("read message: %w", err)
 		}
 		if mt != websocket.BinaryMessage {
 			cs.sendClose(websocket.CloseUnsupportedData, "invalid message type")
-			return errors.New("unexpected message type")
+			return fmt.Errorf("unexpected message type %d", mt)
 		}
 
 		req := &pb.Request{}
 		if err := req.Unmarshal(msg); err != nil {
 			cs.sendClose(websocket.CloseUnsupportedData, "invalid protobuf request")
-			return err
+			return fmt.Errorf("unmarshal request: %w", err)
 		}
 
 		// A request is answered by echoing its address, so one without a body
 		// has nothing to answer with and is treated like an undecodable message.
 		switch body := req.GetBody().(type) {
 		case *pb.Request_Get:
-			if body.Get == nil {
-				break
-			}
-			if err := enqueue(ctx, cs, cs.getQueue, body.Get, getResponse(body.Get.Address, pb.Status_STATUS_BUSY, nil, "request queue full")); err != nil {
-				return err
-			}
-			continue
+			err = enqueue(ctx, cs, cs.getQueue, body.Get, getResponse(body.Get.Address, pb.Status_STATUS_BUSY, nil, "request queue full"))
 		case *pb.Request_Put:
-			if body.Put == nil {
-				break
-			}
-			if err := enqueue(ctx, cs, cs.putQueue, body.Put, putResponse(body.Put.Address, pb.Status_STATUS_BUSY, "request queue full")); err != nil {
-				return err
-			}
-			continue
+			err = enqueue(ctx, cs, cs.putQueue, body.Put, putResponse(body.Put.Address, pb.Status_STATUS_BUSY, "request queue full"))
+		default:
+			cs.sendClose(websocket.CloseUnsupportedData, "missing request body")
+			return errors.New("request has no body")
 		}
-		cs.sendClose(websocket.CloseUnsupportedData, "missing request body")
-		return errors.New("request has no body")
+		if err != nil {
+			return fmt.Errorf("enqueue request: %w", err)
+		}
 	}
 }
 
@@ -321,22 +323,23 @@ func enqueue[T any](ctx context.Context, cs *chunkStream, queue chan<- T, req T,
 func (cs *chunkStream) send(resp *pb.Response) error {
 	data, err := resp.Marshal()
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal response: %w", err)
 	}
 	cs.writeMu.Lock()
 	defer cs.writeMu.Unlock()
 	if err := cs.conn.SetWriteDeadline(time.Now().Add(cs.s.chunkDeliveryWriteDeadline)); err != nil {
-		return err
+		return fmt.Errorf("set write deadline: %w", err)
 	}
-	return cs.conn.WriteMessage(websocket.BinaryMessage, data)
+	if err := cs.conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+		return fmt.Errorf("write response: %w", err)
+	}
+	return nil
 }
 
 func (cs *chunkStream) sendClose(code int, text string) {
 	_ = cs.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, text), time.Now().Add(chunkStreamCloseDeadline))
 }
 
-// getResponse builds a download reply. The address is echoed from the request,
-// since it is the key the client correlates on.
 func getResponse(address []byte, status pb.Status, data []byte, errMsg string) *pb.Response {
 	return &pb.Response{Body: &pb.Response_Get{Get: &pb.GetResponse{
 		Address: address,
@@ -346,8 +349,6 @@ func getResponse(address []byte, status pb.Status, data []byte, errMsg string) *
 	}}}
 }
 
-// putResponse builds an upload reply. The address is echoed from the request,
-// since it is the key the client correlates on.
 func putResponse(address []byte, status pb.Status, errMsg string) *pb.Response {
 	return &pb.Response{Body: &pb.Response_Put{Put: &pb.PutResponse{
 		Address: address,
@@ -356,20 +357,8 @@ func putResponse(address []byte, status pb.Status, errMsg string) *pb.Response {
 	}}}
 }
 
-// ended reports whether the stream has ended, after which a request has
-// nobody to reply to.
-func ended(streamCtx context.Context) bool {
-	return streamCtx.Err() != nil
-}
-
 // handleGet answers a download request. It returns only a reply write error.
 func (cs *chunkStream) handleGet(streamCtx context.Context, req *pb.GetRequest) error {
-	// A request still queued when the stream ends must not start a retrieval
-	// that nobody will read.
-	if ended(streamCtx) {
-		return nil
-	}
-
 	if len(req.Address) != swarm.HashSize {
 		return cs.send(getResponse(req.Address, pb.Status_STATUS_BAD_REQUEST, nil, "invalid chunk address length"))
 	}
@@ -390,42 +379,38 @@ func (cs *chunkStream) handleGet(streamCtx context.Context, req *pb.GetRequest) 
 	cancel()
 	s.metrics.ChunkStreamFetchDuration.Observe(time.Since(start).Seconds())
 
-	// A stream that ended during the retrieval has nobody to reply to.
-	if ended(streamCtx) {
-		return nil
-	}
-	if err == nil {
-		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("success").Inc()
-		return cs.send(getResponse(req.Address, pb.Status_STATUS_OK, chunk.Data(), ""))
+	if err != nil {
+		var (
+			status = pb.Status_STATUS_ERROR
+			errMsg string
+		)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			// Retrieval gave up after the peers it asked did not return the
+			// chunk. It may still exist.
+			status, errMsg = pb.Status_STATUS_NOT_FOUND, "chunk not found"
+			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("not_found").Inc()
+			cs.logger.V(1).Build().Debug("chunk stream: chunk not found", "address", addr)
+		case errors.Is(err, topology.ErrNotFound):
+			// Retrieval ran out of peers to ask: none was usable, or every one
+			// was tried. The chunk may or may not exist.
+			status, errMsg = pb.Status_STATUS_UNAVAILABLE, "chunk could not be retrieved because no usable peer was available"
+			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("unavailable").Inc()
+			cs.logger.V(1).Build().Debug("chunk stream: no usable peer for the chunk", "address", addr)
+		case errors.Is(err, context.DeadlineExceeded):
+			errMsg = "chunk retrieval timed out"
+			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("error").Inc()
+			cs.logger.Debug("chunk stream: chunk retrieval timed out", "address", addr, "timeout", s.chunkDownloadRequestTimeout)
+		default:
+			errMsg = "read chunk failed"
+			s.metrics.ChunkStreamDeliveryCount.WithLabelValues("error").Inc()
+			cs.logger.Debug("chunk stream: read chunk failed", "address", addr, "error", err)
+		}
+		return cs.send(getResponse(req.Address, status, nil, errMsg))
 	}
 
-	var (
-		status = pb.Status_STATUS_ERROR
-		errMsg string
-	)
-	switch {
-	case errors.Is(err, storage.ErrNotFound):
-		// Retrieval gave up after the peers it asked did not return the
-		// chunk. It may still exist.
-		status, errMsg = pb.Status_STATUS_NOT_FOUND, "chunk not found"
-		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("not_found").Inc()
-		cs.logger.V(1).Build().Debug("chunk stream: chunk not found", "address", addr)
-	case errors.Is(err, topology.ErrNotFound):
-		// Retrieval ran out of peers to ask: none was usable, or every one
-		// was tried. The chunk may or may not exist.
-		status, errMsg = pb.Status_STATUS_UNAVAILABLE, "no peer could serve the chunk"
-		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("unavailable").Inc()
-		cs.logger.V(1).Build().Debug("chunk stream: no peer could serve the chunk", "address", addr)
-	case errors.Is(err, context.DeadlineExceeded):
-		errMsg = "chunk retrieval timed out"
-		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("error").Inc()
-		cs.logger.Debug("chunk stream: chunk retrieval timed out", "address", addr, "timeout", s.chunkDownloadRequestTimeout)
-	default:
-		errMsg = "chunk read error"
-		s.metrics.ChunkStreamDeliveryCount.WithLabelValues("error").Inc()
-		cs.logger.Debug("chunk stream: read chunk failed", "address", addr, "error", err)
-	}
-	return cs.send(getResponse(req.Address, status, nil, errMsg))
+	s.metrics.ChunkStreamDeliveryCount.WithLabelValues("success").Inc()
+	return cs.send(getResponse(req.Address, pb.Status_STATUS_OK, chunk.Data(), ""))
 }
 
 // chunkForAddress rebuilds an uploaded chunk and checks that it is the chunk the
@@ -447,12 +432,6 @@ func chunkForAddress(address, data []byte) (swarm.Chunk, bool) {
 
 // handlePut answers an upload request. It returns only a reply write error.
 func (cs *chunkStream) handlePut(streamCtx context.Context, req *pb.PutRequest) error {
-	// A request still queued when the stream ends is not validated: nobody is
-	// left to read the reply.
-	if ended(streamCtx) {
-		return nil
-	}
-
 	s := cs.s
 	reply := func(status pb.Status, errMsg string) error {
 		if status == pb.Status_STATUS_OK {
@@ -475,27 +454,19 @@ func (cs *chunkStream) handlePut(streamCtx context.Context, req *pb.PutRequest) 
 		return reply(pb.Status_STATUS_BAD_REQUEST, "address does not match chunk data")
 	}
 
-	// The stream can also end while the chunk is validated, and a chunk that
-	// will never be pushed must not take a slot in the batch.
-	if ended(streamCtx) {
+	// Stamping takes no context and spends a slot in the batch, so a request
+	// still queued when the stream ends must not be stamped: its chunk would
+	// never be pushed.
+	select {
+	case <-streamCtx.Done():
 		return nil
+	default:
 	}
 
-	// Batches are looked up for every chunk, so one that expires while the
-	// stream is open is no longer used.
-	var stamp *postage.Stamp
-	if len(req.Stamp) > 0 {
-		st, status, errMsg := cs.presignedStamp(req.Stamp, chunk.Address())
-		if st == nil {
-			return reply(status, errMsg)
-		}
-		stamp = st
-	} else {
-		st, status, errMsg := cs.nodeStamp(req.BatchId, chunk)
-		if st == nil {
-			return reply(status, errMsg)
-		}
-		stamp = st
+	stamp, err := cs.stamp(req, chunk)
+	if err != nil {
+		cs.logger.Debug("chunk stream: stamp failed", "address", chunk.Address(), "error", err)
+		return reply(stampErrorReply(err))
 	}
 
 	// Uploads are always direct: the reply waits for the push to complete. The
@@ -505,100 +476,122 @@ func (cs *chunkStream) handlePut(streamCtx context.Context, req *pb.PutRequest) 
 	// timeout here could turn a retry of a timed-out chunk into STATUS_OK
 	// before the chunk is pushed.
 	session := s.storer.DirectUpload()
-	putErr := session.Put(streamCtx, chunk.WithStamp(stamp))
-	var pushErr error
-	if putErr == nil {
-		pushErr = session.Done(swarm.ZeroAddress)
-	}
-
-	// A stream that ended during the push has nobody to reply to.
-	if ended(streamCtx) {
-		return nil
-	}
-	switch {
-	case putErr != nil:
-		cs.logger.Debug("chunk stream: direct upload put failed", "address", chunk.Address(), "error", putErr)
+	if err := session.Put(streamCtx, chunk.WithStamp(stamp)); err != nil {
+		cs.logger.Debug("chunk stream: direct upload put failed", "address", chunk.Address(), "error", err)
 		return reply(pb.Status_STATUS_ERROR, "chunk write error")
-	case pushErr != nil:
-		cs.logger.Debug("chunk stream: direct upload push failed", "address", chunk.Address(), "error", pushErr)
+	}
+	if err := session.Done(swarm.ZeroAddress); err != nil {
+		cs.logger.Debug("chunk stream: direct upload push failed", "address", chunk.Address(), "error", err)
 		return reply(pb.Status_STATUS_ERROR, "chunk push failed")
 	}
 	return reply(pb.Status_STATUS_OK, "")
 }
 
-// presignedStamp checks a stamp the client signed. On failure it returns nil
-// with the status and message to reply with.
-func (cs *chunkStream) presignedStamp(raw []byte, addr swarm.Address) (*postage.Stamp, pb.Status, string) {
+// Upload request errors. Each is answered with STATUS_BAD_REQUEST and its text.
+var (
+	errStreamMissingBatch       = errors.New("missing postage stamp or batch id")
+	errStreamInvalidBatchID     = errors.New("invalid batch id")
+	errStreamBatchMismatch      = errors.New("batch id differs from the connection batch")
+	errStreamStampBatchMismatch = errors.New("stamp batch differs from the connection batch")
+	errStreamInvalidStamp       = errors.New("invalid postage stamp")
+	errStreamIdentityAddress    = errors.New("cannot compute identity address")
+
+	streamRequestErrors = []error{
+		errStreamMissingBatch,
+		errStreamInvalidBatchID,
+		errStreamBatchMismatch,
+		errStreamStampBatchMismatch,
+		errStreamInvalidStamp,
+		errStreamIdentityAddress,
+	}
+)
+
+// stampErrorReply returns the status and message that answer a stamping error.
+func stampErrorReply(err error) (pb.Status, string) {
+	for _, reqErr := range streamRequestErrors {
+		if errors.Is(err, reqErr) {
+			return pb.Status_STATUS_BAD_REQUEST, reqErr.Error()
+		}
+	}
+	switch {
+	case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+		return pb.Status_STATUS_BAD_REQUEST, "batch not usable yet or does not exist"
+	case errors.Is(err, postage.ErrNotFound) || errors.Is(err, storage.ErrNotFound):
+		return pb.Status_STATUS_BAD_REQUEST, "batch with id not found"
+	case errors.Is(err, postage.ErrBucketFull):
+		return pb.Status_STATUS_ERROR, "batch is overissued"
+	default:
+		return pb.Status_STATUS_ERROR, "failed to stamp chunk"
+	}
+}
+
+// stamp returns the stamp for an uploaded chunk: the stamp the client signed,
+// or one the node signs with the request's batch or the connection's. Batches
+// are looked up for every chunk, so one that expires while the stream is open
+// is no longer used.
+func (cs *chunkStream) stamp(req *pb.PutRequest, chunk swarm.Chunk) (*postage.Stamp, error) {
+	if len(req.Stamp) > 0 {
+		return cs.presignedStamp(req.Stamp, chunk.Address())
+	}
+	return cs.nodeStamp(req.BatchId, chunk)
+}
+
+// presignedStamp checks a stamp the client signed.
+func (cs *chunkStream) presignedStamp(raw []byte, addr swarm.Address) (*postage.Stamp, error) {
 	stamp := &postage.Stamp{}
 	if err := stamp.UnmarshalBinary(raw); err != nil {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "invalid postage stamp"
+		return nil, fmt.Errorf("%w: %w", errStreamInvalidStamp, err)
 	}
 	// A connection batch pins pre-signed stamps too.
 	if len(cs.defaultBatch) > 0 && !bytes.Equal(stamp.BatchID(), cs.defaultBatch) {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "stamp batch differs from the connection batch"
+		return nil, errStreamStampBatchMismatch
 	}
 
 	batch, err := cs.s.batchStore.Get(stamp.BatchID())
 	if err != nil {
-		cs.logger.Debug("chunk stream: batch validation failed", "batch_id", stamp.BatchID(), "error", err)
-		return nil, pb.Status_STATUS_BAD_REQUEST, "postage batch not found or unusable"
+		return nil, fmt.Errorf("get batch: %w", err)
 	}
 	// Valid checks the bucket and index as well as the signer, so a stamp the
 	// network would reject is not pushed.
 	if err := stamp.Valid(addr, batch.Owner, batch.Depth, batch.BucketDepth, batch.Immutable); err != nil {
-		cs.logger.Debug("chunk stream: invalid postage stamp", "batch_id", stamp.BatchID(), "error", err)
-		return nil, pb.Status_STATUS_BAD_REQUEST, "invalid postage stamp"
+		return nil, fmt.Errorf("%w: %w", errStreamInvalidStamp, err)
 	}
-	return stamp, pb.Status_STATUS_OK, ""
+	return stamp, nil
 }
 
-// nodeStamp stamps a chunk with the request's batch, or the connection's. On
-// failure it returns nil with the status and message to reply with.
-func (cs *chunkStream) nodeStamp(requestBatch []byte, chunk swarm.Chunk) (*postage.Stamp, pb.Status, string) {
+// nodeStamp stamps a chunk with the request's batch, or the connection's.
+func (cs *chunkStream) nodeStamp(requestBatch []byte, chunk swarm.Chunk) (*postage.Stamp, error) {
 	batchID := requestBatch
 	if len(batchID) == 0 {
 		batchID = cs.defaultBatch
 	}
 	if len(batchID) == 0 {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "missing postage stamp or batch id"
+		return nil, errStreamMissingBatch
 	}
 	if len(batchID) != swarm.HashSize {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "invalid batch id"
+		return nil, errStreamInvalidBatchID
 	}
 	// A batch set on the connection pins it, so that a proxy which sets
 	// Swarm-Postage-Batch-Id also decides the batch of every upload.
 	if len(cs.defaultBatch) > 0 && !bytes.Equal(batchID, cs.defaultBatch) {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "batch id differs from the connection batch"
+		return nil, errStreamBatchMismatch
 	}
 
 	idAddr, err := storage.IdentityAddress(chunk)
 	if err != nil {
-		return nil, pb.Status_STATUS_BAD_REQUEST, "cannot compute identity address"
+		return nil, fmt.Errorf("%w: %w", errStreamIdentityAddress, err)
 	}
 
 	stamper, save, err := cs.s.getStamper(batchID)
 	if err != nil {
-		cs.logger.Debug("chunk stream: get stamper failed", "batch_id", batchID, "error", err)
-		switch {
-		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
-			return nil, pb.Status_STATUS_BAD_REQUEST, "postage batch not usable"
-		case errors.Is(err, postage.ErrNotFound):
-			return nil, pb.Status_STATUS_BAD_REQUEST, "postage batch not found"
-		default:
-			return nil, pb.Status_STATUS_ERROR, "failed to stamp chunk"
-		}
+		return nil, fmt.Errorf("get stamper: %w", err)
 	}
-
 	stamp, err := stamper.Stamp(chunk.Address(), idAddr)
 	if err != nil {
-		cs.logger.Debug("chunk stream: stamp failed", "error", err)
-		if errors.Is(err, postage.ErrBucketFull) {
-			return nil, pb.Status_STATUS_ERROR, "batch is overissued"
-		}
-		return nil, pb.Status_STATUS_ERROR, "failed to stamp chunk"
+		return nil, fmt.Errorf("stamp chunk: %w", err)
 	}
 	if err := save(); err != nil {
 		cs.logger.Debug("chunk stream: save stamp state failed", "error", err)
 	}
-	return stamp, pb.Status_STATUS_OK, ""
+	return stamp, nil
 }

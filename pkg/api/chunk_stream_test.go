@@ -987,6 +987,55 @@ func TestChunkBidirectionalStream_TagRejected(t *testing.T) {
 	}
 }
 
+// A connection batch that cannot be used fails the handshake, with the status
+// the HTTP upload endpoints use for the same failure.
+//
+// nolint:paralleltest
+func TestChunkBidirectionalStream_HandshakeBatchErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		post       postage.Service
+		exists     func([]byte) (bool, error)
+		wantStatus int
+	}{
+		{
+			name:       "unknown batch",
+			post:       mockpost.New(),
+			exists:     func([]byte) (bool, error) { return true, nil },
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "unusable batch",
+			post:       mockpost.New(mockpost.WithAcceptAll()),
+			exists:     func([]byte) (bool, error) { return false, nil },
+			wantStatus: http.StatusUnprocessableEntity,
+		},
+		{
+			name:       "batch store failure",
+			post:       mockpost.New(mockpost.WithAcceptAll()),
+			exists:     func([]byte) (bool, error) { return false, errors.New("disk on fire") },
+			wantStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, addr, _, _ := newTestServer(t, testServerOptions{
+				Storer:     mockstorer.New(),
+				Post:       tc.post,
+				BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(tc.exists)),
+			})
+
+			conn, resp, err := websocket.DefaultDialer.Dial("ws://"+addr+"/chunks/stream", streamHeaders(true))
+			if err == nil {
+				_ = conn.Close()
+				t.Fatal("expected the handshake to be rejected")
+			}
+			if resp == nil || resp.StatusCode != tc.wantStatus {
+				t.Fatalf("expected %d, got %v (err: %v)", tc.wantStatus, resp, err)
+			}
+		})
+	}
+}
+
 // One connection can stamp with several batches: a request's BatchId outranks
 // the connection's Swarm-Postage-Batch-Id, which applies when a request names
 // none. The stamp on each pushed chunk shows which batch the node used.
@@ -1088,7 +1137,7 @@ func TestChunkBidirectionalStream_BatchPerRequest(t *testing.T) {
 			{name: "batch A", batchID: batchA, wantBatch: batchA},
 			{name: "batch B", batchID: batchB, wantBatch: batchB},
 			{name: "no batch", wantError: "missing postage stamp or batch id"},
-			{name: "unknown batch", batchID: unknown, wantError: "postage batch not found"},
+			{name: "unknown batch", batchID: unknown, wantError: "batch with id not found"},
 			{name: "batch A again", batchID: batchA, wantBatch: batchA},
 		})
 	})
@@ -1488,9 +1537,9 @@ func TestChunkBidirectionalStream_DownloadErrors(t *testing.T) {
 		wantError  string
 	}{
 		{name: "not found", err: storage.ErrNotFound, wantStatus: pb.Status_STATUS_NOT_FOUND, wantError: "chunk not found"},
-		{name: "no usable peer", err: topology.ErrNotFound, wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "no peer could serve the chunk"},
-		{name: "wrapped no usable peer", err: fmt.Errorf("retrieve: %w", topology.ErrNotFound), wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "no peer could serve the chunk"},
-		{name: "other failure", err: errors.New("disk on fire"), wantStatus: pb.Status_STATUS_ERROR, wantError: "chunk read error"},
+		{name: "no usable peer", err: topology.ErrNotFound, wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "chunk could not be retrieved because no usable peer was available"},
+		{name: "wrapped no usable peer", err: fmt.Errorf("retrieve: %w", topology.ErrNotFound), wantStatus: pb.Status_STATUS_UNAVAILABLE, wantError: "chunk could not be retrieved because no usable peer was available"},
+		{name: "other failure", err: errors.New("disk on fire"), wantStatus: pb.Status_STATUS_ERROR, wantError: "read chunk failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			storerMock := &downloadStorer{
@@ -1519,15 +1568,19 @@ func TestChunkBidirectionalStream_DownloadErrors(t *testing.T) {
 	}
 }
 
-// Download requests still queued when the stream ends must not start a
-// retrieval: nobody is left to read the chunk.
+// Download requests still queued when the stream ends must not retrieve
+// anything: nobody is left to read the chunk, so their retrieval context is
+// already canceled.
 // nolint:paralleltest
 func TestChunkBidirectionalStream_NoDownloadAfterStreamEnds(t *testing.T) {
 	var started atomic.Int64
 	storerMock := &downloadStorer{
 		Storer: mockstorer.New(),
 		get: func(ctx context.Context, _ swarm.Address) (swarm.Chunk, error) {
-			started.Add(1)
+			// Only a retrieval with a live context counts as started.
+			if ctx.Err() == nil {
+				started.Add(1)
+			}
 			<-ctx.Done()
 			return nil, ctx.Err()
 		},
@@ -1697,7 +1750,7 @@ func TestChunkBidirectionalStream_BatchExpiresDuringStream(t *testing.T) {
 		}
 
 		sendPBRequest(t, wsConn, chunkPut(testingc.GenerateTestRandomChunk()))
-		if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found" {
+		if resp := readPut(t, wsConn); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "batch with id not found" {
 			t.Fatalf("expected the expired batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
 		}
 	})
@@ -1738,7 +1791,7 @@ func TestChunkBidirectionalStream_BatchExpiresDuringStream(t *testing.T) {
 			t.Fatalf("expected STATUS_OK before expiry, got %v (err: %s)", resp.Status, resp.Error)
 		}
 		expired.Store(true)
-		if resp := upload(); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "postage batch not found or unusable" {
+		if resp := upload(); resp.Status != pb.Status_STATUS_BAD_REQUEST || resp.Error != "batch with id not found" {
 			t.Fatalf("expected the expired batch to be rejected, got %v (err: %s)", resp.Status, resp.Error)
 		}
 	})
