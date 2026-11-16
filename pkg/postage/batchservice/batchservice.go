@@ -87,8 +87,8 @@ func New(
 
 	logger = logger.WithName(loggerName).Register()
 
-	dirty := false
-	if err := stateStore.Get(dirtyDBKey, &dirty); err != nil && !errors.Is(err, storage.ErrNotFound) {
+	dirty, err := DirtyShutdown(stateStore)
+	if err != nil {
 		return nil, false, err
 	}
 	if dirty {
@@ -156,6 +156,16 @@ func New(
 	return bs, snapshotLoaded, nil
 }
 
+// DirtyShutdown reports whether the previous run left a batch store
+// transaction unfinished, in which case New resets the store.
+func DirtyShutdown(stateStore storage.StateStorer) (bool, error) {
+	dirty := false
+	if err := stateStore.Get(dirtyDBKey, &dirty); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return false, err
+	}
+	return dirty, nil
+}
+
 // reset wipes the batch store so it can be rebuilt from scratch. It runs only
 // during New. The reason for the reset is logged by the caller at the point of
 // detection, so the intent is recorded even if the reset itself then fails.
@@ -213,7 +223,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("put: %w", err)
 	}
 
-	amount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(batch.Depth))))
+	amount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<batch.Depth)))
 
 	if bytes.Equal(svc.owner, owner) && svc.batchListener != nil {
 		if err := svc.batchListener.HandleCreate(batch, amount); err != nil {
@@ -243,7 +253,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update: %w", err)
 	}
 
-	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(b.Depth))))
+	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<b.Depth)))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
 		svc.batchListener.HandleTopUp(id, topUpAmount)

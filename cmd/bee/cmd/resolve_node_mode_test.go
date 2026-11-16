@@ -6,6 +6,7 @@ package cmd_test
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -370,6 +371,89 @@ func TestResolveNodeMode(t *testing.T) {
 			wantMode: node.FullMode,
 		},
 		{
+			name: "bootnode implies no swap, chequebook or incentives",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+			},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameBootnodeMode:            true,
+				cmd.OptionNameSwapEnable:              false,
+				cmd.OptionNameChequebookEnable:        false,
+				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
+			name: "uppercase bootnode is accepted",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             " BOOTNODE ",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+			},
+			wantMode:    node.FullMode,
+			wantOptions: map[string]bool{cmd.OptionNameBootnodeMode: true},
+		},
+		{
+			name: "bootnode without rpc is rejected",
+			config: map[string]any{
+				cmd.OptionNameNodeMode: "bootnode",
+			},
+			wantErr: "bootnode requires blockchain-rpc-endpoint",
+		},
+		{
+			name: "bootnode with swap enables chequebook",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+				cmd.OptionNameSwapEnable:           true,
+			},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameBootnodeMode:     true,
+				cmd.OptionNameSwapEnable:       true,
+				cmd.OptionNameChequebookEnable: true,
+			},
+		},
+		{
+			name: "bootnode accepts storage incentives it cannot use and reserve doubling",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:                "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint:    testRPCEndpoint,
+				cmd.OptionNameStorageIncentivesEnable: true,
+				cmd.OptionNameReserveCapacityDoubling: 1,
+			},
+			wantMode:    node.FullMode,
+			wantOptions: map[string]bool{cmd.OptionNameBootnodeMode: true},
+		},
+		{
+			name: "bootnode rejects chequebook without swap",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+				cmd.OptionNameChequebookEnable:     true,
+			},
+			wantErr: "chequebook-enable requires swap-enable",
+		},
+		{
+			name: "bootnode overrides an explicit bootnode-mode false",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:             "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint: testRPCEndpoint,
+				cmd.OptionNameBootnodeMode:         false,
+			},
+			wantMode:    node.FullMode,
+			wantOptions: map[string]bool{cmd.OptionNameBootnodeMode: true},
+		},
+		{
+			name: "bootnode accepts chequebook-verification without swap",
+			config: map[string]any{
+				cmd.OptionNameNodeMode:               "bootnode",
+				cmd.ConfigKeyBlockchainRpcEndpoint:   testRPCEndpoint,
+				cmd.OptionNameChequebookVerification: true,
+			},
+			wantMode: node.FullMode,
+		},
+		{
 			name: "light bootnode is rejected",
 			config: map[string]any{
 				cmd.OptionNameNodeMode:             "light",
@@ -635,6 +719,17 @@ func TestResolveNodeModeWithBoundFlags(t *testing.T) {
 			},
 		},
 		{
+			name:     "node-mode bootnode does not inherit chequebook or incentives defaults",
+			args:     []string{"--node-mode=bootnode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			wantMode: node.FullMode,
+			wantOptions: map[string]bool{
+				cmd.OptionNameBootnodeMode:            true,
+				cmd.OptionNameSwapEnable:              false,
+				cmd.OptionNameChequebookEnable:        false,
+				cmd.OptionNameStorageIncentivesEnable: false,
+			},
+		},
+		{
 			name:     "node-mode full bootnode with swap enables chequebook",
 			args:     []string{"--node-mode=full", "--bootnode-mode", "--swap-enable", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
 			wantMode: node.FullMode,
@@ -789,6 +884,38 @@ func TestResolveNodeModeWarnings(t *testing.T) {
 			want: []string{`"set"=["node-mode=light"]`, "blockchain-rpc-endpoint contains only whitespace"},
 		},
 		{
+			name: "full with bootnode-mode is deprecated in favor of node-mode bootnode",
+			args: []string{"--node-mode=full", "--bootnode-mode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want: []string{"bootnode-mode is deprecated; use node-mode: bootnode"},
+		},
+		{
+			name:   "node-mode bootnode is not deprecated",
+			args:   []string{"--node-mode=bootnode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			absent: []string{"is deprecated", "has no effect", "is ignored"},
+		},
+		{
+			name:   "bootnode warns about storage incentives it cannot use",
+			args:   []string{"--node-mode=bootnode", "--storage-incentives-enable", "--reserve-capacity-doubling=1", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want:   []string{"storage-incentives-enable has no effect on a bootnode"},
+			absent: []string{"reserve-capacity-doubling"},
+		},
+		{
+			name: "bootnode reports an ignored bootnode-mode false",
+			args: []string{"--node-mode=bootnode", "--bootnode-mode=false", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want: []string{"bootnode-mode=false is ignored with node-mode: bootnode"},
+		},
+		{
+			name: "legacy bootnode lists the bootnode migration",
+			args: []string{"--full-node", "--bootnode-mode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want: []string{`"node_mode"="bootnode"`, `"set"=["node-mode=bootnode"]`, `"remove"=["full-node","bootnode-mode"]`},
+		},
+		{
+			name:   "legacy bootnode keeps reserve doubling",
+			args:   []string{"--full-node", "--bootnode-mode", "--reserve-capacity-doubling=1", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
+			want:   []string{`"remove"=["full-node","bootnode-mode"]`},
+			absent: []string{`"reserve-capacity-doubling"`},
+		},
+		{
 			name:    "legacy bootnode error is not preceded by the migration warning",
 			args:    []string{"--bootnode-mode", "--blockchain-rpc-endpoint=" + testRPCEndpoint},
 			wantErr: "boot node must be started as a full node",
@@ -838,97 +965,105 @@ func TestLegacyMigrationPreservesBehavior(t *testing.T) {
 
 	tri := []string{"", "true", "false"}
 	type effect struct {
-		mode                                       node.NodeMode
-		swap, chequebook, incentives, verification bool
+		mode                                                 node.NodeMode
+		bootnode, swap, chequebook, incentives, verification bool
+		doubling                                             int
 	}
-	effectOf := func(cfg *viper.Viper, mode node.NodeMode, bootnode bool) effect {
+	// The bootnode flag is read from the resolved config, so a migration to
+	// node-mode: bootnode must set it for the node to behave the same.
+	effectOf := func(cfg *viper.Viper, mode node.NodeMode) effect {
+		bootnode := cfg.GetBool(cmd.OptionNameBootnodeMode)
 		swap := cfg.GetBool(cmd.OptionNameSwapEnable)
 		return effect{
 			mode:         mode,
+			bootnode:     bootnode,
 			swap:         swap,
 			chequebook:   swap && cfg.GetBool(cmd.OptionNameChequebookEnable),
 			incentives:   mode == node.FullMode && !bootnode && cfg.GetBool(cmd.OptionNameStorageIncentivesEnable),
 			verification: cfg.GetBool(cmd.OptionNameChequebookVerification),
+			doubling:     cfg.GetInt(cmd.OptionNameReserveCapacityDoubling),
 		}
 	}
 
 	var checked, rejected, changed int
-	for _, bootnode := range []bool{false, true} {
+	for _, bootnode := range tri {
 		for _, rpc := range []bool{false, true} {
 			for _, fullNode := range tri {
 				for _, swap := range tri {
 					for _, chequebook := range tri {
 						for _, incentives := range tri {
 							for _, verification := range []string{"", "true"} {
-								var args []string
-								add := func(name, value string) {
-									if value != "" {
-										args = append(args, "--"+name+"="+value)
-									}
-								}
-								if bootnode {
-									add(cmd.OptionNameBootnodeMode, "true")
-								}
-								if rpc {
-									add("blockchain-rpc-endpoint", testRPCEndpoint)
-								}
-								add(cmd.OptionNameFullNode, fullNode)
-								add(cmd.OptionNameSwapEnable, swap)
-								add(cmd.OptionNameChequebookEnable, chequebook)
-								add(cmd.OptionNameStorageIncentivesEnable, incentives)
-								add(cmd.OptionNameChequebookVerification, verification)
-
-								// Rules of releases before node-mode: a bootnode must be
-								// full, a full node needs a chain, swap needs a chain,
-								// and verification needs a full node with a chain.
-								full := fullNode == "true"
-								chain := full || rpc
-								wantRejected := (bootnode && !full) || (full && !rpc) || (swap == "true" && !chain) ||
-									(verification == "true" && (!full || !chain))
-
-								legacyCfg := boundStartConfig(t, args)
-								mode, set, remove, notes, err := cmd.LegacyMigrationForTest(legacyCfg)
-								if (err != nil) != wantRejected {
-									t.Errorf("%v: rejected=%t, want %t (err: %v)", args, err != nil, wantRejected, err)
-									continue
-								}
-								if err != nil {
-									rejected++
-									continue
-								}
-								checked++
-								before := effectOf(legacyCfg, mode, bootnode)
-
-								var migrated []string
-							next:
-								for _, a := range args {
-									for _, r := range remove {
-										if strings.HasPrefix(a, "--"+r+"=") {
-											continue next
+								for _, doubling := range []string{"", "1"} {
+									var args []string
+									add := func(name, value string) {
+										if value != "" {
+											args = append(args, "--"+name+"="+value)
 										}
 									}
-									migrated = append(migrated, a)
-								}
-								for _, kv := range set {
-									k, v, _ := strings.Cut(kv, "=")
-									migrated = append(migrated, "--"+k+"="+v)
-								}
-
-								migratedCfg := boundStartConfig(t, migrated)
-								gotMode, err := cmd.ResolveNodeModeForTest(migratedCfg)
-								if len(notes) > 0 {
-									changed++
-									if err == nil && effectOf(migratedCfg, gotMode, bootnode) == before {
-										t.Errorf("%v: warning notes a behavior change %v, but the migrated config %v behaves the same", args, notes, migrated)
+									add(cmd.OptionNameBootnodeMode, bootnode)
+									if rpc {
+										add("blockchain-rpc-endpoint", testRPCEndpoint)
 									}
-									continue
-								}
-								if err != nil {
-									t.Errorf("%v: migrated config %v fails: %v", args, migrated, err)
-									continue
-								}
-								if after := effectOf(migratedCfg, gotMode, bootnode); after != before {
-									t.Errorf("%v: migrated config %v changes behavior: before %+v, after %+v", args, migrated, before, after)
+									add(cmd.OptionNameFullNode, fullNode)
+									add(cmd.OptionNameSwapEnable, swap)
+									add(cmd.OptionNameChequebookEnable, chequebook)
+									add(cmd.OptionNameStorageIncentivesEnable, incentives)
+									add(cmd.OptionNameChequebookVerification, verification)
+									add(cmd.OptionNameReserveCapacityDoubling, doubling)
+
+									// Rules of releases before node-mode: a bootnode must be
+									// full, a full node needs a chain, swap needs a chain,
+									// verification needs a full node with a chain, and
+									// reserve capacity doubling needs a full node.
+									full := fullNode == "true"
+									chain := full || rpc
+									wantRejected := (bootnode == "true" && !full) || (full && !rpc) || (swap == "true" && !chain) ||
+										(verification == "true" && (!full || !chain)) || (doubling != "" && !full)
+
+									legacyCfg := boundStartConfig(t, args)
+									mode, set, remove, notes, err := cmd.LegacyMigrationForTest(legacyCfg)
+									if (err != nil) != wantRejected {
+										t.Errorf("%v: rejected=%t, want %t (err: %v)", args, err != nil, wantRejected, err)
+										continue
+									}
+									if err != nil {
+										rejected++
+										continue
+									}
+									checked++
+									before := effectOf(legacyCfg, mode)
+
+									var migrated []string
+								next:
+									for _, a := range args {
+										for _, r := range remove {
+											if strings.HasPrefix(a, "--"+r+"=") {
+												continue next
+											}
+										}
+										migrated = append(migrated, a)
+									}
+									for _, kv := range set {
+										k, v, _ := strings.Cut(kv, "=")
+										migrated = append(migrated, "--"+k+"="+v)
+									}
+
+									migratedCfg := boundStartConfig(t, migrated)
+									gotMode, err := cmd.ResolveNodeModeForTest(migratedCfg)
+									if len(notes) > 0 {
+										changed++
+										if err == nil && effectOf(migratedCfg, gotMode) == before {
+											t.Errorf("%v: warning notes a behavior change %v, but the migrated config %v behaves the same", args, notes, migrated)
+										}
+										continue
+									}
+									if err != nil {
+										t.Errorf("%v: migrated config %v fails: %v", args, migrated, err)
+										continue
+									}
+									if after := effectOf(migratedCfg, gotMode); after != before {
+										t.Errorf("%v: migrated config %v changes behavior: before %+v, after %+v", args, migrated, before, after)
+									}
 								}
 							}
 						}
@@ -966,6 +1101,71 @@ func TestResolveNodeModeTrimsRPCEndpoint(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNodeModeBootnodeMatchesFullBootnode checks that node-mode: bootnode
+// resolves exactly like node-mode: full with the deprecated bootnode-mode for
+// every combination of the options a bootnode config may carry: the same mode
+// and option values, or the same error.
+func TestNodeModeBootnodeMatchesFullBootnode(t *testing.T) {
+	t.Parallel()
+
+	tri := []string{"", "true", "false"}
+	options := []string{
+		cmd.OptionNameBootnodeMode,
+		cmd.OptionNameSwapEnable,
+		cmd.OptionNameChequebookEnable,
+		cmd.OptionNameStorageIncentivesEnable,
+		cmd.OptionNameChequebookVerification,
+	}
+	resolve := func(args []string) string {
+		cfg := boundStartConfig(t, args)
+		mode, err := cmd.ResolveNodeModeForTest(cfg)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		got := fmt.Sprintf("mode=%s reserve-capacity-doubling=%d", mode, cfg.GetInt(cmd.OptionNameReserveCapacityDoubling))
+		for _, o := range options {
+			got += fmt.Sprintf(" %s=%t", o, cfg.GetBool(o))
+		}
+		return got
+	}
+
+	var compared int
+	for _, rpc := range []bool{false, true} {
+		for _, swap := range tri {
+			for _, chequebook := range tri {
+				for _, incentives := range tri {
+					for _, verification := range []string{"", "true"} {
+						for _, doubling := range []string{"", "1"} {
+							var rest []string
+							add := func(name, value string) {
+								if value != "" {
+									rest = append(rest, "--"+name+"="+value)
+								}
+							}
+							if rpc {
+								add("blockchain-rpc-endpoint", testRPCEndpoint)
+							}
+							add(cmd.OptionNameSwapEnable, swap)
+							add(cmd.OptionNameChequebookEnable, chequebook)
+							add(cmd.OptionNameStorageIncentivesEnable, incentives)
+							add(cmd.OptionNameChequebookVerification, verification)
+							add(cmd.OptionNameReserveCapacityDoubling, doubling)
+
+							bootnode := resolve(append([]string{"--node-mode=bootnode"}, rest...))
+							alias := resolve(append([]string{"--node-mode=full", "--bootnode-mode"}, rest...))
+							if bootnode != alias {
+								t.Errorf("%v:\n  node-mode=bootnode:            %s\n  node-mode=full, bootnode-mode: %s", rest, bootnode, alias)
+							}
+							compared++
+						}
+					}
+				}
+			}
+		}
+	}
+	t.Logf("compared %d option combinations", compared)
 }
 
 // boundStartConfig returns a viper bound to the real start command flags

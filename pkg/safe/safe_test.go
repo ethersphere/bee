@@ -138,7 +138,7 @@ func TestRunFunc(t *testing.T) {
 		type customErr struct {
 			error
 		}
-		var sentinelErr = customErr{error: errors.New("sentinel panic")}
+		sentinelErr := customErr{error: errors.New("sentinel panic")}
 
 		wrapped := safe.RunFunc(logger, "test-run-func-panic-err", func() error {
 			panic(sentinelErr)

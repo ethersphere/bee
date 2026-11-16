@@ -53,8 +53,8 @@ func (r *rawStore) setRaw(key string, b []byte) {
 	r.data[key] = b
 }
 
-// FuzzChequeStoreStatestoreCorruption tests that ChequeStore (LastCheque, ReceiveCheque)
-// and Service.LastCheque tolerate arbitrary corrupted or literal null JSON statestore entries
+// FuzzChequeStoreStatestoreCorruption tests that ChequeStore (LastReceivedCheque, ReceiveCheque)
+// and Service.LastIssuedCheque tolerate arbitrary corrupted or literal null JSON statestore entries
 // without nil-dereferencing or panicking (NIL-02, NIL-03, NIL-04).
 func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 	// Seed 1: JSON null literal
@@ -85,10 +85,10 @@ func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 			func(*chequebook.SignedCheque, int64) (common.Address, error) { return common.Address{}, nil },
 		)
 
-		// 1. LastCheque must never panic, and a success must carry a payout.
-		lastCheque, err := cs.LastCheque(chequebookAddr)
+		// 1. LastReceivedCheque must never panic, and a success must carry a payout.
+		lastCheque, err := cs.LastReceivedCheque(chequebookAddr)
 		if err == nil && (lastCheque == nil || lastCheque.CumulativePayout == nil) {
-			t.Fatal("LastCheque returned a cheque with no cumulative payout")
+			t.Fatal("LastReceivedCheque returned a cheque with no cumulative payout")
 		}
 
 		// 2. ReceiveCheque must never panic when reading corrupted last-received cheque
@@ -102,12 +102,12 @@ func FuzzChequeStoreStatestoreCorruption(f *testing.F) {
 		}
 		_, _ = cs.ReceiveCheque(context.Background(), incomingCheque, big.NewInt(1), big.NewInt(0))
 
-		// 3. Service.LastCheque must never panic
+		// 3. Service.LastIssuedCheque must never panic
 		svc, err := chequebook.New(nil, common.Address{}, common.Address{}, store, nil, nil, 0)
 		if err == nil {
-			issuedCheque, err := svc.LastCheque(beneficiary)
+			issuedCheque, err := svc.LastIssuedCheque(beneficiary)
 			if err == nil && (issuedCheque == nil || issuedCheque.CumulativePayout == nil) {
-				t.Fatal("svc.LastCheque returned a cheque with no cumulative payout")
+				t.Fatal("svc.LastIssuedCheque returned a cheque with no cumulative payout")
 			}
 		}
 	})

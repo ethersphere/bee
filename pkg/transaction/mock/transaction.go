@@ -36,6 +36,25 @@ func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.
 	return common.Hash{}, errors.New("not implemented")
 }
 
+// SendAndWait composes the configured Send and WaitForReceipt functions.
+func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (*types.Receipt, error) {
+	txHash, err := m.Send(ctx, request, boostPercent)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := m.WaitForReceipt(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return nil, transaction.ErrTransactionReverted
+	}
+
+	return receipt, nil
+}
+
 func (m *transactionServiceMock) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	if m.waitForReceipt != nil {
 		return m.waitForReceipt(ctx, txHash)

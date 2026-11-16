@@ -18,7 +18,7 @@ func (c *command) initDeployCmd() error {
 		Short:             "Deploy and fund the chequebook contract",
 		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			if (len(args)) > 0 {
+			if len(args) > 0 {
 				return cmd.Help()
 			}
 

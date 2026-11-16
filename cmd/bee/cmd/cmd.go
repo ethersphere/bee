@@ -90,6 +90,7 @@ const (
 	optionMinimumStorageRadius             = "minimum-storage-radius"
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
+	optionPostageSnapshotFile              = "postage-snapshot-file"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
@@ -352,7 +353,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64(optionNamePaymentTolerance, 25, "excess debt above payment threshold in percentages where you disconnect from your peer")
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry")
-	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
+	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections (deprecated: use --node-mode=bootnode)")
+	_ = cmd.Flags().MarkDeprecated(optionNameBootnodeMode, "use --node-mode=bootnode instead")
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().Duration(optionNameBlockchainRpcDialTimeout, 30*time.Second, "blockchain rpc TCP dial timeout")
 	cmd.Flags().Duration(optionNameBlockchainRpcTLSTimeout, 10*time.Second, "blockchain rpc TLS handshake timeout")
@@ -361,7 +363,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameBzzTokenAddress, "", "bzz token contract address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
-	cmd.Flags().String(optionNameNodeMode, "", "node operational mode: full, light, or ultra-light (unset: inferred from deprecated full-node and blockchain-rpc-endpoint)")
+	cmd.Flags().String(optionNameNodeMode, "", "node operational mode: full, light, ultra-light, or bootnode (unset: inferred from deprecated full-node, bootnode-mode and blockchain-rpc-endpoint)")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
@@ -394,6 +396,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
+	cmd.Flags().String(optionPostageSnapshotFile, "", "path to a postage batch snapshot (NDJSON, optionally gzip-compressed); overrides the embedded snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 900_000, "gas limit fallback when estimation fails for contract transactions")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")

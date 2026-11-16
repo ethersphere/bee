@@ -331,21 +331,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
 }
 
 func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
@@ -367,21 +353,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
 }
 
 func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
