@@ -719,3 +719,67 @@ func createRetrieval(
 	t.Cleanup(func() { ret.Close() })
 	return ret
 }
+
+// TestClosestPeerOriginProximityBeforeHealth checks that the origin does not
+// ask a healthy peer before a peer of a higher proximity order to the chunk
+// that is not healthy.
+func TestClosestPeerOriginProximityBeforeHealth(t *testing.T) {
+	t.Parallel()
+
+	var (
+		base      = swarm.MustParseHexAddress("ff00000000000000000000000000000000000000000000000000000000000000")
+		chunk     = swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
+		closer    = swarm.MustParseHexAddress("0300000000000000000000000000000000000000000000000000000000000000") // PO 6, not healthy
+		samePO    = swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000") // PO 6, healthy
+		far       = swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000") // PO 0, healthy
+		unhealthy = map[string]bool{closer.ByteString(): true}
+	)
+
+	driver := func(peers ...swarm.Address) topology.ClosestPeerer {
+		return topologymock.NewTopologyDriver(topologymock.WithClosestPeerFunc(
+			func(addr swarm.Address, _ bool, filter topology.Select, skip ...swarm.Address) (swarm.Address, error) {
+				best := swarm.ZeroAddress
+				for _, p := range peers {
+					if (filter.Healthy && unhealthy[p.ByteString()]) || swarm.ContainsAddress(skip, p) {
+						continue
+					}
+					if best.IsZero() {
+						best = p
+						continue
+					}
+					if ok, _ := p.Closer(addr, best); ok {
+						best = p
+					}
+				}
+				if best.IsZero() {
+					return swarm.ZeroAddress, topology.ErrNotFound
+				}
+				return best, nil
+			}))
+	}
+
+	for _, tc := range []struct {
+		name   string
+		peers  []swarm.Address
+		origin bool
+		want   swarm.Address
+	}{
+		{name: "origin, closer peer is not healthy", peers: []swarm.Address{far, closer}, origin: true, want: closer},
+		{name: "origin, same proximity order", peers: []swarm.Address{samePO, closer}, origin: true, want: samePO},
+		{name: "forwarder, closer peer is not healthy", peers: []swarm.Address{far, closer}, origin: false, want: far},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ret := createRetrieval(t, base, nil, nil, driver(tc.peers...), log.Noop, nil, nil, nil, false)
+
+			got, err := ret.ClosestPeer(chunk, nil, tc.origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Equal(tc.want) {
+				t.Fatalf("want %s, got %s", tc.want, got)
+			}
+		})
+	}
+}
