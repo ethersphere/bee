@@ -723,7 +723,6 @@ paths:
           schema:
             type: integer
             minimum: 0
-            maximum: 1000
             default: 100
           required: false
           description: The maximum number of tags to return. Values above 1000 are capped at 1000.

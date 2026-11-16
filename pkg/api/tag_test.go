@@ -23,6 +23,79 @@ import (
 
 func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 
+func TestListTagsPaging(t *testing.T) {
+	t.Parallel()
+
+	var (
+		tagsResource       = "/tags"
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: mockstorer.New(),
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+	)
+
+	created := make([]uint64, 0, 12)
+	for range 12 {
+		tr := api.TagResponse{}
+		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
+			jsonhttptest.WithUnmarshalJSONResponse(&tr),
+		)
+		created = append(created, tr.Uid)
+	}
+
+	// The listing is in lexicographic order of the decimal tag IDs.
+	sort.Slice(created, func(i, j int) bool {
+		return strconv.FormatUint(created[i], 10) < strconv.FormatUint(created[j], 10)
+	})
+
+	uids := func(tags []api.TagResponse) []uint64 {
+		out := make([]uint64, 0, len(tags))
+		for _, tag := range tags {
+			out = append(out, tag.Uid)
+		}
+		return out
+	}
+
+	t.Run("default page", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource, http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(created, uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("offset and limit", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?offset=1&limit=3", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(created[1:4], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("zero limit", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=0", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ListTagsResponse{
+				Tags: []api.TagResponse{},
+			}),
+		)
+	})
+
+	t.Run("limit above the cap", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=5000", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(created, uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+}
+
 // nolint:paralleltest
 func TestTags(t *testing.T) {
 	var (

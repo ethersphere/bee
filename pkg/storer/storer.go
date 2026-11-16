@@ -80,8 +80,9 @@ type UploadStore interface {
 	// ListSessions returns up to limit Sessions currently being tracked, after
 	// skipping offset Sessions. Sessions are in lexicographic order of their
 	// decimal tag IDs, so 1, 10, 2 comes before 3. limit is capped at 1000, and
-	// a limit <= 0 returns no Sessions. If ctx is done, it returns the wrapped
-	// context error and no Sessions.
+	// a limit <= 0 returns no Sessions. A negative offset is treated as 0. If
+	// ctx is canceled before or during the call, it returns the wrapped context
+	// error and no Sessions.
 	ListSessions(ctx context.Context, offset, limit int) ([]SessionInfo, error)
 }
 

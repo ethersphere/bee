@@ -1018,6 +1018,24 @@ func TestListTagsPage(t *testing.T) {
 		}
 	}
 
+	t.Run("returns the requested tags in key order", func(t *testing.T) {
+		t.Parallel()
+
+		tags, err := upload.ListTagsPage(context.Background(), ts.IndexStore(), 3, 2)
+		if err != nil {
+			t.Fatalf("ListTagsPage(): unexpected error: %v", err)
+		}
+
+		ids := make([]uint64, 0, len(tags))
+		for _, tag := range tags {
+			ids = append(ids, tag.TagID)
+		}
+		// Key order of tags 1 to 10 is 1, 10, 2, 3, 4, ...; skipping 3 leaves 3 and 4.
+		if diff := cmp.Diff([]uint64{3, 4}, ids); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
 	t.Run("stops once the page is full", func(t *testing.T) {
 		t.Parallel()
 

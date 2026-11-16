@@ -712,8 +712,9 @@ func ListAllTags(st storage.Reader) ([]TagItem, error) {
 
 // ListTagsPage returns up to limit TagItems after skipping offset items, in
 // index key order (lexicographic order of the decimal tag IDs). A limit <= 0
-// returns no items. The scan stops as soon as the page is full. If ctx is done,
-// it returns nil and the wrapped context error, never a partial page.
+// returns no items. The scan stops as soon as the page is full. If ctx is
+// canceled before or during the scan, it returns nil and the wrapped context
+// error, never a partial page.
 func ListTagsPage(ctx context.Context, st storage.Reader, offset, limit int) ([]TagItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("uploadstore: failed to iterate tags: %w", err)

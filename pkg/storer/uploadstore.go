@@ -156,8 +156,8 @@ func (db *DB) DeleteSession(tagID uint64) error {
 
 // ListSessions is the implementation of the UploadStore.ListSessions method.
 // Sessions are returned in index key order (lexicographic order of the decimal
-// tag IDs), limit is capped at 1000, and only one page is read from the index
-// store.
+// tag IDs) and limit is capped at 1000. The index scan visits offset+limit
+// entries and stops there. ctx cancels the scan; see UploadStore.ListSessions.
 func (db *DB) ListSessions(ctx context.Context, offset, limit int) ([]SessionInfo, error) {
 	const maxPageSize = 1000
 

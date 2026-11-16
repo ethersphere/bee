@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -201,9 +202,14 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tagList, err := s.storer.ListSessions(r.Context(), queries.Offset, queries.Limit)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// The client went away or timed out; this is not a server fault.
+			logger.Debug("listing canceled", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+			return
+		}
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")
-		jsonhttp.InternalServerError(w, err)
+		jsonhttp.InternalServerError(w, "listing failed")
 		return
 	}
 
