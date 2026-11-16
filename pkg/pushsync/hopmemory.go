@@ -21,6 +21,11 @@ const (
 	hopProbeInterval = 30 * time.Second
 	// hopValidIdle is the time after which a valid record without a new result is removed.
 	hopValidIdle = 30 * time.Minute
+	// hopShallowIdle is the time after which a shallow record without a new
+	// shallow receipt is removed. It is longer than the longest pause, so
+	// that a shallow receipt that comes right after a pause still counts as
+	// one more in a row.
+	hopShallowIdle = 2 * hopShallowMaxPause
 )
 
 // hopRecord is the last result of one first hop for one neighborhood.
@@ -121,6 +126,10 @@ func (m *hopMemory) recordShallow(rad uint8, chunk, peer swarm.Address) {
 	if !r.valid && r.shallow > 0 && now.Before(r.blockedUntil()) {
 		return
 	}
+	// a record that view did not remove yet
+	if !r.valid && now.Sub(r.at) >= hopShallowIdle {
+		r.shallow = 0
+	}
 	r.valid = false
 	r.shallow++
 	r.at = now
@@ -167,6 +176,8 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 			valid = append(valid, r.peer)
 		case now.Before(r.blockedUntil()):
 			blocked = append(blocked, r.peer)
+		case now.Sub(r.at) >= hopShallowIdle:
+			delete(h.peers, key)
 		}
 	}
 	if len(h.peers) == 0 {

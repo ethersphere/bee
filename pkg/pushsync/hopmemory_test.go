@@ -175,6 +175,67 @@ func TestHopMemoryPauseDoubles(t *testing.T) {
 	}
 }
 
+// TestHopMemoryShallowIdle checks that a shallow record is removed one hour
+// after its last shallow receipt, so that records of peers that are no longer
+// picked do not stay in the memory.
+func TestHopMemoryShallowIdle(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+	)
+
+	for i := range 50 {
+		m.RecordShallow(10, chunk, hopAddr(0x10, byte(i)))
+	}
+
+	clock.Add(time.Hour - time.Second)
+	m.View(10, chunk)
+	if got := m.Len(); got != 50 {
+		t.Fatalf("got %d records one second before the end of the idle time, want 50", got)
+	}
+
+	clock.Add(time.Second)
+	m.View(10, chunk)
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records after the idle time, want 0", got)
+	}
+}
+
+// TestHopMemoryShallowCountRestarts checks that a shallow receipt that comes
+// more than one hour after the last one starts the count again, also when
+// nothing read the neighborhood in between.
+func TestHopMemoryShallowCountRestarts(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	isBlocked := func() bool {
+		_, blocked, _ := m.View(10, chunk)
+		return hasAddr(blocked, peer)
+	}
+
+	m.RecordShallow(10, chunk, peer)
+	clock.Add(time.Hour)
+	m.RecordShallow(10, chunk, peer)
+
+	clock.Add(time.Minute - time.Second)
+	if !isBlocked() {
+		t.Fatal("peer is free one second before the end of a 1m0s pause")
+	}
+	clock.Add(time.Second)
+	if isBlocked() {
+		t.Fatal("peer is blocked after a 1m0s pause: the count did not start again")
+	}
+}
+
 func TestHopMemoryValidIdle(t *testing.T) {
 	t.Parallel()
 

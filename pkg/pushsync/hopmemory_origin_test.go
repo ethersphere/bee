@@ -189,6 +189,15 @@ func (n *hopNet) pushShallow() {
 	}
 }
 
+// pushPaused pushes a chunk and wants the result of an origin that sent
+// nothing because every first hop is in a shallow pause.
+func (n *hopNet) pushPaused() {
+	n.t.Helper()
+	if err := n.push(); !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
+		n.t.Fatalf("got %v, want %v", err, pushsync.ErrNeighborhoodShallow)
+	}
+}
+
 // TestOriginPrefersKnownValidPeer checks that the second chunk of a
 // neighborhood goes straight to the first hop that gave a valid receipt and
 // not to a closer first hop that gave a shallow one.
@@ -226,7 +235,7 @@ func TestOriginShallowPauseDoubles(t *testing.T) {
 	n.wantStreams(shallow, 1)
 
 	n.clock.Add(59 * time.Second)
-	n.pushShallow()
+	n.pushPaused()
 	n.wantStreams(shallow, 1)
 
 	n.clock.Add(time.Second)
@@ -234,7 +243,7 @@ func TestOriginShallowPauseDoubles(t *testing.T) {
 	n.wantStreams(shallow, 2)
 
 	n.clock.Add(119 * time.Second)
-	n.pushShallow()
+	n.pushPaused()
 	n.wantStreams(shallow, 2)
 
 	n.clock.Add(time.Second)
@@ -274,9 +283,18 @@ func TestOriginAllPeersBlocked(t *testing.T) {
 	n.wantStreams(n.hops[0], 1)
 	n.wantStreams(n.hops[1], 1)
 
+	// nothing is sent, so the result must not look like a shallow receipt:
+	// the pusher counts those against the retry budget of the chunk. It
+	// must look like "no peer for now", which the callers wait out.
 	receipt, err := n.origin.PushChunkToClosest(context.Background(), n.chunk())
-	if !errors.Is(err, pushsync.ErrShallowReceipt) {
-		t.Fatalf("got %v, want %v", err, pushsync.ErrShallowReceipt)
+	if !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
+		t.Fatalf("got %v, want %v", err, pushsync.ErrNeighborhoodShallow)
+	}
+	if errors.Is(err, pushsync.ErrShallowReceipt) {
+		t.Fatalf("got %v, which is a shallow receipt error", err)
+	}
+	if !errors.Is(err, topology.ErrNotFound) {
+		t.Fatalf("got %v, which is not %v", err, topology.ErrNotFound)
 	}
 	if receipt != nil {
 		t.Fatalf("got receipt %v, want none", receipt)

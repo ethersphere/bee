@@ -61,6 +61,12 @@ var (
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
 	ErrShallowReceipt    = errors.New("shallow receipt")
+	// ErrNeighborhoodShallow is returned by an origin that did not send the
+	// chunk because every peer that is left gave a shallow receipt for the
+	// neighborhood a short time ago. It wraps topology.ErrNotFound: for the
+	// caller there is no peer for the chunk for now, and it must wait and
+	// try again, without counting the try against the chunk.
+	ErrNeighborhoodShallow = fmt.Errorf("every peer is in a shallow pause for the neighborhood: %w", topology.ErrNotFound)
 )
 
 type PushSyncer interface {
@@ -339,10 +345,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	ps.metrics.TotalOutgoing.Inc()
 	r, err := ps.pushToClosest(ctx, ch, true)
 	if errors.Is(err, ErrShallowReceipt) {
-		// no receipt when every peer is in a shallow pause and nothing was sent
-		if r == nil {
-			return nil, err
-		}
 		return &Receipt{
 			Address:   swarm.NewAddress(r.Address),
 			Signature: r.Signature,
@@ -484,7 +486,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 						// the same result again.
 						if blockedOnly {
 							ps.metrics.NeighborhoodKnownShallow.Inc()
-							return nil, ErrShallowReceipt
+							return nil, ErrNeighborhoodShallow
 						}
 						// Peers were tried and none of them took the chunk,
 						// or they are all skipped for now: retrying right away
@@ -500,7 +502,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 					if blockedOnly {
 						ps.metrics.NeighborhoodKnownShallow.Inc()
-						return nil, ErrShallowReceipt
+						return nil, ErrNeighborhoodShallow
 					}
 					ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 					return nil, err
