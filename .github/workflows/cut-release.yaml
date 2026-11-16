@@ -1,5 +1,5 @@
 # Creates a release tag. Tag creation is restricted by a ruleset, so tags are
-# only made here (as the ethersphere-release app) after a second person approves the
+# only made here (as the bee-releaser app) after a second person approves the
 # `release` environment. The commit is resolved before approval, so the
 # reviewer approves an exact SHA (shown in the run summary). The tag push then
 # triggers release.yaml (goreleaser).
