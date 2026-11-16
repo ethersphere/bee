@@ -1,5 +1,5 @@
 # Creates a release tag. Tag creation is restricted by a ruleset, so tags are
-# only made here (as the bee-runner app) after a second person approves the
+# only made here (as the ethersphere-release app) after a second person approves the
 # `release` environment. The commit is resolved before approval, so the
 # reviewer approves an exact SHA (shown in the run summary). The tag push then
 # triggers release.yaml (goreleaser).
@@ -66,8 +66,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.BEE_RUNNER_APP_ID }}
-          private-key: ${{ secrets.BEE_RUNNER_KEY }}
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
           # Least privilege: only creates the tag ref.
           permission-contents: write
 
