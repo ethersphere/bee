@@ -7,6 +7,10 @@ on:
     tags:
       - 'v*.*.*'
 
+# goreleaser creates the GitHub release and uploads assets.
+permissions:
+  contents: write
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
