@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -156,19 +155,13 @@ func (db *DB) DeleteSession(tagID uint64) error {
 }
 
 // ListSessions is the implementation of the UploadStore.ListSessions method.
-func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
+// Sessions are returned in index key order (lexicographic order of the decimal
+// tag IDs), limit is capped at 1000, and only one page is read from the index
+// store.
+func (db *DB) ListSessions(ctx context.Context, offset, limit int) ([]SessionInfo, error) {
 	const maxPageSize = 1000
 
 	limit = min(limit, maxPageSize)
 
-	tags, err := upload.ListAllTags(db.storage.IndexStore())
-	if err != nil {
-		return nil, err
-	}
-
-	sort.Slice(tags, func(i, j int) bool {
-		return tags[i].TagID < tags[j].TagID
-	})
-
-	return tags[min(offset, len(tags)):min(offset+limit, len(tags))], nil
+	return upload.ListTagsPage(ctx, db.storage.IndexStore(), offset, limit)
 }

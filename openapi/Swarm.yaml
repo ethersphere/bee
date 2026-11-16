@@ -705,6 +705,8 @@ paths:
   "/tags":
     get:
       summary: Get list of tags
+      description: |
+        Returns one page of tags. Tags are sorted by the lexicographic order of their decimal IDs, so the order is 1, 10, 11, 2, 3, and so on, not numeric order. A limit above 1000 is capped at 1000. A limit of 0 returns an empty list. Paging with offset skips over the earlier tags on every request, so deep pages take longer.
       tags:
         - Tag
       parameters:
@@ -715,16 +717,16 @@ paths:
             minimum: 0
             default: 0
           required: false
-          description: The number of items to skip before starting to collect the result set.
+          description: The number of tags to skip, in the order described above, before collecting the page.
         - in: query
           name: limit
           schema:
             type: integer
-            minimum: 1
+            minimum: 0
             maximum: 1000
             default: 100
           required: false
-          description: The numbers of items to return.
+          description: The maximum number of tags to return. Values above 1000 are capped at 1000.
       responses:
         "200":
           description: List of tags

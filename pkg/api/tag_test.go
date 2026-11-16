@@ -43,6 +43,14 @@ func TestTags(t *testing.T) {
 		)
 	})
 
+	t.Run("list tags negative offset", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?offset=-1", http.StatusBadRequest)
+	})
+
+	t.Run("list tags negative limit", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=-1", http.StatusBadRequest)
+	})
+
 	t.Run("create tag", func(t *testing.T) {
 		tr := api.TagResponse{}
 		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,

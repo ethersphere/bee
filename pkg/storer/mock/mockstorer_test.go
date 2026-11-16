@@ -64,7 +64,7 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("list sessions", func(t *testing.T) {
-		have, err := mockStorer.ListSessions(0, 1)
+		have, err := mockStorer.ListSessions(context.Background(), 0, 1)
 		if err != nil {
 			t.Fatalf("ListSessions(): unexpected error: %v", err)
 		}
@@ -319,5 +319,43 @@ func TestDelayedStoreGetInto(t *testing.T) {
 	buf := make([]byte, swarm.ChunkWithSpanSize)
 	if _, err := store.GetInto(ctx, ch.Address(), buf); !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetInto with pending delay: got %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestMockListSessionsPaging(t *testing.T) {
+	t.Parallel()
+
+	mockStorer := mockstorer.New()
+	for range 12 {
+		if _, err := mockStorer.NewSession(); err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+	}
+
+	// Same lexicographic order of the decimal IDs as the real store.
+	have, err := mockStorer.ListSessions(context.Background(), 0, 6)
+	if err != nil {
+		t.Fatalf("ListSessions(): unexpected error: %v", err)
+	}
+	ids := make([]uint64, 0, len(have))
+	for _, s := range have {
+		ids = append(ids, s.TagID)
+	}
+	if diff := cmp.Diff([]uint64{1, 10, 11, 12, 2, 3}, ids); diff != "" {
+		t.Fatalf("unexpected order (-want +have):\n%s", diff)
+	}
+
+	have, err = mockStorer.ListSessions(context.Background(), 12, 5)
+	if err != nil {
+		t.Fatalf("ListSessions(): unexpected error: %v", err)
+	}
+	if len(have) != 0 {
+		t.Fatalf("expected no sessions at the end, have %d", len(have))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := mockStorer.ListSessions(ctx, 0, 5); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListSessions(): want context.Canceled, have %v", err)
 	}
 }

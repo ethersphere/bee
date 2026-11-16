@@ -280,19 +280,170 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			}
 		}
 
-		sessions, err := lstore.ListSessions(1, 3)
+		// Tags are listed in key order, the lexicographic order of their
+		// decimal IDs: 1, 10, 2, 3, ..., 9.
+		sessions, err := lstore.ListSessions(context.Background(), 1, 3)
 		if err != nil {
 			t.Fatalf("ListSession(): unexpected error: %v", err)
 		}
 
-		if len(sessions) != 3 {
-			t.Fatalf("unexpected number of sessions: want %d have %d", 3, len(sessions))
+		wantIDs := []uint64{10, 2, 3}
+		if len(sessions) != len(wantIDs) {
+			t.Fatalf("unexpected number of sessions: want %d have %d", len(wantIDs), len(sessions))
 		}
 
 		for idx, session := range sessions {
-			if session.TagID != uint64(2+idx) {
-				t.Fatalf("unexpected tag in session list: want %d have %d", 2+idx, session.TagID)
+			if session.TagID != wantIDs[idx] {
+				t.Fatalf("unexpected tag in session list: want %d have %d", wantIDs[idx], session.TagID)
 			}
+		}
+	})
+
+	t.Run("list sessions key order", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for range 12 {
+			if _, err := lstore.NewSession(); err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+		}
+
+		sessions, err := lstore.ListSessions(context.Background(), 0, 6)
+		if err != nil {
+			t.Fatalf("ListSession(): unexpected error: %v", err)
+		}
+
+		want := []uint64{1, 10, 11, 12, 2, 3}
+		if len(sessions) != len(want) {
+			t.Fatalf("unexpected number of sessions: want %d have %d", len(want), len(sessions))
+		}
+		for idx, session := range sessions {
+			if session.TagID != want[idx] {
+				t.Fatalf("unexpected tag at %d: want %d have %d", idx, want[idx], session.TagID)
+			}
+		}
+	})
+
+	t.Run("list sessions past the end and zero limit", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := lstore.NewSession(); err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+
+		sessions, err := lstore.ListSessions(context.Background(), 5, 3)
+		if err != nil {
+			t.Fatalf("ListSession(): unexpected error: %v", err)
+		}
+		if len(sessions) != 0 {
+			t.Fatalf("expected no sessions past the end, have %d", len(sessions))
+		}
+
+		sessions, err = lstore.ListSessions(context.Background(), 0, 0)
+		if err != nil {
+			t.Fatalf("ListSession(): unexpected error: %v", err)
+		}
+		if len(sessions) != 0 {
+			t.Fatalf("expected no sessions for zero limit, have %d", len(sessions))
+		}
+	})
+
+	t.Run("list sessions canceled context", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := lstore.NewSession(); err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if _, err := lstore.ListSessions(ctx, 0, 10); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListSessions(): want context.Canceled, have %v", err)
+		}
+	})
+
+	t.Run("list sessions page boundaries", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for range 10 {
+			if _, err := lstore.NewSession(); err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+		}
+
+		for _, tc := range []struct {
+			name          string
+			offset, limit int
+			wantLen       int
+		}{
+			{name: "offset at end", offset: 10, limit: 3, wantLen: 0},
+			{name: "last page exactly full", offset: 7, limit: 3, wantLen: 3},
+			{name: "limit past the end", offset: 8, limit: 5, wantLen: 2},
+			{name: "all sessions", offset: 0, limit: 10, wantLen: 10},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				sessions, err := lstore.ListSessions(context.Background(), tc.offset, tc.limit)
+				if err != nil {
+					t.Fatalf("ListSessions(): unexpected error: %v", err)
+				}
+				if len(sessions) != tc.wantLen {
+					t.Fatalf("unexpected number of sessions: want %d have %d", tc.wantLen, len(sessions))
+				}
+			})
+		}
+	})
+
+	t.Run("list sessions caps the limit at 1000", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for range 1005 {
+			if _, err := lstore.NewSession(); err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+		}
+
+		sessions, err := lstore.ListSessions(context.Background(), 0, 5000)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		if len(sessions) != 1000 {
+			t.Fatalf("unexpected page size for an oversized limit: want 1000 have %d", len(sessions))
+		}
+
+		rest, err := lstore.ListSessions(context.Background(), 1000, 5000)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		if len(rest) != 5 {
+			t.Fatalf("unexpected sessions after the first page: want 5 have %d", len(rest))
 		}
 	})
 

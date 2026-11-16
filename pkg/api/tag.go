@@ -189,8 +189,8 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_tags").Build()
 
 	queries := struct {
-		Offset int `map:"offset"`
-		Limit  int `map:"limit"`
+		Offset int `map:"offset" validate:"min=0"`
+		Limit  int `map:"limit" validate:"min=0"`
 	}{
 		Limit: 100, // Default limit.
 	}
@@ -199,7 +199,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.storer.ListSessions(queries.Offset, queries.Limit)
+	tagList, err := s.storer.ListSessions(r.Context(), queries.Offset, queries.Limit)
 	if err != nil {
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")
