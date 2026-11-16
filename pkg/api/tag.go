@@ -202,9 +202,15 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tagList, err := s.storer.ListSessions(r.Context(), queries.Offset, queries.Limit)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			// The client went away or timed out; this is not a server fault.
+		if errors.Is(err, context.Canceled) {
+			// The client went away; this is not a server fault.
 			logger.Debug("listing canceled", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+			jsonhttp.RequestTimeout(w, "listing canceled")
+			return
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			logger.Debug("listing timed out", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+			jsonhttp.ServiceUnavailable(w, "listing timed out")
 			return
 		}
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)

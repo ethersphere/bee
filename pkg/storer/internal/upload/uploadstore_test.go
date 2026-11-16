@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // now is a function that returns the current time and replaces time.Now.
@@ -953,36 +952,6 @@ func TestNextTagID(t *testing.T) {
 
 	if uint64(lastTag) != 3 {
 		t.Fatalf("incorrect value for last tag, exp 3 found %d", uint64(lastTag))
-	}
-}
-
-func TestListTags(t *testing.T) {
-	t.Parallel()
-
-	ts := newTestStorage(t)
-
-	want := make([]upload.TagItem, 10)
-	for i := range want {
-		var tag upload.TagItem
-		var err error
-		err = ts.Run(context.Background(), func(s transaction.Store) error {
-			tag, err = upload.NextTag(s.IndexStore())
-			return err
-		})
-		if err != nil {
-			t.Fatalf("failed creating tag: %v", err)
-		}
-		want[i] = tag
-	}
-
-	have, err := upload.ListAllTags(ts.IndexStore())
-	if err != nil {
-		t.Fatalf("upload.ListAllTags(): unexpected error: %v", err)
-	}
-
-	opts := cmpopts.SortSlices(func(i, j upload.TagItem) bool { return i.TagID < j.TagID })
-	if diff := cmp.Diff(want, have, opts); diff != "" {
-		t.Fatalf("upload.ListAllTags(): mismatch (-want +have):\n%s", diff)
 	}
 }
 

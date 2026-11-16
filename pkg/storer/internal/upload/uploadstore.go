@@ -694,22 +694,6 @@ func TagInfo(st storage.Reader, tagID uint64) (TagItem, error) {
 	return ti, nil
 }
 
-// ListAllTags returns all the TagItems in the store.
-func ListAllTags(st storage.Reader) ([]TagItem, error) {
-	var tags []TagItem
-	err := st.Iterate(storage.Query{
-		Factory: func() storage.Item { return new(TagItem) },
-	}, func(r storage.Result) (bool, error) {
-		tags = append(tags, *r.Entry.(*TagItem))
-		return false, nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("uploadstore: failed to iterate tags: %w", err)
-	}
-
-	return tags, nil
-}
-
 // ListTagsPage returns up to limit TagItems after skipping offset items, in
 // index key order (lexicographic order of the decimal tag IDs). A limit <= 0
 // returns no items. The scan stops as soon as the page is full. If ctx is

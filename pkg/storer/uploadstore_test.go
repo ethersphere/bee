@@ -16,6 +16,7 @@ import (
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -392,15 +393,18 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			}
 		}
 
+		// Key order of tags 1..10 is 1, 10, 2, 3, ..., 9.
 		for _, tc := range []struct {
 			name          string
 			offset, limit int
-			wantLen       int
+			wantIDs       []uint64
 		}{
-			{name: "offset at end", offset: 10, limit: 3, wantLen: 0},
-			{name: "last page exactly full", offset: 7, limit: 3, wantLen: 3},
-			{name: "limit past the end", offset: 8, limit: 5, wantLen: 2},
-			{name: "all sessions", offset: 0, limit: 10, wantLen: 10},
+			{name: "offset at end", offset: 10, limit: 3, wantIDs: nil},
+			{name: "last page exactly full", offset: 7, limit: 3, wantIDs: []uint64{7, 8, 9}},
+			{name: "limit past the end", offset: 8, limit: 5, wantIDs: []uint64{8, 9}},
+			{name: "all sessions", offset: 0, limit: 10, wantIDs: []uint64{1, 10, 2, 3, 4, 5, 6, 7, 8, 9}},
+			{name: "negative offset starts at the beginning", offset: -1, limit: 2, wantIDs: []uint64{1, 10}},
+			{name: "negative limit returns nothing", offset: 0, limit: -1, wantIDs: nil},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
@@ -409,8 +413,12 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 				if err != nil {
 					t.Fatalf("ListSessions(): unexpected error: %v", err)
 				}
-				if len(sessions) != tc.wantLen {
-					t.Fatalf("unexpected number of sessions: want %d have %d", tc.wantLen, len(sessions))
+				have := make([]uint64, 0, len(sessions))
+				for _, s := range sessions {
+					have = append(have, s.TagID)
+				}
+				if diff := cmp.Diff(tc.wantIDs, have, cmpopts.EquateEmpty()); diff != "" {
+					t.Fatalf("unexpected tags (-want +have):\n%s", diff)
 				}
 			})
 		}

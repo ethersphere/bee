@@ -5,9 +5,10 @@
 package mockstorer
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -146,8 +147,8 @@ func (m *mockStorer) ListSessions(ctx context.Context, offset, limit int) ([]sto
 	for _, v := range m.activeSessions {
 		sessions = append(sessions, *v)
 	}
-	sort.Slice(sessions, func(i, j int) bool {
-		return strconv.FormatUint(sessions[i].TagID, 10) < strconv.FormatUint(sessions[j].TagID, 10)
+	slices.SortFunc(sessions, func(a, b storer.SessionInfo) int {
+		return cmp.Compare(strconv.FormatUint(a.TagID, 10), strconv.FormatUint(b.TagID, 10))
 	})
 
 	limit = min(limit, maxPageSize)
