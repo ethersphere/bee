@@ -18,10 +18,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/libp2ptest"
 	pricermock "github.com/ethersphere/bee/v2/pkg/pricer/mock"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/ethersphere/bee/v2/pkg/topology"
 	topologymock "github.com/ethersphere/bee/v2/pkg/topology/mock"
 )
 
@@ -120,11 +120,11 @@ func TestRetrievalIntegration(t *testing.T) {
 		t.Fatalf("request and response data not equal. got %s want %s", got.Data(), chunk.Data())
 	}
 
-	// Retrieve non-existing chunk
+	// Retrieve non-existing chunk: the server answers that it cannot deliver it.
 	nonExistingChunk := testingc.GenerateTestRandomChunk()
 	_, err = clientRetrieval.RetrieveChunk(ctx, nonExistingChunk.Address(), swarm.ZeroAddress)
-	if !errors.Is(err, topology.ErrNotFound) {
-		t.Fatalf("expected error retrieving non-existing chunk, got %v", err)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected not found error retrieving non-existing chunk, got %v", err)
 	}
 
 	// Validate that streams are properly closed by the retrieval service
