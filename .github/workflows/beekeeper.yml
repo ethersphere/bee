@@ -23,8 +23,9 @@ env:
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
   TIMEOUT: 30m
   BUCKET_NAME: swarm-beekeeper-artifacts
-  AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+  # Dedicated key for the swarm-beekeeper-artifacts bucket (debug uploads on failure).
+  AWS_ACCESS_KEY_ID: ${{ secrets.DO_BEEKEEPER_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_BEEKEEPER_SECRET_ACCESS_KEY }}
   AWS_EC2_METADATA_DISABLED: true
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
