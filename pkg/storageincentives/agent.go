@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/safe"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
@@ -51,6 +52,7 @@ type ChainBackend interface {
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
+	SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error)
 }
 
 type Health interface {
@@ -76,6 +78,7 @@ type Agent struct {
 	health                 Health
 	sampleFlight           singleflight.Group[string, sampleResult]
 	disabled               atomic.Bool
+	feePriority            int
 }
 
 func New(overlay swarm.Address,
@@ -95,6 +98,7 @@ func New(overlay swarm.Address,
 	tranService transaction.Service,
 	health Health,
 	logger log.Logger,
+	feePriority int,
 ) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
@@ -110,6 +114,7 @@ func New(overlay swarm.Address,
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
 		chainStateGetter:       chainStateGetter,
+		feePriority:            feePriority,
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -318,7 +323,7 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 	a.metrics.RevealPhase.Inc()
 
 	rsh := sample.ReserveSampleHash.Bytes()
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
+	txHash, err := a.contract.Reveal(a.txContext(ctx), sample.StorageRadius, rsh, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return err
@@ -383,7 +388,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx, proofs)
+	txHash, err := a.contract.Claim(a.txContext(ctx), proofs)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
@@ -548,7 +553,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	txHash, err := a.contract.Commit(ctx, obfuscatedHash, round)
+	txHash, err := a.contract.Commit(a.txContext(ctx), obfuscatedHash, round)
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return err
@@ -640,13 +645,22 @@ func (a *Agent) SampleWithProofs(
 	}, nil
 }
 
+func (a *Agent) txContext(ctx context.Context) context.Context {
+	return sctx.SetFeePriority(ctx, a.feePriority)
+}
+
 func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
 		return nil, false, err
 	}
 
-	price, _, err := a.backend.SuggestedFeeAndTip(ctx, nil, redistribution.BoostTipPercent)
+	var price *big.Int
+	if a.feePriority != 0 {
+		price, _, err = a.backend.SuggestFeeHistory(ctx, a.feePriority)
+	} else {
+		price, _, err = a.backend.SuggestedFeeAndTip(ctx, nil, redistribution.BoostTipPercent)
+	}
 	if err != nil {
 		return nil, false, err
 	}

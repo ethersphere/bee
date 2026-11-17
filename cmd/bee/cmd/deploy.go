@@ -60,6 +60,7 @@ func (c *command) initDeployCmd() error {
 					Keepalive:   c.config.GetDuration(configKeyBlockchainRpcKeepalive),
 				},
 				c.config.GetUint64(optionNameBlockSyncInterval),
+				c.config.GetUint64(optionNameFeeHistoryBlockCount),
 			)
 			if err != nil {
 				return err
