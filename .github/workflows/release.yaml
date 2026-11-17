@@ -14,7 +14,8 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    # Docker Hub credentials are scoped to this environment (default branch / release tags only).
+    # All publishing secrets (Docker Hub, GPG, Gemfury, Homebrew/Scoop tokens) are
+    # scoped to this environment (default branch / release tags only).
     environment: release-ci
     steps:
       - name: Checkout
@@ -38,10 +39,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-release-
             ${{ runner.os }}-go-
-      - name: Docker Hub and Quay Login
+      - name: Docker Hub Login
         run: |
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - name: Set up Docker Buildx
@@ -62,8 +62,8 @@ jobs:
           args: release --clean --timeout 1h
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_PAT: ${{ secrets.GHA_PAT_BASIC }}
-          SCOOP_PAT: ${{ secrets.GHA_PAT_BASIC }}
+          HOMEBREW_TAP_PAT: ${{ secrets.HOMEBREW_TAP_PAT }}
+          SCOOP_PAT: ${{ secrets.SCOOP_PAT }}
           GEMFURY_TOKEN: ${{ secrets.GEMFURY_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
