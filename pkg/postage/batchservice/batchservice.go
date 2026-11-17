@@ -87,8 +87,8 @@ func New(
 
 	logger = logger.WithName(loggerName).Register()
 
-	dirty := false
-	if err := stateStore.Get(dirtyDBKey, &dirty); err != nil && !errors.Is(err, storage.ErrNotFound) {
+	dirty, err := DirtyShutdown(stateStore)
+	if err != nil {
 		return nil, false, err
 	}
 	if dirty {
@@ -154,6 +154,16 @@ func New(
 	}
 
 	return bs, snapshotLoaded, nil
+}
+
+// DirtyShutdown reports whether the previous run left a batch store
+// transaction unfinished, in which case New resets the store.
+func DirtyShutdown(stateStore storage.StateStorer) (bool, error) {
+	dirty := false
+	if err := stateStore.Get(dirtyDBKey, &dirty); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return false, err
+	}
+	return dirty, nil
 }
 
 // reset wipes the batch store so it can be rebuilt from scratch. It runs only
