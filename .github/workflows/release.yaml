@@ -14,7 +14,7 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    # All publishing secrets (Docker Hub, GPG, Gemfury, Homebrew/Scoop tokens) are
+    # All publishing secrets (Docker Hub, GPG, Gemfury, bee-releaser app key) are
     # scoped to this environment (default branch / release tags only).
     environment: release-ci
     steps:
@@ -55,6 +55,17 @@ jobs:
       - name: Set the API version
         run: |
           echo "BEE_API_VERSION=$(grep '^  version:' openapi/Swarm.yaml | awk '{print $2}')" >> $GITHUB_ENV
+      # Short-lived bee-releaser token, limited to the Homebrew tap and Scoop bucket
+      # repos, for goreleaser to push the formula and manifest.
+      - name: Generate token for Homebrew tap and Scoop bucket
+        id: pkg-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          owner: ethersphere
+          repositories: homebrew-tap,scoop
+          permission-contents: write
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
@@ -62,8 +73,8 @@ jobs:
           args: release --clean --timeout 1h
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_PAT: ${{ secrets.HOMEBREW_TAP_PAT }}
-          SCOOP_PAT: ${{ secrets.SCOOP_PAT }}
+          HOMEBREW_TAP_PAT: ${{ steps.pkg-token.outputs.token }}
+          SCOOP_PAT: ${{ steps.pkg-token.outputs.token }}
           GEMFURY_TOKEN: ${{ secrets.GEMFURY_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
