@@ -13,7 +13,7 @@ on:
         description: "Tag to create, e.g. v2.9.0 or v2.9.0-rc1"
         required: true
       ref:
-        description: "Branch or full commit SHA to tag"
+        description: "Branch or full commit SHA to tag (must be on the default branch or a release/* branch)"
         required: true
         default: master
 
@@ -51,10 +51,25 @@ jobs:
               if (e.status !== 404) throw e
             }
             const { data: c } = await github.rest.repos.getCommit({ owner, repo, ref: REF })
+            // getCommit also resolves commits that are on no branch, e.g. fork PR heads
+            // (refs/pull/*). Only tag commits on the default branch or a release/* branch.
+            const def = context.payload.repository.default_branch
+            const branches = (await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 }))
+              .map(b => b.name)
+              .filter(n => n === def || n.startsWith('release/'))
+              .sort((a, b) => (a === def ? -1 : b === def ? 1 : a.localeCompare(b)))
+            let onBranch = ''
+            for (const b of branches) {
+              const { data: cmp } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${b}...${c.sha}`, per_page: 1 })
+              if (cmp.status === 'identical' || cmp.status === 'behind') { onBranch = b; break }
+            }
+            if (!onBranch) {
+              return core.setFailed(`${c.sha} is not on ${def} or a release/* branch, refusing to tag it`)
+            }
             core.setOutput('sha', c.sha)
             core.summary
               .addHeading(`${TAG} will tag ${c.sha.slice(0, 12)}`)
-              .addRaw(`[${c.commit.message.split('\n')[0]}](${c.html_url}) (${REF})`)
+              .addRaw(`[${c.commit.message.split('\n')[0]}](${c.html_url}) (${REF}, on ${onBranch})`)
             await core.summary.write()
 
   tag:
