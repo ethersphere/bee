@@ -230,6 +230,8 @@ func TestWaitForInflight(t *testing.T) {
 
 // TestRetrieveChunkPeersExhausted checks that running out of peers is reported
 // as not found when at least one peer answered, and as no usable peer otherwise.
+// The request is repeated on the same client so that the second one runs while
+// the peers from the first one are still skipped.
 func TestRetrieveChunkPeersExhausted(t *testing.T) {
 	t.Parallel()
 
@@ -287,12 +289,14 @@ func TestRetrieveChunkPeersExhausted(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 			defer cancel()
 
-			_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
-			if !errors.Is(err, tc.want) {
-				t.Fatalf("got error %v, want %v", err, tc.want)
-			}
-			if errors.Is(err, tc.notWant) {
-				t.Fatalf("got error %v, must not match %v", err, tc.notWant)
+			for i := range 2 {
+				_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("request %d: got error %v, want %v", i, err, tc.want)
+				}
+				if errors.Is(err, tc.notWant) {
+					t.Fatalf("request %d: got error %v, must not match %v", i, err, tc.notWant)
+				}
 			}
 		})
 	}
