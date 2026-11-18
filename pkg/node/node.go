@@ -21,10 +21,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
@@ -78,7 +80,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
-	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
@@ -854,7 +855,10 @@ func NewBee(
 
 	// The snapshot loader and other single-contract consumers use the first version.
 	postageStampContractAddress := postageVersions[0].Address
-	postageStampContractABI := abiutil.MustParseABI(postageVersions[0].ABI)
+	postageStampContractABI, err := abi.JSON(strings.NewReader(postageVersions[0].ABI))
+	if err != nil {
+		return nil, fmt.Errorf("postage contract version 0 abi: %w", err)
+	}
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
@@ -868,7 +872,10 @@ func NewBee(
 	for i, v := range postageVersions {
 		vABI := postageStampContractABI
 		if i > 0 {
-			vABI = abiutil.MustParseABI(v.ABI)
+			vABI, err = abi.JSON(strings.NewReader(v.ABI))
+			if err != nil {
+				return nil, fmt.Errorf("postage contract version %d abi: %w", i, err)
+			}
 		}
 		postageImpls = append(postageImpls, contractversion.Version[postagecontract.Interface]{
 			FromBlock: fromBlock(v.FromRound),
@@ -1348,10 +1355,14 @@ func NewBee(
 		return nil, fmt.Errorf("staking contract versions: %w", err)
 	}
 	stakingImpls := make([]contractversion.Version[staking.Contract], 0, len(stakingVersions))
-	for _, v := range stakingVersions {
+	for i, v := range stakingVersions {
+		vABI, err := abi.JSON(strings.NewReader(v.ABI))
+		if err != nil {
+			return nil, fmt.Errorf("staking contract version %d abi: %w", i, err)
+		}
 		stakingImpls = append(stakingImpls, contractversion.Version[staking.Contract]{
 			FromBlock: fromBlock(v.FromRound),
-			Impl:      staking.New(overlayEthAddress, v.Address, abiutil.MustParseABI(v.ABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling)),
+			Impl:      staking.New(overlayEthAddress, v.Address, vABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling)),
 		})
 	}
 	var stakingContract staking.Contract
@@ -1455,10 +1466,14 @@ func NewBee(
 				return nil, fmt.Errorf("redistribution contract versions: %w", err)
 			}
 			redistributionImpls := make([]contractversion.Version[redistribution.Contract], 0, len(redistributionVersions))
-			for _, v := range redistributionVersions {
+			for i, v := range redistributionVersions {
+				vABI, err := abi.JSON(strings.NewReader(v.ABI))
+				if err != nil {
+					return nil, fmt.Errorf("redistribution contract version %d abi: %w", i, err)
+				}
 				redistributionImpls = append(redistributionImpls, contractversion.Version[redistribution.Contract]{
 					FromBlock: fromBlock(v.FromRound),
-					Impl:      redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, v.Address, abiutil.MustParseABI(v.ABI), contractGasLimit),
+					Impl:      redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, v.Address, vABI, contractGasLimit),
 				})
 			}
 			var redistributionContract redistribution.Contract

@@ -152,3 +152,78 @@ func TestNewSegmentedInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestListenerSegmentPaused(t *testing.T) {
+	t.Parallel()
+
+	const boundary = 50
+	addrA := common.HexToAddress("aaaa")
+	addrB := common.HexToAddress("bbbb")
+
+	pausedLog := func(a common.Address, block uint64) types.Log {
+		return types.Log{
+			Address:     a,
+			BlockNumber: block,
+			Topics:      []common.Hash{postageStampContractABI.Events["Paused"].ID},
+			Data:        make([]byte, 32),
+		}
+	}
+	segments := []listener.Segment{
+		{Address: addrA, ABI: postageStampContractABI, FromBlock: 0},
+		{Address: addrB, ABI: postageStampContractABI, FromBlock: boundary},
+	}
+
+	listen := func(t *testing.T, logs []types.Log, ev *updater) error {
+		t.Helper()
+		f := &recordingFilterer{
+			blockNumber: 120 + uint64(listener.TailSize),
+			logs:        logs,
+		}
+		l, err := listener.NewSegmented(nil, log.Noop, f, segments, 1, stallingTimeout, backoffTime, 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, l)
+		select {
+		case err := <-l.Listen(t.Context(), 0, ev):
+			return err
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for sync")
+		}
+		return nil
+	}
+
+	t.Run("superseded segment paused is ignored", func(t *testing.T) {
+		t.Parallel()
+
+		createB := createArgs{id: hash[:], owner: addr[:], amount: big.NewInt(2), normalisedAmount: big.NewInt(2), depth: 21}
+		logB := createB.toLog(60)
+		logB.Address = addrB
+
+		ev := &updater{eventC: make(chan any, 100)}
+		if err := listen(t, []types.Log{pausedLog(addrA, 10), logB}, ev); err != nil {
+			t.Fatalf("got %v, want sync to continue", err)
+		}
+
+		var creates []createArgs
+		for len(ev.eventC) > 0 {
+			if c, ok := (<-ev.eventC).(createArgs); ok {
+				creates = append(creates, c)
+			}
+		}
+		if len(creates) != 1 {
+			t.Fatalf("got %d create events, want 1", len(creates))
+		}
+		creates[0].compareF(t, createB)
+	})
+
+	t.Run("last segment paused stops sync", func(t *testing.T) {
+		t.Parallel()
+
+		ev := &updater{eventC: make(chan any, 100)}
+		err := listen(t, []types.Log{pausedLog(addrB, 60)}, ev)
+		if !errors.Is(err, listener.ErrPostagePaused) {
+			t.Fatalf("got %v, want %v", err, listener.ErrPostagePaused)
+		}
+	})
+}

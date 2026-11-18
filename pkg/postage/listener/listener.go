@@ -271,6 +271,12 @@ func (l *listener) processEvent(seg *segment, e types.Log, updater postage.Event
 			e.TxHash,
 		)
 	case seg.pausedTopic:
+		if seg != &l.segments[len(l.segments)-1] {
+			// a superseded contract is expected to be paused during a
+			// migration; keep syncing into the next segment.
+			l.logger.Debug("superseded postage contract is paused", "contract_address", seg.Address)
+			return nil
+		}
 		l.logger.Warning("Postage contract is paused.")
 		return ErrPostagePaused
 	default:
