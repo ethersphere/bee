@@ -67,9 +67,12 @@ jobs:
               return core.setFailed(`${c.sha} is not on ${def} or a release/* branch, refusing to tag it`)
             }
             core.setOutput('sha', c.sha)
+            // Escape everything user-controlled: the summary is what the release approver reviews.
+            const esc = s => s.replace(/[&<>"'`\[\]]/g, ch => `&#${ch.charCodeAt(0)};`)
+            const subject = c.commit.message.split('\n')[0]
             core.summary
-              .addHeading(`${TAG} will tag ${c.sha.slice(0, 12)}`)
-              .addRaw(`[${c.commit.message.split('\n')[0]}](${c.html_url}) (${REF}, on ${onBranch})`)
+              .addHeading(`${TAG} will tag ${c.sha}`)
+              .addRaw(`<a href="${c.html_url}">${esc(subject)}</a> (${esc(REF)}, on ${esc(onBranch)})`, true)
             await core.summary.write()
 
   tag:
