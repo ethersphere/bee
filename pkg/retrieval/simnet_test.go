@@ -171,7 +171,7 @@ func runRetrieval(t *testing.T, p simParams, healthFirst bool, forwarderFirst fl
 		}
 		for i := range n {
 			var (
-				topo   = &simTopology{base: g.addrs[i], peers: g.peers[i], legacy: g.legacy[i]}
+				topo   = &simTopology{base: g.addrs[i], peers: g.peers[i], legacy: g.legacy[i], private: g.private[i]}
 				logger = log.Noop
 				rad    = g.radius[i]
 			)
@@ -185,6 +185,8 @@ func runRetrieval(t *testing.T, p simParams, healthFirst bool, forwarderFirst fl
 				net.handlers[retrieval.ProtocolName][i] = nodes[i].Protocol().StreamSpecs[0].Handler
 				nodes[i].SetForwarderHealthFirst(unit(uint64(p.seed), 7, uint64(i)) >= forwarderFirst)
 			}
+			nodes[i].SetAnyReach(p.anyReach)
+			nodes[i].SetNoHealth(p.noHealth)
 		}
 		nodes[g.origin].SetHealthFirst(healthFirst)
 
@@ -348,6 +350,86 @@ func TestSimDownloadMixed(t *testing.T) {
 			for _, share := range []float64{0.1, 0.25, 0.5, 0.75} {
 				t.Run(fmt.Sprintf("mode=%s/allHood=%v/forwarderFirst=%v", mode, allHood, share), func(t *testing.T) {
 					t.Logf("\n%s", runRetrieval(t, p, false, share, allHood, mode))
+				})
+			}
+		}
+	}
+}
+
+// TestSimDownloadReach downloads from networks where a share of the full
+// nodes is not reachable. Set SIMNET=reach to run it; SIMREACH selects "pair"
+// (health per pair of nodes) or "peer" (health as a property of the peer).
+func TestSimDownloadReach(t *testing.T) {
+	if os.Getenv("SIMNET") != "reach" {
+		t.Skip("set SIMNET=reach to run")
+	}
+	base := simParams{seed: 1, nodes: 1000, radius: 8, healthy: 0.32, populated: true, chunks: 6000}
+	for _, health := range []string{"pair", "peer"} {
+		if want := os.Getenv("SIMREACH"); want != "" && want != health {
+			continue
+		}
+		type reach struct {
+			share float64
+			mode  string
+		}
+		reaches := []reach{{0, ""}}
+		for _, share := range []float64{0.1, 0.3, 0.5} {
+			reaches = append(reaches, reach{share, simReachNode}, reach{share, simReachPair})
+		}
+		for _, r := range reaches {
+			p := base
+			p.peerHealth = health == "peer"
+			p.unreachable, p.reachMode = r.share, r.mode
+			for _, allHood := range []bool{false, true} {
+				for _, v := range []simVariant{{true, 0}, {false, 0}, {false, 1}} {
+					t.Run(fmt.Sprintf("health=%s/unreachable=%v/mode=%s/allHood=%v/healthFirst=%v/forwarderFirst=%v", health, r.share, r.mode, allHood, v.healthFirst, v.forwarderFirst), func(t *testing.T) {
+						t.Logf("\n%s", runRetrieval(t, p, v.healthFirst, v.forwarderFirst, allHood, simUnhealthyFlag))
+					})
+				}
+				if r.share > 0 {
+					p := p
+					p.anyReach = true
+					t.Run(fmt.Sprintf("health=%s/unreachable=%v/mode=%s/allHood=%v/anyReach", health, r.share, r.mode, allHood), func(t *testing.T) {
+						t.Logf("\n%s", runRetrieval(t, p, false, 1, allHood, simUnhealthyFlag))
+					})
+				}
+			}
+		}
+	}
+}
+
+// TestSimDownloadNoHealth compares the proximity rule of the branch with a
+// selection that does not use the health mark at all (the closest reachable
+// peer), on every node. Set SIMNET=nohealth to run it.
+func TestSimDownloadNoHealth(t *testing.T) {
+	if os.Getenv("SIMNET") != "nohealth" {
+		t.Skip("set SIMNET=nohealth to run")
+	}
+	type run struct {
+		name string
+		p    simParams
+		mode string
+	}
+	pair := simParams{seed: 1, nodes: 1000, radius: 8, healthy: 0.32, populated: true, chunks: 24609}
+	peer := pair
+	peer.peerHealth = true
+	big := pair
+	big.nodes, big.radius = 4500, 10
+	runs := []run{
+		{"pair", pair, simUnhealthyFlag},
+		{"pair4500", big, simUnhealthyFlag},
+		{"peer", peer, simUnhealthyFlag},
+		{"peer-slow", peer, simUnhealthySlow},
+		{"peer-stall", peer, simUnhealthyStall},
+		{"peer-missing", peer, simUnhealthyMissing},
+	}
+	for _, r := range runs {
+		for _, allHood := range []bool{false, true} {
+			for _, noHealth := range []bool{false, true} {
+				p := r.p
+				p.noHealth = noHealth
+				t.Run(fmt.Sprintf("net=%s/allHood=%v/noHealth=%v", r.name, allHood, noHealth), func(t *testing.T) {
+					t.Logf("\n%s", runRetrieval(t, p, false, 1, allHood, r.mode))
 				})
 			}
 		}

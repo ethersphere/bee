@@ -30,6 +30,25 @@ The switches are fields that are not exported and are set only through
 | `healthFirst` | retrieval | The origin asks healthy peers at any distance first |
 | `forwarderHealthFirst` | retrieval | A forwarder asks healthy peers at any distance first |
 
+Two more switches select experiments that are not in the production code.
+
+| Switch | Package | Effect when set |
+|---|---|---|
+| `anyReach` | retrieval | The proximity rule also applies to connected peers that are not reachable |
+| `noHealth` | retrieval | The closest reachable peer is asked; the health mark is not used |
+
+## Reachability
+
+`simParams.unreachable` is the share of full nodes that are not reachable.
+`simParams.reachMode` says what that means.
+
+| Mode | Its peers see the node as | The node takes itself for |
+|---|---|---|
+| `node` | not reachable | not reachable |
+| `mark` | not reachable | reachable |
+| `pair` | not reachable for this share of pairs of nodes | reachable |
+| `self` | reachable | not reachable |
+
 ## How to run
 
 All simulator tests are skipped without the `SIMNET` environment variable,
@@ -47,6 +66,18 @@ SIMNET=unhealthy SIMMODE=slow,stall,missing go test ./pkg/retrieval/ -run TestSi
 
 # download when a share of the forwarders has the change in closestPeer
 SIMNET=mixed go test ./pkg/retrieval/ -run TestSimDownloadMixed -count=1 -v -timeout 30m
+
+# upload and download with nodes that are not reachable (modes node, mark, pair);
+# SIMREACH=pair or SIMREACH=peer selects the health model, without it both run
+SIMNET=reach go test ./pkg/pushsync/ -run TestSimUploadReach -count=1 -v -timeout 90m
+SIMNET=reach go test ./pkg/retrieval/ -run TestSimDownloadReach -count=1 -v -timeout 90m
+
+# upload with nodes that their peers see as reachable and that do not take
+# themselves for reachable (mode self)
+SIMNET=selfreach go test ./pkg/pushsync/ -run TestSimUploadSelfReach -count=1 -v -timeout 90m
+
+# download: the proximity rule against a selection without the health mark
+SIMNET=nohealth go test ./pkg/retrieval/ -run TestSimDownloadNoHealth -count=1 -v -timeout 90m
 ```
 
 ## Reference numbers

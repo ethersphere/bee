@@ -31,3 +31,9 @@ func (s *Service) SetHealthFirst(v bool) { s.healthFirst = v }
 // SetForwarderHealthFirst makes a forwarder ask healthy peers at any distance
 // first.
 func (s *Service) SetForwarderHealthFirst(v bool) { s.forwarderHealthFirst = v }
+
+// SetAnyReach makes the proximity rule apply to peers that are not reachable.
+func (s *Service) SetAnyReach(v bool) { s.anyReach = v }
+
+// SetNoHealth makes retrieval select the closest reachable peer.
+func (s *Service) SetNoHealth(v bool) { s.noHealth = v }

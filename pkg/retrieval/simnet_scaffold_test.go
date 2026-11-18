@@ -53,7 +53,32 @@ type simParams struct {
 	// populated gives every neighborhood at least one full node. Addresses
 	// from random keys leave some neighborhoods empty.
 	populated bool
+	// unreachable is the share of full nodes that are not reachable, and
+	// reachMode says what that means:
+	//   simReachNode  every node sees the peer as not reachable, and the
+	//                 node itself knows that it is not reachable;
+	//   simReachMark  every node sees the peer as not reachable, the node
+	//                 itself takes itself for reachable;
+	//   simReachPair  a node sees this share of its peers as not reachable,
+	//                 every node takes itself for reachable.
+	unreachable float64
+	reachMode   string
+	// noHealth makes retrieval select the closest reachable peer and not
+	// look at the health mark (an experiment, download runs only).
+	noHealth bool
+	// anyReach makes retrieval apply its proximity rule to peers that are
+	// not reachable (an experiment, used by the download runs only).
+	anyReach bool
 }
+
+const (
+	simReachNode = "node"
+	simReachMark = "mark"
+	simReachPair = "pair"
+	// simReachSelf: every node sees the peer as reachable, the node itself
+	// does not take itself for reachable.
+	simReachSelf = "self"
+)
 
 func mix(vs ...uint64) uint64 {
 	h := uint64(0x9e3779b97f4a7c15)
@@ -78,14 +103,17 @@ type simGraph struct {
 	peers  [][]simPeer // sorted by proximity order, shallow first
 	radius []uint8
 	legacy []bool
-	origin int
+	// private nodes do not take themselves for reachable
+	private []bool
+	origin  int
 }
 
 type simPeer struct {
-	idx     int
-	addr    swarm.Address
-	po      uint8
-	healthy bool
+	idx       int
+	addr      swarm.Address
+	po        uint8
+	healthy   bool
+	reachable bool
 }
 
 func addrBit(a []byte, k int) int { return int(a[k/8]>>(7-k%8)) & 1 }
@@ -137,6 +165,7 @@ func newSimGraph(p simParams) *simGraph {
 		}
 		g.radius = append(g.radius, rad)
 		g.legacy = append(g.legacy, i != g.origin && unit(uint64(p.seed), 2, uint64(i)) >= p.upgraded)
+		g.private = append(g.private, i != g.origin && (p.reachMode == simReachNode || p.reachMode == simReachSelf) && unit(uint64(p.seed), 8, uint64(i)) < p.unreachable)
 	}
 
 	adj := make([]map[int]uint8, n)
@@ -204,7 +233,14 @@ func newSimGraph(p simParams) *simGraph {
 			if p.peerHealth {
 				h = unit(uint64(p.seed), 3, uint64(j))
 			}
-			g.peers[i] = append(g.peers[i], simPeer{idx: j, addr: g.addrs[j], po: po, healthy: h < p.healthy})
+			r := unit(uint64(p.seed), 8, uint64(j))
+			if p.reachMode == simReachPair {
+				r = unit(uint64(p.seed), 8, uint64(i), uint64(j))
+			}
+			if p.reachMode == simReachSelf {
+				r = 1
+			}
+			g.peers[i] = append(g.peers[i], simPeer{idx: j, addr: g.addrs[j], po: po, healthy: h < p.healthy, reachable: r >= p.unreachable})
 		}
 		sort.Slice(g.peers[i], func(a, b int) bool {
 			x, y := g.peers[i][a], g.peers[i][b]
@@ -228,11 +264,15 @@ type simTopology struct {
 	// legacy selects the ClosestPeer of v2.8.3, which stops at the first bin
 	// that is deeper than the proximity of the base to the address.
 	legacy bool
+	// private makes the node take itself for not reachable
+	private bool
 }
 
-func (s *simTopology) pass(p simPeer, f topology.Select) bool { return !f.Healthy || p.healthy }
+func (s *simTopology) pass(p simPeer, f topology.Select) bool {
+	return (!f.Healthy || p.healthy) && (!f.Reachable || p.reachable)
+}
 
-func (s *simTopology) IsReachable() bool { return true }
+func (s *simTopology) IsReachable() bool { return !s.private }
 
 func (s *simTopology) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
 	for i := len(s.peers) - 1; i >= 0; i-- {

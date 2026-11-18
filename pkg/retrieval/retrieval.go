@@ -86,6 +86,12 @@ type Service struct {
 	// Switch for tests only, set through export_test.go: a forwarder asks
 	// healthy peers at any distance first, as before the change in closestPeer.
 	forwarderHealthFirst bool
+	// anyReach is an experiment of the simulator: the peer of the highest
+	// proximity order is asked also when it is not reachable.
+	anyReach bool
+	// noHealth is an experiment of the simulator: the closest reachable
+	// peer is asked, the health mark is not used.
+	noHealth bool
 }
 
 func New(
@@ -399,7 +405,10 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		err     error
 	)
 
-	closest, err = s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true, Healthy: true}, skipPeers...)
+	err = topology.ErrNotFound
+	if !s.noHealth {
+		closest, err = s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true, Healthy: true}, skipPeers...)
+	}
 	if errors.Is(err, topology.ErrNotFound) {
 		closest, err = s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
 		if errors.Is(err, topology.ErrNotFound) {
@@ -416,10 +425,10 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		healthFirst = s.forwarderHealthFirst
 	}
 
-	if !healthFirst {
+	if !healthFirst && !s.noHealth {
 		// Proximity order comes before health: prefer a closer peer that is
 		// not healthy to a healthy peer of a lower proximity order.
-		nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
+		nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: !s.anyReach}, skipPeers...)
 		if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
 			closest = nearest
 		}

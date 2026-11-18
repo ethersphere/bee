@@ -7,6 +7,7 @@ package pushsync_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -174,7 +175,7 @@ func TestSimTopologyMatchesKademlia(t *testing.T) {
 		}
 		kad.Reachable(addr, p2p.ReachabilityStatusPublic)
 		kad.UpdatePeerHealth(addr, healthy, time.Millisecond)
-		sim.peers = append(sim.peers, simPeer{addr: addr, po: swarm.Proximity(base.Bytes(), addr.Bytes()), healthy: healthy})
+		sim.peers = append(sim.peers, simPeer{addr: addr, po: swarm.Proximity(base.Bytes(), addr.Bytes()), healthy: healthy, reachable: true})
 	}
 
 	filters := []topology.Select{{}, {Reachable: true}, {Reachable: true, Healthy: true}}
@@ -237,5 +238,90 @@ func TestSimTopologyMatchesKademlia(t *testing.T) {
 	empty := &simTopology{base: base}
 	if _, err := empty.ClosestPeer(randAddr(), true, topology.Select{}); !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("empty table: %v", err)
+	}
+}
+
+// TestSimUploadReach uploads to networks where a share of the full nodes is
+// not reachable, without and with the first-hop memory of the origin. Set
+// SIMNET=reach to run it; SIMREACH selects "pair" (health per pair of nodes)
+// or "peer" (health as a property of the peer).
+func TestSimUploadReach(t *testing.T) {
+	if os.Getenv("SIMNET") != "reach" {
+		t.Skip("set SIMNET=reach to run")
+	}
+	type net struct {
+		name string
+		p    simParams
+	}
+	var nets []net
+	add := func(health string, p simParams) {
+		if want := os.Getenv("SIMREACH"); want != "" && want != health {
+			return
+		}
+		nets = append(nets, net{fmt.Sprintf("health=%s/unreachable=%v/mode=%s/upgraded=%v", health, p.unreachable, p.reachMode, p.upgraded), p})
+	}
+	for _, upgraded := range []float64{0, 1} {
+		pair := simPrimary
+		pair.populated, pair.chunks, pair.upgraded = true, 8832, upgraded
+		add("pair", pair)
+		for _, share := range []float64{0.1, 0.3, 0.5} {
+			for _, mode := range []string{simReachNode, simReachMark, simReachPair} {
+				p := pair
+				p.unreachable, p.reachMode = share, mode
+				add("pair", p)
+			}
+		}
+		peer := pair
+		peer.peerHealth, peer.chunks = true, 2650
+		add("peer", peer)
+		for _, mode := range []string{simReachNode, simReachPair} {
+			p := peer
+			p.unreachable, p.reachMode = 0.3, mode
+			add("peer", p)
+		}
+	}
+	for _, n := range nets {
+		for _, hop := range []bool{false, true} {
+			p := n.p
+			p.hopMemory = hop
+			t.Run(fmt.Sprintf("%s/memory=%v", n.name, hop), func(t *testing.T) {
+				res, _, _, _ := runSim(t, p)
+				t.Logf("\n%s", res)
+			})
+		}
+	}
+}
+
+// TestSimUploadSelfReach uploads to networks where a share of the full nodes
+// is seen as reachable by its peers and does not take itself for reachable.
+// Set SIMNET=selfreach to run it.
+func TestSimUploadSelfReach(t *testing.T) {
+	if os.Getenv("SIMNET") != "selfreach" {
+		t.Skip("set SIMNET=selfreach to run")
+	}
+	for _, upgraded := range []float64{0, 1} {
+		for _, peerHealth := range []bool{false, true} {
+			shares := []float64{0, 0.1, 0.3, 0.5}
+			if peerHealth {
+				shares = []float64{0.3}
+			}
+			for _, share := range shares {
+				p := simPrimary
+				p.populated, p.chunks, p.upgraded, p.peerHealth = true, 8832, upgraded, peerHealth
+				if peerHealth {
+					p.chunks = 2650
+				}
+				if share > 0 {
+					p.unreachable, p.reachMode = share, simReachSelf
+				}
+				for _, hop := range []bool{false, true} {
+					p.hopMemory = hop
+					t.Run(fmt.Sprintf("peerHealth=%v/unreachable=%v/upgraded=%v/memory=%v", peerHealth, share, upgraded, hop), func(t *testing.T) {
+						res, _, _, _ := runSim(t, p)
+						t.Logf("\n%s", res)
+					})
+				}
+			}
+		}
 	}
 }
