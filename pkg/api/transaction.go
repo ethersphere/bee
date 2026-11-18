@@ -35,6 +35,7 @@ type transactionInfo struct {
 	GasTipBoost     int             `json:"gasTipBoost"`
 	GasTipCap       *bigint.BigInt  `json:"gasTipCap"`
 	GasFeeCap       *bigint.BigInt  `json:"gasFeeCap"`
+	FeePriority     string          `json:"feePriority,omitempty"`
 	Data            string          `json:"data"`
 	Created         time.Time       `json:"created"`
 	Description     string          `json:"description"`
@@ -75,6 +76,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 			GasFeeCap:       bigint.Wrap(storedTransaction.GasFeeCap),
 			GasTipCap:       bigint.Wrap(storedTransaction.GasTipCap),
 			GasTipBoost:     storedTransaction.GasTipBoost,
+			FeePriority:     transaction.FeePriorityName(storedTransaction.FeePriority),
 			Data:            hexutil.Encode(storedTransaction.Data),
 			Created:         time.Unix(storedTransaction.Created, 0),
 			Description:     storedTransaction.Description,
@@ -120,6 +122,7 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		GasFeeCap:       bigint.Wrap(storedTransaction.GasFeeCap),
 		GasTipCap:       bigint.Wrap(storedTransaction.GasTipCap),
 		GasTipBoost:     storedTransaction.GasTipBoost,
+		FeePriority:     transaction.FeePriorityName(storedTransaction.FeePriority),
 		Data:            hexutil.Encode(storedTransaction.Data),
 		Created:         time.Unix(storedTransaction.Created, 0),
 		Description:     storedTransaction.Description,

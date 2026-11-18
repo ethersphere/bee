@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	resMock "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
@@ -44,6 +46,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls   bool
 		balance         *big.Int
 		doubling        uint8
+		feePriority     int
 		isReserveSynced func(depth uint8) bool
 		sisterAnchor    bool // round anchor at PO radius from the overlay instead of within committed depth
 	}{
@@ -137,6 +140,16 @@ func TestAgent(t *testing.T) {
 			doubling:        1,
 			isReserveSynced: func(depth uint8) bool { return depth >= 8 },
 			sisterAnchor:    true,
+		}, {
+			name:           "expected calls use the configured fee priority",
+			blocksPerRound: 12,
+			blocksPerPhase: 4,
+			incrementBy:    2,
+			expectedCalls:  true,
+			limit:          144,
+			balance:        bigBalance,
+			doubling:       1,
+			feePriority:    transaction.FeePriorityLow,
 		},
 	}
 
@@ -164,7 +177,7 @@ func TestAgent(t *testing.T) {
 					contract.anchor[radius/8] ^= 0x80 >> (radius % 8)
 				}
 
-				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.isReserveSynced)
+				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling, tc.feePriority, tc.isReserveSynced)
 				testutil.CleanupCloser(t, service)
 
 				<-wait
@@ -205,6 +218,16 @@ func TestAgent(t *testing.T) {
 
 					prevCall = calls[i]
 				}
+
+				priorities := contract.feePriorities()
+				if len(priorities) == 0 {
+					t.Fatal("commit and reveal did not record a fee priority")
+				}
+				for _, got := range priorities {
+					if got != tc.feePriority {
+						t.Fatalf("got fee priority %d, want %d", got, tc.feePriority)
+					}
+				}
 			})
 		})
 	}
@@ -221,7 +244,7 @@ func TestAgentEnabledDefault(t *testing.T) {
 			balance:     big.NewInt(4_000_000_000),
 		}
 		contract := &mockContract{t: t, expectedRadius: 8}
-		service, err := createService(t, swarm.RandAddress(t), backend, contract, 9, 3, 8, 0)
+		service, err := createService(t, swarm.RandAddress(t), backend, contract, 9, 3, 8, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,7 +289,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 				balance:     bigBalance,
 			}
 			contract := &mockContract{t: t, expectedRadius: 8}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -312,7 +335,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -355,7 +378,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					once.Do(func() { close(committed) })
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -402,7 +425,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -447,7 +470,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 					<-unblock
 				},
 			}
-			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0)
+			service, err := createService(t, swarm.RandAddress(t), backend, contract, blocksPerRound, blocksPerPhase, 8, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -484,6 +507,65 @@ func TestAgentParticipationToggle(t *testing.T) {
 	})
 }
 
+func TestHasEnoughFundsFeePriority(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		tier int
+	}{
+		{name: "default suggestion"},
+		{name: "configured priority", tier: transaction.FeePriorityLow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := &feeProbeBackend{mockchainBackend: mockchainBackend{balance: big.NewInt(4_000_000_000)}}
+			agent, err := createService(
+				t,
+				swarm.ZeroAddress,
+				backend,
+				&mockContract{t: t},
+				152,
+				38,
+				0,
+				0,
+				tc.tier,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := agent.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+
+			if _, _, err := agent.HasEnoughFundsToPlay(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			backend.mu.Lock()
+			defer backend.mu.Unlock()
+			if tc.tier == 0 {
+				if backend.suggested == 0 || backend.history != 0 {
+					t.Fatalf("suggested=%d history=%d, want the default tip suggestion", backend.suggested, backend.history)
+				}
+				if backend.boost != redistribution.BoostTipPercent || backend.gasPrice != nil {
+					t.Fatalf("boost %d gas price %v, want boost %d and no gas price", backend.boost, backend.gasPrice, redistribution.BoostTipPercent)
+				}
+				return
+			}
+			if backend.history == 0 || backend.suggested != 0 {
+				t.Fatalf("suggested=%d history=%d, want fee history for %d", backend.suggested, backend.history, tc.tier)
+			}
+			if backend.tier != tc.tier {
+				t.Fatalf("fee history tier %d, want %d", backend.tier, tc.tier)
+			}
+		})
+	}
+}
+
 func waitUntilStatus(t *testing.T, agent *storageincentives.Agent, pred func(*storageincentives.Status) bool) {
 	t.Helper()
 
@@ -509,6 +591,7 @@ func createService(
 	blocksPerPhase uint64,
 	radius uint8,
 	doubling uint8,
+	feePriority int,
 	isReserveSynced ...func(uint8) bool,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
@@ -549,6 +632,7 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
+		feePriority,
 	)
 }
 
@@ -593,6 +677,38 @@ func (m *mockchainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return big.NewInt(4), big.NewInt(5), nil
 }
 
+func (m *mockchainBackend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
+// feeProbeBackend records which pricing method HasEnoughFundsToPlay uses.
+type feeProbeBackend struct {
+	mockchainBackend
+	mu        sync.Mutex
+	suggested int
+	history   int
+	boost     int
+	tier      int
+	gasPrice  *big.Int
+}
+
+func (b *feeProbeBackend) SuggestedFeeAndTip(_ context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.suggested++
+	b.boost = boostPercent
+	b.gasPrice = gasPrice
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
+func (b *feeProbeBackend) SuggestFeeHistory(_ context.Context, tier int) (*big.Int, *big.Int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.history++
+	b.tier = tier
+	return big.NewInt(4), big.NewInt(5), nil
+}
+
 type contractCall int
 
 func (c contractCall) String() string {
@@ -618,6 +734,7 @@ const (
 
 type mockContract struct {
 	callsList       []contractCall
+	priorities      []int
 	mtx             sync.Mutex
 	expectedRadius  uint8
 	t               *testing.T
@@ -637,6 +754,14 @@ func (m *mockContract) getCalls() []contractCall {
 	calls := make([]contractCall, len(m.callsList))
 	copy(calls, m.callsList)
 	return calls
+}
+
+func (m *mockContract) feePriorities() []int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	priorities := make([]int, len(m.priorities))
+	copy(priorities, m.priorities)
+	return priorities
 }
 
 func (m *mockContract) countCalls(call contractCall) int {
@@ -686,17 +811,18 @@ func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProof
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {
+func (m *mockContract) Commit(ctx context.Context, _ []byte, _ uint64) (common.Hash, error) {
 	if m.beforeCommit != nil {
 		m.beforeCommit()
 	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
+	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
+func (m *mockContract) Reveal(ctx context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -705,6 +831,7 @@ func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (c
 	}
 
 	m.callsList = append(m.callsList, revealCall)
+	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
 	return common.Hash{}, nil
 }
 

@@ -337,7 +337,6 @@ brews:
 dockers:
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-amd64"
-  - "quay.io/ethersphere/bee:{{ .Version }}-amd64"
   use: buildx
   ids:
     - linux
@@ -352,7 +351,6 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-armv7"
-  - "quay.io/ethersphere/bee:{{ .Version }}-armv7"
   use: buildx
   ids:
     - linux
@@ -368,7 +366,6 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-arm64v8"
-  - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8"
   use: buildx
   ids:
     - linux
@@ -383,7 +380,6 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-amd64-slim"
-  - "quay.io/ethersphere/bee:{{ .Version }}-amd64-slim"
   use: buildx
   ids:
     - linux-slim
@@ -398,7 +394,6 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}-slim"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-armv7-slim"
-  - "quay.io/ethersphere/bee:{{ .Version }}-armv7-slim"
   use: buildx
   ids:
     - linux-slim
@@ -414,7 +409,6 @@ dockers:
   - "--label=org.opencontainers.image.version={{.Version}}-slim"
 - image_templates:
   - "ethersphere/bee:{{ .Version }}-arm64v8-slim"
-  - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim"
   use: buildx
   ids:
     - linux-slim
@@ -456,34 +450,6 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-armv7
   - ethersphere/bee:{{ .Version }}-arm64v8
   skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-  skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-  skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: quay.io/ethersphere/bee:latest
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-- name_template: quay.io/ethersphere/bee:stable
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8
-  skip_push: auto
 - name_template: ethersphere/bee:{{ .Major }}-slim
   image_templates:
   - ethersphere/bee:{{ .Version }}-amd64-slim
@@ -511,32 +477,4 @@ docker_manifests:
   - ethersphere/bee:{{ .Version }}-amd64-slim
   - ethersphere/bee:{{ .Version }}-armv7-slim
   - ethersphere/bee:{{ .Version }}-arm64v8-slim
-  skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-  skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-  skip_push: auto
-- name_template: quay.io/ethersphere/bee:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-- name_template: quay.io/ethersphere/bee:latest-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
-- name_template: quay.io/ethersphere/bee:stable-slim
-  image_templates:
-  - quay.io/ethersphere/bee:{{ .Version }}-amd64-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-armv7-slim
-  - quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim
   skip_push: auto

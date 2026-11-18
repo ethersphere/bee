@@ -1691,3 +1691,103 @@ func equalGas(got, want []uint64) bool {
 	}
 	return true
 }
+
+func TestSendUsesFeeHistoryForTier(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	sender := common.HexToAddress("0xddff")
+	recipient := common.HexToAddress("0xabcd")
+	txData := common.Hex2Bytes("0xabcdee")
+	value := big.NewInt(1)
+	estimatedGasLimit := uint64(30000)
+	gasLimit := estimatedGasLimit + estimatedGasLimit*transaction.GasBufferPercent/100
+	nonce := uint64(2)
+	chainID := big.NewInt(5)
+	historyTip := big.NewInt(55)
+	historyFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), historyTip)
+	gasPrice := big.NewInt(9000)
+
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       gasLimit,
+		GasFeeCap: historyFeeCap,
+		GasTipCap: historyTip,
+		Data:      txData,
+	})
+	var historyCalled bool
+	svc, err := transaction.NewService(logger, sender,
+		backendmock.New(
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				if tx != signedTx {
+					t.Fatal("not sending signed transaction")
+				}
+				return nil
+			}),
+			backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+				return estimatedGasLimit, nil
+			}),
+			backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+				return nonce - 1, nil
+			}),
+			backendmock.WithSuggestedFeeAndTipFunc(func(context.Context, *big.Int, int) (*big.Int, *big.Int, error) {
+				t.Fatal("fee suggestion must not be queried when a fee priority is set")
+				return nil, nil, nil
+			}),
+			backendmock.WithSuggestFeeHistoryFunc(func(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
+				historyCalled = true
+				if tier != transaction.FeePriorityLow {
+					t.Fatalf("got tier %d, want low", tier)
+				}
+				return historyFeeCap, historyTip, nil
+			}),
+		),
+		signerMockForTransaction(t, signedTx, sender, chainID),
+		storemock.NewStateStore(),
+		chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				return nil, nil, nil
+			}),
+		),
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, svc)
+
+	txHash, err := svc.Send(context.Background(), &transaction.TxRequest{
+		To:          &recipient,
+		Data:        txData,
+		Value:       value,
+		GasPrice:    gasPrice,
+		FeePriority: transaction.FeePriorityLow,
+	}, transaction.DefaultTipBoostPercent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if txHash != signedTx.Hash() {
+		t.Fatalf("got hash %s, want %s", txHash, signedTx.Hash())
+	}
+	if !historyCalled {
+		t.Fatal("fee history was not queried")
+	}
+
+	stored, err := svc.StoredTransaction(txHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.GasTipCap.Cmp(historyTip) != 0 {
+		t.Fatalf("stored tip %s, want %s", stored.GasTipCap, historyTip)
+	}
+	if stored.FeePriority != transaction.FeePriorityLow {
+		t.Fatalf("stored fee priority %d, want low", stored.FeePriority)
+	}
+	if stored.GasTipBoost != 0 {
+		t.Fatalf("stored tip boost %d, want none for a fee priority", stored.GasTipBoost)
+	}
+}
