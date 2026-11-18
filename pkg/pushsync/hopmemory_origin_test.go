@@ -185,14 +185,6 @@ func (n *hopNet) pushShallow() {
 	}
 }
 
-// pushPaused pushes a chunk and wants ErrNeighborhoodShallow.
-func (n *hopNet) pushPaused() {
-	n.t.Helper()
-	if err := n.push(); !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
-		n.t.Fatalf("got %v, want %v", err, pushsync.ErrNeighborhoodShallow)
-	}
-}
-
 // TestOriginPrefersKnownValidPeer checks that the next chunk goes to the
 // first hop with a valid record, not to a closer one that gave a shallow receipt.
 func TestOriginPrefersKnownValidPeer(t *testing.T) {
@@ -216,33 +208,27 @@ func TestOriginPrefersKnownValidPeer(t *testing.T) {
 	n.wantFirstHop("known_valid", "valid", 1)
 }
 
-// TestOriginShallowPauseDoubles checks that a first hop that gave a shallow
-// receipt is left out for 60s, and for 2 minutes after the next one.
-func TestOriginShallowPauseDoubles(t *testing.T) {
+// TestOriginPausedPeerLast checks that a first hop in a shallow pause is not
+// used while another first hop is left.
+func TestOriginPausedPeerLast(t *testing.T) {
 	t.Parallel()
 
-	n := newHopNet(t, false, 1)
-	shallow := n.hops[0]
+	n := newHopNet(t, false, 2)
+	shallow, other := n.hops[0], n.hops[1]
 	n.setReceipt(shallow, false)
 
+	// the farther first hop gives an error, so it gets no record
 	n.pushShallow()
 	n.wantStreams(shallow, 1)
+	n.wantFirstHop("unknown", "error", 1)
 
+	n.setReceipt(other, true)
 	n.clock.Add(59 * time.Second)
-	n.pushPaused()
+	n.pushValid()
 	n.wantStreams(shallow, 1)
-
-	n.clock.Add(time.Second)
-	n.pushShallow()
-	n.wantStreams(shallow, 2)
-
-	n.clock.Add(119 * time.Second)
-	n.pushPaused()
-	n.wantStreams(shallow, 2)
-
-	n.clock.Add(time.Second)
-	n.pushShallow()
-	n.wantStreams(shallow, 3)
+	n.wantStreams(other, 1)
+	n.wantFirstHop("unknown", "valid", 1)
+	n.wantFirstHop("paused", "shallow", 0)
 }
 
 // TestOriginOtherNeighborhoodNotAffected checks that a shallow receipt for
@@ -263,9 +249,10 @@ func TestOriginOtherNeighborhoodNotAffected(t *testing.T) {
 	n.wantStreams(shallow, 2)
 }
 
-// TestOriginAllPeersBlocked checks that nothing is sent when every first
-// hop is in a shallow pause.
-func TestOriginAllPeersBlocked(t *testing.T) {
+// TestOriginAllPeersPaused checks that the origin sends through the first
+// hops in a shallow pause when no other first hop is left, and that these
+// sends do not make the pauses longer.
+func TestOriginAllPeersPaused(t *testing.T) {
 	t.Parallel()
 
 	n := newHopNet(t, false, 2)
@@ -276,27 +263,20 @@ func TestOriginAllPeersBlocked(t *testing.T) {
 	n.wantStreams(n.hops[0], 1)
 	n.wantStreams(n.hops[1], 1)
 
-	// the result must be "no peer for now", not a shallow receipt, which
-	// the pusher counts against the retry budget of the chunk
-	receipt, err := n.origin.PushChunkToClosest(context.Background(), n.chunk())
-	if !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
-		t.Fatalf("got %v, want %v", err, pushsync.ErrNeighborhoodShallow)
-	}
-	if errors.Is(err, pushsync.ErrShallowReceipt) {
-		t.Fatalf("got %v, which is a shallow receipt error", err)
-	}
-	if !errors.Is(err, topology.ErrNotFound) {
-		t.Fatalf("got %v, which is not %v", err, topology.ErrNotFound)
-	}
-	if receipt != nil {
-		t.Fatalf("got receipt %v, want none", receipt)
-	}
-	n.wantStreams(n.hops[0], 1)
-	n.wantStreams(n.hops[1], 1)
+	n.clock.Add(30 * time.Second)
+	n.pushShallow()
+	n.wantStreams(n.hops[0], 2)
+	n.wantStreams(n.hops[1], 2)
+	n.wantFirstHop("paused", "shallow", 2)
 
-	if got := n.origin.NeighborhoodKnownShallowCount(); got != 1 {
-		t.Fatalf("got %v pushes ended without a send, want 1", got)
-	}
+	// the pauses still end 60s after the first shallow receipts
+	n.setReceipt(n.hops[1], true)
+	n.clock.Add(30 * time.Second)
+	n.pushValid()
+	n.wantStreams(n.hops[0], 3)
+	n.wantStreams(n.hops[1], 3)
+	n.wantFirstHop("unknown", "shallow", 3)
+	n.wantFirstHop("unknown", "valid", 1)
 }
 
 // TestOriginAllBlockedInsideAOR checks that an origin inside the
@@ -459,8 +439,8 @@ func TestOriginProbeBecomesValid(t *testing.T) {
 	n.wantStreams(valid, 1)
 }
 
-// TestForwarderDoesNotUseHopMemory checks that only an origin keeps
-// first-hop records.
+// TestForwarderDoesNotUseHopMemory checks that a forwarder neither reads
+// nor writes first-hop records.
 func TestForwarderDoesNotUseHopMemory(t *testing.T) {
 	t.Parallel()
 
@@ -469,22 +449,35 @@ func TestForwarderDoesNotUseHopMemory(t *testing.T) {
 
 	storerNode, _ := createPushSyncNodeWithRadius(t, storer, defaultPrices, nil, nil, hopSigner(t, n.anchor, true), hopRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
-	// the forwarder is outside the neighborhood and knows the storer
+	// the forwarder and its two peers are outside the neighborhood; every
+	// push of the forwarder gets to the storer
 	forwarderAddr := flipBits(n.anchor, 0, 254)
+	closer, farther := flipBits(n.anchor, 1), flipBits(n.anchor, 0, 2)
 	forwarderRecorder := streamtest.New(streamtest.WithProtocols(storerNode.Protocol()), streamtest.WithBaseAddr(forwarderAddr))
-	forwarder, _ := createPushSyncNodeWithRadius(t, forwarderAddr, defaultPrices, forwarderRecorder, nil, nil, hopRadius, mock.WithPeers(storer))
+	forwarder, _ := createPushSyncNodeWithRadius(t, forwarderAddr, defaultPrices, forwarderRecorder, nil, nil, hopRadius, mock.WithPeers(closer, farther))
 	n.handlers[n.hops[0].String()] = forwarder.Protocol()
 
-	n.pushValid()
+	// an origin with these records sends to the farther peer first
+	chunk := n.chunk()
+	forwarder.Hops().View(hopRadius, chunk.Address())
+	forwarder.Hops().RecordValid(hopRadius, chunk.Address(), farther)
+	forwarder.Hops().ClaimProbe(hopRadius, chunk.Address())
+
+	if _, err := n.origin.PushChunkToClosest(context.Background(), chunk); err != nil {
+		t.Fatalf("got %v, want a valid receipt", err)
+	}
 
 	if got := n.streams(n.hops[0]); got != 1 {
 		t.Fatalf("got %d pushes to the forwarder, want 1", got)
 	}
-	if recs, _ := forwarderRecorder.Records(storer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName); len(recs) != 1 {
-		t.Fatalf("got %d pushes to the storer, want 1", len(recs))
+	if recs, _ := forwarderRecorder.Records(closer, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName); len(recs) != 1 {
+		t.Fatalf("got %d pushes to the closest peer, want 1", len(recs))
 	}
-	if got := forwarder.HopRecords(); got != 0 {
-		t.Fatalf("forwarder has %d first-hop records, want 0", got)
+	if recs, _ := forwarderRecorder.Records(farther, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName); len(recs) != 0 {
+		t.Fatalf("got %d pushes to the peer with a valid record, want 0", len(recs))
+	}
+	if got := forwarder.HopRecords(); got != 1 {
+		t.Fatalf("forwarder has %d first-hop records, want the 1 that the test made", got)
 	}
 	if got := n.origin.HopRecords(); got != 1 {
 		t.Fatalf("origin has %d first-hop records, want 1", got)

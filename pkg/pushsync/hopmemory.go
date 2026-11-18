@@ -5,6 +5,7 @@
 package pushsync
 
 import (
+	"slices"
 	"sync"
 	"time"
 
@@ -78,13 +79,25 @@ func hoodKey(rad uint8, chunk swarm.Address) string {
 	return string(key)
 }
 
-// hood returns the neighborhood of the chunk. A radius change drops all
-// records. Must be called with the lock held.
-func (m *hopMemory) hood(rad uint8, chunk swarm.Address, create bool) *hopHood {
-	if rad != m.radius {
-		m.radius = rad
-		clear(m.hoods)
+// useRadius reports whether the memory holds records of the radius. Only a
+// selection (change is true) drops the records of another radius, so that a
+// late result of a push that began at the old radius is ignored.
+// Must be called with the lock held.
+func (m *hopMemory) useRadius(rad uint8, change bool) bool {
+	if rad == m.radius {
+		return true
 	}
+	if !change && len(m.hoods) > 0 {
+		return false
+	}
+	m.radius = rad
+	clear(m.hoods)
+	return true
+}
+
+// hood returns the neighborhood of the chunk.
+// Must be called with the lock held.
+func (m *hopMemory) hood(rad uint8, chunk swarm.Address, create bool) *hopHood {
 	key := hoodKey(rad, chunk)
 	h := m.hoods[key]
 	if h == nil && create {
@@ -99,6 +112,9 @@ func (m *hopMemory) recordValid(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	if !m.useRadius(rad, false) {
+		return
+	}
 	m.hood(rad, chunk, true).peers[peer.ByteString()] = &hopRecord{peer: peer, valid: true, at: m.now()}
 }
 
@@ -108,6 +124,9 @@ func (m *hopMemory) recordShallow(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	if !m.useRadius(rad, false) {
+		return
+	}
 	now := m.now()
 	h := m.hood(rad, chunk, true)
 	r := h.peers[peer.ByteString()]
@@ -133,6 +152,9 @@ func (m *hopMemory) forget(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	if !m.useRadius(rad, false) {
+		return
+	}
 	h := m.hood(rad, chunk, false)
 	if h == nil {
 		return
@@ -146,18 +168,21 @@ func (m *hopMemory) forget(rad uint8, chunk, peer swarm.Address) {
 	}
 }
 
-// view returns the peers with a valid record, the peers in a shallow pause,
-// and whether a probe of the neighborhood is due.
+// view returns the peers with a valid record, the peers in a shallow pause
+// (the pause that ends first comes first), and whether a probe of the
+// neighborhood is due.
 func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm.Address, probeDue bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	m.useRadius(rad, true)
 	h := m.hood(rad, chunk, false)
 	if h == nil {
 		return nil, nil, true
 	}
 
 	now := m.now()
+	var paused []*hopRecord
 	for key, r := range h.peers {
 		switch {
 		case r.valid && now.Sub(r.at) >= hopValidIdle:
@@ -165,10 +190,20 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 		case r.valid:
 			valid = append(valid, r.peer)
 		case now.Before(r.blockedUntil()):
-			blocked = append(blocked, r.peer)
+			paused = append(paused, r)
 		case now.Sub(r.at) >= hopShallowIdle:
 			delete(h.peers, key)
 		}
+	}
+	slices.SortFunc(paused, func(a, b *hopRecord) int {
+		if c := a.blockedUntil().Compare(b.blockedUntil()); c != 0 {
+			return c
+		}
+		c, _ := swarm.DistanceCmp(chunk, b.peer, a.peer)
+		return c
+	})
+	for _, r := range paused {
+		blocked = append(blocked, r.peer)
 	}
 	if len(h.peers) == 0 {
 		delete(m.hoods, hoodKey(rad, chunk))
@@ -177,12 +212,23 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 	return valid, blocked, h.lastProbe.IsZero() || now.Sub(h.lastProbe) >= hopProbeInterval
 }
 
-// markProbe stores the time of a probe of the neighborhood.
-func (m *hopMemory) markProbe(rad uint8, chunk swarm.Address) {
+// claimProbe reports whether a probe of the neighborhood is due, and stores
+// the time of the probe when it is. Of the callers that run at the same time,
+// only one gets true.
+func (m *hopMemory) claimProbe(rad uint8, chunk swarm.Address) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.hood(rad, chunk, true).lastProbe = m.now()
+	if !m.useRadius(rad, false) {
+		return false
+	}
+	now := m.now()
+	h := m.hood(rad, chunk, true)
+	if !h.lastProbe.IsZero() && now.Sub(h.lastProbe) < hopProbeInterval {
+		return false
+	}
+	h.lastProbe = now
+	return true
 }
 
 // len returns the number of records.
