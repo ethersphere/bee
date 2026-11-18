@@ -28,13 +28,10 @@ import (
 const hopRadius = 2
 
 // hopNet is an origin with first hops whose receipts the test controls.
-//
-// The origin knows a first hop by an address that is outside the
-// neighborhood of the chunks, so it never sends in parallel, and the order
-// of the first hops is the same for every chunk of the neighborhood. The
-// node behind a first hop has its own address inside the neighborhood, so it
-// stores the chunk and signs a receipt. A receipt is valid when the key of
-// that node has an overlay inside the neighborhood, and shallow when not.
+// The origin knows each first hop by an address outside the neighborhood, so
+// the order of the first hops is the same for every chunk. The node behind a
+// first hop signs with a key whose overlay is inside the neighborhood (valid
+// receipt) or outside of it (shallow receipt).
 type hopNet struct {
 	t        *testing.T
 	anchor   swarm.Address // an address inside the neighborhood of the chunks
@@ -82,9 +79,8 @@ func hopSigner(t *testing.T, anchor swarm.Address, near bool) crypto.Signer {
 	}
 }
 
-// newHopNet makes an origin that knows the given number of first hops.
-// A first hop with a lower index is closer to every chunk of the
-// neighborhood. insideAOR puts the origin itself inside the neighborhood.
+// newHopNet makes an origin with n first hops; a lower index is closer to
+// the chunks. insideAOR puts the origin inside the neighborhood.
 func newHopNet(t *testing.T, insideAOR bool, hops int) *hopNet {
 	t.Helper()
 
@@ -189,8 +185,7 @@ func (n *hopNet) pushShallow() {
 	}
 }
 
-// pushPaused pushes a chunk and wants the result of an origin that sent
-// nothing because every first hop is in a shallow pause.
+// pushPaused pushes a chunk and wants ErrNeighborhoodShallow.
 func (n *hopNet) pushPaused() {
 	n.t.Helper()
 	if err := n.push(); !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
@@ -198,9 +193,8 @@ func (n *hopNet) pushPaused() {
 	}
 }
 
-// TestOriginPrefersKnownValidPeer checks that the second chunk of a
-// neighborhood goes straight to the first hop that gave a valid receipt and
-// not to a closer first hop that gave a shallow one.
+// TestOriginPrefersKnownValidPeer checks that the next chunk goes to the
+// first hop with a valid record, not to a closer one that gave a shallow receipt.
 func TestOriginPrefersKnownValidPeer(t *testing.T) {
 	t.Parallel()
 
@@ -269,9 +263,8 @@ func TestOriginOtherNeighborhoodNotAffected(t *testing.T) {
 	n.wantStreams(shallow, 2)
 }
 
-// TestOriginAllPeersBlocked checks that a chunk ends without a paid send
-// when every first hop gave a shallow receipt for its neighborhood a short
-// time ago.
+// TestOriginAllPeersBlocked checks that nothing is sent when every first
+// hop is in a shallow pause.
 func TestOriginAllPeersBlocked(t *testing.T) {
 	t.Parallel()
 
@@ -283,9 +276,8 @@ func TestOriginAllPeersBlocked(t *testing.T) {
 	n.wantStreams(n.hops[0], 1)
 	n.wantStreams(n.hops[1], 1)
 
-	// nothing is sent, so the result must not look like a shallow receipt:
-	// the pusher counts those against the retry budget of the chunk. It
-	// must look like "no peer for now", which the callers wait out.
+	// the result must be "no peer for now", not a shallow receipt, which
+	// the pusher counts against the retry budget of the chunk
 	receipt, err := n.origin.PushChunkToClosest(context.Background(), n.chunk())
 	if !errors.Is(err, pushsync.ErrNeighborhoodShallow) {
 		t.Fatalf("got %v, want %v", err, pushsync.ErrNeighborhoodShallow)
@@ -308,8 +300,7 @@ func TestOriginAllPeersBlocked(t *testing.T) {
 }
 
 // TestOriginAllBlockedInsideAOR checks that an origin inside the
-// neighborhood of the chunk still stores the chunk itself when every first
-// hop is left out.
+// neighborhood stores the chunk itself when every first hop is paused.
 func TestOriginAllBlockedInsideAOR(t *testing.T) {
 	t.Parallel()
 
@@ -325,9 +316,8 @@ func TestOriginAllBlockedInsideAOR(t *testing.T) {
 	n.wantStreams(n.hops[0], 1)
 }
 
-// TestOriginValidPeerError checks that a first hop with a valid record that
-// fails loses the record, and that the chunk still gets a valid receipt
-// through another first hop in the same call.
+// TestOriginValidPeerError checks that an error removes a valid record and
+// that the chunk gets a valid receipt from another first hop in the same call.
 func TestOriginValidPeerError(t *testing.T) {
 	t.Parallel()
 
@@ -351,9 +341,8 @@ func TestOriginValidPeerError(t *testing.T) {
 	}
 }
 
-// TestOriginSkipsDisconnectedValidPeer checks that a first hop with a valid
-// record that is no longer connected is not picked, and that its record is
-// removed.
+// TestOriginSkipsDisconnectedValidPeer checks that a disconnected first hop
+// with a valid record is not picked and loses the record.
 func TestOriginSkipsDisconnectedValidPeer(t *testing.T) {
 	t.Parallel()
 
@@ -376,9 +365,8 @@ func TestOriginSkipsDisconnectedValidPeer(t *testing.T) {
 	}
 }
 
-// TestOriginProbe checks that a closer first hop gets one new try after its
-// pause, and that the chunk still ends with the valid receipt of the known
-// first hop when the try gives a shallow receipt again.
+// TestOriginProbe checks that a closer first hop is probed after its pause
+// and that the chunk still gets the valid receipt of the known first hop.
 func TestOriginProbe(t *testing.T) {
 	t.Parallel()
 
@@ -410,8 +398,8 @@ func TestOriginProbe(t *testing.T) {
 	n.wantStreams(valid, 4)
 }
 
-// TestOriginProbeInterval checks that one neighborhood gets at most one
-// probe per 30s, also when more than one closer first hop can be tried.
+// TestOriginProbeInterval checks that a neighborhood gets at most one probe
+// per 30s.
 func TestOriginProbeInterval(t *testing.T) {
 	t.Parallel()
 

@@ -61,11 +61,9 @@ var (
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
 	ErrShallowReceipt    = errors.New("shallow receipt")
-	// ErrNeighborhoodShallow is returned by an origin that did not send the
-	// chunk because every peer that is left gave a shallow receipt for the
-	// neighborhood a short time ago. It wraps topology.ErrNotFound: for the
-	// caller there is no peer for the chunk for now, and it must wait and
-	// try again, without counting the try against the chunk.
+	// ErrNeighborhoodShallow is returned by an origin that sent nothing
+	// because every peer left is in a shallow pause for the neighborhood.
+	// It wraps topology.ErrNotFound so that callers wait and try again.
 	ErrNeighborhoodShallow = fmt.Errorf("every peer is in a shallow pause for the neighborhood: %w", topology.ErrNotFound)
 )
 
@@ -481,9 +479,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 						if !origin || swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) >= rad {
 							return nil, topology.ErrWantSelf
 						}
-						// Every peer that is left gave a shallow receipt for
-						// this neighborhood a short time ago: do not pay for
-						// the same result again.
+						// Every peer left is in a shallow pause.
 						if blockedOnly {
 							ps.metrics.NeighborhoodKnownShallow.Inc()
 							return nil, ErrNeighborhoodShallow
@@ -577,8 +573,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				}
 			}
 
-			// A first hop that fails in another way than a shallow receipt
-			// says nothing about the neighborhood: it is an unknown peer again.
+			// An error other than a shallow receipt removes the record.
 			if origin && !errors.Is(result.err, ErrShallowReceipt) {
 				ps.hops.forget(rad, ch.Address(), result.peer)
 				ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "error").Inc()
@@ -609,20 +604,17 @@ const (
 	hopSourceUnknown hopSource = "unknown"
 )
 
-// originPeer picks the next first hop for an origin. It uses what earlier
-// chunks of the same neighborhood showed:
-//  1. at most once per call and per hopProbeInterval, a peer that is closer to
-//     the chunk than every peer with a valid record gets a new try;
-//  2. otherwise the closest peer that gave a valid receipt is used;
-//  3. otherwise the closest peer that is not in a shallow pause.
+// originPeer picks the next first hop for an origin:
+//  1. a probe, at most once per call and per hopProbeInterval: a peer closer
+//     to the chunk than every peer with a valid record;
+//  2. the closest peer with a valid record;
+//  3. the closest peer that is not in a shallow pause.
 //
-// blockedOnly is true when the error is topology.ErrNotFound only because of
-// peers in a shallow pause.
+// blockedOnly is true when no peer is found only because of shallow pauses.
 func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip []swarm.Address, probed *bool) (peer swarm.Address, source hopSource, blockedOnly bool, err error) {
 	valid, blocked, probeDue := ps.hops.view(rad, chunkAddress)
 
-	// A valid record does not say that the peer is still connected. A peer
-	// that left is not picked, and its record is removed.
+	// Remove the valid records of peers that are no longer connected.
 	if len(valid) > 0 {
 		var connected []swarm.Address
 		_ = ps.topologyDriver.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {

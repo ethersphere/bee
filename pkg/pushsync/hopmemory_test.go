@@ -80,8 +80,8 @@ func TestHopMemoryRecord(t *testing.T) {
 	}
 }
 
-// TestHopMemoryShallowDuringPause checks that shallow receipts of pushes that
-// were sent before the pause began do not make the pause longer.
+// TestHopMemoryShallowDuringPause checks that a shallow receipt during a
+// pause does not make the pause longer.
 func TestHopMemoryShallowDuringPause(t *testing.T) {
 	t.Parallel()
 
@@ -104,8 +104,7 @@ func TestHopMemoryShallowDuringPause(t *testing.T) {
 	}
 }
 
-// TestHopMemoryForgetKeepsPause checks that an error of another push does not
-// end a pause that still runs.
+// TestHopMemoryForgetKeepsPause checks that forget does not end a pause.
 func TestHopMemoryForgetKeepsPause(t *testing.T) {
 	t.Parallel()
 
@@ -144,8 +143,7 @@ func TestHopMemoryPauseDoubles(t *testing.T) {
 		return hasAddr(blocked, peer)
 	}
 
-	// each step records one more shallow receipt in a row and checks the
-	// pause that follows it
+	// each step adds one shallow receipt in a row
 	for i, pause := range []time.Duration{
 		time.Minute,
 		2 * time.Minute,
@@ -176,8 +174,7 @@ func TestHopMemoryPauseDoubles(t *testing.T) {
 }
 
 // TestHopMemoryShallowIdle checks that a shallow record is removed one hour
-// after its last shallow receipt, so that records of peers that are no longer
-// picked do not stay in the memory.
+// after its last shallow receipt.
 func TestHopMemoryShallowIdle(t *testing.T) {
 	t.Parallel()
 
@@ -204,9 +201,8 @@ func TestHopMemoryShallowIdle(t *testing.T) {
 	}
 }
 
-// TestHopMemoryShallowCountRestarts checks that a shallow receipt that comes
-// more than one hour after the last one starts the count again, also when
-// nothing read the neighborhood in between.
+// TestHopMemoryShallowCountRestarts checks that the count starts again after
+// one hour without a shallow receipt, also when view was not called.
 func TestHopMemoryShallowCountRestarts(t *testing.T) {
 	t.Parallel()
 

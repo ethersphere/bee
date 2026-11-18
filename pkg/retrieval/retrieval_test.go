@@ -720,9 +720,8 @@ func createRetrieval(
 	return ret
 }
 
-// TestClosestPeerProximityBeforeHealth checks that neither the origin nor a
-// forwarder asks a healthy peer before a peer of a higher proximity order to
-// the chunk that is not healthy.
+// TestClosestPeerProximityBeforeHealth checks that a peer of a higher
+// proximity order is asked before a healthy peer, at origin and forwarder.
 func TestClosestPeerProximityBeforeHealth(t *testing.T) {
 	t.Parallel()
 

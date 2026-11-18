@@ -12,19 +12,15 @@ import (
 )
 
 const (
-	// hopShallowPause is the time a first hop is left out for a neighborhood
-	// after one shallow receipt. It doubles with each shallow receipt in a row.
-	hopShallowPause = time.Minute
-	// hopShallowMaxPause is the longest pause of a first hop.
+	// hopShallowPause is the pause of a first hop after a shallow receipt.
+	// It doubles with each shallow receipt in a row, up to hopShallowMaxPause.
+	hopShallowPause    = time.Minute
 	hopShallowMaxPause = 30 * time.Minute
-	// hopProbeInterval is the shortest time between two probes of one neighborhood.
+	// hopProbeInterval is the shortest time between two probes of a neighborhood.
 	hopProbeInterval = 30 * time.Second
-	// hopValidIdle is the time after which a valid record without a new result is removed.
-	hopValidIdle = 30 * time.Minute
-	// hopShallowIdle is the time after which a shallow record without a new
-	// shallow receipt is removed. It is longer than the longest pause, so
-	// that a shallow receipt that comes right after a pause still counts as
-	// one more in a row.
+	// hopValidIdle and hopShallowIdle are the times after which a record
+	// without a new result is removed.
+	hopValidIdle   = 30 * time.Minute
 	hopShallowIdle = 2 * hopShallowMaxPause
 )
 
@@ -50,10 +46,8 @@ type hopHood struct {
 	lastProbe time.Time
 }
 
-// hopMemory remembers, per neighborhood, which first hops gave a valid and
-// which gave a shallow receipt, so that an origin does not pay again for a
-// result it has already seen. A neighborhood is the set of chunk addresses
-// that share the first radius bits.
+// hopMemory keeps the last receipt result of each first hop per neighborhood
+// (the chunk addresses that share the first radius bits).
 type hopMemory struct {
 	mtx    sync.Mutex
 	now    func() time.Time
@@ -84,9 +78,8 @@ func hoodKey(rad uint8, chunk swarm.Address) string {
 	return string(key)
 }
 
-// hood returns the neighborhood of the chunk. Records made for another
-// radius describe other neighborhoods, so they are dropped first.
-// Must be called with the lock held.
+// hood returns the neighborhood of the chunk. A radius change drops all
+// records. Must be called with the lock held.
 func (m *hopMemory) hood(rad uint8, chunk swarm.Address, create bool) *hopHood {
 	if rad != m.radius {
 		m.radius = rad
@@ -101,7 +94,7 @@ func (m *hopMemory) hood(rad uint8, chunk swarm.Address, create bool) *hopHood {
 	return h
 }
 
-// recordValid notes that the peer gave a valid receipt for the neighborhood of the chunk.
+// recordValid stores a valid receipt of the peer.
 func (m *hopMemory) recordValid(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -109,9 +102,8 @@ func (m *hopMemory) recordValid(rad uint8, chunk, peer swarm.Address) {
 	m.hood(rad, chunk, true).peers[peer.ByteString()] = &hopRecord{peer: peer, valid: true, at: m.now()}
 }
 
-// recordShallow notes that the peer gave a shallow receipt for the neighborhood of the chunk.
-// A shallow receipt that comes while the pause of the peer runs belongs to a
-// push that was sent before the pause began, so it does not make the pause longer.
+// recordShallow stores a shallow receipt of the peer. A receipt that comes
+// during the pause of the peer does not make the pause longer.
 func (m *hopMemory) recordShallow(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -126,7 +118,7 @@ func (m *hopMemory) recordShallow(rad uint8, chunk, peer swarm.Address) {
 	if !r.valid && r.shallow > 0 && now.Before(r.blockedUntil()) {
 		return
 	}
-	// a record that view did not remove yet
+	// idle record that view did not remove yet
 	if !r.valid && now.Sub(r.at) >= hopShallowIdle {
 		r.shallow = 0
 	}
@@ -135,9 +127,8 @@ func (m *hopMemory) recordShallow(rad uint8, chunk, peer swarm.Address) {
 	r.at = now
 }
 
-// forget removes the record of the peer for the neighborhood of the chunk.
-// A shallow record whose pause still runs stays: the error belongs to a push
-// that was sent before the pause began.
+// forget removes the record of the peer, except a shallow record whose
+// pause still runs.
 func (m *hopMemory) forget(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -155,9 +146,8 @@ func (m *hopMemory) forget(rad uint8, chunk, peer swarm.Address) {
 	}
 }
 
-// view returns, for the neighborhood of the chunk, the peers with a usable
-// valid record, the peers whose shallow pause still runs, and whether a probe
-// of the neighborhood is due.
+// view returns the peers with a valid record, the peers in a shallow pause,
+// and whether a probe of the neighborhood is due.
 func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm.Address, probeDue bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -187,7 +177,7 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 	return valid, blocked, h.lastProbe.IsZero() || now.Sub(h.lastProbe) >= hopProbeInterval
 }
 
-// markProbe notes that a probe of the neighborhood of the chunk was sent now.
+// markProbe stores the time of a probe of the neighborhood.
 func (m *hopMemory) markProbe(rad uint8, chunk swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
