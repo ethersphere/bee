@@ -403,14 +403,15 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		return swarm.Address{}, err
 	}
 
+	// A healthy peer that is far from the chunk must not be asked before a
+	// peer of a higher proximity order. Health decides only between peers of
+	// the same proximity order.
+	nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
+	if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
+		closest = nearest
+	}
+
 	if allowUpstream {
-		// The origin has many attempts, and a healthy peer that is far from the
-		// chunk must not use them before a peer of a higher proximity order is
-		// asked. Health decides only between peers of the same proximity order.
-		nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
-		if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
-			return nearest, nil
-		}
 		return closest, nil
 	}
 
