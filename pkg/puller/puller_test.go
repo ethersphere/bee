@@ -557,6 +557,68 @@ func TestPeerGone(t *testing.T) {
 	}
 }
 
+// TestSumResync checks the one-time reset of the intervals synced before the
+// SWIP-101 chunk sum: it drops all intervals and records that it ran, and with
+// the record present it leaves the intervals alone.
+func TestSumResync(t *testing.T) {
+	t.Parallel()
+
+	seedInterval := func(t *testing.T, s storage.StateStorer, addr swarm.Address) {
+		t.Helper()
+		itv := intervalstore.NewIntervals(1)
+		itv.Add(1, 50)
+		if err := s.Put(puller.PeerIntervalKey(addr, 1), itv); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("reset once", func(t *testing.T) {
+		t.Parallel()
+
+		s := mock.NewStateStore()
+		addr := swarm.RandAddress(t)
+		seedInterval(t, s, addr)
+
+		_, _, _ = newPullerWithState(t, s, opts{bins: 2, rs: resMock.NewReserve()})
+
+		err := spinlock.Wait(time.Second, func() bool {
+			var done bool
+			return s.Get(puller.SumResyncKey, &done) == nil && done
+		})
+		if err != nil {
+			t.Fatal("reset was not recorded")
+		}
+		if err := s.Get(puller.PeerIntervalKey(addr, 1), &intervalstore.Intervals{}); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got %v, want interval deleted", err)
+		}
+	})
+
+	t.Run("already reset", func(t *testing.T) {
+		t.Parallel()
+
+		s := mock.NewStateStore()
+		if err := s.Put(puller.SumResyncKey, true); err != nil {
+			t.Fatal(err)
+		}
+		idle := swarm.RandAddress(t)
+		seedInterval(t, s, idle)
+
+		// a sync with a connected peer shows the worker is past the reset.
+		addr := swarm.RandAddress(t)
+		_, kad, ps := newPullerWithState(t, s, opts{
+			kad:      []kadMock.Option{kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 1})},
+			pullSync: []mockps.Option{mockps.WithCursors([]uint64{0, 1}, 0), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
+			bins:     2,
+			rs:       resMock.NewReserve(resMock.WithRadius(1)),
+		})
+		time.Sleep(100 * time.Millisecond)
+		kad.Trigger()
+		waitSync(t, ps, addr)
+
+		checkIntervals(t, s, idle, "[[1 50]]", 1)
+	})
+}
+
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 	key := puller.PeerIntervalKey(addr, bin)

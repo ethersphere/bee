@@ -31,6 +31,7 @@ import (
 // consistent with the reserve repair procedure. Finally, orphaned pre-migration
 // ChunkBinItems (no matching BatchRadiusItem, hence never rewritten) are swept
 // by raw key so no old-format record survives to break later iterations.
+// Last, the reserve epoch is dropped so peers sync this node again with sums.
 //
 // The BatchRadiusItem namespace is paged through in fixed windows instead of
 // being loaded whole: at reserve capacity the full index is millions of
@@ -184,6 +185,19 @@ func step_09(
 		swept, err := removeMalformedChunkBinItems(context.Background(), st)
 		if err != nil {
 			return err
+		}
+
+		// Peers keep pullsync intervals for this node, and chunks synced before
+		// the upgrade were offered without sums, so a divergent SOC among them
+		// was never compared. Dropping the reserve epoch makes reserve.New store
+		// a new one; peers see the change, drop their intervals for this node
+		// and request every chunk once more, now with sums. Only chunks that
+		// differ are delivered again.
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Delete(&reserve.EpochItem{})
+		})
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("reset reserve epoch: %w", err)
 		}
 
 		logger.Info("pullsync chunk sum backfill complete", "backfilled", backfilled, "removed", removed, "swept_orphans", swept)

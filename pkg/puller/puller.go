@@ -71,6 +71,9 @@ const (
 	DefaultHistRateWindow = time.Minute * 10
 
 	IntervalPrefix = "sync_interval"
+	// sumResyncKey marks that the one-time reset of the intervals synced
+	// before the SWIP-101 chunk sum was done.
+	sumResyncKey   = "pullsync_sum_resync"
 	recalcPeersDur = time.Minute * 5
 
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
@@ -166,6 +169,10 @@ func (p *Puller) manage(ctx context.Context) {
 	defer unsubscribe()
 
 	p.logger.Info("warmup period complete, starting worker")
+
+	if err := p.resetIntervalsForSum(); err != nil {
+		p.logger.Warning("one-time reset of sync intervals failed, will retry on next start", "error", err)
+	}
 
 	var prevRadius uint8
 
@@ -487,6 +494,48 @@ func (p *Puller) resetPeerIntervals(peer swarm.Address) (err error) {
 	}
 
 	return
+}
+
+// resetIntervalsForSum drops all sync intervals once. Chunks synced before
+// this node and its peer both had the SWIP-101 chunk sum were offered by stamp
+// only, so a divergent SOC among them was never compared. With the intervals
+// gone every chunk is requested once more, now with sums, and only chunks
+// that differ are delivered again. The peers do the same for this node, as the
+// storer migration changes the reserve epoch.
+func (p *Puller) resetIntervalsForSum() error {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	var done bool
+	err := p.statestore.Get(sumResyncKey, &done)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return fmt.Errorf("get %s: %w", sumResyncKey, err)
+	}
+
+	var keys []string
+	err = p.statestore.Iterate(IntervalPrefix, func(key, _ []byte) (bool, error) {
+		keys = append(keys, string(key))
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("iterate intervals: %w", err)
+	}
+	for _, k := range keys {
+		if err := p.statestore.Delete(k); err != nil {
+			return fmt.Errorf("delete interval %s: %w", k, err)
+		}
+	}
+
+	if err := p.statestore.Put(sumResyncKey, true); err != nil {
+		return fmt.Errorf("put %s: %w", sumResyncKey, err)
+	}
+	if len(keys) > 0 {
+		p.logger.Info("sync intervals reset once to resync with chunk sums", "deleted_keys", len(keys))
+	}
+	return nil
 }
 
 func (p *Puller) resetIntervals(oldRadius uint8) (err error) {
