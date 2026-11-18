@@ -5,6 +5,7 @@
 package pullsync_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -61,6 +62,21 @@ func FuzzClientSync(f *testing.F) {
 	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 1, Chunks: []*pb.Chunk{{Address: []byte{0x01, 0x02}}}}))
 	// offer with a wrong-length sum.
 	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 1, Chunks: []*pb.Chunk{{Address: make([]byte, swarm.HashSize), Sum: []byte{0x01}}}}))
+	// offer from a peer that predates SWIP-101: stamp fields and no sum,
+	// followed by a delivery.
+	legacyOffer := pullsyncFrame(f, &pb.Offer{
+		Topmost: 4,
+		Chunks: []*pb.Chunk{
+			{
+				Address:   bytes.Repeat([]byte{0x01}, swarm.HashSize),
+				BatchID:   bytes.Repeat([]byte{0x02}, swarm.HashSize),
+				StampHash: bytes.Repeat([]byte{0x03}, swarm.HashSize),
+			},
+		},
+	})
+	f.Add(append(append([]byte{}, legacyOffer...), delivery...))
+	// offer without a sum and with wrong-length stamp fields.
+	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 1, Chunks: []*pb.Chunk{{Address: bytes.Repeat([]byte{0x01}, swarm.HashSize), BatchID: []byte{0x01}, StampHash: make([]byte, storage.ChunkSumSize)}}}))
 	// offer with zero chunks.
 	f.Add(pullsyncFrame(f, &pb.Offer{Topmost: 7}))
 	// empty stream.
