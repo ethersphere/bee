@@ -7,6 +7,7 @@ package pushsync_test
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,8 +81,8 @@ func TestHopMemoryRecord(t *testing.T) {
 	}
 }
 
-// TestHopMemoryShallowDuringPause checks that shallow receipts of pushes that
-// were sent before the pause began do not make the pause longer.
+// TestHopMemoryShallowDuringPause checks that a shallow receipt during a
+// pause does not make the pause longer.
 func TestHopMemoryShallowDuringPause(t *testing.T) {
 	t.Parallel()
 
@@ -104,8 +105,7 @@ func TestHopMemoryShallowDuringPause(t *testing.T) {
 	}
 }
 
-// TestHopMemoryForgetKeepsPause checks that an error of another push does not
-// end a pause that still runs.
+// TestHopMemoryForgetKeepsPause checks that forget does not end a pause.
 func TestHopMemoryForgetKeepsPause(t *testing.T) {
 	t.Parallel()
 
@@ -144,8 +144,7 @@ func TestHopMemoryPauseDoubles(t *testing.T) {
 		return hasAddr(blocked, peer)
 	}
 
-	// each step records one more shallow receipt in a row and checks the
-	// pause that follows it
+	// each step adds one shallow receipt in a row
 	for i, pause := range []time.Duration{
 		time.Minute,
 		2 * time.Minute,
@@ -176,8 +175,7 @@ func TestHopMemoryPauseDoubles(t *testing.T) {
 }
 
 // TestHopMemoryShallowIdle checks that a shallow record is removed one hour
-// after its last shallow receipt, so that records of peers that are no longer
-// picked do not stay in the memory.
+// after its last shallow receipt.
 func TestHopMemoryShallowIdle(t *testing.T) {
 	t.Parallel()
 
@@ -204,9 +202,8 @@ func TestHopMemoryShallowIdle(t *testing.T) {
 	}
 }
 
-// TestHopMemoryShallowCountRestarts checks that a shallow receipt that comes
-// more than one hour after the last one starts the count again, also when
-// nothing read the neighborhood in between.
+// TestHopMemoryShallowCountRestarts checks that the count starts again after
+// one hour without a shallow receipt, also when view was not called.
 func TestHopMemoryShallowCountRestarts(t *testing.T) {
 	t.Parallel()
 
@@ -280,7 +277,12 @@ func TestHopMemoryProbe(t *testing.T) {
 		t.Fatal("probe is not due for a neighborhood that was never probed")
 	}
 
-	m.MarkProbe(10, chunk)
+	if !m.ClaimProbe(10, chunk) {
+		t.Fatal("probe that is due was not given")
+	}
+	if m.ClaimProbe(10, chunk) {
+		t.Fatal("second probe was given right after a probe")
+	}
 	if _, _, due := m.View(10, chunk); due {
 		t.Fatal("probe is due right after a probe")
 	}
@@ -367,6 +369,104 @@ func TestHopMemoryRadiusChange(t *testing.T) {
 	}
 }
 
+// TestHopMemoryLateResult checks that a result of a push that began at
+// another radius does not remove the records of the current radius.
+func TestHopMemoryLateResult(t *testing.T) {
+	t.Parallel()
+
+	var (
+		m     = pushsync.NewHopMemory(newTestClock().Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+		late  = hopAddr(0x20)
+	)
+
+	m.View(10, chunk)
+	m.RecordValid(10, chunk, peer)
+
+	m.RecordValid(9, chunk, late)
+	m.RecordShallow(9, chunk, late)
+	m.Forget(9, chunk, peer)
+	if m.ClaimProbe(9, chunk) {
+		t.Fatal("probe was given for another radius")
+	}
+
+	valid, blocked, _ := m.View(10, chunk)
+	if len(valid) != 1 || !hasAddr(valid, peer) || len(blocked) != 0 {
+		t.Fatalf("got valid %v blocked %v, want only the record of radius 10", valid, blocked)
+	}
+}
+
+// TestHopMemoryBlockedOrder checks that the peers in a pause are returned in
+// the order in which their pauses end.
+func TestHopMemoryBlockedOrder(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		long  = hopAddr(0x6a)
+		first = hopAddr(0x10)
+		last  = hopAddr(0x20)
+	)
+
+	// two shallow receipts in a row: the pause of this peer ends at 3m
+	m.RecordShallow(10, chunk, long)
+	clock.Add(time.Minute)
+	m.RecordShallow(10, chunk, long)
+	// these pauses end at 2m10s and 2m20s
+	clock.Add(10 * time.Second)
+	m.RecordShallow(10, chunk, first)
+	clock.Add(10 * time.Second)
+	m.RecordShallow(10, chunk, last)
+
+	_, blocked, _ := m.View(10, chunk)
+	want := []swarm.Address{first, last, long}
+	if len(blocked) != len(want) {
+		t.Fatalf("got %d peers in a pause, want %d", len(blocked), len(want))
+	}
+	for i := range want {
+		if !blocked[i].Equal(want[i]) {
+			t.Fatalf("position %d: got %s, want %s", i, blocked[i], want[i])
+		}
+	}
+}
+
+// TestHopMemoryClaimProbeOnce checks that only one of the callers that run
+// at the same time gets the probe of a neighborhood.
+func TestHopMemoryClaimProbeOnce(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+	)
+	m.RecordValid(10, chunk, hopAddr(0x10))
+
+	for round := range 3 {
+		var (
+			wg    sync.WaitGroup
+			given atomic.Int32
+		)
+		for range 64 {
+			wg.Go(func() {
+				if m.ClaimProbe(10, chunk) {
+					given.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		if got := given.Load(); got != 1 {
+			t.Fatalf("round %d: got %d probes, want 1", round, got)
+		}
+		clock.Add(30 * time.Second)
+	}
+}
+
+// TestHopMemoryConcurrent runs all operations at the same time and checks
+// that the memory stays consistent.
 func TestHopMemoryConcurrent(t *testing.T) {
 	t.Parallel()
 
@@ -390,7 +490,7 @@ func TestHopMemoryConcurrent(t *testing.T) {
 				case 2:
 					m.Forget(10, chunk, peer)
 				case 3:
-					m.MarkProbe(10, chunk)
+					m.ClaimProbe(10, chunk)
 				case 4:
 					clock.Add(time.Second)
 				default:
@@ -401,5 +501,24 @@ func TestHopMemoryConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	_ = m.Len()
+	// 4 values of the first byte and 4 of the next two bits give at most
+	// 16 neighborhoods at radius 10, each with at most 8 peers
+	if got := m.Len(); got > 16*8 {
+		t.Fatalf("got %d records, want at most %d", got, 16*8)
+	}
+	var seen int
+	for a := range 4 {
+		for b := range 4 {
+			valid, blocked, _ := m.View(10, hopAddr(byte(a), byte(b<<6)))
+			for _, p := range valid {
+				if hasAddr(blocked, p) {
+					t.Fatalf("peer %s is valid and in a pause", p)
+				}
+			}
+			seen += len(valid) + len(blocked)
+		}
+	}
+	if got := m.Len(); seen > got {
+		t.Fatalf("views returned %d peers, the memory has %d records", seen, got)
+	}
 }

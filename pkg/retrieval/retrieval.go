@@ -417,9 +417,8 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 	}
 
 	if !healthFirst {
-		// A healthy peer that is far from the chunk must not be asked before a
-		// peer of a higher proximity order. Health decides only between peers
-		// of the same proximity order.
+		// Proximity order comes before health: prefer a closer peer that is
+		// not healthy to a healthy peer of a lower proximity order.
 		nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
 		if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
 			closest = nearest

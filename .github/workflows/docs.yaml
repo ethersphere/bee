@@ -42,8 +42,8 @@ jobs:
       with:
         build-roots: 'openapi/Swarm.yaml'
       env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_OPENAPI_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_OPENAPI_SECRET_ACCESS_KEY }}
         AWS_EC2_METADATA_DISABLED: true #needed when pushing to DigitalOcean Spaces
         AWS_ENDPOINT: fra1.digitaloceanspaces.com
         BUCKET_NAME: swarm-openapi-specs

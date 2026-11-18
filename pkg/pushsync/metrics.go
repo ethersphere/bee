@@ -12,28 +12,27 @@ import (
 const statusLabel = "status"
 
 type metrics struct {
-	TotalSent                prometheus.Counter
-	TotalReceived            prometheus.Counter
-	TotalHandlerErrors       prometheus.Counter
-	TotalRequests            prometheus.Counter
-	TotalSendAttempts        prometheus.Counter
-	TotalFailedSendAttempts  prometheus.Counter
-	TotalOutgoing            prometheus.Counter
-	TotalOutgoingErrors      prometheus.Counter
-	InvalidStampErrors       prometheus.Counter
-	StampValidationTime      *prometheus.HistogramVec
-	Forwarder                prometheus.Counter
-	Storer                   prometheus.Counter
-	TotalHandlerTime         *prometheus.HistogramVec
-	PushToPeerTime           *prometheus.HistogramVec
-	ReceiptDepth             *prometheus.CounterVec
-	ShallowReceiptDepth      *prometheus.CounterVec
-	ShallowReceipt           prometheus.Counter
-	OverdraftRefresh         prometheus.Counter
-	OutOfDepthStoring        prometheus.Counter
-	OriginNoPeersLeft        prometheus.Counter
-	FirstHop                 *prometheus.CounterVec
-	NeighborhoodKnownShallow prometheus.Counter
+	TotalSent               prometheus.Counter
+	TotalReceived           prometheus.Counter
+	TotalHandlerErrors      prometheus.Counter
+	TotalRequests           prometheus.Counter
+	TotalSendAttempts       prometheus.Counter
+	TotalFailedSendAttempts prometheus.Counter
+	TotalOutgoing           prometheus.Counter
+	TotalOutgoingErrors     prometheus.Counter
+	InvalidStampErrors      prometheus.Counter
+	StampValidationTime     *prometheus.HistogramVec
+	Forwarder               prometheus.Counter
+	Storer                  prometheus.Counter
+	TotalHandlerTime        *prometheus.HistogramVec
+	PushToPeerTime          *prometheus.HistogramVec
+	ReceiptDepth            *prometheus.CounterVec
+	ShallowReceiptDepth     *prometheus.CounterVec
+	ShallowReceipt          prometheus.Counter
+	OverdraftRefresh        prometheus.Counter
+	OutOfDepthStoring       prometheus.Counter
+	OriginNoPeersLeft       prometheus.Counter
+	FirstHop                *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -175,16 +174,10 @@ func newMetrics() metrics {
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "first_hop_total",
-				Help:      "Results of origin pushes by the reason the first hop was picked (probe, known_valid, unknown) and the result (valid, shallow, error).",
+				Help:      "Results of origin pushes by the reason the first hop was picked (probe, known_valid, unknown, paused) and the result (valid, shallow, error).",
 			},
 			[]string{"source", "result"},
 		),
-		NeighborhoodKnownShallow: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "neighborhood_known_shallow",
-			Help:      "Total number of origin pushes that ended without a send because every peer left gave a shallow receipt for the neighborhood a short time ago.",
-		}),
 	}
 }
 

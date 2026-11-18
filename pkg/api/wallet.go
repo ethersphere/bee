@@ -140,6 +140,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	req := &transaction.TxRequest{
 		To:          queries.Address,
 		GasPrice:    sctx.GetGasPrice(r.Context()),
+		FeePriority: sctx.GetFeePriority(r.Context()),
 		GasLimit:    sctx.GetGasLimitWithDefault(r.Context(), 300_000),
 		Value:       queries.Amount,
 		Description: "native token withdraw",

@@ -38,8 +38,10 @@ func (m *hopMemory) RecordShallow(rad uint8, chunk, peer swarm.Address) {
 	m.recordShallow(rad, chunk, peer)
 }
 func (m *hopMemory) Forget(rad uint8, chunk, peer swarm.Address) { m.forget(rad, chunk, peer) }
-func (m *hopMemory) MarkProbe(rad uint8, chunk swarm.Address)    { m.markProbe(rad, chunk) }
-func (m *hopMemory) Len() int                                    { return m.len() }
+func (m *hopMemory) ClaimProbe(rad uint8, chunk swarm.Address) bool {
+	return m.claimProbe(rad, chunk)
+}
+func (m *hopMemory) Len() int { return m.len() }
 
 func (m *hopMemory) View(rad uint8, chunk swarm.Address) (valid, blocked []swarm.Address, probeDue bool) {
 	return m.view(rad, chunk)
@@ -59,9 +61,8 @@ func (ps *PushSync) FirstHopCount(source, result string) float64 {
 	return counterValue(ps.metrics.FirstHop.WithLabelValues(source, result))
 }
 
-func (ps *PushSync) NeighborhoodKnownShallowCount() float64 {
-	return counterValue(ps.metrics.NeighborhoodKnownShallow)
-}
+// Hops returns the first-hop memory.
+func (ps *PushSync) Hops() *HopMemory { return ps.hops }
 
 func counterValue(c prometheus.Counter) float64 {
 	var m dto.Metric

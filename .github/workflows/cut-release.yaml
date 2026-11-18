@@ -1,0 +1,103 @@
+# Creates a release tag. Tag creation is restricted by a ruleset, so tags are
+# only made here (as the bee-releaser app) after a second person approves the
+# `release` environment. The commit is resolved before approval, so the
+# reviewer approves an exact SHA (shown in the run summary). The tag push then
+# triggers release.yaml (goreleaser).
+name: Cut release
+run-name: Cut ${{ inputs.tag }} from ${{ inputs.ref }} (by ${{ github.actor }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create, e.g. v2.9.0 or v2.9.0-rc1"
+        required: true
+      ref:
+        description: "Branch or full commit SHA to tag (must be on the default branch or a release/* branch)"
+        required: true
+        default: master
+
+permissions: {}
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Validate tag and resolve commit
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TAG: ${{ inputs.tag }}
+          REF: ${{ inputs.ref }}
+        with:
+          script: |
+            const { TAG, REF } = process.env
+            const { owner, repo } = context.repo
+            if (!/^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$/.test(TAG)) {
+              return core.setFailed(`tag must look like vX.Y.Z or vX.Y.Z-rcN, got '${TAG}'`)
+            }
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${TAG}` })
+              return core.setFailed(`tag ${TAG} already exists`)
+            } catch (e) {
+              if (e.status !== 404) throw e
+            }
+            const { data: c } = await github.rest.repos.getCommit({ owner, repo, ref: REF })
+            // getCommit also resolves commits that are on no branch, e.g. fork PR heads
+            // (refs/pull/*). Only tag commits on the default branch or a release/* branch.
+            const def = context.payload.repository.default_branch
+            const branches = (await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 }))
+              .map(b => b.name)
+              .filter(n => n === def || n.startsWith('release/'))
+              .sort((a, b) => (a === def ? -1 : b === def ? 1 : a.localeCompare(b)))
+            let onBranch = ''
+            for (const b of branches) {
+              const { data: cmp } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${b}...${c.sha}`, per_page: 1 })
+              if (cmp.status === 'identical' || cmp.status === 'behind') { onBranch = b; break }
+            }
+            if (!onBranch) {
+              return core.setFailed(`${c.sha} is not on ${def} or a release/* branch, refusing to tag it`)
+            }
+            core.setOutput('sha', c.sha)
+            // Escape everything user-controlled: the summary is what the release approver reviews.
+            const esc = s => s.replace(/[&<>"'`\[\]]/g, ch => `&#${ch.charCodeAt(0)};`)
+            const subject = c.commit.message.split('\n')[0]
+            core.summary
+              .addHeading(`${TAG} will tag ${c.sha}`)
+              .addRaw(`<a href="${c.html_url}">${esc(subject)}</a> (${esc(REF)}, on ${esc(onBranch)})`, true)
+            await core.summary.write()
+
+  tag:
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          # Least privilege: only creates the tag ref.
+          permission-contents: write
+
+      - name: Create tag
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TAG: ${{ inputs.tag }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { TAG, SHA } = process.env
+            await github.rest.git.createRef({ ...context.repo, ref: `refs/tags/${TAG}`, sha: SHA })
+            core.summary.addHeading(`Tagged ${TAG} at ${SHA.slice(0, 12)}`)
+            await core.summary.write()
