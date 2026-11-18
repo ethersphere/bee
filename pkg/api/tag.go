@@ -190,8 +190,9 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_tags").Build()
 
 	queries := struct {
-		Offset int `map:"offset" validate:"min=0"`
-		Limit  int `map:"limit" validate:"min=0"`
+		After  uint64 `map:"after"`
+		Offset int    `map:"offset" validate:"min=0"`
+		Limit  int    `map:"limit" validate:"min=0"`
 	}{
 		Limit: 100, // Default limit.
 	}
@@ -200,7 +201,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.storer.ListSessions(r.Context(), queries.Offset, queries.Limit)
+	tagList, err := s.storer.ListSessions(r.Context(), queries.After, queries.Offset, queries.Limit)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			// The client went away; this is not a server fault.

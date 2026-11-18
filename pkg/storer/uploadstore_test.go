@@ -283,7 +283,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 
 		// Tags are listed in key order, the lexicographic order of their
 		// decimal IDs: 1, 10, 2, 3, ..., 9.
-		sessions, err := lstore.ListSessions(context.Background(), 1, 3)
+		sessions, err := lstore.ListSessions(context.Background(), 0, 1, 3)
 		if err != nil {
 			t.Fatalf("ListSession(): unexpected error: %v", err)
 		}
@@ -314,7 +314,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			}
 		}
 
-		sessions, err := lstore.ListSessions(context.Background(), 0, 6)
+		sessions, err := lstore.ListSessions(context.Background(), 0, 0, 6)
 		if err != nil {
 			t.Fatalf("ListSession(): unexpected error: %v", err)
 		}
@@ -342,7 +342,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			t.Fatalf("NewSession(): unexpected error: %v", err)
 		}
 
-		sessions, err := lstore.ListSessions(context.Background(), 5, 3)
+		sessions, err := lstore.ListSessions(context.Background(), 0, 5, 3)
 		if err != nil {
 			t.Fatalf("ListSession(): unexpected error: %v", err)
 		}
@@ -350,7 +350,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			t.Fatalf("expected no sessions past the end, have %d", len(sessions))
 		}
 
-		sessions, err = lstore.ListSessions(context.Background(), 0, 0)
+		sessions, err = lstore.ListSessions(context.Background(), 0, 0, 0)
 		if err != nil {
 			t.Fatalf("ListSession(): unexpected error: %v", err)
 		}
@@ -374,7 +374,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		if _, err := lstore.ListSessions(ctx, 0, 10); !errors.Is(err, context.Canceled) {
+		if _, err := lstore.ListSessions(ctx, 0, 0, 10); !errors.Is(err, context.Canceled) {
 			t.Fatalf("ListSessions(): want context.Canceled, have %v", err)
 		}
 	})
@@ -409,7 +409,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 
-				sessions, err := lstore.ListSessions(context.Background(), tc.offset, tc.limit)
+				sessions, err := lstore.ListSessions(context.Background(), 0, tc.offset, tc.limit)
 				if err != nil {
 					t.Fatalf("ListSessions(): unexpected error: %v", err)
 				}
@@ -421,6 +421,55 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 					t.Fatalf("unexpected tags (-want +have):\n%s", diff)
 				}
 			})
+		}
+	})
+
+	t.Run("list sessions with cursor while tags are created", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		const initial = 12
+		for range initial {
+			if _, err := lstore.NewSession(); err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+		}
+
+		// Page through with after set to the last tag ID of the previous page,
+		// creating a tag before each page. New tags sort into the middle of the
+		// key order, which made offset paging repeat or skip tags.
+		seen := make(map[uint64]int)
+		var after uint64
+		for range initial {
+			if _, err := lstore.NewSession(); err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+			sessions, err := lstore.ListSessions(context.Background(), after, 0, 5)
+			if err != nil {
+				t.Fatalf("ListSessions(): unexpected error: %v", err)
+			}
+			if len(sessions) == 0 {
+				break
+			}
+			for _, s := range sessions {
+				seen[s.TagID]++
+			}
+			after = sessions[len(sessions)-1].TagID
+		}
+
+		for id, n := range seen {
+			if n != 1 {
+				t.Fatalf("tag %d listed %d times", id, n)
+			}
+		}
+		for id := uint64(1); id <= initial; id++ {
+			if seen[id] != 1 {
+				t.Fatalf("tag %d that existed before paging was not listed", id)
+			}
 		}
 	})
 
@@ -438,7 +487,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			}
 		}
 
-		sessions, err := lstore.ListSessions(context.Background(), 0, 5000)
+		sessions, err := lstore.ListSessions(context.Background(), 0, 0, 5000)
 		if err != nil {
 			t.Fatalf("ListSessions(): unexpected error: %v", err)
 		}
@@ -446,7 +495,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			t.Fatalf("unexpected page size for an oversized limit: want 1000 have %d", len(sessions))
 		}
 
-		rest, err := lstore.ListSessions(context.Background(), 1000, 5000)
+		rest, err := lstore.ListSessions(context.Background(), 0, 1000, 5000)
 		if err != nil {
 			t.Fatalf("ListSessions(): unexpected error: %v", err)
 		}

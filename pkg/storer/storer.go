@@ -79,11 +79,15 @@ type UploadStore interface {
 	DeleteSession(tagID uint64) error
 	// ListSessions returns up to limit Sessions currently being tracked, after
 	// skipping offset Sessions. Sessions are in lexicographic order of their
-	// decimal tag IDs, so 1, 10, 2 comes before 3. limit is capped at 1000, and
-	// a limit <= 0 returns no Sessions. A negative offset is treated as 0. If
-	// ctx is canceled before or during the call, it returns the wrapped context
-	// error and no Sessions.
-	ListSessions(ctx context.Context, offset, limit int) ([]SessionInfo, error)
+	// decimal tag IDs, so 1, 10, 2 comes before 3. If after is not 0, the list
+	// starts with the first Session whose tag ID sorts after it in that order,
+	// even if tag after was deleted, and offset counts from there. Paging with
+	// after set to the last tag ID of the previous page returns every Session
+	// that existed when paging began exactly once. limit is capped at 1000,
+	// and a limit <= 0 returns no Sessions. A negative offset is treated as 0.
+	// If ctx is canceled before or during the call, it returns the wrapped
+	// context error and no Sessions.
+	ListSessions(ctx context.Context, after uint64, offset, limit int) ([]SessionInfo, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning

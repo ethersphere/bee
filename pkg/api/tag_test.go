@@ -32,7 +32,7 @@ type failingListStorer struct {
 	err error
 }
 
-func (s failingListStorer) ListSessions(context.Context, int, int) ([]storer.SessionInfo, error) {
+func (s failingListStorer) ListSessions(context.Context, uint64, int, int) ([]storer.SessionInfo, error) {
 	return nil, s.err
 }
 
@@ -106,6 +106,36 @@ func TestListTagsPaging(t *testing.T) {
 		if diff := cmp.Diff(want[1:4], uids(resp.Tags)); diff != "" {
 			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
 		}
+	})
+
+	t.Run("after", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=12&limit=3", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want[4:7], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("after and offset", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=12&offset=1&limit=2", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want[5:7], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("invalid after", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=a", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid query params",
+				Reasons: []jsonhttp.Reason{{Field: "after", Error: strconv.ErrSyntax.Error()}},
+			}),
+		)
 	})
 
 	t.Run("zero limit", func(t *testing.T) {

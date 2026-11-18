@@ -132,7 +132,7 @@ func (m *mockStorer) DeleteSession(tagID uint64) error {
 	return nil
 }
 
-func (m *mockStorer) ListSessions(ctx context.Context, offset, limit int) ([]storer.SessionInfo, error) {
+func (m *mockStorer) ListSessions(ctx context.Context, after uint64, offset, limit int) ([]storer.SessionInfo, error) {
 	const maxPageSize = 1000
 
 	if err := ctx.Err(); err != nil {
@@ -142,9 +142,14 @@ func (m *mockStorer) ListSessions(ctx context.Context, offset, limit int) ([]sto
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Match the store: lexicographic order of the decimal tag IDs.
+	// Match the store: lexicographic order of the decimal tag IDs, starting
+	// after the cursor key.
+	afterKey := strconv.FormatUint(after, 10)
 	sessions := make([]storer.SessionInfo, 0, len(m.activeSessions))
 	for _, v := range m.activeSessions {
+		if after != 0 && strconv.FormatUint(v.TagID, 10) <= afterKey {
+			continue
+		}
 		sessions = append(sessions, *v)
 	}
 	slices.SortFunc(sessions, func(a, b storer.SessionInfo) int {
