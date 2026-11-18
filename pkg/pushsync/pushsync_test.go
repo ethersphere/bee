@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1403,4 +1404,127 @@ func chanFunc(c chan<- struct{}) func(swarm.Chunk) {
 	return func(_ swarm.Chunk) {
 		c <- struct{}{}
 	}
+}
+
+// slowStorerSetup builds an origin whose closest peer stores the chunk and
+// answers with a valid receipt only after delay, while enough other peers fail
+// at once to spend the origin's whole push budget before that.
+func slowStorerSetup(t *testing.T, delay time.Duration) (*pushsync.PushSync, swarm.Chunk, swarm.Address) {
+	t.Helper()
+
+	const radius = 2
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(key)
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	storer, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := testingc.GenerateValidRandomChunkAt(t, storer, radius)
+
+	psStorer, _ := createPushSyncNodeWithRadius(t, storer, defaultPrices, nil, nil, signer, radius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	spec := psStorer.Protocol()
+	streams := slices.Clone(spec.StreamSpecs)
+	for i := range streams {
+		handler := streams[i].Handler
+		streams[i].Handler = func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+			time.Sleep(delay)
+			return handler(ctx, p, s)
+		}
+	}
+	spec.StreamSpecs = streams
+
+	// the storer is in the chunk's AOR, so the origin multiplexes and its
+	// budget grows by the extra forwards
+	const failingPeers = 34
+	failing := make(map[string]bool, failingPeers)
+	peers := make([]swarm.Address, 0, failingPeers+1)
+	peers = append(peers, storer)
+	for range failingPeers {
+		b := swarm.RandAddress(t).Bytes()
+		b[0] = chunk.Address().Bytes()[0] ^ 0x80 // po 0: farther than the storer
+		addr := swarm.NewAddress(b)
+		failing[addr.ByteString()] = true
+		peers = append(peers, addr)
+	}
+
+	originBytes := chunk.Address().Clone().Bytes()
+	originBytes[0] ^= 0x80
+	origin := swarm.NewAddress(originBytes)
+
+	recorder := streamtest.New(
+		streamtest.WithPeerProtocols(map[string]p2p.ProtocolSpec{storer.String(): spec}),
+		streamtest.WithStreamError(func(addr swarm.Address, _, _, _ string) error {
+			if failing[addr.ByteString()] {
+				return errors.New("peer unreachable")
+			}
+			return nil
+		}),
+		streamtest.WithBaseAddr(origin),
+	)
+	psOrigin, _ := createPushSyncNodeWithRadius(t, origin, defaultPrices, recorder, nil, nil, radius, mock.WithPeers(peers...))
+
+	return psOrigin, chunk, storer
+}
+
+// TestOriginWaitsForInflightPush verifies that an origin whose push budget is
+// spent still waits for a push in flight, which it pays for anyway.
+func TestOriginWaitsForInflightPush(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		psOrigin, chunk, storer := slowStorerSetup(t, 10*time.Second)
+
+		receipt, err := psOrigin.PushChunkToClosest(context.Background(), chunk)
+		if err != nil {
+			t.Fatalf("got %v, want the storer's receipt", err)
+		}
+		pub, err := crypto.Recover(receipt.Signature, receipt.Address.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		signedBy, err := crypto.NewOverlayAddress(*pub, 1, receipt.Nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !signedBy.Equal(storer) {
+			t.Fatalf("receipt signed by %s, want the storer %s", signedBy, storer)
+		}
+	})
+}
+
+// TestOriginInflightWaitCancelled verifies that an origin waiting for a push in
+// flight still returns as soon as its context is cancelled.
+func TestOriginInflightWaitCancelled(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const delay = 25 * time.Second
+		psOrigin, chunk, _ := slowStorerSetup(t, delay)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		time.AfterFunc(6*time.Second, cancel)
+
+		start := time.Now()
+		if _, err := psOrigin.PushChunkToClosest(ctx, chunk); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("got %v, want %v", err, pushsync.ErrNoPush)
+		}
+		// the origin was still waiting when the context was cancelled, and
+		// it did not wait for the storer
+		if elapsed := time.Since(start); elapsed < 6*time.Second || elapsed >= delay {
+			t.Fatalf("returned after %v, want at the cancel (6s), before the storer answers at %v", elapsed, delay)
+		}
+
+		// let the storer answer, so the push still in flight can end
+		time.Sleep(delay)
+		synctest.Wait()
+	})
 }

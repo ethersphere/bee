@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
@@ -385,6 +387,344 @@ func TestNetStore(t *testing.T) {
 				db.SetRetrievalService(r)
 			}
 			return db, err
+		})
+	})
+}
+
+// TestDirectUploadStopsOnError verifies that once a chunk fails a direct
+// upload, the upload stops: later chunks are not pushed and the next put
+// returns the error.
+func TestDirectUploadStopsOnError(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		chunks := chunktesting.GenerateTestRandomChunks(2)
+
+		lstore, err := storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var pushed []swarm.Address
+		quit := make(chan struct{})
+		defer func() {
+			close(quit)
+			if err := lstore.Close(); err != nil {
+				t.Errorf("close: %v", err)
+			}
+			// leveldb waits up to a second for its memory pool on close
+			time.Sleep(time.Second)
+		}()
+		go func() {
+			for {
+				select {
+				case op := <-lstore.PusherFeed():
+					pushed = append(pushed, op.Chunk.Address())
+					op.Err <- pushsync.ErrNoPush
+				case <-quit:
+					return
+				}
+			}
+		}()
+
+		session := lstore.DirectUpload()
+
+		if err := session.Put(context.Background(), chunks[0]); err != nil {
+			t.Fatalf("session.Put(...): unexpected error: %v", err)
+		}
+		synctest.Wait()
+
+		if err := session.Put(context.Background(), chunks[1]); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("session.Put(...): got %v, want %v", err, pushsync.ErrNoPush)
+		}
+		synctest.Wait()
+
+		if len(pushed) != 1 || !pushed[0].Equal(chunks[0].Address()) {
+			t.Fatalf("pushed %v, want only %s", pushed, chunks[0].Address())
+		}
+
+		if err := session.Done(chunks[1].Address()); !errors.Is(err, pushsync.ErrNoPush) {
+			t.Fatalf("session.Done(): got %v, want %v", err, pushsync.ErrNoPush)
+		}
+	})
+}
+
+// scriptedPusher answers direct pushes from a script, by chunk address and
+// the number of times that chunk has been pushed, and records the pushes.
+type scriptedPusher struct {
+	mu     sync.Mutex
+	pushes []swarm.Address
+	answer func(addr swarm.Address, n int) error
+}
+
+func (p *scriptedPusher) run(feed <-chan *pusher.Op, quit <-chan struct{}) {
+	for {
+		select {
+		case op := <-feed:
+			p.mu.Lock()
+			p.pushes = append(p.pushes, op.Chunk.Address())
+			n := p.countLocked(op.Chunk.Address())
+			p.mu.Unlock()
+			op.Err <- p.answer(op.Chunk.Address(), n)
+		case <-quit:
+			return
+		}
+	}
+}
+
+func (p *scriptedPusher) countLocked(addr swarm.Address) int {
+	n := 0
+	for _, a := range p.pushes {
+		if a.Equal(addr) {
+			n++
+		}
+	}
+	return n
+}
+
+func (p *scriptedPusher) count(addr swarm.Address) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.countLocked(addr)
+}
+
+func (p *scriptedPusher) order() []swarm.Address {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.pushes)
+}
+
+// withScriptedPusher runs f against an in-memory storer whose direct pushes are
+// answered by answer. It must be called inside a synctest bubble.
+func withScriptedPusher(t *testing.T, answer func(addr swarm.Address, n int) error, f func(lstore *storer.DB, p *scriptedPusher)) {
+	t.Helper()
+
+	lstore, err := storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &scriptedPusher{answer: answer}
+	quit := make(chan struct{})
+	defer func() {
+		close(quit)
+		if err := lstore.Close(); err != nil {
+			t.Errorf("close: %v", err)
+		}
+		// leveldb waits up to a second for its memory pool on close
+		time.Sleep(time.Second)
+	}()
+	go p.run(lstore.PusherFeed(), quit)
+
+	f(lstore, p)
+}
+
+// TestDirectUploadRequeue verifies that a chunk which fails a direct upload is
+// pushed once more at the end of the upload before the upload fails.
+func TestDirectUploadRequeue(t *testing.T) {
+	t.Parallel()
+
+	// failFirst fails the first push of every chunk in fail and any push of
+	// a chunk in failAlways.
+	failFirst := func(fail, failAlways []swarm.Chunk) func(swarm.Address, int) error {
+		return func(addr swarm.Address, n int) error {
+			for _, ch := range failAlways {
+				if ch.Address().Equal(addr) {
+					return pusher.ErrCouldNotSync
+				}
+			}
+			for _, ch := range fail {
+				if ch.Address().Equal(addr) && n == 1 {
+					return pusher.ErrCouldNotSync
+				}
+			}
+			return nil
+		}
+	}
+
+	put := func(t *testing.T, session storer.PutterSession, ch swarm.Chunk) {
+		t.Helper()
+		if err := session.Put(context.Background(), ch); err != nil {
+			t.Fatalf("session.Put(...): unexpected error: %v", err)
+		}
+		synctest.Wait()
+	}
+
+	t.Run("retried chunk succeeds", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(2)
+			withScriptedPusher(t, failFirst(chunks[:1], nil), func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				put(t, session, chunks[0])
+				put(t, session, chunks[1])
+
+				if err := session.Done(swarm.ZeroAddress); err != nil {
+					t.Fatalf("session.Done(): unexpected error: %v", err)
+				}
+				want := []swarm.Address{chunks[0].Address(), chunks[1].Address(), chunks[0].Address()}
+				if got := p.order(); !slices.EqualFunc(got, want, swarm.Address.Equal) {
+					t.Fatalf("pushes %v, want %v", got, want)
+				}
+			})
+		})
+	})
+
+	t.Run("fails twice", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(1)
+			withScriptedPusher(t, failFirst(nil, chunks), func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				put(t, session, chunks[0])
+
+				if err := session.Done(swarm.ZeroAddress); !errors.Is(err, pusher.ErrCouldNotSync) {
+					t.Fatalf("session.Done(): got %v, want %v", err, pusher.ErrCouldNotSync)
+				}
+				if got := p.count(chunks[0].Address()); got != 2 {
+					t.Fatalf("got %d pushes, want 2", got)
+				}
+			})
+		})
+	})
+
+	t.Run("full queue retries oldest first", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(storer.DirectUploadRequeueLimit + 1)
+			withScriptedPusher(t, failFirst(chunks, nil), func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				for _, ch := range chunks {
+					put(t, session, ch)
+				}
+
+				// the oldest chunk waits out the minimum age first
+				if got := p.count(chunks[0].Address()); got != 1 {
+					t.Fatalf("oldest chunk: got %d pushes while the queue is full, want 1", got)
+				}
+				time.Sleep(storer.DirectUploadRequeueMinAge)
+				synctest.Wait()
+				if got := p.count(chunks[0].Address()); got != 2 {
+					t.Fatalf("oldest chunk: got %d pushes before done, want 2", got)
+				}
+				if err := session.Done(swarm.ZeroAddress); err != nil {
+					t.Fatalf("session.Done(): unexpected error: %v", err)
+				}
+				for i, ch := range chunks {
+					if got := p.count(ch.Address()); got != 2 {
+						t.Fatalf("chunk %d: got %d pushes, want 2", i, got)
+					}
+				}
+			})
+		})
+	})
+
+	t.Run("full queue oldest fails again", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(storer.DirectUploadRequeueLimit + 2)
+			next := chunks[len(chunks)-1]
+			chunks = chunks[:len(chunks)-1]
+			withScriptedPusher(t, failFirst(chunks, chunks[:1]), func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				for _, ch := range chunks {
+					put(t, session, ch)
+				}
+
+				// the upload is alive while the oldest chunk waits
+				if err := session.Put(context.Background(), next); err != nil {
+					t.Fatalf("session.Put(next) while waiting: unexpected error: %v", err)
+				}
+				time.Sleep(storer.DirectUploadRequeueMinAge)
+				synctest.Wait()
+
+				// the upload has failed: the next chunk is not pushed
+				next = chunktesting.GenerateTestRandomChunk()
+				if err := session.Put(context.Background(), next); !errors.Is(err, pusher.ErrCouldNotSync) {
+					t.Fatalf("session.Put(next): got %v, want %v", err, pusher.ErrCouldNotSync)
+				}
+				synctest.Wait()
+				if got := p.count(next.Address()); got != 0 {
+					t.Fatalf("next chunk: got %d pushes, want 0", got)
+				}
+
+				if err := session.Done(swarm.ZeroAddress); !errors.Is(err, pusher.ErrCouldNotSync) {
+					t.Fatalf("session.Done(): got %v, want %v", err, pusher.ErrCouldNotSync)
+				}
+				if got := p.count(chunks[0].Address()); got != 2 {
+					t.Fatalf("oldest chunk: got %d pushes, want 2", got)
+				}
+			})
+		})
+	})
+
+	t.Run("first pass error skips retry", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(2)
+			answer := func(addr swarm.Address, n int) error {
+				if addr.Equal(chunks[0].Address()) {
+					return pusher.ErrCouldNotSync
+				}
+				return pushsync.ErrNoPush
+			}
+			withScriptedPusher(t, answer, func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				put(t, session, chunks[0])
+				put(t, session, chunks[1])
+
+				if err := session.Done(swarm.ZeroAddress); !errors.Is(err, pushsync.ErrNoPush) {
+					t.Fatalf("session.Done(): got %v, want %v", err, pushsync.ErrNoPush)
+				}
+				if got := p.count(chunks[0].Address()); got != 1 {
+					t.Fatalf("got %d pushes, want 1", got)
+				}
+			})
+		})
+	})
+
+	t.Run("cleanup does not retry", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(1)
+			withScriptedPusher(t, failFirst(chunks, nil), func(lstore *storer.DB, p *scriptedPusher) {
+				session := lstore.DirectUpload()
+				put(t, session, chunks[0])
+
+				if err := session.Cleanup(); err != nil {
+					t.Fatalf("session.Cleanup(): unexpected error: %v", err)
+				}
+				if got := p.count(chunks[0].Address()); got != 1 {
+					t.Fatalf("got %d pushes, want 1", got)
+				}
+			})
+		})
+	})
+
+	t.Run("client gone before done", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			chunks := chunktesting.GenerateTestRandomChunks(1)
+			withScriptedPusher(t, failFirst(chunks, nil), func(lstore *storer.DB, p *scriptedPusher) {
+				ctx, cancel := context.WithCancel(context.Background())
+				session := lstore.DirectUpload()
+				if err := session.Put(ctx, chunks[0]); err != nil {
+					t.Fatalf("session.Put(...): unexpected error: %v", err)
+				}
+				synctest.Wait()
+				cancel()
+
+				if err := session.Done(swarm.ZeroAddress); !errors.Is(err, context.Canceled) {
+					t.Fatalf("session.Done(): got %v, want %v", err, context.Canceled)
+				}
+				if got := p.count(chunks[0].Address()); got != 1 {
+					t.Fatalf("got %d pushes, want 1", got)
+				}
+				// the client left; the chunk was not lost to the network
+				if got := lstore.DirectUploadRequeueFailed(); got != 0 {
+					t.Fatalf("got %v requeued chunks counted as lost, want 0", got)
+				}
+			})
 		})
 	})
 }

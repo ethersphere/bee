@@ -36,6 +36,8 @@ type metrics struct {
 	ReserveSampleRunSummary       *prometheus.GaugeVec
 	ReserveSampleLastRunTimestamp prometheus.Gauge
 	RecoveryPrunedChunkCount      prometheus.Counter
+	DirectUploadRequeued          prometheus.Counter
+	DirectUploadRequeueFailed     prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -199,6 +201,22 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "recovery_pruned_chunk_count",
 				Help:      "Number of corrupted chunks pruned from the index during sharky recovery.",
+			},
+		),
+		DirectUploadRequeued: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "direct_upload_requeued",
+				Help:      "Number of direct upload chunks that failed once and wait for one more push at the end of the upload.",
+			},
+		),
+		DirectUploadRequeueFailed: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "direct_upload_requeue_failed",
+				Help:      "Number of requeued direct upload chunks that failed their second push, failing the upload.",
 			},
 		),
 	}
