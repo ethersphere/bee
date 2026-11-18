@@ -68,11 +68,12 @@ jobs:
             }
             core.setOutput('sha', c.sha)
             // Escape everything user-controlled: the summary is what the release approver reviews.
-            const esc = s => s.replace(/[&<>"'`\[\]]/g, ch => `&#${ch.charCodeAt(0)};`)
+            const esc = s => s.replace(/[&<>"'`\[\]\\]/g, ch => `&#${ch.charCodeAt(0)};`)
             const subject = c.commit.message.split('\n')[0]
             core.summary
               .addHeading(`${TAG} will tag ${c.sha}`)
-              .addRaw(`<a href="${c.html_url}">${esc(subject)}</a> (${esc(REF)}, on ${esc(onBranch)})`, true)
+              // <p> makes it an HTML block, so GitHub applies no markdown (autolinks, \ escapes) inside.
+              .addRaw(`<p><a href="${c.html_url}">${esc(subject)}</a> (${esc(REF)}, on ${esc(onBranch)})</p>`, true)
             await core.summary.write()
 
   tag:
