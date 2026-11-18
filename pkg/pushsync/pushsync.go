@@ -106,6 +106,10 @@ type PushSync struct {
 	hops                    *hopMemory
 	stabilizer              stabilization.Subscriber
 	overDraftRefreshLimiter *rate.Limiter
+
+	// Switches for tests only, set through export_test.go.
+	noHopMemory     bool // the origin picks the first hop without the first-hop memory
+	legacyForwarder bool // the forwarder acts as in v2.8.3: it stores outside of its AOR on ErrWantSelf
 }
 
 type receiptResult struct {
@@ -308,7 +312,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	case errors.Is(err, topology.ErrWantSelf):
 		// Out-of-AOR chunks are unreachable via retrieval even when not
 		// evicted; let the origin try the next peer instead.
-		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
+		if !ps.legacyForwarder && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
 			ps.metrics.OutOfDepthStoring.Inc()
 			return ErrOutOfDepthStoring
 		}
@@ -438,7 +442,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				source      hopSource
 				blockedOnly bool
 			)
-			if origin {
+			if origin && !ps.noHopMemory {
 				peer, source, blockedOnly, err = ps.originPeer(ch.Address(), rad, fullSkip, &probed)
 			} else {
 				peer, err = ps.closestPeer(ch.Address(), origin, fullSkip)
@@ -687,7 +691,7 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipLis
 	// or unreachable is still a better destination than this node, so the
 	// search is widened in that case as well.
 	widen := func(err error) bool {
-		return errors.Is(err, topology.ErrNotFound) || errors.Is(err, topology.ErrWantSelf)
+		return errors.Is(err, topology.ErrNotFound) || (!ps.legacyForwarder && errors.Is(err, topology.ErrWantSelf))
 	}
 
 	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)

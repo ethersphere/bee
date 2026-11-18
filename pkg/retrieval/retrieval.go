@@ -78,6 +78,14 @@ type Service struct {
 	tracer        *tracing.Tracer
 	caching       bool
 	errSkip       *skippeers.List
+
+	// Switch for tests only, set through export_test.go: the origin asks
+	// healthy peers at any distance first, as before the change in closestPeer.
+	healthFirst bool
+
+	// Switch for tests only, set through export_test.go: a forwarder asks
+	// healthy peers at any distance first, as before the change in closestPeer.
+	forwarderHealthFirst bool
 }
 
 func New(
@@ -403,12 +411,19 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 		return swarm.Address{}, err
 	}
 
-	// A healthy peer that is far from the chunk must not be asked before a
-	// peer of a higher proximity order. Health decides only between peers of
-	// the same proximity order.
-	nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
-	if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
-		closest = nearest
+	healthFirst := s.healthFirst
+	if !allowUpstream {
+		healthFirst = s.forwarderHealthFirst
+	}
+
+	if !healthFirst {
+		// A healthy peer that is far from the chunk must not be asked before a
+		// peer of a higher proximity order. Health decides only between peers
+		// of the same proximity order.
+		nearest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
+		if err == nil && swarm.Proximity(nearest.Bytes(), addr.Bytes()) > swarm.Proximity(closest.Bytes(), addr.Bytes()) {
+			closest = nearest
+		}
 	}
 
 	if allowUpstream {

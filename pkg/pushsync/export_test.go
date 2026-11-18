@@ -70,3 +70,9 @@ func counterValue(c prometheus.Counter) float64 {
 	}
 	return m.GetCounter().GetValue()
 }
+
+// SetNoHopMemory makes the origin pick the first hop without the first-hop memory.
+func (ps *PushSync) SetNoHopMemory(v bool) { ps.noHopMemory = v }
+
+// SetLegacyForwarder makes the forwarder act as in v2.8.3.
+func (ps *PushSync) SetLegacyForwarder(v bool) { ps.legacyForwarder = v }
