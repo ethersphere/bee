@@ -14,10 +14,12 @@ const (
 	offerSkipBadAddressLength = "bad_address_length"
 	offerSkipZeroAddress      = "zero_address"
 	offerSkipBadSumLength     = "bad_sum_length"
+	offerSkipBadStampLength   = "bad_stamp_length"
 )
 
 type metrics struct {
 	Offered              prometheus.Counter     // number of chunks offered
+	OfferedLegacy        prometheus.Counter     // number of offered chunks without a sum, from peers predating SWIP-101
 	OfferSkipped         *prometheus.CounterVec // offer entries skipped while checking an offer, by reason
 	Wanted               prometheus.Counter     // number of chunks wanted
 	MissingChunks        prometheus.Counter     // number of reserve get errs
@@ -42,6 +44,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "chunks_offered",
 			Help:      "Total chunks offered.",
+		}),
+		OfferedLegacy: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_offered_legacy",
+			Help:      "Total chunks offered without a SWIP-101 sum, matched by stamp instead.",
 		}),
 		OfferSkipped: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
