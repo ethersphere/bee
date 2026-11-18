@@ -834,7 +834,7 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
+	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampVersions[0].Address, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
@@ -848,7 +848,7 @@ func NewBee(
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
-	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
+	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampVersions[0].ABI)
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
@@ -1306,7 +1306,7 @@ func NewBee(
 		}
 	}()
 
-	stakingContractAddress := chainCfg.StakingAddress
+	stakingContractAddress := chainCfg.StakingVersions[0].Address
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
 			return nil, errors.New("malformed staking contract address")
@@ -1314,7 +1314,7 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingVersions[0].ABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
 
 	if chainEnabled {
 
@@ -1398,7 +1398,7 @@ func NewBee(
 
 		if o.EnableStorageIncentives {
 
-			redistributionContractAddress := chainCfg.RedistributionAddress
+			redistributionContractAddress := chainCfg.RedistributionVersions[0].Address
 			if o.RedistributionContractAddress != "" {
 				if !common.IsHexAddress(o.RedistributionContractAddress) {
 					return nil, errors.New("malformed redistribution contract address")
@@ -1406,7 +1406,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionVersions[0].ABI), contractGasLimit)
 
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
