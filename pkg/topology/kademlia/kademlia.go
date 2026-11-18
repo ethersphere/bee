@@ -1356,20 +1356,14 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 
 	closest := swarm.ZeroAddress
 
-	if includeSelf && k.reachability == p2p.ReachabilityStatusPublic {
+	if includeSelf {
 		closest = k.base
 	}
-
-	prox := swarm.Proximity(k.base.Bytes(), addr.Bytes())
 
 	// iterate starting from bin 0 to the maximum bin
 	err := k.EachConnectedPeerRev(func(peer swarm.Address, bin uint8) (bool, bool, error) {
 		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
-		}
-
-		if bin > prox && !closest.IsZero() {
-			return true, false, nil
 		}
 
 		if closest.IsZero() {

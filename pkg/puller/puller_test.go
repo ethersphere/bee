@@ -115,18 +115,22 @@ func TestSyncRates(t *testing.T) {
 			t.Parallel()
 
 			addr := swarm.RandAddress(t)
-			p, _, kad, _ := newPuller(t, opts{
-				kad:      []kadMock.Option{kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: tc.peerPO})},
-				pullSync: []mockps.Option{mockps.WithCursors([]uint64{1000, 1000, 1000, 1000, 1000}, 0), mockps.WithReplies(mockps.SyncReply{Bin: tc.bin, Start: 1, Topmost: 1000, Count: 100, Peer: addr})},
-				bins:     5,
-				rs:       resMock.NewReserve(resMock.WithRadius(radius)),
-			})
+			s, err := leveldb.NewStateStore(t.TempDir(), log.Noop)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ps := mockps.NewPullSync(mockps.WithCursors([]uint64{1000, 1000, 1000, 1000, 1000}, 0), mockps.WithReplies(mockps.SyncReply{Bin: tc.bin, Start: 1, Topmost: 1000, Count: 100, Peer: addr}))
+			kad := kadMock.NewMockKademlia(kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: tc.peerPO}))
+			p := puller.New(swarm.RandAddress(t), s, kad, resMock.NewReserve(resMock.WithRadius(radius)), ps, nil, log.Noop, puller.Options{Bins: 5})
+			testutil.CleanupCloser(t, p, s)
+
+			// the first sync pass runs as soon as the puller starts
 			if !p.IsReserveSynced(radius) {
 				t.Fatal("expected reserve to be synced before any syncing")
 			}
-			kad.Trigger()
+			p.Start(context.Background())
 
-			err := spinlock.Wait(time.Second, func() bool {
+			err = spinlock.Wait(time.Second, func() bool {
 				return p.SyncRateWithinRadius() > 0
 			})
 			if err != nil {

@@ -821,7 +821,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 
 	bufSize := lookaheadBufferSize(l)
 	if headers.LookaheadBufferSize != nil {
-		bufSize = *(headers.LookaheadBufferSize)
+		bufSize = *headers.LookaheadBufferSize
 	}
 	if bufSize > 0 {
 		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, bufSize))
