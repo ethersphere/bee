@@ -342,7 +342,7 @@ func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk, chunkType swar
 	return h.Sum(nil)[:ChunkSumSize], nil
 }
 
-// DivergentSocChunkWins reports whether the incoming chunk should replace the
+// ReplaceIncoming reports whether the incoming chunk should replace the
 // stored one when the two share an address, batch and stamp but wrap different
 // content. Both chunks must be single owner chunks; a content addressed chunk
 // cannot diverge, since its address is the hash of its own payload.
@@ -351,7 +351,7 @@ func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk, chunkType swar
 // The rule depends on nothing but the two payloads, so every node in the
 // neighborhood converges on the same chunk regardless of the order in which
 // they arrive.
-func DivergentSocChunkWins(stored, incoming swarm.Chunk) (bool, error) {
+func ReplaceIncoming(stored, incoming swarm.Chunk) (bool, error) {
 	storedAddr, err := wrappedAddress(stored)
 	if err != nil {
 		return false, fmt.Errorf("stored chunk: %w", err)

@@ -169,7 +169,8 @@ func (c *ChunkBinItem) Clone() storage.Item {
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize + storage.ChunkSumSize
+// ChunkBinItemSize is the serialized size of a ChunkBinItem.
+const ChunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize + storage.ChunkSumSize
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
@@ -179,7 +180,7 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 		return nil, errMarshalInvalidSize
 	}
 
-	buf := make([]byte, chunkBinItemSize)
+	buf := make([]byte, ChunkBinItemSize)
 	i := 0
 
 	buf[i] = c.Bin
@@ -205,7 +206,7 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 }
 
 func (c *ChunkBinItem) Unmarshal(buf []byte) error {
-	if len(buf) != chunkBinItemSize {
+	if len(buf) != ChunkBinItemSize {
 		return errUnmarshalInvalidSize
 	}
 

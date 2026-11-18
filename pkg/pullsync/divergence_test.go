@@ -54,7 +54,7 @@ func TestDivergentSOCConvergesBetweenReserves(t *testing.T) {
 
 	v1, v2 := newSOC("payload one"), newSOC("payload two")
 	sameStampWinner, sameStampLoser := v2, v1
-	if wins, err := storage.DivergentSocChunkWins(v2, v1); err != nil {
+	if wins, err := storage.ReplaceIncoming(v2, v1); err != nil {
 		t.Fatal(err)
 	} else if wins {
 		sameStampWinner, sameStampLoser = v1, v2

@@ -318,7 +318,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address, same batch, equal timestamp, different stamp
-			// indices. evaluateSOCDivergence resolves the collision by settling
+			// indices. tiebreakSOC resolves the collision by settling
 			// on the lexicographically lower stamp hash like the same-slot path.
 			name: "divergent socs, equal timestamp, distinct stamp indices",
 			chunks: func(t *testing.T) []swarm.Chunk {
@@ -331,7 +331,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address under two batches at the same timestamp.
-			// evaluateSOCDivergence settles on the lexicographically lower stamp
+			// tiebreakSOC settles on the lexicographically lower stamp
 			// hash, matching the same-slot equal-timestamp path.
 			name: "divergent socs, equal timestamp, distinct batches",
 			chunks: func(t *testing.T) []swarm.Chunk {
@@ -367,7 +367,7 @@ func TestPutOrderConvergence(t *testing.T) {
 
 // TestSOCMultiStampDivergenceCornerCase checks multi-stamp SOC settlement on
 // one address. At equal timestamps, a stamp with a lower stamp hash wins the
-// divergence evaluation (evaluateSOCDivergence); a later re-offer of the losing
+// divergence evaluation (tiebreakSOC); a later re-offer of the losing
 // stamp is rejected. The reserve therefore ends on a single deterministic
 // body, which is what neighborhood convergence requires.
 func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {

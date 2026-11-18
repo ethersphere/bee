@@ -75,16 +75,16 @@ func FuzzChunkBinItemUnmarshal(f *testing.F) {
 	f.Add(valid)
 	f.Add([]byte(nil))
 	f.Add(make([]byte, 10))
-	f.Add(make([]byte, chunkBinItemSize))
-	f.Add(valid[:chunkBinItemSize-storage.ChunkSumSize]) // pre-Sum serialization
+	f.Add(make([]byte, ChunkBinItemSize))
+	f.Add(valid[:ChunkBinItemSize-storage.ChunkSumSize]) // pre-Sum serialization
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		item := &ChunkBinItem{}
 		if err := item.Unmarshal(data); err != nil { // must not panic on any input
 			return
 		}
-		if len(data) != chunkBinItemSize {
-			t.Fatalf("decoded buffer of len %d, want %d", len(data), chunkBinItemSize)
+		if len(data) != ChunkBinItemSize {
+			t.Fatalf("decoded buffer of len %d, want %d", len(data), ChunkBinItemSize)
 		}
 		if item.Address.IsZero() {
 			return // zero address decodes but cannot re-Marshal

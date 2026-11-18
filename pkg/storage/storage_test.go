@@ -308,7 +308,7 @@ func FuzzChunkSum(f *testing.F) {
 	})
 }
 
-func TestDivergentSocChunkWins(t *testing.T) {
+func TestReplaceIncoming(t *testing.T) {
 	t.Parallel()
 
 	privKey, err := crypto.GenerateSecp256k1Key()
@@ -347,7 +347,7 @@ func TestDivergentSocChunkWins(t *testing.T) {
 	t.Run("lower wrapped address wins", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentSocChunkWins(higher, lower)
+		wins, err := storage.ReplaceIncoming(higher, lower)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -359,7 +359,7 @@ func TestDivergentSocChunkWins(t *testing.T) {
 	t.Run("tie-break is antisymmetric", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentSocChunkWins(lower, higher)
+		wins, err := storage.ReplaceIncoming(lower, higher)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +371,7 @@ func TestDivergentSocChunkWins(t *testing.T) {
 	t.Run("a chunk does not displace itself", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentSocChunkWins(lower, lower)
+		wins, err := storage.ReplaceIncoming(lower, lower)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -384,10 +384,10 @@ func TestDivergentSocChunkWins(t *testing.T) {
 		t.Parallel()
 
 		cac := testingc.GenerateTestRandomChunk()
-		if _, err := storage.DivergentSocChunkWins(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
+		if _, err := storage.ReplaceIncoming(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
 			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
-		if _, err := storage.DivergentSocChunkWins(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
+		if _, err := storage.ReplaceIncoming(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
 			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
 	})

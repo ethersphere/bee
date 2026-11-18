@@ -181,7 +181,7 @@ func step_09(
 			}
 		}
 
-		swept, err := reserve.RemoveMalformedChunkBinItems(context.Background(), st)
+		swept, err := removeMalformedChunkBinItems(context.Background(), st)
 		if err != nil {
 			return err
 		}
@@ -233,4 +233,49 @@ func removeEntry(ctx context.Context, s transaction.Store, item *reserve.BatchRa
 		}
 	}
 	return reserve.RemoveChunkWithItem(ctx, s, item)
+}
+
+// removeMalformedChunkBinItems deletes chunkBin entries whose stored value
+// does not match the current serialization, without unmarshaling them. Such
+// entries are orphaned pre-Sum records (a ChunkBinItem without a matching
+// BatchRadiusItem is never rewritten by the Sum backfill migration) and would
+// otherwise fail every full iteration of the namespace: the reserve sampler,
+// pullsync bin subscriptions and the reserve repairer. They have no companion
+// ChunkSumItem to remove. Returns the number of entries deleted.
+func removeMalformedChunkBinItems(ctx context.Context, st transaction.Storage) (int, error) {
+	var malformed []*reserve.ChunkBinItem
+	err := st.IndexStore().Iterate(storage.Query{
+		Factory:      func() storage.Item { return &reserve.ChunkBinItem{} },
+		ItemProperty: storage.QueryItemSize,
+	}, func(res storage.Result) (bool, error) {
+		if res.Size == reserve.ChunkBinItemSize {
+			return false, nil
+		}
+		bin, binID, err := reserve.ParseChunkBinID(res.ID)
+		if err != nil {
+			return false, err
+		}
+		malformed = append(malformed, &reserve.ChunkBinItem{Bin: bin, BinID: binID})
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	const batchSize = 1000
+	for i := 0; i < len(malformed); i += batchSize {
+		end := min(i+batchSize, len(malformed))
+		err := st.Run(ctx, func(s transaction.Store) error {
+			for _, item := range malformed[i:end] {
+				if err := s.IndexStore().Delete(item); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+	return len(malformed), nil
 }
