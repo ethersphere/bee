@@ -89,10 +89,10 @@ type simParams struct {
 	reachMode   string
 	// noHealth makes retrieval select the closest reachable peer and not
 	// look at the health mark (an experiment, download runs only).
-	noHealth bool
+	noHealth bool //nolint:unused // used by the copy of this file in pkg/retrieval
 	// anyReach makes retrieval apply its proximity rule to peers that are
 	// not reachable (an experiment, used by the download runs only).
-	anyReach bool
+	anyReach bool //nolint:unused // used by the copy of this file in pkg/retrieval
 }
 
 const (

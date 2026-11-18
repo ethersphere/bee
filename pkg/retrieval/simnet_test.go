@@ -372,7 +372,8 @@ func TestSimDownloadReach(t *testing.T) {
 			share float64
 			mode  string
 		}
-		reaches := []reach{{0, ""}}
+		reaches := make([]reach, 0, 7)
+		reaches = append(reaches, reach{0, ""})
 		for _, share := range []float64{0.1, 0.3, 0.5} {
 			reaches = append(reaches, reach{share, simReachNode}, reach{share, simReachPair})
 		}
