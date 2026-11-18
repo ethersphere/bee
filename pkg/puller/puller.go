@@ -502,6 +502,11 @@ func (p *Puller) resetPeerIntervals(peer swarm.Address) (err error) {
 // gone every chunk is requested once more, now with sums, and only chunks
 // that differ are delivered again. The peers do the same for this node, as the
 // storer migration changes the reserve epoch.
+//
+// The pass only sends offers and is not slowed down by the puller limiter,
+// which counts chunks put. Against a peer that has not upgraded yet it compares
+// by stamp only, and the pass is repeated when that peer upgrades, so a link is
+// passed over at most twice during a rollout.
 func (p *Puller) resetIntervalsForSum() error {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
@@ -525,7 +530,7 @@ func (p *Puller) resetIntervalsForSum() error {
 	}
 	for _, k := range keys {
 		if err := p.statestore.Delete(k); err != nil {
-			return fmt.Errorf("delete interval %s: %w", k, err)
+			return fmt.Errorf("delete interval: %w", err)
 		}
 	}
 

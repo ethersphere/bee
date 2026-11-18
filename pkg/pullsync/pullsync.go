@@ -181,7 +181,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	// make an offer to the upstream peer in return for the requested range.
 	// the bincs slice is retained so processWant can resolve wanted chunks by
-	// their batch ID and stamp hash, which are no longer carried on the wire.
+	// their batch ID and stamp hash.
 	offer, bincs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
