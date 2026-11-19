@@ -447,8 +447,6 @@ func TestBytesRedundancyLevel(t *testing.T) {
 	}
 }
 
-// TestBytesHead tests that HEAD reports the same entity headers as GET, for every
-// redundancy level and for encrypted references.
 // TestBytesReplicaBucketFull checks that an upload returns 402 when stamping
 // a dispersed replica of the root chunk runs into a full collision bucket.
 func TestBytesReplicaBucketFull(t *testing.T) {
@@ -474,6 +472,8 @@ func TestBytesReplicaBucketFull(t *testing.T) {
 	)
 }
 
+// TestBytesHead tests that HEAD reports the same entity headers as GET, for every
+// redundancy level and for encrypted references.
 func TestBytesHead(t *testing.T) {
 	t.Parallel()
 

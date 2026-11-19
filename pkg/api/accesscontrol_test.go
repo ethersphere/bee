@@ -1026,18 +1026,27 @@ func TestAccessControlBucketFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newClient := func(t *testing.T) *http.Client {
+	newClient := func(t *testing.T) (*http.Client, *savesCountingPost) {
 		t.Helper()
 		// a mutable batch with a single one-slot bucket
 		issuer := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 0, 0, 1000, false)
+		post := &savesCountingPost{Service: mockpost.New(mockpost.WithIssuer(issuer))}
 		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:        mockstorer.New(),
 			Logger:        log.Noop,
-			Post:          mockpost.New(mockpost.WithIssuer(issuer)),
+			Post:          post,
 			PublicKey:     pk.PublicKey,
 			AccessControl: accesscontrol.NewController(accesscontrol.NewLogic(accesscontrol.NewDefaultSession(pk))),
 		})
-		return client
+		return client, post
+	}
+	// chunks stamped before the failure have used up stamp indices, so the
+	// issuer must be saved even though the request failed
+	assertSaved := func(t *testing.T, post *savesCountingPost) {
+		t.Helper()
+		if got := post.saves.Load(); got != 1 {
+			t.Fatalf("issuer saves: want 1, got %d", got)
+		}
 	}
 	overissued := jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 		Message: "batch is overissued",
@@ -1049,25 +1058,29 @@ func TestAccessControlBucketFull(t *testing.T) {
 
 		// without dispersed replicas the content chunk takes the only slot,
 		// and the access control chunks find the bucket full
-		jsonhttptest.Request(t, newClient(t), http.MethodPost, "/bytes", http.StatusPaymentRequired,
+		client, post := newClient(t)
+		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusPaymentRequired,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmActHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 			jsonhttptest.WithRequestBody(strings.NewReader("hello")),
 			overissued,
 		)
+		assertSaved(t, post)
 	})
 
 	t.Run("create grantee list", func(t *testing.T) {
 		t.Parallel()
 
-		jsonhttptest.Request(t, newClient(t), http.MethodPost, "/grantee", http.StatusPaymentRequired,
+		client, post := newClient(t)
+		jsonhttptest.Request(t, client, http.MethodPost, "/grantee", http.StatusPaymentRequired,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithJSONRequestBody(api.GranteesPostRequest{
 				GranteeList: []string{"03d7660772cc3142f8a7a2dfac46ce34d12eac1718720cef0e3d94347902aa96a2"},
 			}),
 			overissued,
 		)
+		assertSaved(t, post)
 	})
 }
 
