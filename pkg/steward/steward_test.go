@@ -8,12 +8,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -26,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
@@ -483,6 +487,58 @@ func TestStewardSOCReference(t *testing.T) {
 	gotReplicas := reupload(t, s, store, chunkStore, sch.Address(), newRecordingStamper(), redundancy.MEDIUM, 1)
 	if len(gotReplicas) != 0 {
 		t.Fatalf("expected no dispersed replicas for a SOC reference, got %d", len(gotReplicas))
+	}
+}
+
+// TestStewardBucketFull checks that a re-upload that needs more stamps than
+// the batch has returns ErrBucketFull instead of reusing stamp indices,
+// for mutable and immutable batches alike.
+func TestStewardBucketFull(t *testing.T) {
+	t.Parallel()
+
+	for _, immutable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("immutable=%t", immutable), func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+
+			chunkStore := inmemchunkstore.New()
+			store := mockstorer.NewWithChunkStore(chunkStore)
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-store.PusherFeed():
+					}
+				}
+			}()
+			s := steward.New(store, &localRetriever{ChunkStore: chunkStore}, chunkStore)
+
+			// three data chunks and an intermediate chunk
+			data := make([]byte, 3*swarm.ChunkSize)
+			if _, err := rand.Read(data); err != nil {
+				t.Fatal(err)
+			}
+			root, err := builder.FeedPipeline(ctx, builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE), bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			key, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// depth 0 and bucket depth 0: a single bucket with a single slot
+			issuer := postage.NewStampIssuer("", "", make([]byte, 32), big.NewInt(3), 0, 0, 1000, immutable)
+			stamper := postage.NewStamper(inmemstore.New(), issuer, crypto.NewDefaultSigner(key))
+
+			err = s.Reupload(ctx, root, stamper, redundancy.NONE)
+			if !errors.Is(err, postage.ErrBucketFull) {
+				t.Fatalf("want %v, got %v", postage.ErrBucketFull, err)
+			}
+		})
 	}
 }
 
