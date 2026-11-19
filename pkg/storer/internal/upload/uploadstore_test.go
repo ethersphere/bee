@@ -956,34 +956,154 @@ func TestNextTagID(t *testing.T) {
 	}
 }
 
-func TestListTags(t *testing.T) {
+// countingReader wraps a storage.Reader and reports each entry the scan visits,
+// so a test can count the visits or cancel the context in the middle of a scan.
+type countingReader struct {
+	storage.Reader
+	visited int
+	onVisit func(visited int)
+}
+
+func (r *countingReader) Iterate(q storage.Query, fn storage.IterateFn) error {
+	return r.Reader.Iterate(q, func(res storage.Result) (bool, error) {
+		r.visited++
+		if r.onVisit != nil {
+			r.onVisit(r.visited)
+		}
+		return fn(res)
+	})
+}
+
+func TestListTagsPage(t *testing.T) {
 	t.Parallel()
 
 	ts := newTestStorage(t)
-
-	want := make([]upload.TagItem, 10)
-	for i := range want {
-		var tag upload.TagItem
-		var err error
-		err = ts.Run(context.Background(), func(s transaction.Store) error {
-			tag, err = upload.NextTag(s.IndexStore())
+	for range 10 {
+		err := ts.Run(context.Background(), func(s transaction.Store) error {
+			_, err := upload.NextTag(s.IndexStore())
 			return err
 		})
 		if err != nil {
-			t.Fatalf("failed creating tag: %v", err)
+			t.Fatalf("NextTag(): unexpected error: %v", err)
 		}
-		want[i] = tag
 	}
 
-	have, err := upload.ListAllTags(ts.IndexStore())
-	if err != nil {
-		t.Fatalf("upload.ListAllTags(): unexpected error: %v", err)
-	}
+	t.Run("returns the requested tags in key order", func(t *testing.T) {
+		t.Parallel()
 
-	opts := cmpopts.SortSlices(func(i, j upload.TagItem) bool { return i.TagID < j.TagID })
-	if diff := cmp.Diff(want, have, opts); diff != "" {
-		t.Fatalf("upload.ListAllTags(): mismatch (-want +have):\n%s", diff)
-	}
+		tags, err := upload.ListTagsPage(context.Background(), ts.IndexStore(), 0, 3, 2)
+		if err != nil {
+			t.Fatalf("ListTagsPage(): unexpected error: %v", err)
+		}
+
+		ids := make([]uint64, 0, len(tags))
+		for _, tag := range tags {
+			ids = append(ids, tag.TagID)
+		}
+		// Key order of tags 1 to 10 is 1, 10, 2, 3, 4, ...; skipping 3 leaves 3 and 4.
+		if diff := cmp.Diff([]uint64{3, 4}, ids); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("stops once the page is full", func(t *testing.T) {
+		t.Parallel()
+
+		r := &countingReader{Reader: ts.IndexStore()}
+		tags, err := upload.ListTagsPage(context.Background(), r, 0, 3, 2)
+		if err != nil {
+			t.Fatalf("ListTagsPage(): unexpected error: %v", err)
+		}
+		if len(tags) != 2 {
+			t.Fatalf("unexpected page size: want 2 have %d", len(tags))
+		}
+		// 3 skipped entries plus 2 collected entries, then the scan stops.
+		if r.visited != 5 {
+			t.Fatalf("unexpected number of visited entries: want 5 have %d", r.visited)
+		}
+	})
+
+	t.Run("starts after the cursor", func(t *testing.T) {
+		t.Parallel()
+
+		// Key order of tags 1 to 10 is 1, 10, 2, 3, 4, ...
+		for _, tc := range []struct {
+			name          string
+			after         uint64
+			offset, limit int
+			wantIDs       []uint64
+			wantVisited   int
+		}{
+			// The seek lands on key "2" itself, which is skipped.
+			{name: "existing tag", after: 2, limit: 2, wantIDs: []uint64{3, 4}, wantVisited: 3},
+			{name: "offset counts from the cursor", after: 10, offset: 1, limit: 2, wantIDs: []uint64{3, 4}, wantVisited: 4},
+			// No tag 25, as if it was deleted: the seek lands on key "3".
+			{name: "missing tag", after: 25, limit: 2, wantIDs: []uint64{3, 4}, wantVisited: 2},
+			{name: "past the last key", after: 99, limit: 2, wantIDs: nil, wantVisited: 0},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				r := &countingReader{Reader: ts.IndexStore()}
+				tags, err := upload.ListTagsPage(context.Background(), r, tc.after, tc.offset, tc.limit)
+				if err != nil {
+					t.Fatalf("ListTagsPage(): unexpected error: %v", err)
+				}
+				ids := make([]uint64, 0, len(tags))
+				for _, tag := range tags {
+					ids = append(ids, tag.TagID)
+				}
+				if diff := cmp.Diff(tc.wantIDs, ids, cmpopts.EquateEmpty()); diff != "" {
+					t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+				}
+				// The scan seeks to the cursor instead of reading the keys before it.
+				if r.visited != tc.wantVisited {
+					t.Fatalf("unexpected number of visited entries: want %d have %d", tc.wantVisited, r.visited)
+				}
+			})
+		}
+	})
+
+	t.Run("stops when canceled mid-scan", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		r := &countingReader{
+			Reader: ts.IndexStore(),
+			onVisit: func(visited int) {
+				if visited == 3 {
+					cancel()
+				}
+			},
+		}
+		tags, err := upload.ListTagsPage(ctx, r, 0, 0, 10)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListTagsPage(): want context.Canceled, have %v", err)
+		}
+		if tags != nil {
+			t.Fatalf("expected no partial page, have %d tags", len(tags))
+		}
+		if r.visited != 3 {
+			t.Fatalf("scan did not stop at cancellation: visited %d entries", r.visited)
+		}
+	})
+
+	t.Run("canceled before the scan", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		r := &countingReader{Reader: ts.IndexStore()}
+		if _, err := upload.ListTagsPage(ctx, r, 0, 0, 10); !errors.Is(err, context.Canceled) {
+			t.Fatalf("ListTagsPage(): want context.Canceled, have %v", err)
+		}
+		if r.visited != 0 {
+			t.Fatalf("scan ran after cancellation: visited %d entries", r.visited)
+		}
+	})
 }
 
 func TestIterate(t *testing.T) {
