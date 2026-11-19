@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -1011,6 +1013,74 @@ func TestAccessLogicGrantees(t *testing.T) {
 			}),
 			jsonhttptest.WithJSONRequestBody(body),
 		)
+	})
+}
+
+// TestAccessControlBucketFull checks that ACT uploads and grantee list
+// creation return 402 when stamping the access control chunks runs into a
+// full collision bucket.
+func TestAccessControlBucketFull(t *testing.T) {
+	t.Parallel()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newClient := func(t *testing.T) (*http.Client, *savesCountingPost) {
+		t.Helper()
+		// a mutable batch with a single one-slot bucket
+		issuer := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 0, 0, 1000, false)
+		post := &savesCountingPost{Service: mockpost.New(mockpost.WithIssuer(issuer))}
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:        mockstorer.New(),
+			Logger:        log.Noop,
+			Post:          post,
+			PublicKey:     pk.PublicKey,
+			AccessControl: accesscontrol.NewController(accesscontrol.NewLogic(accesscontrol.NewDefaultSession(pk))),
+		})
+		return client, post
+	}
+	// chunks stamped before the failure have used up stamp indices, so the
+	// issuer must be saved even though the request failed
+	assertSaved := func(t *testing.T, post *savesCountingPost) {
+		t.Helper()
+		if got := post.saves.Load(); got != 1 {
+			t.Fatalf("issuer saves: want 1, got %d", got)
+		}
+	}
+	overissued := jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+		Message: "batch is overissued",
+		Code:    http.StatusPaymentRequired,
+	})
+
+	t.Run("upload", func(t *testing.T) {
+		t.Parallel()
+
+		// without dispersed replicas the content chunk takes the only slot,
+		// and the access control chunks find the bucket full
+		client, post := newClient(t)
+		jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusPaymentRequired,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmActHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
+			jsonhttptest.WithRequestBody(strings.NewReader("hello")),
+			overissued,
+		)
+		assertSaved(t, post)
+	})
+
+	t.Run("create grantee list", func(t *testing.T) {
+		t.Parallel()
+
+		client, post := newClient(t)
+		jsonhttptest.Request(t, client, http.MethodPost, "/grantee", http.StatusPaymentRequired,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithJSONRequestBody(api.GranteesPostRequest{
+				GranteeList: []string{"03d7660772cc3142f8a7a2dfac46ce34d12eac1718720cef0e3d94347902aa96a2"},
+			}),
+			overissued,
+		)
+		assertSaved(t, post)
 	})
 }
 

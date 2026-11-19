@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -443,6 +445,31 @@ func TestBytesRedundancyLevel(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/bytes", statusCode, opts...)
 		})
 	}
+}
+
+// TestBytesReplicaBucketFull checks that an upload returns 402 when stamping
+// a dispersed replica of the root chunk runs into a full collision bucket.
+func TestBytesReplicaBucketFull(t *testing.T) {
+	t.Parallel()
+
+	// a mutable batch with a single one-slot bucket: the content chunk takes
+	// the slot, its dispersed replicas find the bucket full
+	issuer := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 0, 0, 1000, false)
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Logger: log.Noop,
+		Post:   mockpost.New(mockpost.WithIssuer(issuer)),
+	})
+
+	jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusPaymentRequired,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(int(redundancy.MEDIUM))),
+		jsonhttptest.WithRequestBody(strings.NewReader("hello")),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "batch is overissued",
+			Code:    http.StatusPaymentRequired,
+		}),
+	)
 }
 
 // TestBytesHead tests that HEAD reports the same entity headers as GET, for every
