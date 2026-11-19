@@ -74,7 +74,6 @@ func TestGetStatus(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(ssr),
 		)
 	})
-
 }
 
 // TestGetStatusPeersIncludesBootnodes is a regression test for
@@ -136,7 +135,7 @@ type statusSnapshotMock struct {
 	committedDepth          uint8
 }
 
-func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
+func (m *statusSnapshotMock) SyncRateWithinRadius() float64      { return m.syncRate }
 func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
 func (m *statusSnapshotMock) Commitment() (uint64, error)        { return m.commitment, nil }

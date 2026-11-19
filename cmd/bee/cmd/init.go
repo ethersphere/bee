@@ -5,9 +5,6 @@
 package cmd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/spf13/cobra"
 )
@@ -21,18 +18,13 @@ func (c *command) initInitCmd() (err error) {
 				return cmd.Help()
 			}
 
-			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-			_, err = c.configureSigner(cmd, logger)
+			_, err = c.configureSigner(cmd, c.logger)
 			if err != nil {
 				return err
 			}
 
 			dataDir := c.config.GetString(optionNameDataDir)
-			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, err := node.InitStateStore(c.logger, dataDir, 1000)
 			if err != nil {
 				return err
 			}
@@ -42,7 +34,7 @@ func (c *command) initInitCmd() (err error) {
 			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return c.config.BindPFlags(cmd.Flags())
+			return c.preRun(cmd)
 		},
 	}
 

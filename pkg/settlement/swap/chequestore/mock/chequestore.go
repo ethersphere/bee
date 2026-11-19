@@ -14,9 +14,9 @@ import (
 
 // Service is the mock chequeStore service.
 type Service struct {
-	receiveCheque func(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)
-	lastCheque    func(chequebook common.Address) (*chequebook.SignedCheque, error)
-	lastCheques   func() (map[common.Address]*chequebook.SignedCheque, error)
+	receiveCheque       func(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)
+	lastReceivedCheque  func(chequebook common.Address) (*chequebook.SignedCheque, error)
+	lastReceivedCheques func() (map[common.Address]*chequebook.SignedCheque, error)
 }
 
 func WithReceiveChequeFunc(f func(ctx context.Context, cheque *chequebook.SignedCheque, exchangeRate *big.Int, deduction *big.Int) (*big.Int, error)) Option {
@@ -25,15 +25,15 @@ func WithReceiveChequeFunc(f func(ctx context.Context, cheque *chequebook.Signed
 	})
 }
 
-func WithLastChequeFunc(f func(chequebook common.Address) (*chequebook.SignedCheque, error)) Option {
+func WithLastReceivedChequeFunc(f func(chequebook common.Address) (*chequebook.SignedCheque, error)) Option {
 	return optionFunc(func(s *Service) {
-		s.lastCheque = f
+		s.lastReceivedCheque = f
 	})
 }
 
-func WithLastChequesFunc(f func() (map[common.Address]*chequebook.SignedCheque, error)) Option {
+func WithLastReceivedChequesFunc(f func() (map[common.Address]*chequebook.SignedCheque, error)) Option {
 	return optionFunc(func(s *Service) {
-		s.lastCheques = f
+		s.lastReceivedCheques = f
 	})
 }
 
@@ -50,12 +50,12 @@ func (s *Service) ReceiveCheque(ctx context.Context, cheque *chequebook.SignedCh
 	return s.receiveCheque(ctx, cheque, exchangeRate, deduction)
 }
 
-func (s *Service) LastCheque(chequebook common.Address) (*chequebook.SignedCheque, error) {
-	return s.lastCheque(chequebook)
+func (s *Service) LastReceivedCheque(chequebook common.Address) (*chequebook.SignedCheque, error) {
+	return s.lastReceivedCheque(chequebook)
 }
 
-func (s *Service) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
-	return s.lastCheques()
+func (s *Service) LastReceivedCheques() (map[common.Address]*chequebook.SignedCheque, error) {
+	return s.lastReceivedCheques()
 }
 
 // Option is the option passed to the mock ChequeStore service

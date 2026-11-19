@@ -82,7 +82,7 @@ Prefer american spellings over British spellings, avoid Latin abbreviations.
 
 - Keep line length, argument count and function size reasonable.
 - Run `make lint-style` command to lint the codebase using a set of style linters.
-- Run `make format FOLDER=pkg/mypackage` to format the code using `gci` and `gfumpt` formatters.
+- Run `make format FOLDER=pkg/mypackage` to format the code using the `gofumpt` formatter. Run `make format-imports FOLDER=pkg/mypackage` to also regroup imports with `gci`.
 
 ## Unused Names
 

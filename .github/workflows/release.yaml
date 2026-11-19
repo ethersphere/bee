@@ -7,21 +7,28 @@ on:
     tags:
       - 'v*.*.*'
 
+# goreleaser creates the GitHub release and uploads assets.
+permissions:
+  contents: write
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    # All publishing secrets (Docker Hub, GPG, Gemfury, bee-releaser app key) are
+    # scoped to this environment (default branch / release tags only).
+    environment: release-ci
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           cache: false
           go-version-file: go.mod
       - name: Cache Go modules and build cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -32,10 +39,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-release-
             ${{ runner.os }}-go-
-      - name: Docker Hub and Quay Login
+      - name: Docker Hub Login
         run: |
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - name: Set up Docker Buildx
@@ -49,6 +55,17 @@ jobs:
       - name: Set the API version
         run: |
           echo "BEE_API_VERSION=$(grep '^  version:' openapi/Swarm.yaml | awk '{print $2}')" >> $GITHUB_ENV
+      # Short-lived bee-releaser token, limited to the Homebrew tap and Scoop bucket
+      # repos, for goreleaser to push the formula and manifest.
+      - name: Generate token for Homebrew tap and Scoop bucket
+        id: pkg-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          owner: ethersphere
+          repositories: homebrew-tap,scoop
+          permission-contents: write
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
@@ -56,8 +73,8 @@ jobs:
           args: release --clean --timeout 1h
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_PAT: ${{ secrets.GHA_PAT_BASIC }}
-          SCOOP_PAT: ${{ secrets.GHA_PAT_BASIC }}
+          HOMEBREW_TAP_PAT: ${{ steps.pkg-token.outputs.token }}
+          SCOOP_PAT: ${{ steps.pkg-token.outputs.token }}
           GEMFURY_TOKEN: ${{ secrets.GEMFURY_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}

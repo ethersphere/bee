@@ -60,7 +60,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if queries.Recipient == nil {
-		queries.Recipient = &(crypto.Secp256k1PrivateKeyFromBytes(topic[:])).PublicKey
+		queries.Recipient = &crypto.Secp256k1PrivateKeyFromBytes(topic[:]).PublicKey
 	}
 
 	headers := struct {

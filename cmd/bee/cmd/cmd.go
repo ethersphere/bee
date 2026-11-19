@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,6 +49,7 @@ const (
 	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
+	optionNameLogCaller                    = "log-caller"
 	optionNamePaymentThreshold             = "payment-threshold"
 	optionNamePaymentTolerance             = "payment-tolerance-percent"
 	optionNamePaymentEarly                 = "payment-early-percent"
@@ -56,11 +58,12 @@ const (
 	optionNameBzzTokenAddress              = "bzz-token-address"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
+	optionNameNodeMode                     = "node-mode"
 	optionNameSwapEnable                   = "swap-enable"
 	optionNameChequebookEnable             = "chequebook-enable"
 	optionNameChequebookVerification       = "chequebook-verification"
 	optionNameChequebookMinBalance         = "chequebook-min-balance"
-	optionNameFullNode                     = "full-node"
+	optionNameFullNode                     = "full-node" // Deprecated: use node-mode instead.
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -88,8 +91,13 @@ const (
 	optionMinimumStorageRadius             = "minimum-storage-radius"
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
+	optionPostageSnapshotFile              = "postage-snapshot-file"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
+	optionNameFeeHistoryBlockCount         = "fee-history-block-count"
+	optionNameRedistributionFeePriority    = "redistribution-game-fee-priority"
+	optionNameTransactionFeePriorityMin    = "transaction-fee-priority-min"
+	optionNameTransactionFeePriorityMax    = "transaction-fee-priority-max"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
@@ -344,12 +352,14 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-* options")
 	}
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
+	cmd.Flags().Bool(optionNameLogCaller, false, "add caller file:line to log lines (development only)")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Int64(optionNamePaymentTolerance, 25, "excess debt above payment threshold in percentages where you disconnect from your peer")
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
-	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
-	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
+	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with Universal Resolver address, can be repeated, format [tld:][contract-addr@]url. Default contract is the ENS Universal Resolver, not the registry")
+	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections (deprecated: use --node-mode=bootnode)")
+	_ = cmd.Flags().MarkDeprecated(optionNameBootnodeMode, "use --node-mode=bootnode instead")
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().Duration(optionNameBlockchainRpcDialTimeout, 30*time.Second, "blockchain rpc TCP dial timeout")
 	cmd.Flags().Duration(optionNameBlockchainRpcTLSTimeout, 10*time.Second, "blockchain rpc TLS handshake timeout")
@@ -358,11 +368,13 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameBzzTokenAddress, "", "bzz token contract address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
+	cmd.Flags().String(optionNameNodeMode, "", "node operational mode: full, light, ultra-light, or bootnode (unset: inferred from deprecated full-node, bootnode-mode and blockchain-rpc-endpoint)")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
 	cmd.Flags().String(optionNameChequebookMinBalance, "110000000000000000", "minimum chequebook token balance required for verification, in token small units (default 11 BZZ)")
-	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
+	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode (deprecated: use --node-mode=full)")
+	_ = cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead")
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
@@ -372,6 +384,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
+	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, wrapped.DefaultFeeHistoryBlockCount, fmt.Sprintf("eth_feeHistory block count for fee hints; values above %d are capped", wrapped.MaxFeeHistoryBlockCount))
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
@@ -389,8 +402,12 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
+	cmd.Flags().String(optionPostageSnapshotFile, "", "path to a postage batch snapshot (NDJSON, optionally gzip-compressed); overrides the embedded snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 900_000, "gas limit fallback when estimation fails for contract transactions")
+	cmd.Flags().String(optionNameRedistributionFeePriority, "", "fee priority for redistribution game transactions (low, market, aggressive); empty keeps the default tip suggestion")
+	cmd.Flags().String(optionNameTransactionFeePriorityMin, "low", "minimum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution")
+	cmd.Flags().String(optionNameTransactionFeePriorityMax, "aggressive", "maximum Fee-Priority header on API requests (low, market, aggressive); does not apply to redistribution")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
@@ -411,7 +428,11 @@ func (c *command) preRun(cmd *cobra.Command) error {
 
 func (c *command) initLogger(cmd *cobra.Command) error {
 	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-	logger, err := newLogger(cmd, v)
+	var opts []log.Option
+	if c.config.GetBool(optionNameLogCaller) {
+		opts = append(opts, log.WithCaller(log.CategoryAll))
+	}
+	logger, err := newLogger(cmd, v, opts...)
 	if err != nil {
 		return fmt.Errorf("new logger: %w", err)
 	}
@@ -472,7 +493,7 @@ func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dot
 	}
 }
 
-func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
+func newLogger(cmd *cobra.Command, verbosity string, opts ...log.Option) (log.Logger, error) {
 	var (
 		sink   = cmd.OutOrStdout()
 		vLevel = log.VerbosityNone
@@ -495,10 +516,10 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
 	}
 
-	log.ModifyDefaults(
+	log.ModifyDefaults(append([]log.Option{
 		log.WithTimestamp(),
 		log.WithLogMetrics(),
-	)
+	}, opts...)...)
 
 	return log.NewLogger(
 		node.LoggerName,

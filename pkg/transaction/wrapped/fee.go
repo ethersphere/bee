@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 const (
@@ -80,4 +82,106 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 	gasFeeCap.Add(gasFeeCap, gasTipCap)
 
 	return gasFeeCap, gasTipCap, nil
+}
+
+// SuggestFeeHistory calculates gasFeeCap and gasTipCap for tier from eth_feeHistory.
+// gasFeeCap is twice the next block base fee carried in that response plus the tier tip.
+// When eth_feeHistory fails or has no usable rewards, it falls back to SuggestedFeeAndTip
+// with the tier's fallback tip boost.
+// It returns ErrEIP1559NotSupported when the latest block header has no base fee.
+func (b *wrappedBackend) SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
+	if err := transaction.ValidateFeePriority(tier); err != nil {
+		return nil, nil, err
+	}
+	tips, baseFee, err := b.suggestedFeeAndTipsFromHistory(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, err
+		}
+		b.metrics.FeeHistoryFallbacks.Inc()
+		gasFeeCap, gasTipCap, fallbackErr := b.SuggestedFeeAndTip(ctx, nil, fallbackTipBoostPercent(tier))
+		if fallbackErr != nil {
+			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
+		}
+		return gasFeeCap, gasTipCap, nil
+	}
+	// eth_feeHistory reports zero base fees instead of an error on networks without EIP-1559.
+	if baseFee.Sign() == 0 {
+		latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+		}
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+			return nil, nil, ErrEIP1559NotSupported
+		}
+	}
+	gasTipCap := new(big.Int).Set(tipForPriority(tier, tips))
+	gasFeeCap := new(big.Int).Mul(baseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
+	return gasFeeCap, gasTipCap, nil
+}
+
+func (b *wrappedBackend) suggestedFeeAndTipsFromHistory(ctx context.Context) (*feeHistorySuggestedFeeAndTips, *big.Int, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryBlocks, nil, feeHistoryRewardPercentiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh)
+	if err != nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, nil, err
+	}
+	// eth_feeHistory appends the next block's base fee after the requested blocks.
+	baseFee := fh.BaseFee[len(fh.BaseFee)-1]
+	if baseFee == nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, nil, errors.New("fee history: missing next base fee")
+	}
+	return &feeHistorySuggestedFeeAndTips{
+		LowTip:        clampTip(low, b.minimumGasTipCap),
+		MarketTip:     clampTip(market, b.minimumGasTipCap),
+		AggressiveTip: clampTip(aggressive, b.minimumGasTipCap),
+	}, new(big.Int).Set(baseFee), nil
+}
+
+// feeHistorySuggestedFeeAndTips holds the median priority fee at the 10th, 50th, and 90th reward percentiles.
+type feeHistorySuggestedFeeAndTips struct {
+	LowTip        *big.Int
+	MarketTip     *big.Int
+	AggressiveTip *big.Int
+}
+
+// tipForPriority expects a tier already checked by transaction.ValidateFeePriority.
+func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
+	switch tier {
+	case transaction.FeePriorityLow:
+		return fh.LowTip
+	case transaction.FeePriorityAggressive:
+		return fh.AggressiveTip
+	default:
+		return fh.MarketTip
+	}
+}
+
+// fallbackTipBoostPercent is the boost applied to the default tip suggestion when eth_feeHistory is unusable.
+// Market uses the same boost as a transaction without a fee priority.
+// It expects a tier already checked by transaction.ValidateFeePriority.
+func fallbackTipBoostPercent(tier int) int {
+	switch tier {
+	case transaction.FeePriorityLow:
+		return 15
+	case transaction.FeePriorityAggressive:
+		return 80
+	default:
+		return transaction.DefaultTipBoostPercent
+	}
+}
+
+// clampTip raises tip to minimum when the history tip is below the node floor.
+func clampTip(tip *big.Int, minimum int64) *big.Int {
+	floor := big.NewInt(minimum)
+	if tip.Cmp(floor) < 0 {
+		return floor
+	}
+	return tip
 }

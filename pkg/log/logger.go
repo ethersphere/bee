@@ -219,7 +219,7 @@ func (l *logger) setVerbosity(v Level) {
 // log logs the given msg and key-value pairs with the given level
 // and the given message category caller (if enabled) to the sink.
 func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAndValues ...any) error {
-	base := make([]any, 0, 14+len(keysAndValues))
+	base := make([]any, 0, 16+len(keysAndValues))
 	if l.formatter.opts.logTimestamp {
 		base = append(base, "time", time.Now().Format(l.formatter.opts.timestampLayout))
 	}
@@ -228,7 +228,11 @@ func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAn
 		base = append(base, "v", l.v)
 	}
 	if policy := l.formatter.opts.caller; policy == CategoryAll || policy == mc {
-		base = append(base, "caller", l.formatter.caller())
+		c := l.formatter.caller()
+		base = append(base, "caller", c.location)
+		if l.formatter.opts.logCallerFunc {
+			base = append(base, "function", c.function)
+		}
 	}
 	base = append(base, "msg", msg)
 	if vl == VerbosityError {

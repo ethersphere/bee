@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,8 +27,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -1008,4 +1012,67 @@ func TestAccessLogicGrantees(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(body),
 		)
 	})
+}
+
+// TestAccessLogicDownloadErrors checks the status codes returned when the ACT
+// history or the ACT itself cannot be loaded during a download.
+func TestAccessLogicDownloadErrors(t *testing.T) {
+	t.Parallel()
+
+	var (
+		spk, _         = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
+		pk, _          = crypto.DecodeSecp256k1PrivateKey(spk)
+		publisher      = hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pk.PublicKey))
+		historyAddress = "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
+		encryptedRef   = "a5df670544eaea29e61b19d8739faa4573b19e4426e58a173e51ed0b5e7e2ade"
+	)
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantMsg    string
+	}{
+		{
+			name:       "history not found",
+			err:        fmt.Errorf("history lookup node error: %w", storage.ErrNotFound),
+			wantStatus: http.StatusNotFound,
+			wantMsg:    "act or history entry not found",
+		},
+		{
+			name:       "no peers to retrieve history",
+			err:        fmt.Errorf("history lookup node error: %w", errors.Join(replicas.ErrContentNotFound, topology.ErrNotFound)),
+			wantStatus: http.StatusServiceUnavailable,
+			wantMsg:    "act history could not be retrieved because no usable peer was available",
+		},
+		{
+			name:       "unexpected error",
+			err:        errors.New("unexpected"),
+			wantStatus: http.StatusInternalServerError,
+			wantMsg:    api.ErrActDownload.Error(),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:        mockstorer.New(),
+				Logger:        log.Noop,
+				AccessControl: mockac.New(mockac.WithDownloadError(tc.err)),
+			})
+
+			for _, path := range []string{"/bytes/", "/chunks/", "/bzz/"} {
+				jsonhttptest.Request(t, client, http.MethodGet, path+encryptedRef, tc.wantStatus,
+					jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
+					jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, historyAddress),
+					jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+						Message: tc.wantMsg,
+						Code:    tc.wantStatus,
+					}),
+				)
+			}
+		})
+	}
 }

@@ -23,8 +23,9 @@ env:
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
   TIMEOUT: 30m
   BUCKET_NAME: swarm-beekeeper-artifacts
-  AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+  # Dedicated key for the swarm-beekeeper-artifacts bucket (debug uploads on failure).
+  AWS_ACCESS_KEY_ID: ${{ secrets.DO_BEEKEEPER_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_BEEKEEPER_SECRET_ACCESS_KEY }}
   AWS_EC2_METADATA_DISABLED: true
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
@@ -287,6 +288,8 @@ jobs:
       TIMEOUT: 10m
     needs: [beekeeper]
     runs-on: ubuntu-latest
+    # Docker Hub credentials are scoped to this environment (default branch / release tags only).
+    environment: ${{ github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && 'release-ci' || '' }}
     steps:
       - name: "Download Artifact"
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -303,11 +306,8 @@ jobs:
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: |
           docker tag k3d-registry.localhost:5000/ethersphere/bee:latest ethersphere/bee:latest
-          docker tag k3d-registry.localhost:5000/ethersphere/bee:latest quay.io/ethersphere/bee:latest
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
           docker push ethersphere/bee:latest
-          docker push quay.io/ethersphere/bee:latest
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Trigger Bee Factory latest build
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()

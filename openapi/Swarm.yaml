@@ -197,6 +197,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         default:
           description: Default response
     head:
@@ -272,6 +274,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "412":
           description: A conditional request header was not satisfied.
         "416":
@@ -482,6 +486,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -559,6 +565,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "412":
           description: A conditional request header was not satisfied.
         "416":
@@ -614,6 +622,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -954,7 +964,7 @@ paths:
         "200":
           description: NDJSON stream of integrity results, one object per line
           content:
-            application/json:
+            application/x-ndjson:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
         "429":
@@ -1554,6 +1564,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "503":
+          $ref: "SwarmCommon.yaml#/components/responses/503"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1953,6 +1965,7 @@ paths:
           required: true
           description: Swarm address of peer
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
@@ -2028,6 +2041,7 @@ paths:
           required: true
           description: Amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       tags:
         - Chequebook
       responses:
@@ -2055,6 +2069,7 @@ paths:
           required: true
           description: Amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       tags:
         - Chequebook
       responses:
@@ -2296,6 +2311,7 @@ paths:
             type: boolean
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "201":
@@ -2334,6 +2350,7 @@ paths:
           required: true
           description: Amount of BZZ per chunk to top up to an existing postage batch.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
@@ -2374,6 +2391,7 @@ paths:
           required: true
           description: The new batch depth, which must be greater than the current depth
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "202":
@@ -2574,6 +2592,7 @@ paths:
           required: true
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
       responses:
         "200":
           content:
@@ -2613,6 +2632,7 @@ paths:
         - Staking
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
@@ -2642,6 +2662,7 @@ paths:
           required: true
           description: Amount of BZZ added that will be deposited for staking.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
@@ -2685,6 +2706,7 @@ paths:
         - Staking
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
