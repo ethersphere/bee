@@ -45,7 +45,7 @@ func FuzzOriginReceiptLoop(f *testing.F) {
 
 	// A well-formed receipt: address matches the pushed chunk, signature is
 	// recoverable over that address, 32-byte nonce, StorageRadius 0. With the
-	// originator's radius=0 and tolerance=0 this receipt is never classified as
+	// originator's radius=0 this receipt is never classified as
 	// shallow, so it drives the nil-error success branch and the address
 	// invariant.
 	validSig, err := fuzzSigner.Sign(chunk.Address().Bytes())
@@ -115,7 +115,7 @@ func FuzzOriginReceiptLoop(f *testing.F) {
 		)
 
 		ps, _ := createPushSyncNodeWithRadius(
-			t, pivotNode, defaultPrices, recorder, nil, fuzzSigner, 0, 0,
+			t, pivotNode, defaultPrices, recorder, nil, fuzzSigner, 0,
 			mock.WithClosestPeer(closestPeer),
 		)
 

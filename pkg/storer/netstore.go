@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
@@ -18,6 +19,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 )
+
+// directUploadRetryDelay is the time a direct upload waits for peers before
+// it submits the chunk to the pusher again.
+const directUploadRetryDelay = 5 * time.Second
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
@@ -63,6 +68,16 @@ func (db *DB) DirectUpload() PutterSession {
 									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 								} else if errors.Is(err, topology.ErrNotFound) {
 									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+									// wait for peers instead of resubmitting in a tight loop
+									select {
+									case <-time.After(directUploadRetryDelay):
+									case <-ctx.Done():
+										return ctx.Err()
+									case <-egCtx.Done():
+										return egCtx.Err()
+									case <-db.quit:
+										return ErrDBQuit
+									}
 								} else {
 									return err
 								}
