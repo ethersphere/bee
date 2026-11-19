@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/steward/mock"
@@ -80,6 +81,35 @@ func TestStewardship(t *testing.T) {
 			}),
 		)
 	})
+}
+
+// bucketFullSteward is a steward whose re-upload runs into a full collision
+// bucket.
+type bucketFullSteward struct {
+	mock.Steward
+}
+
+func (s *bucketFullSteward) Reupload(context.Context, swarm.Address, postage.Stamper, redundancy.Level) error {
+	return fmt.Errorf("stamp chunk: %w", postage.ErrBucketFull)
+}
+
+func TestStewardshipBucketFull(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:  mockstorer.New(),
+		Logger:  log.Noop,
+		Steward: &bucketFullSteward{},
+		Post:    mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+swarm.RandAddress(t).String(), http.StatusPaymentRequired,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "aa"),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "batch is overissued",
+			Code:    http.StatusPaymentRequired,
+		}),
+	)
 }
 
 type localRetriever struct {
