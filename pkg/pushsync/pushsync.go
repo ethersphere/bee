@@ -61,10 +61,6 @@ var (
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
 	ErrShallowReceipt    = errors.New("shallow receipt")
-	// ErrNeighborhoodShallow is returned by an origin that sent nothing
-	// because every peer left is in a shallow pause for the neighborhood.
-	// It wraps topology.ErrNotFound so that callers wait and try again.
-	ErrNeighborhoodShallow = fmt.Errorf("every peer is in a shallow pause for the neighborhood: %w", topology.ErrNotFound)
 )
 
 type PushSyncer interface {
@@ -431,13 +427,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 
 			var (
-				peer        swarm.Address
-				err         error
-				source      hopSource
-				blockedOnly bool
+				peer   swarm.Address
+				err    error
+				source hopSource
 			)
 			if origin {
-				peer, source, blockedOnly, err = ps.originPeer(ch.Address(), rad, fullSkip, &probed)
+				peer, source, err = ps.originPeer(ch.Address(), rad, fullSkip, &probed)
 			} else {
 				peer, err = ps.closestPeer(ch.Address(), origin, fullSkip)
 			}
@@ -479,11 +474,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 						if !origin || swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) >= rad {
 							return nil, topology.ErrWantSelf
 						}
-						// Every peer left is in a shallow pause.
-						if blockedOnly {
-							ps.metrics.NeighborhoodKnownShallow.Inc()
-							return nil, ErrNeighborhoodShallow
-						}
 						// Peers were tried and none of them took the chunk,
 						// or they are all skipped for now: retrying right away
 						// cannot succeed, unlike the case of a node that has
@@ -495,10 +485,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 					if shallowReceiptResult != nil {
 						return shallowReceiptResult, ErrShallowReceipt
-					}
-					if blockedOnly {
-						ps.metrics.NeighborhoodKnownShallow.Inc()
-						return nil, ErrNeighborhoodShallow
 					}
 					ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 					return nil, err
@@ -602,16 +588,17 @@ const (
 	hopSourceProbe   hopSource = "probe"
 	hopSourceValid   hopSource = "known_valid"
 	hopSourceUnknown hopSource = "unknown"
+	hopSourcePaused  hopSource = "paused"
 )
 
 // originPeer picks the next first hop for an origin:
 //  1. a probe, at most once per call and per hopProbeInterval: a peer closer
 //     to the chunk than every peer with a valid record;
 //  2. the closest peer with a valid record;
-//  3. the closest peer that is not in a shallow pause.
-//
-// blockedOnly is true when no peer is found only because of shallow pauses.
-func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip []swarm.Address, probed *bool) (peer swarm.Address, source hopSource, blockedOnly bool, err error) {
+//  3. the closest peer that is not in a shallow pause;
+//  4. the peer whose shallow pause ends first, unless the origin can store
+//     the chunk itself.
+func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip []swarm.Address, probed *bool) (peer swarm.Address, source hopSource, err error) {
 	valid, blocked, probeDue := ps.hops.view(rad, chunkAddress)
 
 	// Remove the valid records of peers that are no longer connected.
@@ -651,24 +638,37 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 		if probeDue && !*probed {
 			candidate, err := ps.closestPeer(chunkAddress, true, append(notBlocked, valid...))
 			if err == nil {
-				if closer, _ := candidate.Closer(chunkAddress, best); closer {
+				if closer, _ := candidate.Closer(chunkAddress, best); closer && ps.hops.claimProbe(rad, chunkAddress) {
 					*probed = true
-					ps.hops.markProbe(rad, chunkAddress)
-					return candidate, hopSourceProbe, false, nil
+					return candidate, hopSourceProbe, nil
 				}
 			}
 		}
-		return best, hopSourceValid, false, nil
+		return best, hopSourceValid, nil
 	}
 
 	peer, err = ps.closestPeer(chunkAddress, true, notBlocked)
-	if errors.Is(err, topology.ErrNotFound) && len(blocked) > 0 {
-		if _, err := ps.closestPeer(chunkAddress, true, fullSkip); err == nil {
-			blockedOnly = true
+	if !errors.Is(err, topology.ErrNotFound) || len(blocked) == 0 {
+		return peer, hopSourceUnknown, err
+	}
+	if ps.fullNode && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
+		return peer, hopSourceUnknown, err
+	}
+
+	// Every peer left is in a shallow pause. Waiting would hold a push slot
+	// of the pusher, so send through the peer whose pause ends first.
+	for i, p := range blocked {
+		if swarm.ContainsAddress(fullSkip, p) {
+			continue
+		}
+		others := append(append([]swarm.Address{}, fullSkip...), blocked[:i]...)
+		others = append(others, blocked[i+1:]...)
+		if found, err := ps.closestPeer(chunkAddress, true, others); err == nil && found.Equal(p) {
+			return p, hopSourcePaused, nil
 		}
 	}
 
-	return peer, hopSourceUnknown, blockedOnly, err
+	return peer, hopSourceUnknown, err
 }
 
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
