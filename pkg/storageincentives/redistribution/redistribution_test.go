@@ -26,7 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionVersions[0].ABI)
 
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()

@@ -263,8 +263,8 @@ func TestLoad(t *testing.T) {
 }
 
 var (
-	fileContract    = chaincfg.Mainnet.PostageStampAddress
-	fileContractABI = abiutil.MustParseABI(chaincfg.Mainnet.PostageStampABI)
+	fileContract    = chaincfg.Mainnet.PostageStampVersions[0].Address
+	fileContractABI = abiutil.MustParseABI(chaincfg.Mainnet.PostageStampVersions[0].ABI)
 	priceTopic      = fileContractABI.Events["PriceUpdate"].ID
 )
 

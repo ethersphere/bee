@@ -7,7 +7,9 @@ package listener
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -72,27 +74,53 @@ type BlockHeightContractFilterer interface {
 	BlockNumber(context.Context) (uint64, error)
 }
 
-type listener struct {
-	logger    log.Logger
-	ev        BlockHeightContractFilterer
-	blockTime time.Duration
+// ErrInvalidSegments is returned when the segment list is empty, does not start
+// at block 0 or is not strictly increasing by FromBlock.
+var ErrInvalidSegments = errors.New("listener: invalid segments")
 
-	postageStampContractAddress common.Address
-	postageStampContractABI     abi.ABI
-	quit                        chan struct{}
-	wg                          sync.WaitGroup
-	metrics                     metrics
-	stallingTimeout             time.Duration
-	backoffTime                 time.Duration
-	blockPage                   uint64
-	syncingStopped              *syncutil.Signaler
+// Segment describes the postage stamp contract that is active from FromBlock
+// (inclusive) until the FromBlock of the next segment.
+type Segment struct {
+	Address   common.Address
+	ABI       abi.ABI
+	FromBlock uint64
+}
 
-	// Cached postage stamp contract event topics.
+// segment is a Segment with its cached event topics.
+type segment struct {
+	Segment
+
 	batchCreatedTopic       common.Hash
 	batchTopUpTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
 	priceUpdateTopic        common.Hash
 	pausedTopic             common.Hash
+}
+
+func newSegment(s Segment) segment {
+	return segment{
+		Segment:                 s,
+		batchCreatedTopic:       s.ABI.Events["BatchCreated"].ID,
+		batchTopUpTopic:         s.ABI.Events["BatchTopUp"].ID,
+		batchDepthIncreaseTopic: s.ABI.Events["BatchDepthIncrease"].ID,
+		priceUpdateTopic:        s.ABI.Events["PriceUpdate"].ID,
+		pausedTopic:             s.ABI.Events["Paused"].ID,
+	}
+}
+
+type listener struct {
+	logger    log.Logger
+	ev        BlockHeightContractFilterer
+	blockTime time.Duration
+
+	segments        []segment
+	quit            chan struct{}
+	wg              sync.WaitGroup
+	metrics         metrics
+	stallingTimeout time.Duration
+	backoffTime     time.Duration
+	blockPage       uint64
+	syncingStopped  *syncutil.Signaler
 }
 
 func New(
@@ -106,55 +134,91 @@ func New(
 	backoffTime time.Duration,
 	blockPage uint64,
 ) postage.Listener {
+	// A single segment starting at block 0 is always valid.
+	l, _ := NewSegmented(syncingStopped, logger, ev, []Segment{{
+		Address:   postageStampContractAddress,
+		ABI:       postageStampContractABI,
+		FromBlock: 0,
+	}}, blockTime, stallingTimeout, backoffTime, blockPage)
+	return l
+}
+
+// NewSegmented creates a listener that follows the postage stamp contract
+// across version cutovers. segments must be non-empty, start at block 0 and be
+// strictly increasing by FromBlock. No single FilterLogs query spans two
+// segments.
+func NewSegmented(
+	syncingStopped *syncutil.Signaler,
+	logger log.Logger,
+	ev BlockHeightContractFilterer,
+	segments []Segment,
+	blockTime time.Duration,
+	stallingTimeout time.Duration,
+	backoffTime time.Duration,
+	blockPage uint64,
+) (postage.Listener, error) {
+	if len(segments) == 0 {
+		return nil, fmt.Errorf("%w: no segments", ErrInvalidSegments)
+	}
+	if segments[0].FromBlock != 0 {
+		return nil, fmt.Errorf("%w: first segment must start at block 0", ErrInvalidSegments)
+	}
+	segs := make([]segment, 0, len(segments))
+	for i, s := range segments {
+		if i > 0 && s.FromBlock <= segments[i-1].FromBlock {
+			return nil, fmt.Errorf("%w: segments not strictly increasing", ErrInvalidSegments)
+		}
+		segs = append(segs, newSegment(s))
+	}
 	if blockPage == 0 {
 		blockPage = DefaultBlockPage
 	}
 	return &listener{
-		syncingStopped:              syncingStopped,
-		logger:                      logger.WithName(loggerName).Register(),
-		ev:                          ev,
-		blockTime:                   blockTime,
-		postageStampContractAddress: postageStampContractAddress,
-		postageStampContractABI:     postageStampContractABI,
-		quit:                        make(chan struct{}),
-		metrics:                     newMetrics(),
-		stallingTimeout:             stallingTimeout,
-		backoffTime:                 backoffTime,
-		blockPage:                   blockPage,
-
-		batchCreatedTopic:       postageStampContractABI.Events["BatchCreated"].ID,
-		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
-		batchDepthIncreaseTopic: postageStampContractABI.Events["BatchDepthIncrease"].ID,
-		priceUpdateTopic:        postageStampContractABI.Events["PriceUpdate"].ID,
-		pausedTopic:             postageStampContractABI.Events["Paused"].ID,
-	}
+		syncingStopped:  syncingStopped,
+		logger:          logger.WithName(loggerName).Register(),
+		ev:              ev,
+		blockTime:       blockTime,
+		segments:        segs,
+		quit:            make(chan struct{}),
+		metrics:         newMetrics(),
+		stallingTimeout: stallingTimeout,
+		backoffTime:     backoffTime,
+		blockPage:       blockPage,
+	}, nil
 }
 
-func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
+// segmentAt returns the index of the segment active at block.
+func (l *listener) segmentAt(block uint64) int {
+	return sort.Search(len(l.segments), func(i int) bool {
+		return l.segments[i].FromBlock > block
+	}) - 1
+}
+
+func (l *listener) filterQuery(seg *segment, from, to *big.Int) ethereum.FilterQuery {
 	return ethereum.FilterQuery{
 		FromBlock: from,
 		ToBlock:   to,
 		Addresses: []common.Address{
-			l.postageStampContractAddress,
+			seg.Address,
 		},
 		Topics: [][]common.Hash{
 			{
-				l.batchCreatedTopic,
-				l.batchTopUpTopic,
-				l.batchDepthIncreaseTopic,
-				l.priceUpdateTopic,
-				l.pausedTopic,
+				seg.batchCreatedTopic,
+				seg.batchTopUpTopic,
+				seg.batchDepthIncreaseTopic,
+				seg.priceUpdateTopic,
+				seg.pausedTopic,
 			},
 		},
 	}
 }
 
-func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+func (l *listener) processEvent(seg *segment, e types.Log, updater postage.EventUpdater) error {
 	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
-	case l.batchCreatedTopic:
+	case seg.batchCreatedTopic:
 		c := &batchCreatedEvent{}
-		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchCreated", c, e)
+		err := transaction.ParseEvent(&seg.ABI, "BatchCreated", c, e)
 		if err != nil {
 			return err
 		}
@@ -169,9 +233,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.ImmutableFlag,
 			e.TxHash,
 		)
-	case l.batchTopUpTopic:
+	case seg.batchTopUpTopic:
 		c := &batchTopUpEvent{}
-		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchTopUp", c, e)
+		err := transaction.ParseEvent(&seg.ABI, "BatchTopUp", c, e)
 		if err != nil {
 			return err
 		}
@@ -182,9 +246,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			e.TxHash,
 		)
-	case l.batchDepthIncreaseTopic:
+	case seg.batchDepthIncreaseTopic:
 		c := &batchDepthIncreaseEvent{}
-		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchDepthIncrease", c, e)
+		err := transaction.ParseEvent(&seg.ABI, "BatchDepthIncrease", c, e)
 		if err != nil {
 			return err
 		}
@@ -195,9 +259,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			e.TxHash,
 		)
-	case l.priceUpdateTopic:
+	case seg.priceUpdateTopic:
 		c := &priceUpdateEvent{}
-		err := transaction.ParseEvent(&l.postageStampContractABI, "PriceUpdate", c, e)
+		err := transaction.ParseEvent(&seg.ABI, "PriceUpdate", c, e)
 		if err != nil {
 			return err
 		}
@@ -206,7 +270,13 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.Price,
 			e.TxHash,
 		)
-	case l.pausedTopic:
+	case seg.pausedTopic:
+		if seg != &l.segments[len(l.segments)-1] {
+			// a superseded contract is expected to be paused during a
+			// migration; keep syncing into the next segment.
+			l.logger.Debug("superseded postage contract is paused", "contract_address", seg.Address)
+			return nil
+		}
 		l.logger.Warning("Postage contract is paused.")
 		return ErrPostagePaused
 	default:
@@ -222,7 +292,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		cancel()
 	}()
 
-	processEvents := func(events []types.Log, to uint64) error {
+	processEvents := func(seg *segment, events []types.Log, to uint64) error {
 		if err := updater.TransactionStart(); err != nil {
 			return err
 		}
@@ -233,7 +303,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			if err != nil {
 				return err
 			}
-			if err = l.processEvent(e, updater); err != nil {
+			if err = l.processEvent(seg, e, updater); err != nil {
 				// if we have a zero value batch - silence & log then move on
 				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
 					return err
@@ -340,9 +410,19 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				paged = true
 				to = from + pageSize - 1
 			}
+
+			// never let a query span two contract segments: clamp at the
+			// next segment boundary and keep paging until the real target
+			idx := l.segmentAt(from)
+			seg := &l.segments[idx]
+			if idx+1 < len(l.segments) && l.segments[idx+1].FromBlock <= to {
+				to = l.segments[idx+1].FromBlock - 1
+				final = false
+				paged = true
+			}
 			l.metrics.BackendCalls.Inc()
 
-			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
+			events, err := l.ev.FilterLogs(ctx, l.filterQuery(seg, big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
@@ -351,7 +431,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				continue
 			}
 
-			if err := processEvents(events, to); err != nil {
+			if err := processEvents(seg, events, to); err != nil {
 				return err
 			}
 

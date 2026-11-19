@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
 
-var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampVersions[0].ABI)
 
 func TestCreateBatch(t *testing.T) {
 	defer func(b uint8) {

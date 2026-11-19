@@ -46,3 +46,8 @@ func NewTestBeeWithAPI(apiServer, apiService io.Closer) *Bee {
 		apiServiceCloser: apiService,
 	}
 }
+
+var (
+	ApplyAddressOverride = applyAddressOverride
+	FromBlock            = fromBlock
+)
