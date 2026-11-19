@@ -375,10 +375,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		shallowReceiptResult *pb.Receipt
 		shallowReceiptPO     uint8
 		probed               bool
-		hopSources           = make(map[string]hopSource)
+		hopSources           map[string]hopSource // first hops of an origin
 	)
 
 	if origin {
+		hopSources = make(map[string]hopSource)
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
@@ -608,7 +609,7 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 			if swarm.ContainsAddress(valid, p) {
 				connected = append(connected, p)
 			}
-			return false, false, nil
+			return len(connected) == len(valid), false, nil
 		}, topology.Select{})
 		for _, p := range valid {
 			if !swarm.ContainsAddress(connected, p) {

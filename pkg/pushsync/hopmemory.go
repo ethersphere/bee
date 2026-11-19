@@ -23,6 +23,9 @@ const (
 	// without a new result is removed.
 	hopValidIdle   = 30 * time.Minute
 	hopShallowIdle = 2 * hopShallowMaxPause
+	// hopSweepInterval is the shortest time between two removals of idle
+	// records in all neighborhoods.
+	hopSweepInterval = hopValidIdle
 )
 
 // hopRecord is the last result of one first hop for one neighborhood.
@@ -42,6 +45,14 @@ func (r *hopRecord) blockedUntil() time.Time {
 	return r.at.Add(min(pause, hopShallowMaxPause))
 }
 
+// idle reports whether the record had no new result for long enough to be removed.
+func (r *hopRecord) idle(now time.Time) bool {
+	if r.valid {
+		return now.Sub(r.at) >= hopValidIdle
+	}
+	return now.Sub(r.at) >= hopShallowIdle
+}
+
 type hopHood struct {
 	peers     map[string]*hopRecord
 	lastProbe time.Time
@@ -50,10 +61,11 @@ type hopHood struct {
 // hopMemory keeps the last receipt result of each first hop per neighborhood
 // (the chunk addresses that share the first radius bits).
 type hopMemory struct {
-	mtx    sync.Mutex
-	now    func() time.Time
-	radius uint8
-	hoods  map[string]*hopHood
+	mtx       sync.Mutex
+	now       func() time.Time
+	radius    uint8
+	hoods     map[string]*hopHood
+	lastSweep time.Time
 }
 
 func newHopMemory(now func() time.Time) *hopMemory {
@@ -105,6 +117,34 @@ func (m *hopMemory) hood(rad uint8, chunk swarm.Address, create bool) *hopHood {
 		m.hoods[key] = h
 	}
 	return h
+}
+
+// dropEmpty removes the neighborhood when it has no records and its last
+// probe no longer limits the next one.
+// Must be called with the lock held.
+func (m *hopMemory) dropEmpty(key string, h *hopHood, now time.Time) {
+	if len(h.peers) == 0 && now.Sub(h.lastProbe) >= hopProbeInterval {
+		delete(m.hoods, key)
+	}
+}
+
+// sweep removes the idle records of all neighborhoods, at most once per
+// hopSweepInterval. Without it the records of a neighborhood that gets no
+// more chunks would stay until the radius changes.
+// Must be called with the lock held.
+func (m *hopMemory) sweep(now time.Time) {
+	if now.Sub(m.lastSweep) < hopSweepInterval {
+		return
+	}
+	m.lastSweep = now
+	for key, h := range m.hoods {
+		for peer, r := range h.peers {
+			if r.idle(now) {
+				delete(h.peers, peer)
+			}
+		}
+		m.dropEmpty(key, h, now)
+	}
 }
 
 // recordValid stores a valid receipt of the peer.
@@ -163,9 +203,7 @@ func (m *hopMemory) forget(rad uint8, chunk, peer swarm.Address) {
 		return
 	}
 	delete(h.peers, peer.ByteString())
-	if len(h.peers) == 0 {
-		delete(m.hoods, hoodKey(rad, chunk))
-	}
+	m.dropEmpty(hoodKey(rad, chunk), h, m.now())
 }
 
 // view returns the peers with a valid record, the peers in a shallow pause
@@ -176,23 +214,22 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 	defer m.mtx.Unlock()
 
 	m.useRadius(rad, true)
+	now := m.now()
+	m.sweep(now)
 	h := m.hood(rad, chunk, false)
 	if h == nil {
 		return nil, nil, true
 	}
 
-	now := m.now()
 	var paused []*hopRecord
 	for key, r := range h.peers {
 		switch {
-		case r.valid && now.Sub(r.at) >= hopValidIdle:
+		case r.idle(now):
 			delete(h.peers, key)
 		case r.valid:
 			valid = append(valid, r.peer)
 		case now.Before(r.blockedUntil()):
 			paused = append(paused, r)
-		case now.Sub(r.at) >= hopShallowIdle:
-			delete(h.peers, key)
 		}
 	}
 	slices.SortFunc(paused, func(a, b *hopRecord) int {
@@ -205,9 +242,7 @@ func (m *hopMemory) view(rad uint8, chunk swarm.Address) (valid, blocked []swarm
 	for _, r := range paused {
 		blocked = append(blocked, r.peer)
 	}
-	if len(h.peers) == 0 {
-		delete(m.hoods, hoodKey(rad, chunk))
-	}
+	m.dropEmpty(hoodKey(rad, chunk), h, now)
 
 	return valid, blocked, h.lastProbe.IsZero() || now.Sub(h.lastProbe) >= hopProbeInterval
 }
@@ -229,16 +264,4 @@ func (m *hopMemory) claimProbe(rad uint8, chunk swarm.Address) bool {
 	}
 	h.lastProbe = now
 	return true
-}
-
-// len returns the number of records.
-func (m *hopMemory) len() int {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	var n int
-	for _, h := range m.hoods {
-		n += len(h.peers)
-	}
-	return n
 }

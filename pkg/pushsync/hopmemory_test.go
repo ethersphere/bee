@@ -259,6 +259,74 @@ func TestHopMemoryValidIdle(t *testing.T) {
 	}
 }
 
+// TestHopMemorySweep checks that the idle records of a neighborhood that gets
+// no more chunks are removed when another neighborhood is used.
+func TestHopMemorySweep(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		other = hopAddr(0x1c, 0x00)
+		peer  = hopAddr(0x10)
+		bad   = hopAddr(0x20)
+	)
+
+	m.View(10, chunk) // the first sweep
+	m.RecordValid(10, chunk, peer)
+	m.RecordShallow(10, chunk, bad)
+
+	clock.Add(30 * time.Minute)
+	m.View(10, other)
+	if got := m.Len(); got != 1 {
+		t.Fatalf("got %d records after 30 minutes, want 1 (the shallow record)", got)
+	}
+
+	clock.Add(30 * time.Minute)
+	m.View(10, other)
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records after 60 minutes, want 0", got)
+	}
+	if got := m.Hoods(); got != 0 {
+		t.Fatalf("got %d neighborhoods after 60 minutes, want 0", got)
+	}
+}
+
+// TestHopMemoryProbeTimeKept checks that the removal of the last record of a
+// neighborhood does not make the next probe due before the interval ends.
+func TestHopMemoryProbeTimeKept(t *testing.T) {
+	t.Parallel()
+
+	var (
+		clock = newTestClock()
+		m     = pushsync.NewHopMemory(clock.Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+	)
+
+	m.RecordValid(10, chunk, peer)
+	if !m.ClaimProbe(10, chunk) {
+		t.Fatal("probe that is due was not given")
+	}
+	m.Forget(10, chunk, peer)
+
+	m.RecordValid(10, chunk, peer)
+	if _, _, due := m.View(10, chunk); due {
+		t.Fatal("probe is due right after a probe")
+	}
+	if m.ClaimProbe(10, chunk) {
+		t.Fatal("second probe was given before the interval ended")
+	}
+
+	m.Forget(10, chunk, peer)
+	clock.Add(30 * time.Second)
+	m.View(10, chunk)
+	if got := m.Hoods(); got != 0 {
+		t.Fatalf("got %d neighborhoods after the interval, want 0", got)
+	}
+}
+
 func TestHopMemoryProbe(t *testing.T) {
 	t.Parallel()
 

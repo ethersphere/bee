@@ -41,7 +41,26 @@ func (m *hopMemory) Forget(rad uint8, chunk, peer swarm.Address) { m.forget(rad,
 func (m *hopMemory) ClaimProbe(rad uint8, chunk swarm.Address) bool {
 	return m.claimProbe(rad, chunk)
 }
-func (m *hopMemory) Len() int { return m.len() }
+
+// Len returns the number of records.
+func (m *hopMemory) Len() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	var n int
+	for _, h := range m.hoods {
+		n += len(h.peers)
+	}
+	return n
+}
+
+// Hoods returns the number of neighborhoods.
+func (m *hopMemory) Hoods() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	return len(m.hoods)
+}
 
 func (m *hopMemory) View(rad uint8, chunk swarm.Address) (valid, blocked []swarm.Address, probeDue bool) {
 	return m.view(rad, chunk)
@@ -55,7 +74,7 @@ func (ps *PushSync) SetHopClock(now func() time.Time) {
 }
 
 // HopRecords returns the number of first-hop records.
-func (ps *PushSync) HopRecords() int { return ps.hops.len() }
+func (ps *PushSync) HopRecords() int { return ps.hops.Len() }
 
 func (ps *PushSync) FirstHopCount(source, result string) float64 {
 	return counterValue(ps.metrics.FirstHop.WithLabelValues(source, result))
