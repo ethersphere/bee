@@ -177,7 +177,6 @@ jobs:
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
       - name: Test chunk stream
         id: chunk-stream
-        if: false # temporary: ci-chunk-stream exists only on beekeeper#634, not on #621
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-chunk-stream
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
