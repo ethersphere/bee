@@ -186,7 +186,12 @@ func runRetrieval(t *testing.T, p simParams, healthFirst bool, forwarderFirst fl
 				nodes[i].SetForwarderHealthFirst(unit(uint64(p.seed), 7, uint64(i)) >= forwarderFirst)
 			}
 			nodes[i].SetAnyReach(p.anyReach)
-			nodes[i].SetNoHealth(p.noHealth)
+			// noHealth replaces the proximity rule on the nodes that have it
+			if i == g.origin {
+				nodes[i].SetNoHealth(p.noHealth && !healthFirst)
+			} else {
+				nodes[i].SetNoHealth(p.noHealth && unit(uint64(p.seed), 7, uint64(i)) < forwarderFirst)
+			}
 		}
 		nodes[g.origin].SetHealthFirst(healthFirst)
 
@@ -432,6 +437,59 @@ func TestSimDownloadNoHealth(t *testing.T) {
 				t.Run(fmt.Sprintf("net=%s/allHood=%v/noHealth=%v", r.name, allHood, noHealth), func(t *testing.T) {
 					t.Logf("\n%s", runRetrieval(t, p, false, 1, allHood, r.mode))
 				})
+			}
+		}
+	}
+}
+
+// TestSimDownloadCompare compares the proximity rule of the branch (health
+// decides between peers of one proximity order) with a selection that does
+// not use the health mark (the closest reachable peer). The origin has the
+// change; share is the share of forwarders that have it. Set SIMNET=compare
+// to run it.
+func TestSimDownloadCompare(t *testing.T) {
+	if os.Getenv("SIMNET") != "compare" {
+		t.Skip("set SIMNET=compare to run")
+	}
+	type net struct {
+		name string
+		p    simParams
+		mode string
+	}
+	pair := simParams{seed: 1, nodes: 1000, radius: 8, healthy: 0.32, populated: true, chunks: 6000}
+	peer := pair
+	peer.peerHealth = true
+	nets := make([]net, 0, 9)
+	nets = append(nets,
+		net{"pair", pair, simUnhealthyFlag},
+		net{"peer", peer, simUnhealthyFlag},
+		net{"peer-slow", peer, simUnhealthySlow},
+		net{"peer-stall", peer, simUnhealthyStall},
+		net{"peer-missing", peer, simUnhealthyMissing},
+	)
+	for _, health := range []string{"pair", "peer"} {
+		for _, mode := range []string{simReachNode, simReachPair} {
+			p := pair
+			p.peerHealth = health == "peer"
+			p.unreachable, p.reachMode = 0.3, mode
+			nets = append(nets, net{"reach-" + mode + "-" + health, p, simUnhealthyFlag})
+		}
+	}
+	type variant struct {
+		seed  int64
+		share float64
+	}
+	variants := []variant{{1, 0}, {1, 0.1}, {1, 0.25}, {1, 1}, {2, 1}}
+	for _, n := range nets {
+		for _, v := range variants {
+			for _, allHood := range []bool{false, true} {
+				for _, noHealth := range []bool{false, true} {
+					p := n.p
+					p.seed, p.noHealth = v.seed, noHealth
+					t.Run(fmt.Sprintf("net=%s/seed=%d/share=%v/allHood=%v/noHealth=%v", n.name, v.seed, v.share, allHood, noHealth), func(t *testing.T) {
+						t.Logf("\n%s", runRetrieval(t, p, false, v.share, allHood, n.mode))
+					})
+				}
 			}
 		}
 	}

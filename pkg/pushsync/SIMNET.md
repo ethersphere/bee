@@ -78,6 +78,10 @@ SIMNET=selfreach go test ./pkg/pushsync/ -run TestSimUploadSelfReach -count=1 -v
 
 # download: the proximity rule against a selection without the health mark
 SIMNET=nohealth go test ./pkg/retrieval/ -run TestSimDownloadNoHealth -count=1 -v -timeout 90m
+
+# download: the same comparison per network, seed and share of forwarders
+# that have the change (180 runs)
+SIMNET=compare go test ./pkg/retrieval/ -run TestSimDownloadCompare -count=1 -v -timeout 90m
 ```
 
 ## Reference numbers
