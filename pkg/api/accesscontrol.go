@@ -389,6 +389,8 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 			jsonhttp.BadRequest(w, "remove from empty grantee list")
 		case errors.Is(err, accesscontrol.ErrUnexpectedType):
 			jsonhttp.BadRequest(w, "failed to create history")
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
 			jsonhttp.InternalServerError(w, errActGranteeList)
 		}
@@ -545,6 +547,8 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 			jsonhttp.NotFound(w, "act or history entry not found")
 		case errors.Is(err, accesscontrol.ErrUnexpectedType):
 			jsonhttp.BadRequest(w, "failed to create history")
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(w, "batch is overissued")
 		default:
 			jsonhttp.InternalServerError(w, errActGranteeList)
 		}

@@ -186,7 +186,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 
 	// A full bucket is never rolled over: reusing an index would silently
 	// displace the chunk previously stamped with it.
-	if bCnt == si.BucketUpperBound() {
+	if bCnt >= si.BucketUpperBound() {
 		return nil, nil, ErrBucketFull
 	}
 

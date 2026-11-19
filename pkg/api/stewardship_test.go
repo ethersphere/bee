@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -93,14 +94,29 @@ func (s *bucketFullSteward) Reupload(context.Context, swarm.Address, postage.Sta
 	return fmt.Errorf("stamp chunk: %w", postage.ErrBucketFull)
 }
 
+// savesCountingPost counts how often the issuer save function is called.
+type savesCountingPost struct {
+	postage.Service
+	saves atomic.Int32
+}
+
+func (p *savesCountingPost) GetStampIssuer(id []byte) (*postage.StampIssuer, func() error, error) {
+	issuer, _, err := p.Service.GetStampIssuer(id)
+	return issuer, func() error {
+		p.saves.Add(1)
+		return nil
+	}, err
+}
+
 func TestStewardshipBucketFull(t *testing.T) {
 	t.Parallel()
 
+	post := &savesCountingPost{Service: mockpost.New(mockpost.WithAcceptAll())}
 	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  mockstorer.New(),
 		Logger:  log.Noop,
 		Steward: &bucketFullSteward{},
-		Post:    mockpost.New(mockpost.WithAcceptAll()),
+		Post:    post,
 	})
 
 	jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+swarm.RandAddress(t).String(), http.StatusPaymentRequired,
@@ -110,6 +126,12 @@ func TestStewardshipBucketFull(t *testing.T) {
 			Code:    http.StatusPaymentRequired,
 		}),
 	)
+
+	// chunks stamped before the failure have used up stamp indices, so the
+	// issuer must be saved even though the re-upload failed
+	if got := post.saves.Load(); got != 1 {
+		t.Fatalf("issuer saves: want 1, got %d", got)
+	}
 }
 
 type localRetriever struct {

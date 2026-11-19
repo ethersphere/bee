@@ -297,6 +297,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 				jsonhttp.BadRequest(w, "invalid public key")
 			case errors.Is(err, accesscontrol.ErrUnexpectedType):
 				jsonhttp.BadRequest(w, "failed to create history")
+			case errors.Is(err, postage.ErrBucketFull):
+				jsonhttp.PaymentRequired(w, "batch is overissued")
 			default:
 				jsonhttp.InternalServerError(w, errActUpload)
 			}

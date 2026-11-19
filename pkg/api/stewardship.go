@@ -65,6 +65,9 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	err = s.steward.Reupload(r.Context(), paths.Address, stamper, rLevel)
+	// Save the issuer even if the re-upload failed part way: the chunks
+	// stamped before the failure have used up their stamp indices.
+	saveErr := save()
 	if err != nil {
 		logger.Debug("re-upload failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "re-upload failed")
@@ -76,8 +79,8 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = save(); err != nil {
-		logger.Debug("unable to save stamper data", "batchID", batchID, "error", err)
+	if saveErr != nil {
+		logger.Debug("unable to save stamper data", "batchID", batchID, "error", saveErr)
 		logger.Error(nil, "unable to save stamper data")
 		jsonhttp.InternalServerError(w, "unable to save stamper data")
 		return
