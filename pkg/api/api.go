@@ -231,6 +231,10 @@ type Service struct {
 	lightNodes  *lightnode.Container
 	blockTime   time.Duration
 
+	chunkDeliveryWriteDeadline  time.Duration
+	chunkDownloadRequestTimeout time.Duration
+	chunkStreamReadTimeout      time.Duration
+
 	statusSem        *semaphore.Weighted
 	postageSem       *semaphore.Weighted
 	stakingSem       *semaphore.Weighted
@@ -413,6 +417,10 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.lightNodes = e.LightNodes
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
+
+	s.chunkDeliveryWriteDeadline = chunkDeliveryWriteDeadline
+	s.chunkDownloadRequestTimeout = chunkDownloadRequestTimeout
+	s.chunkStreamReadTimeout = streamReadTimeout
 
 	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)
