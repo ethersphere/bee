@@ -987,6 +987,49 @@ func TestChunkBidirectionalStream_TagRejected(t *testing.T) {
 	}
 }
 
+// The node selects the chunk stream subprotocol when a client offers it, which
+// is how a client tells this protocol from the upload-only stream older nodes
+// serve on the same path. Offering it is optional.
+//
+// nolint:paralleltest
+func TestChunkBidirectionalStream_Subprotocol(t *testing.T) {
+	_, _, addr, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	for _, tc := range []struct {
+		name    string
+		offered []string
+		want    string
+	}{
+		{name: "offered", offered: []string{api.ChunkStreamSubprotocol}, want: api.ChunkStreamSubprotocol},
+		{name: "offered with another", offered: []string{"other", api.ChunkStreamSubprotocol}, want: api.ChunkStreamSubprotocol},
+		{name: "only another offered", offered: []string{"other"}},
+		{name: "not offered"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dialer := websocket.Dialer{Subprotocols: tc.offered}
+			conn, _, err := dialer.Dial("ws://"+addr+"/chunks/stream", streamHeaders(false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			if got := conn.Subprotocol(); got != tc.want {
+				t.Fatalf("expected subprotocol %q, got %q", tc.want, got)
+			}
+
+			// The stream works either way.
+			chunkAddr := testingc.GenerateTestRandomChunk().Address()
+			sendPBRequest(t, conn, getRequest(chunkAddr.Bytes(), pb.CacheOption_CACHE_DEFAULT))
+			if resp := readGet(t, conn); !bytes.Equal(resp.Address, chunkAddr.Bytes()) || resp.Status != pb.Status_STATUS_NOT_FOUND {
+				t.Fatalf("expected STATUS_NOT_FOUND for %s, got %v for %x", chunkAddr, resp.Status, resp.Address)
+			}
+		})
+	}
+}
+
 // A connection batch that cannot be used fails the handshake, with the status
 // the HTTP upload endpoints use for the same failure.
 //

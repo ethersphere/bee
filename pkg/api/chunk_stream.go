@@ -53,6 +53,14 @@ const (
 	// request queue can hold. The largest valid request, a SOC put with a stamp
 	// and a batch id, is under 4.5 KiB.
 	maxStreamFrameSize = 8 * 1024
+
+	// chunkStreamSubprotocol names this protocol and its version in the
+	// websocket handshake. The upload-only stream it replaced was served on the
+	// same path and selects no subprotocol, so a client that offers this one
+	// and finds it not selected is talking to an older node and must not send
+	// requests: that node would push them as chunks. Change it when the wire
+	// format changes incompatibly.
+	chunkStreamSubprotocol = "bee-chunk-stream-v1"
 )
 
 var errStreamShutdown = errors.New("node shutting down")
@@ -124,6 +132,9 @@ func (s *Service) chunkStreamHandler(w http.ResponseWriter, r *http.Request) {
 		ReadBufferSize:  swarm.SocMaxChunkSize,
 		WriteBufferSize: swarm.SocMaxChunkSize,
 		CheckOrigin:     s.checkOrigin,
+		// Selected only when the client offers it, so clients that do not
+		// still connect.
+		Subprotocols: []string{chunkStreamSubprotocol},
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)

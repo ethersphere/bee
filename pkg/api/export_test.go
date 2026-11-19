@@ -164,6 +164,7 @@ const (
 	MaxStreamQueueSize      = maxStreamQueueSize
 	DefaultStreamSubWorkers = defaultStreamSubWorkers
 	MaxStreamFrameSize      = maxStreamFrameSize
+	ChunkStreamSubprotocol  = chunkStreamSubprotocol
 )
 
 // ChunkStreamDeliveryCount returns the chunk stream delivery counter for one
