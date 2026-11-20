@@ -285,39 +285,25 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		return 0, 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
-	var chunkErr error
 	for i := 0; i < len(offer.Chunks); i++ {
 		if offer.Chunks[i] == nil {
-			s.logger.Debug("syncer got nil chunk on offer", "peer_address", peer, "index", i)
-			s.metrics.OfferSkipped.WithLabelValues(offerSkipNil).Inc()
-			continue
+			return 0, 0, fmt.Errorf("nil chunk at index %d in offer from peer %s", i, peer)
 		}
 
 		addr := offer.Chunks[i].Address
 		sum := offer.Chunks[i].Sum
 		if len(addr) != swarm.HashSize {
-			s.logger.Debug("syncer got inconsistent hash length on offer", "peer_address", peer, "index", i, "addr_len", len(addr))
-			s.metrics.OfferSkipped.WithLabelValues(offerSkipBadAddressLength).Inc()
-			continue
+			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
 
 		a := swarm.NewAddress(addr)
-		// An unset address has no bytes and is already rejected above. This
-		// catches a hash-sized address of all zeroes.
-		if a.IsEmpty() {
+		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
-			s.metrics.OfferSkipped.WithLabelValues(offerSkipZeroAddress).Inc()
-			chunkErr = errors.Join(chunkErr, fmt.Errorf("zero address"))
 			continue
 		}
-		// Skip offers with missing or invalid chunk sum length rather than failing
-		// the interval, preventing infinite zero-backoff 100% CPU retry loops.
 		if len(sum) != storage.ChunkSumSize {
-			s.logger.Debug("syncer got inconsistent chunk sum length on offer", "peer_address", peer, "chunk_address", a, "sum_len", len(sum))
-			s.metrics.OfferSkipped.WithLabelValues(offerSkipBadSumLength).Inc()
-			chunkErr = errors.Join(chunkErr, fmt.Errorf("inconsistent chunk sum length"))
-			continue
+			return 0, 0, fmt.Errorf("inconsistent chunk sum length %d at index %d in offer from peer %s", len(sum), i, peer)
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
@@ -346,6 +332,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
+	var chunkErr error
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {

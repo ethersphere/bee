@@ -195,12 +195,12 @@ func TestRandomOrderConvergence(t *testing.T) {
 	}
 }
 
-// TestMissingSumEntrySelfHeals covers an index inconsistency: the reserve holds
-// the entry (BatchRadiusItem) but the companion ChunkSumItem is missing, as a
-// crashed migration or repair could leave behind. Re-putting the very same
-// chunk must not be turned into a divergence conflict; the reserve should
-// either restore the sum or stay a no-op, but never reject its own chunk.
-func TestMissingSumEntrySelfHeals(t *testing.T) {
+// TestMissingSumEntryIsNoop covers an index inconsistency: the reserve holds
+// the entry (BatchRadiusItem) but the companion ChunkSumItem is missing.
+// Re-putting the very same chunk must not be turned into a divergence
+// conflict: the put is a no-op and the reserve never rejects its own chunk.
+// The sum index is left as it is; db repair-reserve rebuilds it.
+func TestMissingSumEntryIsNoop(t *testing.T) {
 	t.Parallel()
 
 	signer := getSigner(t)
@@ -224,7 +224,7 @@ func TestMissingSumEntrySelfHeals(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = h.ts.Run(h.ctx, func(s transaction.Store) error {
-				return s.IndexStore().Delete(&reserve.ChunkSumItem{Address: ch.Address(), Sum: sum})
+				return s.IndexStore().Delete(&reserve.ChunkSumItem{Address: ch.Address(), Sum: [storage.ChunkSumSize]byte(sum)})
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -234,7 +234,7 @@ func TestMissingSumEntrySelfHeals(t *testing.T) {
 
 			h.expectSize(1)
 			h.expectPayload(ch.Address(), ch)
-			h.expectSumAgainst(ch, ch)
+			h.expectNoSum(ch)
 		})
 	}
 }

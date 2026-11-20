@@ -290,11 +290,11 @@ func TestStep09DuplicateBinIDRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hasSum1, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch1.Address(), Sum: sum1})
+	hasSum1, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch1.Address(), Sum: [storage.ChunkSumSize]byte(sum1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	hasSum2, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch2.Address(), Sum: sum2})
+	hasSum2, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch2.Address(), Sum: [storage.ChunkSumSize]byte(sum2)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,5 +396,5 @@ func TestStep09DuplicateBinIDAcrossPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkStoreHas(&reserve.ChunkSumItem{Address: survivor.Address(), Sum: sum}, true)
+	checkStoreHas(&reserve.ChunkSumItem{Address: survivor.Address(), Sum: [storage.ChunkSumSize]byte(sum)}, true)
 }

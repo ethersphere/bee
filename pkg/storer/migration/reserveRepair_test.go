@@ -105,7 +105,6 @@ func TestReserveRepair(t *testing.T) {
 	// must remove it, otherwise the node would refuse to sync that chunk.
 	staleSum := &reserve.ChunkSumItem{
 		Address: swarm.RandAddress(t),
-		Sum:     make([]byte, storage.ChunkSumSize),
 	}
 	err := store.Run(context.Background(), func(s transaction.Store) error {
 		return s.IndexStore().Put(staleSum)
@@ -125,7 +124,7 @@ func TestReserveRepair(t *testing.T) {
 		for _, ch := range chunksPO[b] {
 			sum, err := storage.ChunkSum(ch)
 			assert.NoError(t, err)
-			has, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: sum})
+			has, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: [storage.ChunkSumSize]byte(sum)})
 			assert.NoError(t, err)
 			if !has {
 				t.Fatalf("expected chunk sum item for chunk %s after repair", ch.Address())
@@ -287,7 +286,7 @@ func TestReserveRepairEmptyStampHashRecovered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hasSum, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: sum})
+	hasSum, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: [storage.ChunkSumSize]byte(sum)})
 	if err != nil {
 		t.Fatal(err)
 	}
