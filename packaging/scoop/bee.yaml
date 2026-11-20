@@ -45,6 +45,8 @@
 ## ── Full node only ────────────────────────────────────────────────────────────
 ## enable storage incentives feature (implied by node-mode: full)
 # storage-incentives-enable: true
+## enable the bps broker (requires full node)
+# bps-broker: false
 ## reserve capacity doubling
 # reserve-capacity-doubling: 0
 ## minimum radius storage threshold

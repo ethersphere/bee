@@ -203,3 +203,28 @@ func (s *Service) SetChunkStreamTimeouts(writeDeadline, downloadTimeout, readTim
 		s.chunkStreamReadTimeout = readTimeout
 	}
 }
+
+const (
+	BPSCloseInvalidSOC     = bpsCloseInvalidSOC
+	BPSCloseInvalidMessage = bpsCloseInvalidMessage
+	BPSCloseBrokerGone     = bpsCloseBrokerGone
+	BPSCloseEndOfStream    = bpsCloseEndOfStream
+	BPSCloseAuthTimeout    = bpsCloseAuthTimeout
+	BPSGranted             = bpsGranted
+)
+
+var (
+	ErrBPSInvalidMessage = errBPSInvalidMessage
+	ErrBPSAuthTimeout    = errBPSAuthTimeout
+	ErrBPSBrokerGone     = errBPSBrokerGone
+	ErrBPSShutdown       = errBPSShutdown
+	BPSCloseCode         = bpsCloseCode
+)
+
+// SetBPSAuthTimeout overrides the auth timeout and returns a restore func.
+// Callers must not run in parallel with other bps tests.
+func SetBPSAuthTimeout(d time.Duration) func() {
+	prev := bpsAuthTimeout
+	bpsAuthTimeout = d
+	return func() { bpsAuthTimeout = prev }
+}
