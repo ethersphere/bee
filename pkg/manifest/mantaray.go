@@ -5,9 +5,11 @@
 package manifest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
@@ -129,6 +131,87 @@ func (m *mantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFu
 	address := swarm.NewAddress(m.trie.Reference())
 
 	return address, nil
+}
+
+func (m *mantarayManifest) WalkEntry(ctx context.Context, prefix string, opts WalkEntryOptions, fn WalkEntryFunc) error {
+	start, ok := walkStart(prefix, opts)
+	if !ok {
+		// no path sorts after opts.After
+		return nil
+	}
+
+	// bee's uploader keeps manifest-level metadata at RootPath under 32 zero
+	// bytes, as IterateAddresses also allows for
+	emptyAddr := swarm.NewAddress([]byte{31: 0})
+	delimiter := []byte(opts.Delimiter)
+	walker := func(path []byte, node *mantaray.Node, err error) error {
+		if err != nil {
+			return err
+		}
+		if node == nil {
+			return nil
+		}
+		ref := swarm.NewAddress(node.Entry())
+		if node.IsValueType() && (ref.IsZero() || ref.Equal(emptyAddr)) {
+			// not a file, though paths below it may be
+			return nil
+		}
+		if len(delimiter) > 0 {
+			if i := bytes.Index(path[len(prefix):], delimiter); i >= 0 {
+				// every path below shares this common prefix: report it once
+				// and skip the subtree
+				if err := fn(string(path[:len(prefix)+i+len(delimiter)]), nil); err != nil {
+					return err
+				}
+				return mantaray.ErrSkipSubtree
+			}
+		}
+		if !node.IsValueType() {
+			return nil
+		}
+		return fn(string(path), NewEntry(ref, node.Metadata()))
+	}
+
+	err := m.trie.WalkNodeFrom(ctx, []byte(prefix), start, m.ls, walker)
+	if err != nil {
+		if errors.Is(err, ErrStopWalk) {
+			return nil
+		}
+		if errors.Is(err, mantaray.ErrNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	return nil
+}
+
+// walkStart returns the first path a walk with opts may visit, or false when
+// no path can sort after opts.After.
+func walkStart(prefix string, opts WalkEntryOptions) ([]byte, bool) {
+	if opts.After == "" {
+		return nil, true
+	}
+	start := []byte(opts.After)
+
+	rest, ok := strings.CutPrefix(opts.After, prefix)
+	i := strings.Index(rest, opts.Delimiter)
+	if opts.Delimiter == "" || !ok || i < 0 {
+		// the first path that sorts after After
+		return append(start, 0), true
+	}
+
+	// After is a common prefix or a path below one. The common prefix stands
+	// for every path below it and sorts at or before After, so start at the
+	// first path that does not begin with it.
+	start = start[:len(prefix)+i+len(opts.Delimiter)]
+	for j := len(start) - 1; j >= 0; j-- {
+		if start[j] < 0xff {
+			start[j]++
+			return start[:j+1], true
+		}
+	}
+	return nil, false
 }
 
 func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
