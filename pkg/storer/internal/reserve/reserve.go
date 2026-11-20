@@ -209,13 +209,17 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			return fmt.Errorf("load or store stamp index for chunk %v: %w", chunk, err)
 		}
 
-		// If the slot is already occupied, resolve collision: either a re-stamp
-		// of the same address, or slot reuse by a newer chunk at another address.
+		// If the slot is already occupied, settle the collision: either a
+		// re-stamp of the same address, or slot reuse by a newer chunk at
+		// another address.
 		var sameSlotSameAddr bool
 		if loaded {
-			sameSlotSameAddr, err = r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, stampHash, bin)
+			sameSlotSameAddr, err = checkStampIndexCollision(oldStampIndex, chunk)
 			if err != nil {
-				return fmt.Errorf("resolve stamp index collision: %w", err)
+				return fmt.Errorf("stamp index collision: %w", err)
+			}
+			if err := r.reassignStampSlot(ctx, s, chunk, oldStampIndex, bin, sameSlotSameAddr); err != nil {
+				return err
 			}
 		}
 
@@ -357,8 +361,11 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		}
 
 		if loaded {
-			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, stampHash, bin)
+			sameAddr, err := checkStampIndexCollision(oldStampIndex, chunk)
 			if err != nil {
+				return fmt.Errorf("stamp index collision: %w", err)
+			}
+			if err := r.reassignStampSlot(ctx, s, chunk, oldStampIndex, bin, sameAddr); err != nil {
 				return err
 			}
 			if sameAddr {
@@ -380,98 +387,83 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 	return
 }
 
-// resolveStampIndexCollision settles a stamp-index slot collision found by
-// LoadOrStore (same batchID and stamp index already occupied). On success it
-// returns sameAddr to tell the caller what remains:
-//
-//  1. sameAddr=true: the stored entry has the same chunk address. Old reserve
-//     index entries for that stamp are removed and the stamp index is
-//     updated. The caller writes the new reserve entries and handles
-//     type-specific chunkstore actions (CAC stores reserve entries; SOC evaluates
-//     divergence against other live stamps).
-//  2. sameAddr=false: the stored entry points at a different address. That
-//     chunk and its reserve metadata are removed and the stamp index is
-//     rewritten. The caller must still call storeReserveEntries and write the
-//     new chunk to the chunkstore.
-func (r *Reserve) resolveStampIndexCollision(
-	ctx context.Context, s transaction.Store,
-	chunk swarm.Chunk, oldStampIndex *stampindex.Item,
-	stampHash []byte, bin uint8,
-) (sameAddr bool, err error) {
-	prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
+// checkStampIndexCollision decides whether chunk may take the stamp slot
+// (batch ID and stamp index) that LoadOrStore found occupied by old. It only
+// compares the two claims and touches no storage. On success it reports
+// whether the slot holds the same chunk address (a re-stamp) or another
+// address (slot reuse); an error means the incoming chunk does not get the
+// slot:
+//   - an older timestamp loses with ErrOverwriteNewerChunk;
+//   - a re-stamp of the same address needs a strictly newer timestamp. An
+//     equal timestamp with a different stamp hash can be minted by anyone
+//     from an existing stamp (signature malleability), so it never wins;
+//   - an equal timestamp at another address is settled on the lower address;
+//     the higher one loses with ErrDivergentChunkRejected.
+func checkStampIndexCollision(old *stampindex.Item, chunk swarm.Chunk) (sameAddr bool, err error) {
+	prev := binary.BigEndian.Uint64(old.StampTimestamp)
 	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-	// A same-slot re-stamp of the same address must carry a strictly newer
-	// timestamp. An equal timestamp with a different stamp hash can be minted by
-	// anyone from an existing stamp (signature malleability), so it never wins.
-	sameAddr = oldStampIndex.ChunkAddress.Equal(chunk.Address())
+	sameAddr = old.ChunkAddress.Equal(chunk.Address())
 	if prev > curr || (prev == curr && sameAddr) {
 		return false, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 	}
-
-	// Same stamp index and timestamp, different chunk addresses: both
-	// claims are otherwise valid, so settle on the lower address.
-	if prev == curr && bytes.Compare(chunk.Address().Bytes(), oldStampIndex.ChunkAddress.Bytes()) >= 0 {
-		return false, fmt.Errorf(
-			"stamp index collision chunk %s lost tie-break: %w",
-			chunk.Address(),
-			storage.ErrDivergentChunkRejected,
-		)
+	if prev == curr && bytes.Compare(chunk.Address().Bytes(), old.ChunkAddress.Bytes()) >= 0 {
+		return false, fmt.Errorf("stamp index collision chunk %s lost tie-break: %w", chunk.Address(), storage.ErrDivergentChunkRejected)
 	}
+	return sameAddr, nil
+}
 
-	// Branch 2: Slot reuse across different chunk addresses.
-	// An older chunk at a different address with the same (batchID, stampIndex) slot
-	// is being overwritten by a newer timestamp. Remove the old chunk completely
-	// (metadata and payload refcount decrement) and update the stamp index.
-	if !sameAddr {
-		err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
-		if err != nil {
-			return false, fmt.Errorf("remove older chunk %s: %w", oldStampIndex.ChunkAddress, err)
+// reassignStampSlot hands the stamp slot held by old to chunk, once
+// checkStampIndexCollision allowed it, and points the stamp index at chunk.
+//
+//   - sameAddr (re-stamp): the old stamp's reserve entries (BatchRadiusItem,
+//     ChunkBinItem, stamp rows) are removed. The payload stays: it is either
+//     replaced or kept at this same address by the caller.
+//   - otherwise (slot reuse): the older chunk at the other address is removed
+//     completely, its metadata and its payload reference.
+//
+// The caller then writes the reserve entries for chunk and handles the
+// chunkstore.
+func (r *Reserve) reassignStampSlot(ctx context.Context, s transaction.Store, chunk swarm.Chunk, old *stampindex.Item, bin uint8, sameAddr bool) error {
+	if sameAddr {
+		if err := removeStampEntries(s, old, bin); err != nil {
+			return fmt.Errorf("remove previous stamp of %s: %w", old.ChunkAddress, err)
 		}
-
-		err = stampindex.Store(s.IndexStore(), reserveScope, chunk)
-		if err != nil {
-			return false, fmt.Errorf("update stamp index: %w", err)
+	} else {
+		if err := r.removeChunk(ctx, s, old.ChunkAddress, old.BatchID, old.StampHash); err != nil {
+			return fmt.Errorf("remove older chunk %s: %w", old.ChunkAddress, err)
 		}
-
-		return false, nil
 	}
+	if err := stampindex.Store(s.IndexStore(), reserveScope, chunk); err != nil {
+		return fmt.Errorf("update stamp index: %w", err)
+	}
+	return nil
+}
 
-	// Branch 1: Same address re-stamped in the same slot with a newer timestamp.
-	// Prune previous slot metadata (BatchRadiusItem, ChunkBinItem, and stamp entries).
-	// Note: The payload in ChunkStore is NOT deleted here because it is either being
-	// updated or retained at this same address.
-	oldStamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, oldStampIndex.ChunkAddress, oldStampIndex.StampHash)
+// removeStampEntries removes the reserve entries of the stamp recorded in old
+// (BatchRadiusItem, ChunkBinItem with its sum, stamp index and chunk stamp
+// rows) without touching the payload in the chunkstore.
+func removeStampEntries(s transaction.Store, old *stampindex.Item, bin uint8) error {
+	oldStamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, old.ChunkAddress, old.StampHash)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	oldBatchRadiusItem := &BatchRadiusItem{
+	item := &BatchRadiusItem{
 		Bin:       bin,
-		Address:   oldStampIndex.ChunkAddress,
-		BatchID:   oldStampIndex.BatchID,
-		StampHash: oldStampIndex.StampHash,
+		Address:   old.ChunkAddress,
+		BatchID:   old.BatchID,
+		StampHash: old.StampHash,
 	}
-	err = s.IndexStore().Get(oldBatchRadiusItem)
-	if err != nil {
-		return false, err
+	if err := s.IndexStore().Get(item); err != nil {
+		return err
 	}
 
-	err = errors.Join(
-		s.IndexStore().Delete(oldBatchRadiusItem),
-		deleteChunkBinItem(s.IndexStore(), oldBatchRadiusItem),
+	return errors.Join(
+		s.IndexStore().Delete(item),
+		deleteChunkBinItem(s.IndexStore(), item),
 		stampindex.Delete(s.IndexStore(), reserveScope, oldStamp),
-		chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, oldStamp),
+		chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, item.Address, oldStamp),
 	)
-	if err != nil {
-		return false, err
-	}
-
-	err = stampindex.Store(s.IndexStore(), reserveScope, chunk)
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
 }
 
 // storeReserveEntries writes the common set of reserve index entries for a
