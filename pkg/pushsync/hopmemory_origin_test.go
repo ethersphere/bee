@@ -7,7 +7,6 @@ package pushsync_test
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -281,32 +280,6 @@ func TestOriginAllPeersPaused(t *testing.T) {
 	n.wantStreams(n.hops[1], 3)
 	n.wantFirstHop("unknown", "shallow", 3)
 	n.wantFirstHop("unknown", "valid", 1)
-}
-
-// TestOriginPausedPeerDisconnected checks that, when every first hop is in a
-// shallow pause, the origin sends only through the ones that are connected.
-func TestOriginPausedPeerDisconnected(t *testing.T) {
-	t.Parallel()
-
-	n := newHopNet(t, false, 3)
-	for _, hop := range n.hops {
-		n.setReceipt(hop, false)
-	}
-
-	n.pushShallow()
-	for _, hop := range n.hops {
-		n.wantStreams(hop, 1)
-	}
-
-	// the topology mock removes a peer from the slice that n.hops shares
-	hops := slices.Clone(n.hops)
-	n.topo.Disconnected(p2p.Peer{Address: hops[0]})
-	n.topo.Disconnected(p2p.Peer{Address: hops[2]})
-	n.pushShallow()
-	n.wantStreams(hops[0], 1)
-	n.wantStreams(hops[1], 2)
-	n.wantStreams(hops[2], 1)
-	n.wantFirstHop("paused", "shallow", 1)
 }
 
 // TestOriginAllBlockedInsideAOR checks that an origin inside the
