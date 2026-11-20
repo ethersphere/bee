@@ -15,9 +15,11 @@ import (
 
 	"github.com/btcsuite/btcd/btcec/v2"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -367,8 +369,9 @@ func TestPutSOCLosingPayloadUnderNewStamp(t *testing.T) {
 
 // TestPutSOCCrossStampEqualTimestamp covers two single owner chunks that
 // share an address under different batches at the same stamp timestamp. The
-// payload stamped with the lexicographically lower stamp hash wins in either
-// arrival order and both entries end up advertising it.
+// payload with the lower wrapped address wins in either arrival order, even
+// under the stamp with the higher stamp hash, and both entries end up
+// advertising it.
 func TestPutSOCCrossStampEqualTimestamp(t *testing.T) {
 	t.Parallel()
 
@@ -378,8 +381,15 @@ func TestPutSOCCrossStampEqualTimestamp(t *testing.T) {
 	id := make([]byte, swarm.HashSize)
 
 	low, high := stampsByHash(t, postagetesting.MustNewFields(batchA.ID, 0, 5), postagetesting.MustNewFields(batchB.ID, 0, 5))
-	winner := newTestSOC(t, signer, id, []byte("payload one")).WithStamp(low)
-	loser := newTestSOC(t, signer, id, []byte("payload two")).WithStamp(high)
+	lowerContent := newTestSOC(t, signer, id, []byte("payload one"))
+	higherContent := newTestSOC(t, signer, id, []byte("payload two"))
+	if bytes.Compare(wrappedAddr(t, lowerContent).Bytes(), wrappedAddr(t, higherContent).Bytes()) > 0 {
+		lowerContent, higherContent = higherContent, lowerContent
+	}
+	// the winning payload carries the higher stamp hash: stamp hashes must
+	// not decide.
+	winner := lowerContent.WithStamp(high)
+	loser := higherContent.WithStamp(low)
 
 	for _, tc := range []struct {
 		name  string
@@ -518,46 +528,13 @@ func TestPutSameSlotMalleatedStampRejected(t *testing.T) {
 	t.Parallel()
 
 	batchOwner := getSigner(t)
-	owner, err := batchOwner.EthereumAddress()
-	if err != nil {
-		t.Fatal(err)
-	}
 	batchID := bytes.Repeat([]byte{0xab}, swarm.HashSize)
 
 	signStamp := func(addr swarm.Address, ts uint64) *postage.Stamp {
-		t.Helper()
-		index := make([]byte, swarm.StampIndexSize)
-		timestamp := make([]byte, swarm.StampTimestampSize)
-		binary.BigEndian.PutUint64(timestamp, ts)
-		digest, err := postage.ToSignDigest(addr.Bytes(), batchID, index, timestamp)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sig, err := batchOwner.Sign(digest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return postage.NewStamp(batchID, index, timestamp, sig)
+		return signTestStamp(t, batchOwner, batchID, addr, 0, ts)
 	}
-
 	malleate := func(addr swarm.Address, stamp *postage.Stamp) *postage.Stamp {
-		t.Helper()
-		sig := stamp.Sig()
-		s := new(big.Int).SetBytes(sig[32:64])
-		malleated := make([]byte, len(sig))
-		copy(malleated, sig[:32])
-		new(big.Int).Sub(btcec.S256().N, s).FillBytes(malleated[32:64])
-		malleated[64] = 27 + 28 - sig[64] // flip the recovery id
-		twin := postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), malleated)
-
-		signer, err := postage.RecoverBatchOwner(addr, twin)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(signer, owner.Bytes()) {
-			t.Fatal("malleated stamp must recover the batch owner")
-		}
-		return twin
+		return malleateTestStamp(t, batchOwner, addr, stamp)
 	}
 
 	t.Run("cac", func(t *testing.T) {
@@ -593,6 +570,138 @@ func TestPutSameSlotMalleatedStampRejected(t *testing.T) {
 		h.expectSize(1)
 		h.expectPayload(current.Address(), current.WithStamp(stamp))
 	})
+}
+
+// signTestStamp signs a stamp for addr in the given batch slot and timestamp.
+func signTestStamp(t *testing.T, batchOwner crypto.Signer, batchID []byte, addr swarm.Address, index, ts uint64) *postage.Stamp {
+	t.Helper()
+	idx := make([]byte, swarm.StampIndexSize)
+	binary.BigEndian.PutUint64(idx, index)
+	timestamp := make([]byte, swarm.StampTimestampSize)
+	binary.BigEndian.PutUint64(timestamp, ts)
+	digest, err := postage.ToSignDigest(addr.Bytes(), batchID, idx, timestamp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := batchOwner.Sign(digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return postage.NewStamp(batchID, idx, timestamp, sig)
+}
+
+// malleateTestStamp returns the twin of stamp with its secp256k1 signature
+// malleated to (r, N-s, v^1). The twin keeps batch, index and timestamp,
+// recovers the same batch owner, and has a different stamp hash. Anyone
+// holding the stamp can mint it.
+func malleateTestStamp(t *testing.T, batchOwner crypto.Signer, addr swarm.Address, stamp *postage.Stamp) *postage.Stamp {
+	t.Helper()
+	sig := stamp.Sig()
+	s := new(big.Int).SetBytes(sig[32:64])
+	malleated := make([]byte, len(sig))
+	copy(malleated, sig[:32])
+	new(big.Int).Sub(btcec.S256().N, s).FillBytes(malleated[32:64])
+	malleated[64] = 27 + 28 - sig[64] // flip the recovery id
+	twin := postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), malleated)
+
+	owner, err := batchOwner.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := postage.RecoverBatchOwner(addr, twin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(signer, owner.Bytes()) {
+		t.Fatal("malleated stamp must recover the batch owner")
+	}
+	return twin
+}
+
+// TestPutSOCEqualTimestampMalleatedStampConverges covers two different stamps
+// with the same timestamp on one single owner chunk address, each carrying a
+// different payload. Anyone can malleate one of the stamps into a valid twin
+// with a different stamp hash, so a relaying peer chooses which twin each node
+// receives. The payload a node keeps must not depend on that choice, nor on
+// arrival order: every node must keep the same payload.
+func TestPutSOCEqualTimestampMalleatedStampConverges(t *testing.T) {
+	t.Parallel()
+
+	batchOwner := getSigner(t)
+	batchID := bytes.Repeat([]byte{0xcd}, swarm.HashSize)
+	socOwner := getSigner(t)
+	id := make([]byte, swarm.HashSize)
+	v1 := newTestSOC(t, socOwner, id, []byte("payload one"))
+	v2 := newTestSOC(t, socOwner, id, []byte("payload two"))
+	addr := v1.Address()
+	const ts = 7
+
+	stampHash := func(s *postage.Stamp) []byte {
+		t.Helper()
+		h, err := s.Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+
+	x := signTestStamp(t, batchOwner, batchID, addr, 0, ts)
+	// Pick a second slot whose stamp and malleated twin hash to opposite sides
+	// of x's stamp hash: under a stamp-hash tie-break, the twin a node receives
+	// would decide the payload it keeps.
+	var y, twin *postage.Stamp
+	for i := uint64(1); i <= 64 && y == nil; i++ {
+		s := signTestStamp(t, batchOwner, batchID, addr, i, ts)
+		m := malleateTestStamp(t, batchOwner, addr, s)
+		if (bytes.Compare(stampHash(s), stampHash(x)) < 0) != (bytes.Compare(stampHash(m), stampHash(x)) < 0) {
+			y, twin = s, m
+		}
+	}
+	if y == nil {
+		t.Fatal("no stamp found whose malleated twin hashes to the other side of x")
+	}
+
+	// the lower wrapped content address wins, independent of stamps.
+	want := v1
+	if bytes.Compare(wrappedAddr(t, v2).Bytes(), wrappedAddr(t, v1).Bytes()) < 0 {
+		want = v2
+	}
+
+	for _, tc := range []struct {
+		name   string
+		second *postage.Stamp
+	}{
+		{"original stamp", y},
+		{"malleated twin", twin},
+	} {
+		for _, order := range []string{"v1 first", "v2 first"} {
+			t.Run(tc.name+"/"+order, func(t *testing.T) {
+				t.Parallel()
+				h := newPutHarness(t)
+				first := swarm.NewChunk(addr, v1.Data()).WithStamp(x)
+				second := swarm.NewChunk(addr, v2.Data()).WithStamp(tc.second)
+				if order == "v2 first" {
+					first, second = second, first
+				}
+				h.put(first)
+				h.put(second)
+
+				h.expectSize(2)
+				h.expectPayload(addr, want)
+			})
+		}
+	}
+}
+
+// wrappedAddr returns the address of the content addressed chunk wrapped by
+// the single owner chunk ch.
+func wrappedAddr(t *testing.T, ch swarm.Chunk) swarm.Address {
+	t.Helper()
+	s, err := soc.FromChunk(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s.WrappedChunk().Address()
 }
 
 // TestPutSOCSameSlotRestampRefreshesSumIndex covers a single owner chunk

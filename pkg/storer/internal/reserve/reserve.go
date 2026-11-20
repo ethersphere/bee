@@ -106,7 +106,8 @@ func New(
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 //  5. Two single owner chunks that share an address under different stamps (any batch or stamp
 //     index) settle on one shared payload: a strictly higher stamp timestamp replaces it; equal
-//     timestamps are settled by the lexicographically lower stamp hash. Same-stamp divergence remains handled by resolveSOCDivergence above.
+//     timestamps are settled by the lexicographically lower wrapped chunk address, never by the
+//     malleable stamp hash. Same-stamp divergence is handled by resolveSOCDivergence.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -242,7 +243,7 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			if !sameSlotSameAddr {
 				fallbackStamp = stored.Stamp()
 			}
-			incomingWins, err = r.tiebreakSOC(s, chunk, stored, stampHash, fallbackStamp)
+			incomingWins, err = r.tiebreakSOC(s, chunk, stored, fallbackStamp)
 			if err != nil {
 				return err
 			}
@@ -306,17 +307,21 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 // tiebreakSOC decides whether an incoming single owner chunk should
 // replace the payload already stored at that address under another stamp.
 //
-// The incoming stamp is compared with the strongest stored stamp on that address:
-// - a strictly newer timestamp wins;
-// - equal timestamps prefer the lexicographically lower stamp hash;
-// - a remaining tie prefers the lower wrapped CAC payload address.
+// The incoming stamp timestamp is compared with the latest stored stamp
+// timestamp on that address:
+//   - a strictly newer timestamp wins and a strictly older one loses;
+//   - on equal timestamps the lower wrapped CAC address wins.
+//
+// Stamp hashes are deliberately not compared: anyone can malleate a stamp
+// signature into a valid twin with a different hash, which would let a
+// relaying peer choose the payload each node keeps. The equal-timestamp
+// outcome depends on content only, so every node keeps the same payload.
 // Matching payloads are treated as a win so the new stamp can be indexed
 // against the existing body without payload modification.
 func (r *Reserve) tiebreakSOC(
 	s transaction.Store,
 	incoming swarm.Chunk,
 	stored swarm.Chunk,
-	incomingStampHash []byte,
 	fallbackStamp swarm.Stamp,
 ) (incomingWins bool, err error) {
 	// If the underlying payloads are identical, there is no divergence.
@@ -324,44 +329,18 @@ func (r *Reserve) tiebreakSOC(
 		return true, nil
 	}
 
-	bestStoredStamp, highestPrevTimestamp, err := latestStamp(
-		s.IndexStore(),
-		incoming.Address(),
-		fallbackStamp,
-	)
+	prev, err := latestTimestamp(s.IndexStore(), incoming.Address(), fallbackStamp)
 	if err != nil {
 		return false, err
 	}
-
-	storedWithStamp := stored.WithStamp(bestStoredStamp)
-	currTimestamp := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
-
-	// Rule 1: Strictly newer timestamp wins.
-	if highestPrevTimestamp > currTimestamp {
-		return false, nil
+	curr := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
+	if curr != prev {
+		return curr > prev, nil
 	}
 
-	if currTimestamp > highestPrevTimestamp {
-		return true, nil
-	}
-
-	// Rule 2: Equal timestamps tie-break on lower stamp hash.
-	if highestPrevTimestamp == currTimestamp {
-		if storedWithStamp.Stamp() != nil {
-			storedStampHash, err := storedWithStamp.Stamp().Hash()
-			if err == nil && !bytes.Equal(storedStampHash, incomingStampHash) {
-				if bytes.Compare(storedStampHash, incomingStampHash) < 0 {
-					return false, nil
-				}
-				return true, nil
-			}
-		}
-	}
-
-	// Rule 3: Tie-break on lexicographically lower wrapped CAC address.
-	wins, err := storage.ReplaceIncoming(storedWithStamp, incoming)
+	wins, err := storage.ReplaceIncoming(stored, incoming)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("divergence tie-break for chunk %s: %w", incoming.Address(), err)
 	}
 	return wins, nil
 }
@@ -674,38 +653,17 @@ func (r *Reserve) resolveSOCDivergence(
 		if err != nil {
 			return fmt.Errorf("load stamp for diverging chunk %s: %w", chunk.Address(), err)
 		}
-		stored = stored.WithStamp(stamp)
 
 		// Verify timestamp precedence across all active co-resident stamps.
-		bestStoredStamp, highestPrevTimestamp, err := latestStamp(
-			s.IndexStore(),
-			chunk.Address(),
-			stamp,
-		)
+		// Equal timestamps fall through to the content tie-break; stamp
+		// hashes are not compared (see tiebreakSOC).
+		prev, err := latestTimestamp(s.IndexStore(), chunk.Address(), stamp)
 		if err != nil {
 			return err
 		}
-		stored = stored.WithStamp(bestStoredStamp)
-
-		currTimestamp := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if highestPrevTimestamp > currTimestamp {
-			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", highestPrevTimestamp, currTimestamp, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
-		}
-
-		if highestPrevTimestamp == currTimestamp {
-			storedStampHash, err := stored.Stamp().Hash()
-			if err != nil {
-				return err
-			}
-			if bytes.Compare(storedStampHash, stampHash) < 0 {
-				r.logger.Debug(
-					"discarding diverging chunk (weaker stamp hash at equal timestamp)",
-					"address", chunk.Address(),
-					"stored_stamp_hash", hex.EncodeToString(storedStampHash),
-					"incoming_stamp_hash", hex.EncodeToString(stampHash),
-				)
-				return fmt.Errorf("diverging chunk %s lost stamp-hash tie-break: %w", chunk.Address(), storage.ErrDivergentChunkRejected)
-			}
+		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+		if prev > curr {
+			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 		}
 
 		wins, err := storage.ReplaceIncoming(stored, chunk)
@@ -783,53 +741,27 @@ func (r *Reserve) resolveSOCDivergence(
 	return replaced && err == nil, err
 }
 
-// latestStamp selects the stamp that represents the precedence of
-// the payload shared by all reserve entries for addr. A single owner chunk is
-// stored once by address but may have multiple stamps, so divergence handling
-// needs one deterministic stamp against which to compare an incoming version.
-//
-//  1. The stamp with the highest timestamp is selected.
-//  2. If multiple stamps have that timestamp, the one with
-//     the lexicographically lower stamp hash is selected
-//  3. If addr has no indexed stamps, fallback and its timestamp are returned.
-//
-// This total ordering makes the selected stamp independent of index
-// iteration and stamp arrival order, provided the nodes hold the same set of
-// stamps. Divergent chunk resolution can therefore compare against the same
-// stored-stamp precedence on every node instead of making the winning payload
-// depend on which stamp happened to be observed first. If addr has no indexed
-// stamps, fallback and its timestamp are returned.
-func latestStamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (swarm.Stamp, uint64, error) {
-	var highestTimestamp uint64
-	var bestStamp swarm.Stamp
-
+// latestTimestamp returns the highest stamp timestamp among all reserve
+// stamps at addr: a single owner chunk is stored once by address but may have
+// several stamps, and an incoming version is compared against the latest of
+// them. The result does not depend on iteration or arrival order. If addr has
+// no indexed stamps, the fallback stamp's timestamp is returned, or zero
+// without a fallback.
+func latestTimestamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (uint64, error) {
+	var latest uint64
+	found := false
 	err := chunkstamp.IterateAll(store, reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
-		timestamp := binary.BigEndian.Uint64(stamp.Timestamp())
-		if bestStamp == nil || timestamp > highestTimestamp {
-			highestTimestamp = timestamp
-			bestStamp = stamp
-		} else if timestamp == highestTimestamp {
-			bestHash, err := bestStamp.Hash()
-			if err != nil {
-				return true, err
-			}
-			currentHash, err := stamp.Hash()
-			if err != nil {
-				return true, err
-			}
-			if bytes.Compare(currentHash, bestHash) < 0 {
-				bestStamp = stamp
-			}
-		}
+		latest = max(latest, binary.BigEndian.Uint64(stamp.Timestamp()))
+		found = true
 		return false, nil
 	})
 	if err != nil {
-		return nil, 0, fmt.Errorf("iterate stamps of %s: %w", addr, err)
+		return 0, fmt.Errorf("iterate stamps of %s: %w", addr, err)
 	}
-	if bestStamp == nil && fallback != nil {
-		return fallback, binary.BigEndian.Uint64(fallback.Timestamp()), nil
+	if !found && fallback != nil {
+		return binary.BigEndian.Uint64(fallback.Timestamp()), nil
 	}
-	return bestStamp, highestTimestamp, nil
+	return latest, nil
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
