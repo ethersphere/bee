@@ -465,6 +465,42 @@ func TestHopMemoryLateResult(t *testing.T) {
 	}
 }
 
+// TestHopMemoryLateResultEmptyMemory checks that a result of a push that began
+// at the old radius is ignored when the memory has no records, which is the
+// state right after a radius change.
+func TestHopMemoryLateResultEmptyMemory(t *testing.T) {
+	t.Parallel()
+
+	var (
+		m     = pushsync.NewHopMemory(newTestClock().Now)
+		chunk = hopAddr(0x6b, 0x00)
+		peer  = hopAddr(0x10)
+		late  = hopAddr(0x20)
+	)
+
+	m.View(9, chunk)
+	m.RecordValid(9, chunk, late)
+	m.View(10, chunk)
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records after the radius change, want 0", got)
+	}
+
+	m.RecordValid(9, chunk, late)
+	m.RecordShallow(9, chunk, late)
+	if m.ClaimProbe(9, chunk) {
+		t.Fatal("probe was given for another radius")
+	}
+	if got := m.Len(); got != 0 {
+		t.Fatalf("got %d records of the old radius, want 0", got)
+	}
+
+	m.RecordValid(10, chunk, peer)
+	valid, blocked, _ := m.View(10, chunk)
+	if len(valid) != 1 || !hasAddr(valid, peer) || len(blocked) != 0 {
+		t.Fatalf("got valid %v blocked %v, want only the record of radius 10", valid, blocked)
+	}
+}
+
 // TestHopMemoryBlockedOrder checks that the peers in a pause are returned in
 // the order in which their pauses end.
 func TestHopMemoryBlockedOrder(t *testing.T) {

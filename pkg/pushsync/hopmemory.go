@@ -64,6 +64,7 @@ type hopMemory struct {
 	mtx       sync.Mutex
 	now       func() time.Time
 	radius    uint8
+	radiusSet bool // false until the first use of the memory
 	hoods     map[string]*hopHood
 	lastSweep time.Time
 }
@@ -93,16 +94,17 @@ func hoodKey(rad uint8, chunk swarm.Address) string {
 
 // useRadius reports whether the memory holds records of the radius. Only a
 // selection (change is true) drops the records of another radius, so that a
-// late result of a push that began at the old radius is ignored.
+// late result of a push that began at the old radius is ignored, also when
+// the memory has no records.
 // Must be called with the lock held.
 func (m *hopMemory) useRadius(rad uint8, change bool) bool {
-	if rad == m.radius {
+	if m.radiusSet && rad == m.radius {
 		return true
 	}
-	if !change && len(m.hoods) > 0 {
+	if m.radiusSet && !change {
 		return false
 	}
-	m.radius = rad
+	m.radius, m.radiusSet = rad, true
 	clear(m.hoods)
 	return true
 }

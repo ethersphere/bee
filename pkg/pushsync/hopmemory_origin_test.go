@@ -7,6 +7,7 @@ package pushsync_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ type hopNet struct {
 	handlers map[string]p2p.ProtocolSpec
 	clock    *testClock
 	nodes    byte
+	radius   atomic.Uint32 // storage radius of the origin
 }
 
 // flipBits returns a copy of the address with the given bits flipped.
@@ -90,6 +92,7 @@ func newHopNet(t *testing.T, insideAOR bool, hops int) *hopNet {
 		handlers: make(map[string]p2p.ProtocolSpec),
 		clock:    newTestClock(),
 	}
+	n.radius.Store(hopRadius)
 
 	// all first hops differ from the neighborhood in bit 0; the next bits
 	// set their order
@@ -110,7 +113,7 @@ func newHopNet(t *testing.T, insideAOR bool, hops int) *hopNet {
 		originAddr, 1, blockHash.Bytes(),
 		streamtest.NewRecorderDisconnecter(n.recorder),
 		&testStorer{chunksPut: make(map[string]swarm.Chunk), chunksReported: make(map[string]int)},
-		func() (uint8, error) { return hopRadius, nil },
+		func() (uint8, error) { return uint8(n.radius.Load()), nil },
 		topo, true,
 		func(swarm.Chunk) {}, func(*soc.SOC) {},
 		func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil },
@@ -437,6 +440,42 @@ func TestOriginProbeBecomesValid(t *testing.T) {
 	n.pushValid()
 	n.wantStreams(closer, 3)
 	n.wantStreams(valid, 1)
+}
+
+// TestOriginRadiusChangeDuringPush checks that a push whose radius changes
+// between two attempts selects the next first hop and records its result at
+// the new radius.
+func TestOriginRadiusChangeDuringPush(t *testing.T) {
+	t.Parallel()
+
+	n := newHopNet(t, false, 2)
+	n.setReceipt(n.hops[0], false)
+	n.setReceipt(n.hops[1], true)
+
+	// the radius of the origin grows while the first attempt is on its way
+	spec := n.handlers[n.hops[0].String()]
+	handler := spec.StreamSpecs[0].Handler
+	spec.StreamSpecs = []p2p.StreamSpec{spec.StreamSpecs[0]}
+	spec.StreamSpecs[0].Handler = func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+		n.radius.Store(hopRadius + 1)
+		return handler(ctx, p, s)
+	}
+	n.handlers[n.hops[0].String()] = spec
+
+	ch := testingc.GenerateValidRandomChunkAt(t, n.anchor, hopRadius+1)
+	if _, err := n.origin.PushChunkToClosest(context.Background(), ch); err != nil {
+		t.Fatalf("got %v, want a valid receipt", err)
+	}
+	n.wantStreams(n.hops[0], 1)
+	n.wantStreams(n.hops[1], 1)
+
+	if got := n.origin.HopRecords(); got != 1 {
+		t.Fatalf("got %d records, want 1", got)
+	}
+	valid, blocked, _ := n.origin.Hops().View(hopRadius+1, ch.Address())
+	if len(valid) != 1 || !valid[0].Equal(n.hops[1]) || len(blocked) != 0 {
+		t.Fatalf("got valid %v blocked %v, want the valid record of the second first hop at the new radius", valid, blocked)
+	}
 }
 
 // TestForwarderDoesNotUseHopMemory checks that a forwarder neither reads

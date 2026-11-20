@@ -420,6 +420,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-preemptiveTicker:
 			retry()
 		case <-retryC:
+			// The radius can change between two attempts of one push.
+			if rad, err = ps.radius(); err != nil {
+				return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+			}
 
 			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
@@ -534,6 +538,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err)
 
+			// The receipt is checked and recorded at the same radius.
+			if origin {
+				if rad, err = ps.radius(); err != nil {
+					return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+				}
+			}
+
 			if result.err == nil {
 
 				if !origin { // forwarder nodes do not need to check the receipt
@@ -542,7 +553,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				// Cache the best (highest-PO) shallow receipt and exhaust the
 				// budget; surface ErrShallowReceipt only when nothing better lands.
-				switch po, err := ps.checkReceipt(result.receipt, result.peer); {
+				switch po, err := ps.checkReceipt(result.receipt, result.peer, rad); {
 				case err == nil:
 					ps.hops.recordValid(rad, ch.Address(), result.peer)
 					ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "valid").Inc()
@@ -740,8 +751,8 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 // checkReceipt validates the receipt and returns the storer-to-chunk PO so
 // callers can rank shallow receipts; PO is zero on signature errors. Strict
-// po >= rad: a chunk is not synced until it lands within the AOR.
-func (ps *PushSync) checkReceipt(receipt *pb.Receipt, firstHop swarm.Address) (uint8, error) {
+// po >= r: a chunk is not synced until it lands within the AOR.
+func (ps *PushSync) checkReceipt(receipt *pb.Receipt, firstHop swarm.Address, r uint8) (uint8, error) {
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
@@ -755,11 +766,6 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt, firstHop swarm.Address) (u
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
-
-	r, err := ps.radius()
-	if err != nil {
-		return po, fmt.Errorf("pushsync: storage radius: %w", err)
-	}
 
 	if po < r || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()

@@ -22,7 +22,11 @@ var (
 // CheckReceipt exposes the unexported receipt verification (signature recovery,
 // overlay derivation, proximity and shallow-receipt logic) for fuzzing.
 func (ps *PushSync) CheckReceipt(receipt *pb.Receipt) error {
-	_, err := ps.checkReceipt(receipt, swarm.ZeroAddress)
+	rad, err := ps.radius()
+	if err != nil {
+		return err
+	}
+	_, err = ps.checkReceipt(receipt, swarm.ZeroAddress, rad)
 	return err
 }
 
