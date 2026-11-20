@@ -8,17 +8,21 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 
+	"github.com/ethersphere/bee/v2/pkg/bitvector"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
-	"github.com/ethersphere/bee/v2/pkg/pullsync/internal/legacy"
-	legacypb "github.com/ethersphere/bee/v2/pkg/pullsync/internal/legacy/pb"
+	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -103,44 +107,57 @@ func TestIncoming_LegacyOfferStampLength(t *testing.T) {
 	})
 }
 
-// TestWireCompat checks the offer encoding against the 1.4.0 one on master:
-// without a sum it is byte for byte the legacy encoding, and a legacy decoder
-// reads an offer with a sum by skipping the unknown field.
+// Offers encoded by the released 1.4.0 protocol (bee v2.8.3) for one chunk with
+// address 0x01.., batch ID 0x02.. and stamp hash 0x03.., topmost 7. The first
+// was produced by the v2.8.3 encoder; the second is the same offer with a sum
+// of 0x07.., which the v2.8.3 decoder reads back with all fields intact.
+const (
+	releasedOfferHex = "080712660a20" + "0101010101010101010101010101010101010101010101010101010101010101" +
+		"1220" + "0202020202020202020202020202020202020202020202020202020202020202" +
+		"1a20" + "0303030303030303030303030303030303030303030303030303030303030303"
+	offerWithSumHex = "080712780a20" + "0101010101010101010101010101010101010101010101010101010101010101" +
+		"1220" + "0202020202020202020202020202020202020202020202020202020202020202" +
+		"1a20" + "0303030303030303030303030303030303030303030303030303030303030303" +
+		"2210" + "07070707070707070707070707070707"
+)
+
+// TestWireCompat checks the offer encoding against bytes from the released
+// 1.4.0 protocol: without a sum the offer is byte for byte the released one,
+// and with a sum the only addition is field 4 appended to the chunk, which a
+// released decoder skips as an unknown field.
 func TestWireCompat(t *testing.T) {
 	t.Parallel()
 
-	addr, batchID, stampHash := swarm.RandAddress(t).Bytes(), swarm.RandAddress(t).Bytes(), swarm.RandAddress(t).Bytes()
-	sum := bytes.Repeat([]byte{7}, storage.ChunkSumSize)
-
-	legacyBytes, err := (&legacypb.Offer{Topmost: 9, Chunks: []*legacypb.Chunk{{Address: addr, BatchID: batchID, StampHash: stampHash}}}).Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	noSum, err := (&pb.Offer{Topmost: 9, Chunks: []*pb.Chunk{{Address: addr, BatchID: batchID, StampHash: stampHash}}}).Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(legacyBytes, noSum) {
-		t.Fatal("offer without sum differs from the legacy encoding")
+	chunk := &pb.Chunk{
+		Address:   bytes.Repeat([]byte{0x01}, swarm.HashSize),
+		BatchID:   bytes.Repeat([]byte{0x02}, swarm.HashSize),
+		StampHash: bytes.Repeat([]byte{0x03}, swarm.HashSize),
 	}
 
-	withSum, err := (&pb.Offer{Topmost: 9, Chunks: []*pb.Chunk{{Address: addr, BatchID: batchID, StampHash: stampHash, Sum: sum}}}).Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got legacypb.Offer
-	if err := got.Unmarshal(withSum); err != nil {
-		t.Fatalf("legacy decode: %v", err)
-	}
-	c := got.Chunks[0]
-	if got.Topmost != 9 || !bytes.Equal(c.Address, addr) || !bytes.Equal(c.BatchID, batchID) || !bytes.Equal(c.StampHash, stampHash) {
-		t.Fatal("legacy decode lost fields")
+	for _, tc := range []struct {
+		name string
+		sum  []byte
+		want string
+	}{
+		{"without sum", nil, releasedOfferHex},
+		{"with sum", bytes.Repeat([]byte{0x07}, storage.ChunkSumSize), offerWithSumHex},
+	} {
+		c := *chunk
+		c.Sum = tc.sum
+		got, err := (&pb.Offer{Topmost: 7, Chunks: []*pb.Chunk{&c}}).Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h := hex.EncodeToString(got); h != tc.want {
+			t.Fatalf("%s: got %s, want %s", tc.name, h, tc.want)
+		}
 	}
 }
 
-// TestLegacyInterop syncs between a node running this protocol and a node
-// running the 1.4.0 protocol from master, in both directions, over real
-// reserves.
+// TestLegacyInterop syncs between nodes on real reserves where one side
+// behaves like a released 1.4.0 node, in both directions: a serving node whose
+// offers carry no sum, and a puller that decides on batch ID and stamp hash
+// only.
 func TestLegacyInterop(t *testing.T) {
 	t.Parallel()
 
@@ -173,7 +190,7 @@ func TestLegacyInterop(t *testing.T) {
 			// new pulls from legacy
 			dbNew, dbOld := newReserveDB(t, base), newReserveDB(t, base)
 			putReserve(t, dbOld, ch)
-			oldServer := newLegacySyncer(t, nil, dbOld)
+			oldServer := newSyncerOn(t, nil, legacyOffers{dbOld})
 			newClient := newReserveSyncer(t, streamtest.New(streamtest.WithProtocols(oldServer.Protocol())), dbNew)
 			if n := syncFrom(t, newClient, bin); n != 1 {
 				t.Fatalf("new from legacy: put %d, want 1", n)
@@ -186,11 +203,11 @@ func TestLegacyInterop(t *testing.T) {
 			dbNew, dbOld = newReserveDB(t, base), newReserveDB(t, base)
 			putReserve(t, dbNew, ch)
 			newServer := newReserveSyncer(t, nil, dbNew)
-			oldClient := newLegacySyncer(t, streamtest.New(streamtest.WithProtocols(newServer.Protocol())), dbOld)
-			if n := legacySyncFrom(t, oldClient, bin); n != 1 {
+			toNew := streamtest.New(streamtest.WithProtocols(newServer.Protocol()))
+			if n := legacyPull(t, toNew, dbOld, bin); n != 1 {
 				t.Fatalf("legacy from new: put %d, want 1", n)
 			}
-			if n := legacySyncFrom(t, oldClient, bin); n != 0 {
+			if n := legacyPull(t, toNew, dbOld, bin); n != 0 {
 				t.Fatalf("legacy from new second round: put %d, want 0", n)
 			}
 		}
@@ -215,7 +232,7 @@ func TestLegacyInterop(t *testing.T) {
 		putReserve(t, dbOld, stamped(winner, shared)) // legacy node
 		putReserve(t, dbC, stamped(winner, shared))   // upgraded node
 
-		oldServer := newLegacySyncer(t, nil, dbOld)
+		oldServer := newSyncerOn(t, nil, legacyOffers{dbOld})
 		aFromOld := newReserveSyncer(t, streamtest.New(streamtest.WithProtocols(oldServer.Protocol())), dbA)
 		// the legacy link cannot see the divergence: same stamp, no want,
 		// no error and no retry loop.
@@ -226,8 +243,7 @@ func TestLegacyInterop(t *testing.T) {
 
 		// the legacy node pulling from A does not want it either.
 		aServer := newReserveSyncer(t, nil, dbA)
-		oldFromA := newLegacySyncer(t, streamtest.New(streamtest.WithProtocols(aServer.Protocol())), dbOld)
-		if n := legacySyncFrom(t, oldFromA, bin); n != 0 {
+		if n := legacyPull(t, streamtest.New(streamtest.WithProtocols(aServer.Protocol())), dbOld, bin); n != 0 {
 			t.Fatalf("legacy client put %d, want 0", n)
 		}
 
@@ -241,26 +257,121 @@ func TestLegacyInterop(t *testing.T) {
 	})
 }
 
-func newLegacySyncer(t *testing.T, recorder *streamtest.Recorder, db *storer.DB) *legacy.Syncer {
+// legacyOffers serves a real reserve the way a released 1.4.0 node does: its
+// offers carry batch ID and stamp hash but no sum, which encodes byte for byte
+// like a released offer (see TestWireCompat).
+type legacyOffers struct {
+	*storer.DB
+}
+
+func (l legacyOffers) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *storer.BinC, func(), <-chan error) {
+	in, unsub, errC := l.DB.SubscribeBin(ctx, bin, start)
+	out := make(chan *storer.BinC)
+	quit := make(chan struct{})
+	var once sync.Once
+	go func() {
+		defer close(out)
+		for c := range in {
+			cp := *c
+			cp.Sum = nil
+			select {
+			case out <- &cp:
+			case <-quit:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, func() {
+		once.Do(func() { close(quit) })
+		unsub()
+	}, errC
+}
+
+func newSyncerOn(t *testing.T, recorder *streamtest.Recorder, store storer.Reserve) *pullsync.Syncer {
 	t.Helper()
 
 	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
-	ps := legacy.New(recorder, db, func(swarm.Chunk) {}, func(*soc.SOC) {}, validStamp, log.Noop, 10)
+	ps := pullsync.New(recorder, store, func(swarm.Chunk) {}, func(*soc.SOC) {}, validStamp, log.Noop, 10)
 	t.Cleanup(func() {
 		if err := ps.Close(); err != nil {
-			t.Errorf("close legacy pullsync: %v", err)
+			t.Errorf("close pullsync: %v", err)
 		}
 	})
 	return ps
 }
 
-func legacySyncFrom(t *testing.T, client *legacy.Syncer, bin uint8) int {
+// legacyPull runs one pull of a bin the way a released 1.4.0 puller does: it
+// wants the offered chunks it lacks by address, batch ID and stamp hash,
+// ignoring any sum, and accepts a delivery only for a wanted stamp. It returns
+// the number of chunks put.
+func legacyPull(t *testing.T, streamer *streamtest.Recorder, db *storer.DB, bin uint8) int {
 	t.Helper()
-	_, count, err := client.Sync(context.Background(), swarm.ZeroAddress, bin, 0)
+	ctx := context.Background()
+
+	stream, err := streamer.NewStream(ctx, swarm.ZeroAddress, nil, pullsync.ProtocolName, pullsync.ProtocolVersion, pullsync.StreamName)
 	if err != nil {
-		t.Fatalf("legacy sync: %v", err)
+		t.Fatal(err)
 	}
-	return count
+	defer func() { _ = stream.FullClose() }()
+	w, r := protobuf.NewWriterAndReader(stream)
+
+	if err := w.WriteMsgWithContext(ctx, &pb.Get{Bin: int32(bin)}); err != nil {
+		t.Fatal(err)
+	}
+	var offer pb.Offer
+	if err := r.ReadMsgWithContext(ctx, &offer); err != nil {
+		t.Fatal(err)
+	}
+	if len(offer.Chunks) == 0 {
+		return 0
+	}
+
+	bv, err := bitvector.New(len(offer.Chunks))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := make(map[string]struct{})
+	for i, c := range offer.Chunks {
+		a := swarm.NewAddress(c.Address)
+		has, err := db.ReserveHasStamp(a, c.BatchID, c.StampHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			wanted[a.ByteString()+string(c.BatchID)+string(c.StampHash)] = struct{}{}
+			bv.Set(i)
+		}
+	}
+	if err := w.WriteMsgWithContext(ctx, &pb.Want{BitVector: bv.Bytes()}); err != nil {
+		t.Fatal(err)
+	}
+
+	put := 0
+	for n := len(wanted); n > 0; n-- {
+		var d pb.Delivery
+		if err := r.ReadMsgWithContext(ctx, &d); err != nil {
+			t.Fatal(err)
+		}
+		stamp := new(postage.Stamp)
+		if err := stamp.UnmarshalBinary(d.Stamp); err != nil {
+			t.Fatal(err)
+		}
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := swarm.NewAddress(d.Address)
+		if _, ok := wanted[addr.ByteString()+string(stamp.BatchID())+string(stampHash)]; !ok {
+			t.Fatalf("unsolicited delivery of %s", addr)
+		}
+		if err := db.ReservePutter().Put(ctx, swarm.NewChunk(addr, d.Data).WithStamp(stamp)); err != nil {
+			t.Fatal(err)
+		}
+		put++
+	}
+	return put
 }
 
 func mustKey(t *testing.T) *ecdsa.PrivateKey {
