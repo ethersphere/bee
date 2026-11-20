@@ -421,7 +421,7 @@ func TestPutSOCCrossStampEqualTimestamp(t *testing.T) {
 // TestPutSOCMultiStampHighestTimestamp covers an address that already carries
 // several stamps. An incoming payload is compared against the highest stamp
 // timestamp present, not against whichever stamp happens to be looked at, on
-// both the new-stamp path (putSOC) and the same-stamp path (resolveDivergence).
+// both the new-stamp path (putSOC) and the same-stamp path (replaceDivergentSOC).
 func TestPutSOCMultiStampHighestTimestamp(t *testing.T) {
 	t.Parallel()
 

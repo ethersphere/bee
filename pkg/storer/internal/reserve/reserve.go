@@ -107,7 +107,7 @@ func New(
 //  5. Two single owner chunks that share an address under different stamps (any batch or stamp
 //     index) settle on one shared payload: a strictly higher stamp timestamp replaces it; equal
 //     timestamps are settled by the lexicographically lower wrapped chunk address, never by the
-//     malleable stamp hash. Same-stamp divergence is handled by resolveSOCDivergence.
+//     malleable stamp hash. Same-stamp divergence is handled by replaceDivergentSOC.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 		// when the tie-break winner replaced the shared payload, co-resident
 		// entries under other stamps need their sums refreshed like on any
 		// other single owner chunk replacement.
-		return r.resolveSOCDivergence(ctx, chunk, sum, stampHash, bin)
+		return r.replaceDivergentSOC(ctx, chunk, sum, stampHash, bin)
 	}
 
 	// bin lock
@@ -602,12 +602,13 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 	return nil
 }
 
-// resolveSOCDivergence settles two single owner chunks that share an address,
+// replaceDivergentSOC settles two single owner chunks that share an address,
 // batch and stamp but wrap different content. Both are individually valid, so
 // the protocol cannot pick between them; the choice is made here, in the
-// storage layer, by a tie-break that depends only on the two payloads. Every
-// node in the neighborhood therefore converges on the same chunk no matter
-// which one it received first.
+// storage layer. The incoming chunk loses to any newer stamp already stored at
+// the address; otherwise the tie-break depends only on the two payloads (the
+// lower wrapped chunk address wins). Every node in the neighborhood therefore
+// converges on the same chunk no matter which one it received first.
 //
 // If the incoming chunk wins it replaces the stored one in place, reusing the
 // existing stamp index and stamp entries, which are identical for both. The
@@ -616,7 +617,7 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 //
 // The reserve size is unchanged either way: one chunk goes in, one comes out.
 // It reports whether the stored payload was replaced.
-func (r *Reserve) resolveSOCDivergence(
+func (r *Reserve) replaceDivergentSOC(
 	ctx context.Context,
 	chunk swarm.Chunk,
 	sum []byte,
