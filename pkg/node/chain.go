@@ -64,6 +64,7 @@ func InitChain(
 	fallbackGasLimit uint64,
 	rpcCfg BlockchainRPCConfig,
 	blockSyncInterval uint64,
+	feeHistoryBlockCount uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 
@@ -98,7 +99,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)
@@ -364,10 +365,10 @@ func (m *noOpChequebookService) Issue(context.Context, common.Address, *big.Int,
 	return nil, postagecontract.ErrChainDisabled
 }
 
-func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCheque, error) {
+func (m *noOpChequebookService) LastIssuedCheque(common.Address) (*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
 
-func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
+func (m *noOpChequebookService) LastIssuedCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }

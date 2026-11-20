@@ -668,7 +668,6 @@ func TestBootnodeMaxConnections(t *testing.T) {
 // result in the correct behavior once called.
 func TestNotifierHooks(t *testing.T) {
 	t.Parallel()
-	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
 	var (
 		base, kad, ab, _, signer = newTestKademlia(t, nil, nil, kademlia.Options{})
@@ -961,9 +960,6 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 func TestClosestPeer(t *testing.T) {
 	t.Parallel()
-	t.Skip("disabled due to kademlia inconsistencies hotfix")
-
-	_ = waitPeers
 
 	logger := log.Noop
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -976,6 +972,12 @@ func TestClosestPeer(t *testing.T) {
 		},
 		{
 			Address: swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000"), // binary 0110 -> po 1 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000"), // binary 0001 -> po 3 to base
+		},
+		{
+			Address: swarm.MustParseHexAddress("0800000000000000000000000000000000000000000000000000000000000000"), // binary 0000 1 -> po 4 to base
 		},
 	}
 
@@ -1006,14 +1008,19 @@ func TestClosestPeer(t *testing.T) {
 		addOne(t, beeCrypto.NewDefaultSigner(pk), kad, ab, v.Address)
 	}
 
-	waitPeers(t, kad, 3)
+	waitPeers(t, kad, 5)
+
+	// ClosestPeer only considers self when the node is publicly reachable.
+	kad.UpdateReachability(p2p.ReachabilityStatusPublic)
 
 	for _, tc := range []struct {
 		chunkAddress swarm.Address // chunk address to test
 		expectedPeer int           // points to the index of the connectedPeers slice. -1 means self (baseOverlay)
 		includeSelf  bool
+		skipPeers    []int // indexes of connectedPeers to skip
 	}{
 		{
+			// po(base, chunk) = 1, the peer in the deeper bin 3 must not stop the search
 			chunkAddress: swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000"), // 0111, wants peer 2
 			expectedPeer: 2,
 			includeSelf:  true,
@@ -1049,17 +1056,46 @@ func TestClosestPeer(t *testing.T) {
 			includeSelf:  true,
 		},
 		{
-			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want peer 1
-			expectedPeer: 1,                                                                                             // smallest distance: 2894...
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want peer 4
+			expectedPeer: 4,
 			includeSelf:  false,
 		},
+		{
+			chunkAddress: swarm.MustParseHexAddress("0000001000000000000000000000000000000000000000000000000000000000"), // 1000 want peer 1
+			expectedPeer: 1,                                                                                             // smallest distance once peers 3 and 4 are skipped
+			includeSelf:  false,
+			skipPeers:    []int{3, 4},
+		},
+		{
+			// po(base, chunk) = 2, the peers in the deeper bins 3 and 4 are skipped
+			chunkAddress: swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000"), // 0011, want peer 2
+			expectedPeer: 2,
+			includeSelf:  false,
+			skipPeers:    []int{3, 4},
+		},
+		{
+			// po(base, chunk) = 2, the peers in bins 0-1 are skipped, so only peers in bins
+			// deeper than po(base, chunk) are left. The peer in bin 4 is closer than the one
+			// in bin 3, so the search must not stop after the first deeper bin.
+			chunkAddress: swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000"), // 0010, want peer 4
+			expectedPeer: 4,
+			includeSelf:  false,
+			skipPeers:    []int{0, 1, 2},
+		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, topology.Select{})
-		if err != nil {
-			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
+		var skip []swarm.Address
+		for _, i := range tc.skipPeers {
+			skip = append(skip, connectedPeers[i].Address)
+		}
+		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, topology.Select{}, skip...)
+		if tc.expectedPeer == -1 {
+			if !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
 			}
 			continue
+		}
+		if err != nil {
+			t.Fatalf("closest peer for %s: %v", tc.chunkAddress, err)
 		}
 
 		expected := connectedPeers[tc.expectedPeer].Address
@@ -1349,7 +1385,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		// implement empty prune func
 		pruneMux.Lock()
 		pruneImpl := func(uint8) {}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		if err := kad.Start(context.Background()); err != nil {
@@ -1412,7 +1448,7 @@ func TestOutofDepthPrune(t *testing.T) {
 		pruneImpl = func(depth uint8) {
 			kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 		}
-		pruneFuncImpl = &(pruneImpl)
+		pruneFuncImpl = &pruneImpl
 		pruneMux.Unlock()
 
 		// add a peer to kick start pruning
@@ -1470,7 +1506,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	// implement empty prune func
 	pruneMux.Lock()
 	pruneImpl := func(uint8) {}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -1525,7 +1561,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	pruneImpl = func(depth uint8) {
 		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
 	}
-	pruneFuncImpl = &(pruneImpl)
+	pruneFuncImpl = &pruneImpl
 	pruneMux.Unlock()
 
 	// add a peer to kick start pruning

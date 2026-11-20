@@ -5,7 +5,6 @@
 package listener
 
 var (
-	TailSize          = tailSize
-	BatchFactor       = defaultBatchFactor
-	BlockPageSnapshot = uint64(blockPageSnapshot)
+	TailSize    = tailSize
+	BatchFactor = defaultBatchFactor
 )

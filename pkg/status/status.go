@@ -34,7 +34,7 @@ type Snapshot pb.Snapshot
 
 // SyncReporter defines the interface to report syncing rate.
 type SyncReporter interface {
-	SyncRate() float64
+	SyncRateWithinRadius() float64
 }
 
 // Reserve defines the reserve storage related information required.
@@ -109,7 +109,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	}
 
 	if s.sync != nil {
-		syncRate = s.sync.SyncRate()
+		syncRate = s.sync.SyncRateWithinRadius()
 	}
 
 	commitment, err := s.chainState.Commitment()

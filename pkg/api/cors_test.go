@@ -7,6 +7,8 @@ package api_test
 import (
 	"context"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -114,6 +116,39 @@ func TestCORSHeaders(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCORSAllowedHeaders checks that request headers a browser client needs
+// are listed in Access-Control-Allow-Headers.
+func TestCORSAllowedHeaders(t *testing.T) {
+	t.Parallel()
+
+	const origin = "https://gateway.ethswarm.org"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		CORSAllowedOrigins: []string{origin},
+	})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(api.OriginHeader, origin)
+
+	r, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed := strings.Split(r.Header.Get("Access-Control-Allow-Headers"), ", ")
+	for _, want := range []string{api.SwarmCacheHeader, api.SwarmCacheWrappedChunkHeader} {
+		if !slices.Contains(allowed, want) {
+			t.Errorf("Access-Control-Allow-Headers does not list %q", want)
+		}
 	}
 }
 

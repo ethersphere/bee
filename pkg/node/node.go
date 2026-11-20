@@ -132,6 +132,23 @@ type Bee struct {
 	ethClientCloser          func()
 }
 
+// NodeMode represents the operational mode of a Bee node as configured by the operator.
+type NodeMode string
+
+const (
+	FullMode       NodeMode = "full"
+	LightMode      NodeMode = "light"
+	UltraLightMode NodeMode = "ultra-light"
+)
+
+func (m NodeMode) IsValid() bool {
+	switch m {
+	case FullMode, LightMode, UltraLightMode:
+		return true
+	}
+	return false
+}
+
 type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
@@ -148,6 +165,10 @@ type Options struct {
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
+	FeeHistoryBlockCount          uint64
+	RedistributionGameFeePriority string
+	TransactionFeePriorityMin     string
+	TransactionFeePriorityMax     string
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -166,7 +187,7 @@ type Options struct {
 	EnableWS                      bool
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
-	FullNodeMode                  bool
+	NodeMode                      NodeMode
 	LightNodeLimit                int
 	GasLimitFallback              uint64
 	Logger                        log.Logger
@@ -181,6 +202,7 @@ type Options struct {
 	PaymentTolerance              int64
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
+	PostageSnapshotFile           string
 	PostageSyncBlockRange         uint64
 	PriceOracleAddress            string
 	RedistributionContractAddress string
@@ -221,7 +243,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
+	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker; must exceed puller.DefaultHistRateWindow
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 	maxAllowedDoubling            = 1
@@ -278,7 +300,7 @@ func NewBee(
 
 	// light nodes have zero warmup time for pull/pushsync protocols
 	warmupTime := o.WarmupTime
-	if !o.FullNodeMode {
+	if o.NodeMode != FullMode {
 		warmupTime = 0
 	}
 
@@ -303,7 +325,7 @@ func NewBee(
 		}
 	}(b)
 
-	if !o.FullNodeMode && o.ReserveCapacityDoubling != 0 {
+	if o.NodeMode != FullMode && o.ReserveCapacityDoubling != 0 {
 		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
 	}
 
@@ -391,6 +413,13 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: exists: %w", err)
 	}
+	// The batch service resets the store after a dirty shutdown, so a snapshot
+	// applies then just as it does on a resync.
+	dirtyShutdown, err := batchservice.DirtyShutdown(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: dirty shutdown: %w", err)
+	}
+	rebuildBatchStore := o.Resync || dirtyShutdown
 
 	addressbook := addressbook.New(stateStore)
 
@@ -426,14 +455,16 @@ func NewBee(
 		erc20Service      erc20.Service
 	)
 
-	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
+	chainEnabled := isChainEnabled(o, logger)
 
 	if o.SwapEnable && !chainEnabled {
 		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
 	}
 
-	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
-		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
+	// The verifier checks peers' chequebooks over the chain backend; it does
+	// not use this node's own chequebook.
+	if o.ChequebookVerification && (o.NodeMode != FullMode || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode and an enabled chain backend (full_node=%t, chain_enabled=%t)", o.NodeMode == FullMode, chainEnabled)
 	}
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
@@ -451,6 +482,28 @@ func NewBee(
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
+	}
+
+	redistributionFeePriority, err := transaction.ParseFeePriority(o.RedistributionGameFeePriority)
+	if err != nil {
+		return nil, fmt.Errorf("redistribution game fee priority: %w", err)
+	}
+	minFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMin)
+	if err != nil {
+		return nil, fmt.Errorf("transaction fee priority min: %w", err)
+	}
+	maxFeePriority, err := transaction.ParseFeePriority(o.TransactionFeePriorityMax)
+	if err != nil {
+		return nil, fmt.Errorf("transaction fee priority max: %w", err)
+	}
+	if minFeePriority == 0 {
+		minFeePriority = transaction.FeePriorityLow
+	}
+	if maxFeePriority == 0 {
+		maxFeePriority = transaction.FeePriorityAggressive
+	}
+	if minFeePriority > maxFeePriority {
+		return nil, fmt.Errorf("transaction fee priority min %q is above max %q", transaction.FeePriorityName(minFeePriority), transaction.FeePriorityName(maxFeePriority))
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
@@ -471,6 +524,7 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -482,10 +536,13 @@ func NewBee(
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	beeNodeMode := api.LightMode
-	if o.FullNodeMode {
+	var beeNodeMode api.BeeNodeMode
+	switch o.NodeMode {
+	case FullMode:
 		beeNodeMode = api.FullMode
-	} else if !chainEnabled {
+	case LightMode:
+		beeNodeMode = api.LightMode
+	default:
 		beeNodeMode = api.UltraLightMode
 	}
 
@@ -538,6 +595,8 @@ func NewBee(
 		)
 
 		apiService.Mount()
+		apiService.SetMinFeePriority(minFeePriority)
+		apiService.SetMaxFeePriority(maxFeePriority)
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
@@ -737,7 +796,7 @@ func NewBee(
 		AutoTLSRegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
 		AutoTLSCAEndpoint:           o.AutoTLSCAEndpoint,
 		WelcomeMessage:              o.WelcomeMessage,
-		FullNode:                    o.FullNodeMode,
+		FullNode:                    o.NodeMode == FullMode,
 		LightNodeLimit:              o.LightNodeLimit,
 		Nonce:                       nonce,
 		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
@@ -871,7 +930,7 @@ func NewBee(
 		MinimumStorageRadius:      o.MinimumStorageRadius,
 	}
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		// configure reserve only for full node
 		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
@@ -914,11 +973,29 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
-		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
-		if err != nil {
-			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+	snapshotSource, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, rebuildBatchStore, networkID, beeNodeMode)
+	if skipReason != "" {
+		logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", skipReason)
+	}
+	if snapshotSource != nil {
+		snap, info, err := snapshot.Load(logger, snapshotSource, snapshot.Config{
+			Contract:        postageStampContractAddress,
+			ABI:             postageStampContractABI,
+			StartBlock:      postageSyncStart,
+			BlockTime:       o.BlockTime,
+			StallingTimeout: postageSyncingStallingTimeout,
+			BackoffTimeout:  postageSyncingBackoffTimeout,
+		})
+		switch {
+		case err != nil && o.PostageSnapshotFile != "":
+			// The operator asked for this file explicitly, so do not start without it.
+			return nil, fmt.Errorf("postage snapshot file %q: %w", o.PostageSnapshotFile, err)
+		case err != nil:
+			// A corrupt embedded snapshot is not fatal: rebuild from the chain instead.
 			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
+		default:
+			batchSnapshot = snap
+			logger.Info("using postage snapshot", "source", snapshotSource.Name(), "path", o.PostageSnapshotFile, "log_count", info.LogCount, "max_block", info.MaxBlock)
 		}
 	}
 
@@ -926,6 +1003,11 @@ func NewBee(
 	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+	if batchSnapshot != nil && o.PostageSnapshotFile != "" && !snapshotLoaded {
+		// The replay failed and the batch service fell back to the chain, but the
+		// operator asked for this file explicitly, so do not start without it.
+		return nil, fmt.Errorf("postage snapshot file %q: replay failed", o.PostageSnapshotFile)
 	}
 	if snapshotLoaded {
 		// The snapshot rebuilt the store up to its block height, so the node can
@@ -986,7 +1068,7 @@ func NewBee(
 			}
 		}
 
-		if o.FullNodeMode {
+		if o.NodeMode == FullMode {
 			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
@@ -1011,7 +1093,7 @@ func NewBee(
 	minThreshold := big.NewInt(2 * refreshRate)
 	maxThreshold := big.NewInt(24 * refreshRate)
 
-	if !o.FullNodeMode {
+	if o.NodeMode != FullMode {
 		minThreshold = big.NewInt(2 * lightRefreshRate)
 	}
 
@@ -1044,7 +1126,7 @@ func NewBee(
 
 	var enforcedRefreshRate *big.Int
 
-	if o.FullNodeMode {
+	if o.NodeMode == FullMode {
 		enforcedRefreshRate = big.NewInt(refreshRate)
 	} else {
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
@@ -1139,7 +1221,7 @@ func NewBee(
 				if prev == uint32(swarm.MaxBins) {
 					close(initialRadiusC)
 				}
-				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
+				if o.NodeMode != FullMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
 					kad.SetStorageRadius(r)
 				}
 			case <-ctx.Done():
@@ -1166,7 +1248,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.NodeMode == FullMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -1190,7 +1272,7 @@ func NewBee(
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		logger.Info("starting in full mode")
 	} else {
 		if chainEnabled {
@@ -1275,7 +1357,7 @@ func NewBee(
 		agent         *storageincentives.Agent
 	)
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
@@ -1289,7 +1371,7 @@ func NewBee(
 
 			reserveThreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
+				return pullerService.IsReserveSynced(localStore.StorageRadius()) && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
 			}
 
 			syncCheckTicker := time.NewTicker(2 * time.Second)
@@ -1301,7 +1383,7 @@ func NewBee(
 						return
 					case <-syncCheckTicker.C:
 						synced := isFullySynced()
-						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRateWithinRadius())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
 							logger.Info("full sync done", "duration", fullSyncTime)
@@ -1326,10 +1408,10 @@ func NewBee(
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
-			isFullySynced := func() bool {
+			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSize() >= reserveThreshold && pullerService.IsReserveSynced(depth) && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
@@ -1340,7 +1422,7 @@ func NewBee(
 				postageStampContractService,
 				stakingContract,
 				localStore,
-				isFullySynced,
+				isReserveSynced,
 				o.BlockTime,
 				storageincentives.DefaultBlocksPerRound,
 				storageincentives.DefaultBlocksPerPhase,
@@ -1350,6 +1432,7 @@ func NewBee(
 				transactionService,
 				saludService,
 				logger,
+				redistributionFeePriority,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
@@ -1417,6 +1500,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(retrieval.Metrics()...)
 		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
 		apiService.MustRegisterMetrics(hive.Metrics()...)
+		apiService.MustRegisterMetrics(feedFactory.(metrics.Collector).Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(bs.Metrics()...)
@@ -1614,21 +1698,13 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
-	chainDisabled := swapEndpoint == ""
-	lightMode := !o.FullNodeMode
-
-	if lightMode && chainDisabled {
-		logger.Info("chain backend disabled - starting in ultra-light mode",
-			"full_node_mode", o.FullNodeMode,
-			"blockchain-rpc-endpoint", swapEndpoint)
+func isChainEnabled(o *Options, logger log.Logger) bool {
+	if o.NodeMode != FullMode && o.NodeMode != LightMode {
+		logger.Info("chain backend disabled - starting in ultra-light mode")
 		return false
 	}
-
-	logger.Info("chain backend enabled - blockchain functionality available",
-		"full_node_mode", o.FullNodeMode,
-		"blockchain-rpc-endpoint", swapEndpoint)
-	return true // all other modes operate require chain enabled
+	logger.Info("chain backend enabled - blockchain functionality available", "node_mode", o.NodeMode)
+	return true
 }
 
 func validatePublicAddress(addr string) error {
@@ -1687,10 +1763,39 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	return hasOne, err
 }
 
+// snapshotSkipReason explains why a postage snapshot would not be replayed, or
+// returns an empty string when it would be. rebuild reports that the batch
+// store is reset on start anyway (resync or dirty shutdown), so an existing
+// store is no reason to skip.
+func snapshotSkipReason(batchStoreExists, rebuild bool, mode api.BeeNodeMode) string {
+	switch {
+	case mode == api.UltraLightMode:
+		return "ultra-light node does not sync postage data"
+	case batchStoreExists && !rebuild:
+		return "batch store already exists; use --resync to rebuild it from the snapshot"
+	default:
+		return ""
+	}
+}
+
 // useEmbeddedSnapshot reports whether to rebuild the batch store from the
 // embedded snapshot: mainnet, full or light node, and the store will be built
-// from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
-func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
-	storeWillRebuild := !batchStoreExists || resync
-	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
+// from scratch (no store yet, or a rebuild wipes it), unless explicitly skipped.
+func useEmbeddedSnapshot(skip, batchStoreExists, rebuild bool, networkID uint64, mode api.BeeNodeMode) bool {
+	return !skip && snapshotSkipReason(batchStoreExists, rebuild, mode) == "" && networkID == mainnetNetworkID
+}
+
+// chooseSnapshotSource picks the snapshot source, if any. A file named by the
+// operator wins on any network; skipReason says why it will not be used.
+func chooseSnapshotSource(file string, skip, batchStoreExists, rebuild bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, skipReason string) {
+	if file != "" {
+		if reason := snapshotSkipReason(batchStoreExists, rebuild, mode); reason != "" {
+			return nil, reason
+		}
+		return snapshot.File(file), ""
+	}
+	if useEmbeddedSnapshot(skip, batchStoreExists, rebuild, networkID, mode) {
+		return snapshot.Embedded(archive.Getter{}), ""
+	}
+	return nil, ""
 }

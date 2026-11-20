@@ -79,6 +79,7 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 		To:          &c.address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		Value:       big.NewInt(0),
 		Description: "token transfer",
 	}
