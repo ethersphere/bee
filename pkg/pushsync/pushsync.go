@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -638,11 +639,9 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 		}
 	}
 
-	notBlocked := append(append([]swarm.Address{}, fullSkip...), blocked...)
-
 	if !best.IsZero() {
 		if probeDue && !*probed {
-			candidate, err := ps.closestPeer(chunkAddress, true, append(notBlocked, valid...))
+			candidate, err := ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked, valid))
 			if err == nil {
 				if closer, _ := candidate.Closer(chunkAddress, best); closer && ps.hops.claimProbe(rad, chunkAddress) {
 					*probed = true
@@ -653,7 +652,7 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 		return best, hopSourceValid, nil
 	}
 
-	peer, err = ps.closestPeer(chunkAddress, true, notBlocked)
+	peer, err = ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked))
 	if !errors.Is(err, topology.ErrNotFound) || len(blocked) == 0 {
 		return peer, hopSourceUnknown, err
 	}
