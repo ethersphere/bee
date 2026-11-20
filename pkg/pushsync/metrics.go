@@ -32,9 +32,12 @@ type metrics struct {
 	OverdraftRefresh        prometheus.Counter
 	OutOfDepthStoring       prometheus.Counter
 	OriginNoPeersLeft       prometheus.Counter
+	FirstHop                *prometheus.CounterVec
+	FirstHopRecords         prometheus.GaugeFunc
+	FirstHopNeighborhoods   prometheus.GaugeFunc
 }
 
-func newMetrics() metrics {
+func newMetrics(hops *hopMemory) metrics {
 	subsystem := "pushsync"
 
 	return metrics{
@@ -167,6 +170,33 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "origin_no_peers_left",
 			Help:      "Total number of pushes given up by an origin outside the chunk's neighborhood because every peer was already tried or skipped.",
+		}),
+		FirstHop: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "first_hop_total",
+				Help:      "Results of origin pushes by the reason the first hop was picked (probe, known_valid, unknown, paused) and the result (valid, shallow, error).",
+			},
+			[]string{"source", "result"},
+		),
+		FirstHopRecords: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "first_hop_records",
+			Help:      "Number of records in the first-hop memory of an origin.",
+		}, func() float64 {
+			_, records := hops.size()
+			return float64(records)
+		}),
+		FirstHopNeighborhoods: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "first_hop_neighborhoods",
+			Help:      "Number of neighborhoods in the first-hop memory of an origin.",
+		}, func() float64 {
+			hoods, _ := hops.size()
+			return float64(hoods)
 		}),
 	}
 }

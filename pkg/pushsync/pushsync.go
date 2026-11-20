@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -97,6 +98,7 @@ type PushSync struct {
 	signer                  crypto.Signer
 	fullNode                bool
 	errSkip                 *skippeers.List
+	hops                    *hopMemory
 	stabilizer              stabilization.Subscriber
 	overDraftRefreshLimiter *rate.Limiter
 }
@@ -127,6 +129,7 @@ func New(
 	tracer *tracing.Tracer,
 	stabilizer stabilization.Subscriber,
 ) *PushSync {
+	hops := newHopMemory(time.Now)
 	ps := &PushSync{
 		address:                 address,
 		radius:                  radius,
@@ -141,10 +144,11 @@ func New(
 		logger:                  logger.WithName(loggerName).Register(),
 		accounting:              accounting,
 		pricer:                  pricer,
-		metrics:                 newMetrics(),
+		metrics:                 newMetrics(hops),
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
+		hops:                    hops,
 		stabilizer:              stabilizer,
 		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
@@ -372,9 +376,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		parallelForwards     = maxMultiplexForwards
 		shallowReceiptResult *pb.Receipt
 		shallowReceiptPO     uint8
+		probed               bool
+		hopSources           map[string]hopSource // first hops of an origin
 	)
 
 	if origin {
+		hopSources = make(map[string]hopSource)
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
@@ -415,13 +422,27 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-preemptiveTicker:
 			retry()
 		case <-retryC:
+			// The radius can change between two attempts of one push.
+			if rad, err = ps.radius(); err != nil {
+				return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+			}
 
 			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
-			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
+
+			var (
+				peer   swarm.Address
+				err    error
+				source hopSource
+			)
+			if origin {
+				peer, source, err = ps.originPeer(ch.Address(), rad, fullSkip, &probed)
+			} else {
+				peer, err = ps.closestPeer(ch.Address(), origin, fullSkip)
+			}
 
 			// ErrWantSelf on a forwarder can mean closer peers exist but are
 			// overdraft-skipped; wait for refresh before falling back to self.
@@ -503,6 +524,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				continue
 			}
 			skip.Forever(idAddress, peer)
+			if origin {
+				hopSources[peer.ByteString()] = source
+			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
@@ -516,6 +540,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err)
 
+			// The receipt is checked and recorded at the same radius.
+			if origin {
+				if rad, err = ps.radius(); err != nil {
+					return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+				}
+			}
+
 			if result.err == nil {
 
 				if !origin { // forwarder nodes do not need to check the receipt
@@ -524,10 +555,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				// Cache the best (highest-PO) shallow receipt and exhaust the
 				// budget; surface ErrShallowReceipt only when nothing better lands.
-				switch po, err := ps.checkReceipt(result.receipt); {
+				switch po, err := ps.checkReceipt(result.receipt, result.peer, rad); {
 				case err == nil:
+					ps.hops.recordValid(rad, ch.Address(), result.peer)
+					ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "valid").Inc()
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
+					ps.hops.recordShallow(rad, ch.Address(), result.peer)
+					ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "shallow").Inc()
 					if shallowReceiptResult == nil || po > shallowReceiptPO {
 						shallowReceiptResult = result.receipt
 						shallowReceiptPO = po
@@ -536,6 +571,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				default:
 					result.err = err
 				}
+			}
+
+			// An error other than a shallow receipt removes the record.
+			if origin && !errors.Is(result.err, ErrShallowReceipt) {
+				ps.hops.forget(rad, ch.Address(), result.peer)
+				ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "error").Inc()
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
@@ -552,6 +593,97 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		return shallowReceiptResult, ErrShallowReceipt
 	}
 	return nil, ErrNoPush
+}
+
+// hopSource says why an origin picked a first hop.
+type hopSource string
+
+const (
+	hopSourceProbe   hopSource = "probe"
+	hopSourceValid   hopSource = "known_valid"
+	hopSourceUnknown hopSource = "unknown"
+	hopSourcePaused  hopSource = "paused"
+)
+
+// originPeer picks the next first hop for an origin:
+//  1. a probe, at most once per call and per hopProbeInterval: a peer closer
+//     to the chunk than every peer with a valid record;
+//  2. the closest peer with a valid record;
+//  3. the closest peer that is not in a shallow pause;
+//  4. the peer whose shallow pause ends first, unless the origin can store
+//     the chunk itself.
+func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip []swarm.Address, probed *bool) (peer swarm.Address, source hopSource, err error) {
+	valid, blocked, probeDue := ps.hops.view(rad, chunkAddress)
+
+	// Remove the valid records of peers that are no longer connected.
+	if len(valid) > 0 {
+		connected := ps.connectedOf(valid)
+		for _, p := range valid {
+			if !swarm.ContainsAddress(connected, p) {
+				ps.hops.forget(rad, chunkAddress, p)
+			}
+		}
+		valid = connected
+	}
+
+	best := swarm.ZeroAddress
+	for _, p := range valid {
+		if swarm.ContainsAddress(fullSkip, p) {
+			continue
+		}
+		if best.IsZero() {
+			best = p
+			continue
+		}
+		if closer, _ := p.Closer(chunkAddress, best); closer {
+			best = p
+		}
+	}
+
+	if !best.IsZero() {
+		if probeDue && !*probed {
+			candidate, err := ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked, valid))
+			if err == nil {
+				if closer, _ := candidate.Closer(chunkAddress, best); closer && ps.hops.claimProbe(rad, chunkAddress) {
+					*probed = true
+					return candidate, hopSourceProbe, nil
+				}
+			}
+		}
+		return best, hopSourceValid, nil
+	}
+
+	peer, err = ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked))
+	if !errors.Is(err, topology.ErrNotFound) || len(blocked) == 0 {
+		return peer, hopSourceUnknown, err
+	}
+	if ps.fullNode && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
+		return peer, hopSourceUnknown, err
+	}
+
+	// Every peer left is in a shallow pause. Waiting would hold a push slot
+	// of the pusher, so send through the connected peer whose pause ends first.
+	connected := ps.connectedOf(blocked)
+	for _, p := range blocked {
+		if swarm.ContainsAddress(connected, p) && !swarm.ContainsAddress(fullSkip, p) {
+			return p, hopSourcePaused, nil
+		}
+	}
+
+	return peer, hopSourceUnknown, err
+}
+
+// connectedOf returns the peers that are connected, in one pass over the
+// connected peers.
+func (ps *PushSync) connectedOf(peers []swarm.Address) []swarm.Address {
+	var connected []swarm.Address
+	_ = ps.topologyDriver.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+		if swarm.ContainsAddress(peers, p) {
+			connected = append(connected, p)
+		}
+		return len(connected) == len(peers), false, nil
+	}, topology.Select{})
+	return connected
 }
 
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
@@ -622,8 +754,8 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 // checkReceipt validates the receipt and returns the storer-to-chunk PO so
 // callers can rank shallow receipts; PO is zero on signature errors. Strict
-// po >= rad: a chunk is not synced until it lands within the AOR.
-func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
+// po >= r: a chunk is not synced until it lands within the AOR.
+func (ps *PushSync) checkReceipt(receipt *pb.Receipt, firstHop swarm.Address, r uint8) (uint8, error) {
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
@@ -638,20 +770,15 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
-	r, err := ps.radius()
-	if err != nil {
-		return po, fmt.Errorf("pushsync: storage radius: %w", err)
-	}
-
 	if po < r || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
-		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
+		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r, "first_hop", firstHop)
 		return po, ErrShallowReceipt
 	}
 
 	ps.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
+	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "first_hop", firstHop)
 
 	return po, nil
 }
