@@ -129,6 +129,7 @@ func New(
 	tracer *tracing.Tracer,
 	stabilizer stabilization.Subscriber,
 ) *PushSync {
+	hops := newHopMemory(time.Now)
 	ps := &PushSync{
 		address:                 address,
 		radius:                  radius,
@@ -143,11 +144,11 @@ func New(
 		logger:                  logger.WithName(loggerName).Register(),
 		accounting:              accounting,
 		pricer:                  pricer,
-		metrics:                 newMetrics(),
+		metrics:                 newMetrics(hops),
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
-		hops:                    newHopMemory(time.Now),
+		hops:                    hops,
 		stabilizer:              stabilizer,
 		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}

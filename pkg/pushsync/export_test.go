@@ -48,22 +48,14 @@ func (m *hopMemory) ClaimProbe(rad uint8, chunk swarm.Address) bool {
 
 // Len returns the number of records.
 func (m *hopMemory) Len() int {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	var n int
-	for _, h := range m.hoods {
-		n += len(h.peers)
-	}
-	return n
+	_, records := m.size()
+	return records
 }
 
 // Hoods returns the number of neighborhoods.
 func (m *hopMemory) Hoods() int {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	return len(m.hoods)
+	hoods, _ := m.size()
+	return hoods
 }
 
 func (m *hopMemory) View(rad uint8, chunk swarm.Address) (valid, blocked []swarm.Address, probeDue bool) {

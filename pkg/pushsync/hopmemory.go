@@ -149,6 +149,17 @@ func (m *hopMemory) sweep(now time.Time) {
 	}
 }
 
+// size returns the number of neighborhoods and the number of records.
+func (m *hopMemory) size() (hoods, records int) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	for _, h := range m.hoods {
+		records += len(h.peers)
+	}
+	return len(m.hoods), records
+}
+
 // recordValid stores a valid receipt of the peer.
 func (m *hopMemory) recordValid(rad uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
