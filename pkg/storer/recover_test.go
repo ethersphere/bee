@@ -42,7 +42,7 @@ func TestRecoveryPrunesCorruptedChunks(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	readyC := make(chan struct{})
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+	st.StartReserveWorker(ctx, pullerMock.NewMockSyncer(true), networkRadiusFunc(0), readyC)
 	<-readyC
 
 	goodChunk := chunk.GenerateTestRandomChunk().WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
@@ -140,7 +140,7 @@ func TestRecoveryPrunesUnreadableChunks(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	readyC := make(chan struct{})
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+	st.StartReserveWorker(ctx, pullerMock.NewMockSyncer(true), networkRadiusFunc(0), readyC)
 	<-readyC
 
 	goodChunk := chunk.GenerateTestRandomChunk().WithStamp(postagetesting.MustNewBatchStamp(batch.ID))

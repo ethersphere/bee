@@ -79,6 +79,47 @@ func TestTransactionStoredTransaction(t *testing.T) {
 		)
 	})
 
+	t.Run("fee priority", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			TransactionOpts: []mock.Option{
+				mock.WithStoredTransactionFunc(func(txHash common.Hash) (*transaction.StoredTransaction, error) {
+					return &transaction.StoredTransaction{
+						To:          &recipient,
+						Created:     created,
+						Data:        data,
+						GasPrice:    gasPrice,
+						GasLimit:    gasLimit,
+						GasFeeCap:   gasPrice,
+						GasTipCap:   gasTipCap,
+						FeePriority: transaction.FeePriorityLow,
+						Value:       value,
+						Nonce:       nonce,
+						Description: description,
+					}, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/transactions/"+txHashStr, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.TransactionInfo{
+				TransactionHash: txHash,
+				Created:         time.Unix(created, 0),
+				Data:            "0x" + dataStr,
+				To:              &recipient,
+				GasPrice:        bigint.Wrap(gasPrice),
+				GasLimit:        gasLimit,
+				GasFeeCap:       bigint.Wrap(gasPrice),
+				GasTipCap:       bigint.Wrap(gasTipCap),
+				FeePriority:     "low",
+				Value:           bigint.Wrap(value),
+				Nonce:           nonce,
+				Description:     description,
+			}),
+		)
+	})
+
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
@@ -141,9 +182,9 @@ func TestTransactionList(t *testing.T) {
 			Created:     2,
 			Data:        []byte{3, 2, 3, 4},
 			GasPrice:    big.NewInt(42),
-			GasTipBoost: 10,
-			GasTipCap:   new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), big.NewInt(42)), big.NewInt(100)),
+			GasTipCap:   big.NewInt(30),
 			GasFeeCap:   big.NewInt(42),
+			FeePriority: transaction.FeePriorityAggressive,
 			GasLimit:    53451,
 			Value:       big.NewInt(41),
 			Nonce:       32,
@@ -188,6 +229,7 @@ func TestTransactionList(t *testing.T) {
 					GasTipCap:       bigint.Wrap(storedTransactions[txHash2].GasTipCap),
 					GasTipBoost:     storedTransactions[txHash2].GasTipBoost,
 					GasFeeCap:       bigint.Wrap(storedTransactions[txHash2].GasPrice),
+					FeePriority:     "aggressive",
 					Data:            hexutil.Encode(storedTransactions[txHash2].Data),
 					Created:         time.Unix(storedTransactions[txHash2].Created, 0),
 					Description:     storedTransactions[txHash2].Description,

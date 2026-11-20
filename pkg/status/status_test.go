@@ -314,10 +314,10 @@ type statusSnapshotMock struct {
 	*pb.Snapshot
 }
 
-func (m *statusSnapshotMock) SyncRate() float64           { return m.PullsyncRate }
-func (m *statusSnapshotMock) ReserveSize() int            { return int(m.Snapshot.ReserveSize) }
-func (m *statusSnapshotMock) StorageRadius() uint8        { return uint8(m.Snapshot.StorageRadius) }
-func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.BatchCommitment, nil }
+func (m *statusSnapshotMock) SyncRateWithinRadius() float64 { return m.PullsyncRate }
+func (m *statusSnapshotMock) ReserveSize() int              { return int(m.Snapshot.ReserveSize) }
+func (m *statusSnapshotMock) StorageRadius() uint8          { return uint8(m.Snapshot.StorageRadius) }
+func (m *statusSnapshotMock) Commitment() (uint64, error)   { return m.BatchCommitment, nil }
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
 	return &postage.ChainState{Block: m.LastSyncedBlock}
 }

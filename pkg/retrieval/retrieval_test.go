@@ -228,6 +228,80 @@ func TestWaitForInflight(t *testing.T) {
 	}
 }
 
+// TestRetrieveChunkPeersExhausted checks that running out of peers is reported
+// as not found when at least one peer answered, and as no usable peer otherwise.
+// The request is repeated on the same client so that the second one runs while
+// the peers from the first one are still skipped.
+func TestRetrieveChunkPeersExhausted(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk        = testingc.FixtureChunk("0033")
+		clientAddr   = swarm.MustParseHexAddress(strings.Repeat("ff", swarm.HashSize))
+		peer1        = swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+		peer2        = swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+		pricer       = pricermock.NewMockService(defaultPrice, defaultPrice)
+		streamFailed = errors.New("stream failed")
+	)
+
+	// server does not have the chunk and has no peers to forward the request to,
+	// so it answers every request with a delivery error.
+	server := createRetrieval(t, peer1, &testStorer{ChunkStore: inmemchunkstore.New()}, nil,
+		topologymock.NewTopologyDriver(), log.Noop, accountingmock.NewAccounting(), pricer, nil, false)
+
+	for _, tc := range []struct {
+		name     string
+		peers    []swarm.Address
+		streamer p2p.Streamer
+		want     error
+		notWant  error
+	}{
+		{
+			name:     "peers answered",
+			peers:    []swarm.Address{peer1, peer2},
+			streamer: streamtest.New(streamtest.WithProtocols(server.Protocol())),
+			want:     storage.ErrNotFound,
+			notWant:  topology.ErrNotFound,
+		},
+		{
+			name:     "no peers",
+			streamer: streamtest.New(streamtest.WithProtocols(server.Protocol())),
+			want:     topology.ErrNotFound,
+			notWant:  storage.ErrNotFound,
+		},
+		{
+			name:  "no peer answered",
+			peers: []swarm.Address{peer1, peer2},
+			streamer: streamtest.New(streamtest.WithStreamError(func(swarm.Address, string, string, string) error {
+				return streamFailed
+			})),
+			want:    topology.ErrNotFound,
+			notWant: storage.ErrNotFound,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := createRetrieval(t, clientAddr, nil, tc.streamer,
+				topologymock.NewTopologyDriver(topologymock.WithPeers(tc.peers...)), log.Noop,
+				accountingmock.NewAccounting(), pricer, nil, false)
+
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+			defer cancel()
+
+			for i := range 2 {
+				_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("request %d: got error %v, want %v", i, err, tc.want)
+				}
+				if errors.Is(err, tc.notWant) {
+					t.Fatalf("request %d: got error %v, must not match %v", i, err, tc.notWant)
+				}
+			}
+		})
+	}
+}
+
 func TestRetrieveChunk(t *testing.T) {
 	t.Parallel()
 
@@ -393,11 +467,13 @@ func TestRetrieveChunk(t *testing.T) {
 		)
 
 		_, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
-		if err == nil {
-			t.Fatal("should have received an error")
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 		}
 
-		want := p2p.NewChunkDeliveryError("retrieve chunk: no peer found")
+		// the server has no peers and answers the forwarder with a delivery error,
+		// so the forwarder reports to the client that the chunk was not found.
+		want := p2p.NewChunkDeliveryError("retrieve chunk: " + storage.ErrNotFound.Error())
 		if got := buf.String(); !strings.Contains(got, want.Error()) {
 			t.Fatalf("got log %s, want %s", got, want)
 		}

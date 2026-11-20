@@ -163,7 +163,7 @@ func step_09(
 				for _, cbi := range backfill {
 					err := errors.Join(
 						s.IndexStore().Put(cbi),
-						s.IndexStore().Put(&reserve.ChunkSumItem{Address: cbi.Address, Sum: cbi.Sum}),
+						s.IndexStore().Put(&reserve.ChunkSumItem{Address: cbi.Address, Sum: [storage.ChunkSumSize]byte(cbi.Sum)}),
 					)
 					if err != nil {
 						return err

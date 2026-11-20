@@ -427,7 +427,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 	// Support same non default security and transport options as
 	// original host.
-	dialer, err := o.hostFactory(append(transports, security)...)
+	dialer, err := newDialerHost(o.hostFactory, append(transports, security)...)
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +466,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// the addresses used are not dialable and hence should be cleaned up. We should create
 	// this host with the same transports and security options to be able to dial to other
 	// peers.
-	pingDialer, err := o.hostFactory(append(transports, security, libp2p.NoListenAddrs)...)
+	pingDialer, err := newDialerHost(o.hostFactory, append(transports, security, libp2p.NoListenAddrs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1705,4 +1705,18 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 	case <-ctx.Done():
 		return s.Addrs(peerID)
 	}
+}
+
+// newDialerHost builds a helper host (autonat dial-back, ping). Its resource
+// manager uses the go-libp2p default limits and reports no metrics. The
+// go-libp2p stats reporter writes to package-level Prometheus collectors, so
+// a second reporter overwrites the libp2p_rcmgr_* values of the main host.
+func newDialerHost(factory func(...libp2p.Option) (host.Host, error), opts ...libp2p.Option) (host.Host, error) {
+	limits := rcmgr.DefaultLimits
+	libp2p.SetDefaultServiceLimits(&limits)
+	rm, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(limits.AutoScale()), rcmgr.WithMetricsDisabled())
+	if err != nil {
+		return nil, fmt.Errorf("dialer resource manager: %w", err)
+	}
+	return factory(append(opts, libp2p.ResourceManager(rm))...)
 }

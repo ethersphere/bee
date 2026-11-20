@@ -261,7 +261,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Phase 2 core case: same SOC address, byte-identical stamp,
-			// different payloads; resolveSOCDivergence must make this converge.
+			// different payloads; replaceDivergentSOC must make this converge.
 			name: "divergent socs, identical stamp",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
@@ -318,8 +318,8 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address, same batch, equal timestamp, different stamp
-			// indices. tiebreakSOC resolves the collision by settling
-			// on the lexicographically lower stamp hash like the same-slot path.
+			// indices. tiebreakSOC settles on the lower wrapped chunk
+			// address, independent of stamp hashes.
 			name: "divergent socs, equal timestamp, distinct stamp indices",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
@@ -331,8 +331,8 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address under two batches at the same timestamp.
-			// tiebreakSOC settles on the lexicographically lower stamp
-			// hash, matching the same-slot equal-timestamp path.
+			// tiebreakSOC settles on the lower wrapped chunk address,
+			// independent of stamp hashes.
 			name: "divergent socs, equal timestamp, distinct batches",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
@@ -366,10 +366,12 @@ func TestPutOrderConvergence(t *testing.T) {
 }
 
 // TestSOCMultiStampDivergenceCornerCase checks multi-stamp SOC settlement on
-// one address. At equal timestamps, a stamp with a lower stamp hash wins the
-// divergence evaluation (tiebreakSOC); a later re-offer of the losing
-// stamp is rejected. The reserve therefore ends on a single deterministic
-// body, which is what neighborhood convergence requires.
+// one address. At equal timestamps the payload with the lower wrapped address
+// wins the divergence evaluation (tiebreakSOC), even when the other payload
+// arrives under a stamp with a lower stamp hash: stamp hashes are malleable
+// and must not decide. A later re-offer of the losing payload is rejected.
+// The reserve therefore ends on a single deterministic body, which is what
+// neighborhood convergence requires.
 func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 	t.Parallel()
 
@@ -395,7 +397,7 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// P1 has the lower wrapped address so resolveSOCDivergence prefers it over P2.
+	// P1 has the lower wrapped address so replaceDivergentSOC prefers it over P2.
 	if bytes.Compare(chCAC1.Address().Bytes(), chCAC2.Address().Bytes()) > 0 {
 		chCAC1, chCAC2 = chCAC2, chCAC1
 	}
@@ -409,8 +411,9 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Pick stamps with stampHash(B) < stampHash(A) at equal timestamp so the
-	// sequence still settles on P1 even when B would win a stamp-hash contest.
+	// Pick stamps with stampHash(B) < stampHash(A) at equal timestamp: a
+	// stamp-hash tie-break would hand the address to P2, the content
+	// tie-break keeps P1.
 	var stampA, stampB *postage.Stamp
 	for {
 		batchA := postagetesting.MustNewBatch()
@@ -431,7 +434,8 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 		t.Fatalf("put soc1 stampA: %v", err)
 	}
 
-	// Stamp B has a lower stamp hash, so it wins the divergence evaluation and replaces the payload.
+	// P2 under stamp B loses the content tie-break despite the lower stamp
+	// hash: stamp B is recorded against the stored P1.
 	if err := r.Put(ctx, soc2.WithStamp(stampB)); err != nil {
 		t.Fatalf("put soc2 stampB: %v", err)
 	}
@@ -439,21 +443,22 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get after stampB: %v", err)
 	}
-	if !bytes.Equal(afterB.Data(), soc2.Data()) {
-		t.Fatal("expected payload P2 after putting stampB")
+	if !bytes.Equal(afterB.Data(), soc1.Data()) {
+		t.Fatal("expected payload P1 to be kept after putting stampB")
 	}
 
-	// Re-offering weaker stamp A must be rejected by tie-break against stronger stamp B.
-	err = r.Put(ctx, soc1.WithStamp(stampA))
+	// Re-offering P2 under stamp B is a divergent put on an entry that
+	// serves P1, and it loses the same content tie-break.
+	err = r.Put(ctx, soc2.WithStamp(stampB))
 	if !errors.Is(err, storage.ErrDivergentChunkRejected) {
-		t.Fatalf("expected ErrDivergentChunkRejected on weaker re-offer, got: %v", err)
+		t.Fatalf("expected ErrDivergentChunkRejected on losing re-offer, got: %v", err)
 	}
 
 	finalCh, err := ts.ChunkStore().Get(ctx, soc1.Address())
 	if err != nil {
 		t.Fatalf("get final chunk: %v", err)
 	}
-	if !bytes.Equal(finalCh.Data(), soc2.Data()) {
-		t.Fatal("expected payload P2 to be retained after rejecting weaker stampA re-offer")
+	if !bytes.Equal(finalCh.Data(), soc1.Data()) {
+		t.Fatal("expected payload P1 to be retained after rejecting the P2 re-offer")
 	}
 }

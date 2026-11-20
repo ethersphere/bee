@@ -238,14 +238,14 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 // with this exact content checksum?" in O(1) for the pullsync want-decision.
 type ChunkSumItem struct {
 	Address swarm.Address
-	Sum     []byte // storage.ChunkSumSize bytes
+	Sum     [storage.ChunkSumSize]byte
 }
 
 func (c *ChunkSumItem) Namespace() string { return "chunkSum" }
 
 // address/sum
 func (c *ChunkSumItem) ID() string {
-	return string(c.Address.Bytes()) + string(c.Sum)
+	return string(c.Address.Bytes()) + string(c.Sum[:])
 }
 
 func (c *ChunkSumItem) String() string {
@@ -258,7 +258,7 @@ func (c *ChunkSumItem) Clone() storage.Item {
 	}
 	return &ChunkSumItem{
 		Address: c.Address.Clone(),
-		Sum:     copyBytes(c.Sum),
+		Sum:     c.Sum,
 	}
 }
 
@@ -266,9 +266,6 @@ func (c *ChunkSumItem) Clone() storage.Item {
 func (c *ChunkSumItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
-	}
-	if len(c.Sum) != storage.ChunkSumSize {
-		return nil, errMarshalInvalidSize
 	}
 	return []byte{}, nil // existence-only
 }

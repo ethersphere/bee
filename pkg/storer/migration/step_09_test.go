@@ -208,7 +208,7 @@ func TestStep09(t *testing.T) {
 		if !bytes.Equal(cbi.Sum, sum) {
 			t.Fatalf("wrong sum on upgraded chunk bin item for %s", tc.ch.Address())
 		}
-		has, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: tc.ch.Address(), Sum: sum})
+		has, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: tc.ch.Address(), Sum: [storage.ChunkSumSize]byte(sum)})
 		if err != nil {
 			t.Fatal(err)
 		}

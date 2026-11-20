@@ -626,8 +626,8 @@ func TestIncoming_OverwriteNewerChunk(t *testing.T) {
 }
 
 // TestIncoming_OfferSumLength covers an offer carrying a sum of the wrong
-// length: the malformed entry is skipped and reported, valid chunks are
-// synced, and the cursor advances to avoid a hot retry loop.
+// length: the offer is malformed, so the interval fails before anything is
+// wanted or stored.
 func TestIncoming_OfferSumLength(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tResults := make([]*storer.BinC, len(results))
@@ -638,7 +638,6 @@ func TestIncoming_OfferSumLength(t *testing.T) {
 		tResults[2].Sum = []byte{1, 2, 3}
 
 		var (
-			topMost            = uint64(4)
 			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0)
@@ -648,18 +647,14 @@ func TestIncoming_OfferSumLength(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error for a malformed offer sum")
 		}
-		if topmost != topMost {
-			t.Fatalf("got topmost %d, want %d", topmost, topMost)
+		if topmost != 0 {
+			t.Fatalf("got topmost %d, want 0", topmost)
 		}
-		if count != len(chunks)-1 {
-			t.Fatalf("got count %d, want %d", count, len(chunks)-1)
+		if count != 0 {
+			t.Fatalf("got count %d, want 0", count)
 		}
-		if p := clientDb.PutCalls(); p != len(chunks)-1 {
-			t.Fatalf("want %d puts but got %d", len(chunks)-1, p)
-		}
-		haveChunks(t, clientDb, append(chunks[:2:2], chunks[3:]...)...)
-		if has, _ := clientDb.ReserveHas(chunks[2].Address(), results[2].Sum); has {
-			t.Fatal("chunk with malformed offer sum must not be stored")
+		if p := clientDb.PutCalls(); p != 0 {
+			t.Fatalf("want 0 puts but got %d", p)
 		}
 	})
 }

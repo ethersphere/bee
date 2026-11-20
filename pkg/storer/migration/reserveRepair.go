@@ -157,7 +157,7 @@ func ReserveRepairer(
 				}
 				chunkSumItems = append(chunkSumItems, &reserve.ChunkSumItem{
 					Address: swarm.NewAddress([]byte(res.ID[:swarm.HashSize])),
-					Sum:     []byte(res.ID[swarm.HashSize:]),
+					Sum:     [storage.ChunkSumSize]byte([]byte(res.ID[swarm.HashSize:])),
 				})
 				return false, nil
 			},
@@ -284,7 +284,7 @@ func ReserveRepairer(
 								ChunkType: chunkType,
 								Sum:       sum,
 							}),
-							s.IndexStore().Put(&reserve.ChunkSumItem{Address: item.Address, Sum: sum}),
+							s.IndexStore().Put(&reserve.ChunkSumItem{Address: item.Address, Sum: [storage.ChunkSumSize]byte(sum)}),
 						)
 					})
 				})

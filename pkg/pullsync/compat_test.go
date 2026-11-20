@@ -69,8 +69,8 @@ func TestIncoming_LegacyOffer(t *testing.T) {
 }
 
 // TestIncoming_LegacyOfferStampLength covers an offer without a sum whose
-// stamp fields have the wrong length: the entry is skipped and reported, the
-// rest of the offer is stored and the cursor still advances.
+// stamp fields have the wrong length: like any other malformed offer, it fails
+// the interval and nothing is stored.
 func TestIncoming_LegacyOfferStampLength(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tResults := make([]*storer.BinC, len(results))
@@ -82,7 +82,6 @@ func TestIncoming_LegacyOfferStampLength(t *testing.T) {
 		tResults[2].BatchID = tResults[2].BatchID[:storage.ChunkSumSize]
 
 		var (
-			topMost            = uint64(4)
 			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0)
@@ -92,15 +91,14 @@ func TestIncoming_LegacyOfferStampLength(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "inconsistent stamp length") {
 			t.Fatalf("got error %v, want inconsistent stamp length", err)
 		}
-		if topmost != topMost {
-			t.Fatalf("got topmost %d, want %d", topmost, topMost)
+		if topmost != 0 {
+			t.Fatalf("got topmost %d, want 0", topmost)
 		}
-		if count != len(chunks)-1 {
-			t.Fatalf("got count %d, want %d", count, len(chunks)-1)
+		if count != 0 {
+			t.Fatalf("got count %d, want 0", count)
 		}
-		haveChunks(t, clientDb, append(chunks[:2:2], chunks[3:]...)...)
-		if has, _ := clientDb.ReserveHas(chunks[2].Address(), results[2].Sum); has {
-			t.Fatal("chunk with malformed offer stamp must not be stored")
+		if p := clientDb.PutCalls(); p != 0 {
+			t.Fatalf("want 0 puts but got %d", p)
 		}
 	})
 }

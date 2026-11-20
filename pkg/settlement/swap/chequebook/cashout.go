@@ -129,7 +129,7 @@ func (s *cashoutService) paidOut(ctx context.Context, chequebook, beneficiary co
 
 // CashCheque sends a cashout transaction for the last cheque of the chequebook
 func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
-	cheque, err := s.chequeStore.LastCheque(chequebook)
+	cheque, err := s.chequeStore.LastReceivedCheque(chequebook)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -142,6 +142,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		To:          &chequebook,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
+		FeePriority: sctx.GetFeePriority(ctx),
 		GasLimit:    sctx.GetGasLimit(ctx),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
@@ -165,7 +166,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 
 // CashoutStatus gets the status of the latest cashout transaction for the chequebook
 func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*CashoutStatus, error) {
-	cheque, err := s.chequeStore.LastCheque(chequebookAddress)
+	cheque, err := s.chequeStore.LastReceivedCheque(chequebookAddress)
 	if err != nil {
 		return nil, err
 	}
