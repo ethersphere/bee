@@ -615,13 +615,7 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 
 	// Remove the valid records of peers that are no longer connected.
 	if len(valid) > 0 {
-		var connected []swarm.Address
-		_ = ps.topologyDriver.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
-			if swarm.ContainsAddress(valid, p) {
-				connected = append(connected, p)
-			}
-			return len(connected) == len(valid), false, nil
-		}, topology.Select{})
+		connected := ps.connectedOf(valid)
 		for _, p := range valid {
 			if !swarm.ContainsAddress(connected, p) {
 				ps.hops.forget(rad, chunkAddress, p)
@@ -668,19 +662,28 @@ func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip [
 	}
 
 	// Every peer left is in a shallow pause. Waiting would hold a push slot
-	// of the pusher, so send through the peer whose pause ends first.
-	for i, p := range blocked {
-		if swarm.ContainsAddress(fullSkip, p) {
-			continue
-		}
-		others := append(append([]swarm.Address{}, fullSkip...), blocked[:i]...)
-		others = append(others, blocked[i+1:]...)
-		if found, err := ps.closestPeer(chunkAddress, true, others); err == nil && found.Equal(p) {
+	// of the pusher, so send through the connected peer whose pause ends first.
+	connected := ps.connectedOf(blocked)
+	for _, p := range blocked {
+		if swarm.ContainsAddress(connected, p) && !swarm.ContainsAddress(fullSkip, p) {
 			return p, hopSourcePaused, nil
 		}
 	}
 
 	return peer, hopSourceUnknown, err
+}
+
+// connectedOf returns the peers that are connected, in one pass over the
+// connected peers.
+func (ps *PushSync) connectedOf(peers []swarm.Address) []swarm.Address {
+	var connected []swarm.Address
+	_ = ps.topologyDriver.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+		if swarm.ContainsAddress(peers, p) {
+			connected = append(connected, p)
+		}
+		return len(connected) == len(peers), false, nil
+	}, topology.Select{})
+	return connected
 }
 
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
