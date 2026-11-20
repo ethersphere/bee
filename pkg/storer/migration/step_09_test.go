@@ -245,3 +245,30 @@ func TestStep09(t *testing.T) {
 		t.Fatalf("expected 2 chunk bin items after migration, got %d", count)
 	}
 }
+
+// TestStep09ResetsEpoch checks that the migration drops the reserve epoch, so
+// that a new one is stored on startup and peers resync this node with sums,
+// and that it does not fail on a store without an epoch.
+func TestStep09ResetsEpoch(t *testing.T) {
+	t.Parallel()
+
+	for _, withEpoch := range []bool{true, false} {
+		store := internal.NewInmemStorage()
+		if withEpoch {
+			err := store.Run(context.Background(), func(s transaction.Store) error {
+				return s.IndexStore().Put(&reserve.EpochItem{Timestamp: 1})
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		if err := localmigration.Step09(store, log.Noop)(); err != nil {
+			t.Fatalf("with epoch %v: %v", withEpoch, err)
+		}
+
+		if err := store.IndexStore().Get(&reserve.EpochItem{}); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("with epoch %v: got %v, want %v", withEpoch, err, storage.ErrNotFound)
+		}
+	}
+}

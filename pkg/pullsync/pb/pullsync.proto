@@ -20,9 +20,17 @@ message Get {
   uint64 Start = 2;
 }
 
+// Chunk is one offered chunk. BatchID and StampHash identify the stamp the
+// chunk is offered under; peers that predate SWIP-101 decide on them alone.
+// Sum is the SWIP-101 divergence checksum: when set, the receiver decides on
+// (Address, Sum) and ignores BatchID and StampHash. Sum is appended rather
+// than replacing BatchID and StampHash so both kinds of peers sync with each
+// other; the stamp fields can be dropped once no peer depends on them.
 message Chunk {
   bytes Address = 1;
-  bytes Sum = 2;
+  bytes BatchID = 2;
+  bytes StampHash = 3;
+  bytes Sum = 4;
 }
 
 message Offer {

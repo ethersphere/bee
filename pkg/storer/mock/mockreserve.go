@@ -273,6 +273,24 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, sum []byte) (bool, error) 
 	return false, nil
 }
 
+func (s *ReserveStore) ReserveHasStamp(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for _, c := range s.chunks {
+		if !c.Address().Equal(addr) || c.Stamp() == nil || !bytes.Equal(c.Stamp().BatchID(), batchID) {
+			continue
+		}
+		h, err := c.Stamp().Hash()
+		if err != nil {
+			return false, err
+		}
+		if bytes.Equal(h, stampHash) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storer.Sample, error) {
 	return s.sample, nil
 }

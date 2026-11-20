@@ -36,7 +36,7 @@ const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
-	protocolVersion  = "2.0.0"
+	protocolVersion  = "1.4.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 )
@@ -181,7 +181,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	// make an offer to the upstream peer in return for the requested range.
 	// the bincs slice is retained so processWant can resolve wanted chunks by
-	// their batch ID and stamp hash, which are no longer carried on the wire.
+	// their batch ID and stamp hash.
 	offer, bincs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
@@ -302,22 +302,39 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
-		if len(sum) != storage.ChunkSumSize {
+		// A peer that predates SWIP-101 sends no sum. Its offer is matched by
+		// stamp identity, as before SWIP-101, so divergence stays invisible on
+		// that link only.
+		legacy := len(sum) == 0
+		if !legacy && len(sum) != storage.ChunkSumSize {
 			return 0, 0, fmt.Errorf("inconsistent chunk sum length %d at index %d in offer from peer %s", len(sum), i, peer)
+		}
+		batchID, stampHash := offer.Chunks[i].BatchID, offer.Chunks[i].StampHash
+		// fixed lengths also keep the stamp-keyed and sum-keyed wants apart.
+		if legacy && (len(batchID) != swarm.HashSize || len(stampHash) != swarm.HashSize) {
+			return 0, 0, fmt.Errorf("inconsistent stamp length %d/%d at index %d in offer from peer %s", len(batchID), len(stampHash), i, peer)
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
-			// SWIP-101: Check if local reserve holds this exact (address, sum) pair.
-			have, err = s.store.ReserveHas(a, sum)
+			var wantKey string
+			if legacy {
+				s.metrics.OfferedLegacy.Inc()
+				have, err = s.store.ReserveHasStamp(a, batchID, stampHash)
+				wantKey = legacyWantKey(a, batchID, stampHash)
+			} else {
+				// SWIP-101: Check if local reserve holds this exact (address, sum) pair.
+				have, err = s.store.ReserveHas(a, sum)
+				wantKey = sumWantKey(a, sum)
+			}
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				return 0, 0, err
 			}
 
 			if !have {
-				// Index by composite key (address + sum) so divergent chunks at
-				// the same address can be matched against delivery.
-				wantChunks[a.ByteString()+string(sum)] = struct{}{}
+				// Index by composite key so divergent chunks at the same address
+				// can be matched against delivery.
+				wantChunks[wantKey] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
@@ -372,11 +389,17 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
-		wantChunkID := addr.ByteString() + string(sum)
+		// a delivery answers either a sum-keyed or a stamp-keyed want, both
+		// derived from the delivered chunk and stamp. The key lengths differ
+		// (offered stamp fields are length-checked), so the forms cannot collide.
+		wantChunkID := sumWantKey(addr, sum)
 		if _, ok := wantChunks[wantChunkID]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
-			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
-			continue
+			wantChunkID = legacyWantKey(addr, stamp.BatchID(), stampHash)
+			if _, ok := wantChunks[wantChunkID]; !ok {
+				s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+				chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
+				continue
+			}
 		}
 
 		delete(wantChunks, wantChunkID)
@@ -446,9 +469,10 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 }
 
 // makeOffer tries to assemble an offer for a given requested interval. It
-// returns both the wire offer (carrying only address and sum per chunk) and the
-// underlying BinC slice, which the caller keeps to resolve wanted chunks by
-// batch ID and stamp hash when fulfilling the subsequent Want.
+// returns both the wire offer and the underlying BinC slice, which the caller
+// keeps to resolve wanted chunks by batch ID and stamp hash when fulfilling
+// the subsequent Want. Each offered chunk carries its batch ID and stamp hash
+// for peers that predate SWIP-101, and its sum for peers that do not.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer.BinC, error) {
 	bincs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
 	if err != nil {
@@ -459,9 +483,17 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer
 	o.Topmost = top
 	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
 	for _, v := range bincs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, StampHash: v.StampHash, Sum: v.Sum})
 	}
 	return o, bincs, nil
+}
+
+func sumWantKey(addr swarm.Address, sum []byte) string {
+	return addr.ByteString() + string(sum)
+}
+
+func legacyWantKey(addr swarm.Address, batchID, stampHash []byte) string {
+	return addr.ByteString() + string(batchID) + string(stampHash)
 }
 
 type collectAddrsResult struct {

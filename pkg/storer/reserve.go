@@ -306,6 +306,23 @@ func (db *DB) ReserveHas(addr swarm.Address, sum []byte) (has bool, err error) {
 	return db.reserve.HasSum(addr, sum)
 }
 
+// ReserveHasStamp reports whether the reserve holds addr under the given stamp.
+// It backs the want-decision for offers from peers that do not send a sum.
+func (db *DB) ReserveHasStamp(addr swarm.Address, batchID []byte, stampHash []byte) (has bool, err error) {
+	dur := captureDuration(time.Now())
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHasStamp").Observe(dur())
+		if err == nil {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHasStamp", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHasStamp", "failure").Inc()
+			db.logger.Debug("reserve has stamp error", "error", err)
+		}
+	}()
+
+	return db.reserve.Has(addr, batchID, stampHash)
+}
+
 // ReservePutter returns a Putter for inserting chunks into the reserve.
 func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{

@@ -49,6 +49,14 @@ func FuzzOfferRead(f *testing.F) {
 			{Address: make([]byte, swarm.HashSize), Sum: make([]byte, storage.ChunkSumSize)},
 		},
 	}))
+	// a chunk as offered now, and as offered by a peer that predates SWIP-101.
+	f.Add(pullsyncFrame(f, &pb.Offer{
+		Topmost: 10,
+		Chunks: []*pb.Chunk{
+			{Address: make([]byte, swarm.HashSize), BatchID: make([]byte, swarm.HashSize), StampHash: make([]byte, swarm.HashSize), Sum: make([]byte, storage.ChunkSumSize)},
+			{Address: make([]byte, swarm.HashSize), BatchID: make([]byte, swarm.HashSize), StampHash: make([]byte, swarm.HashSize)},
+		},
+	}))
 	f.Add([]byte{})
 
 	f.Fuzz(func(t *testing.T, data []byte) {

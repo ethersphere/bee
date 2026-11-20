@@ -11,6 +11,7 @@ import (
 
 type metrics struct {
 	Offered              prometheus.Counter     // number of chunks offered
+	OfferedLegacy        prometheus.Counter     // number of offered chunks without a sum, from peers predating SWIP-101
 	Wanted               prometheus.Counter     // number of chunks wanted
 	MissingChunks        prometheus.Counter     // number of reserve get errs
 	ReceivedZeroAddress  prometheus.Counter     // number of delivered chunks with invalid address
@@ -34,6 +35,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "chunks_offered",
 			Help:      "Total chunks offered.",
+		}),
+		OfferedLegacy: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "chunks_offered_legacy",
+			Help:      "Total chunks offered without a SWIP-101 sum, matched by stamp instead.",
 		}),
 		Wanted: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
