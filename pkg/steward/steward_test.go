@@ -8,12 +8,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -523,4 +525,168 @@ func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr sw
 	}
 	lr.retrievedChunks[addr.String()] = struct{}{}
 	return ch, nil
+}
+
+// slowRetriever delays every retrieval and records the highest number of
+// retrievals in flight at the same time.
+type slowRetriever struct {
+	*localRetriever
+	delay    time.Duration
+	inFlight atomic.Int32
+	maxSeen  atomic.Int32
+}
+
+func (sr *slowRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (swarm.Chunk, error) {
+	n := sr.inFlight.Add(1)
+	defer sr.inFlight.Add(-1)
+	for {
+		m := sr.maxSeen.Load()
+		if n <= m || sr.maxSeen.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	select {
+	case <-time.After(sr.delay):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return sr.localRetriever.RetrieveChunk(ctx, addr, sourceAddr)
+}
+
+func uploadRandom(t *testing.T, store storage.Putter, chunks int) swarm.Address {
+	t.Helper()
+
+	data := make([]byte, chunks*swarm.ChunkSize)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	pipe := builder.NewPipelineBuilder(ctx, store, false, redundancy.NONE)
+	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func TestIsRetrievableConcurrent(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunkStore = inmemchunkstore.New()
+		store      = mockstorer.NewWithChunkStore(chunkStore)
+		retriever  = &slowRetriever{localRetriever: &localRetriever{ChunkStore: chunkStore}, delay: 5 * time.Millisecond}
+		s          = steward.New(store, retriever, chunkStore)
+		addr       = uploadRandom(t, chunkStore, 1000)
+	)
+
+	ok, err := s.IsRetrievable(context.Background(), addr, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatalf("content on %q should be retrievable", addr)
+	}
+	if got := retriever.maxSeen.Load(); got < 2 {
+		t.Fatalf("chunks were retrieved one at a time: max in flight %d", got)
+	}
+}
+
+func TestIsRetrievableMissingChunk(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx        = context.Background()
+		chunkStore = inmemchunkstore.New()
+		store      = mockstorer.NewWithChunkStore(chunkStore)
+		s          = steward.New(store, &localRetriever{ChunkStore: chunkStore}, chunkStore)
+		addr       = uploadRandom(t, chunkStore, 1000)
+	)
+
+	var addrs []swarm.Address
+	err := traversal.New(chunkStore, chunkStore).Traverse(ctx, addr, func(a swarm.Address) error {
+		addrs = append(addrs, a)
+		return nil
+	}, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the last address traversed is a leaf data chunk
+	if err := chunkStore.Delete(ctx, addrs[len(addrs)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := s.IsRetrievable(ctx, addr, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatalf("content on %q with a missing leaf chunk should not be retrievable", addr)
+	}
+}
+
+// holdingRetriever holds every retrieval of the hold address until a minute
+// passes or ctx is done.
+type holdingRetriever struct {
+	*localRetriever
+	hold swarm.Address
+}
+
+func (hr *holdingRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (swarm.Chunk, error) {
+	if addr.Equal(hr.hold) {
+		select {
+		case <-time.After(time.Minute):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return hr.localRetriever.RetrieveChunk(ctx, addr, sourceAddr)
+}
+
+func TestIsRetrievableCancelsInFlight(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx        = context.Background()
+		chunkStore = inmemchunkstore.New()
+		store      = mockstorer.NewWithChunkStore(chunkStore)
+		// 130 chunks make root -> [128 leaves, 2 leaves]
+		addr = uploadRandom(t, chunkStore, 130)
+	)
+
+	var addrs []swarm.Address
+	err := traversal.New(chunkStore, chunkStore).Traverse(ctx, addr, func(a swarm.Address) error {
+		addrs = append(addrs, a)
+		return nil
+	}, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 133 {
+		t.Fatalf("got %d addresses, want 133", len(addrs))
+	}
+	// addrs: root, first intermediate, its 128 leaves, second intermediate,
+	// its 2 leaves. Replace the second intermediate with a malformed chunk:
+	// retrieving it succeeds, but the traversal fails on it, so only the
+	// traversal error can cancel the held retrieval of the first leaf.
+	intermediate := addrs[130]
+	if err := chunkStore.Delete(ctx, intermediate); err != nil {
+		t.Fatal(err)
+	}
+	if err := chunkStore.Put(ctx, swarm.NewChunk(intermediate, []byte{1, 2, 3})); err != nil {
+		t.Fatal(err)
+	}
+	s := steward.New(store, &holdingRetriever{localRetriever: &localRetriever{ChunkStore: chunkStore}, hold: addrs[2]}, chunkStore)
+
+	start := time.Now()
+	ok, err := s.IsRetrievable(ctx, addr, redundancy.NONE)
+	if !errors.Is(err, joiner.ErrMalformedTrie) {
+		t.Fatalf("got error %v, want %v", err, joiner.ErrMalformedTrie)
+	}
+	if ok {
+		t.Fatalf("content on %q with a malformed intermediate chunk should not be retrievable", addr)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("in-flight retrievals were not canceled: took %s", elapsed)
+	}
 }
