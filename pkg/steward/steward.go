@@ -145,17 +145,10 @@ func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address, rLevel 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.SetLimit(isRetrievableConcurrency)
 
-	// fn is called sequentially by the traversal, so seen needs no lock.
-	seen := make(map[string]struct{})
 	fn := func(a swarm.Address) error {
 		if err := egCtx.Err(); err != nil {
 			return err
 		}
-		if _, ok := seen[a.ByteString()]; ok {
-			return nil
-		}
-		seen[a.ByteString()] = struct{}{}
-
 		// Go blocks while all slots are busy and a failed retrieval may
 		// cancel egCtx meanwhile, so check it again on both sides.
 		eg.Go(safe.RunFunc(nil, "steward-is-retrievable", func() error {

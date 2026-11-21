@@ -8,13 +8,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -624,72 +625,22 @@ func TestIsRetrievableMissingChunk(t *testing.T) {
 	}
 }
 
-// countingRetriever counts retrievals per address and holds every retrieval
-// of an address in slow until a minute passes or ctx is done.
-type countingRetriever struct {
+// holdingRetriever holds every retrieval of the hold address until a minute
+// passes or ctx is done.
+type holdingRetriever struct {
 	*localRetriever
-	slow map[string]struct{}
-
-	mu     sync.Mutex
-	counts map[string]int
+	hold swarm.Address
 }
 
-func (cr *countingRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (swarm.Chunk, error) {
-	cr.mu.Lock()
-	if cr.counts == nil {
-		cr.counts = make(map[string]int)
-	}
-	cr.counts[addr.ByteString()]++
-	cr.mu.Unlock()
-
-	if _, ok := cr.slow[addr.ByteString()]; ok {
+func (hr *holdingRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (swarm.Chunk, error) {
+	if addr.Equal(hr.hold) {
 		select {
 		case <-time.After(time.Minute):
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
-	return cr.localRetriever.RetrieveChunk(ctx, addr, sourceAddr)
-}
-
-func (cr *countingRetriever) count(addr swarm.Address) int {
-	cr.mu.Lock()
-	defer cr.mu.Unlock()
-	return cr.counts[addr.ByteString()]
-}
-
-func TestIsRetrievableRepeatedChunk(t *testing.T) {
-	t.Parallel()
-
-	var (
-		ctx        = context.Background()
-		chunkStore = inmemchunkstore.New()
-		store      = mockstorer.NewWithChunkStore(chunkStore)
-		retriever  = &countingRetriever{localRetriever: &localRetriever{ChunkStore: chunkStore}}
-		s          = steward.New(store, retriever, chunkStore)
-	)
-
-	// all 1000 leaves of an all-zero file share one address
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
-	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(make([]byte, 1000*swarm.ChunkSize)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	leaf, err := cac.New(make([]byte, swarm.ChunkSize))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ok, err := s.IsRetrievable(ctx, addr, redundancy.NONE)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok {
-		t.Fatalf("content on %q should be retrievable", addr)
-	}
-	if got := retriever.count(leaf.Address()); got != 1 {
-		t.Fatalf("repeated leaf chunk retrieved %d times, want 1", got)
-	}
+	return hr.localRetriever.RetrieveChunk(ctx, addr, sourceAddr)
 }
 
 func TestIsRetrievableCancelsInFlight(t *testing.T) {
@@ -714,25 +665,26 @@ func TestIsRetrievableCancelsInFlight(t *testing.T) {
 	if len(addrs) != 133 {
 		t.Fatalf("got %d addresses, want 133", len(addrs))
 	}
-	// addrs: root, first intermediate, its 128 leaves, second intermediate, its 2 leaves.
-	// Hold the first 20 leaves (fewer than the concurrency limit, so the
-	// traversal reaches the second intermediate) and delete that intermediate.
-	slow := make(map[string]struct{})
-	for _, a := range addrs[2:22] {
-		slow[a.ByteString()] = struct{}{}
-	}
-	if err := chunkStore.Delete(ctx, addrs[130]); err != nil {
+	// addrs: root, first intermediate, its 128 leaves, second intermediate,
+	// its 2 leaves. Replace the second intermediate with a malformed chunk:
+	// retrieving it succeeds, but the traversal fails on it, so only the
+	// traversal error can cancel the held retrieval of the first leaf.
+	intermediate := addrs[130]
+	if err := chunkStore.Delete(ctx, intermediate); err != nil {
 		t.Fatal(err)
 	}
-	s := steward.New(store, &countingRetriever{localRetriever: &localRetriever{ChunkStore: chunkStore}, slow: slow}, chunkStore)
+	if err := chunkStore.Put(ctx, swarm.NewChunk(intermediate, []byte{1, 2, 3})); err != nil {
+		t.Fatal(err)
+	}
+	s := steward.New(store, &holdingRetriever{localRetriever: &localRetriever{ChunkStore: chunkStore}, hold: addrs[2]}, chunkStore)
 
 	start := time.Now()
 	ok, err := s.IsRetrievable(ctx, addr, redundancy.NONE)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, joiner.ErrMalformedTrie) {
+		t.Fatalf("got error %v, want %v", err, joiner.ErrMalformedTrie)
 	}
 	if ok {
-		t.Fatalf("content on %q with a missing intermediate chunk should not be retrievable", addr)
+		t.Fatalf("content on %q with a malformed intermediate chunk should not be retrievable", addr)
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Fatalf("in-flight retrievals were not canceled: took %s", elapsed)
