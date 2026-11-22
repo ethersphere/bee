@@ -8,7 +8,11 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
+	"io"
 	"math/big"
+	"net/url"
+	"slices"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -33,12 +37,12 @@ func TestTxMayBeInMempool(t *testing.T) {
 		errors.New("context deadline exceeded"),
 		errors.New("context canceled"),
 		errors.New("connection reset by peer"),
-		errors.New("EOF"),
-		errors.New("unexpected EOF"),
 		errors.New("broken pipe"),
 		errors.New("i/o timeout"),
 		errors.New("Client.Timeout exceeded while awaiting headers"),
 		errors.New("Post \"http://rpc\": context deadline exceeded"),
+		&url.Error{Op: "Post", URL: "http://rpc", Err: context.DeadlineExceeded},
+		fmt.Errorf("send: %w", context.Canceled),
 	}
 	for _, err := range maybe {
 		name := "<nil>"
@@ -62,6 +66,11 @@ func TestTxMayBeInMempool(t *testing.T) {
 		errors.New("already imported"),
 		errors.New("known transaction"),
 		errors.New("connection refused"),
+		io.EOF,
+		io.ErrUnexpectedEOF,
+		errors.New("EOF"),
+		errors.New("unexpected EOF"),
+		&url.Error{Op: "Post", URL: "http://rpc", Err: io.EOF},
 	}
 	for _, err := range fatal {
 		name := "<nil>"
@@ -87,14 +96,14 @@ func TestSendStoresTransactionWhenItMayBeInMempool(t *testing.T) {
 		context.DeadlineExceeded,
 		context.Canceled,
 		errors.New("connection reset by peer"),
-		errors.New("EOF"),
 		errors.New("i/o timeout"),
 	} {
 		t.Run(err.Error(), func(t *testing.T) {
 			t.Parallel()
 
 			var sent *types.Transaction
-			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, nil)
+			var store storage.StateStorer
+			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) { store = s })
 
 			hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
 			if sendErr != nil {
@@ -113,6 +122,13 @@ func TestSendStoresTransactionWhenItMayBeInMempool(t *testing.T) {
 			if len(pending) != 1 || pending[0] != hash {
 				t.Fatalf("pending = %v, want [%s]", pending, hash)
 			}
+			var chain transaction.ResentTransaction
+			if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
+				t.Fatal(err)
+			}
+			if chain.Nonce != 1 || chain.CurrentHash != hash || len(chain.PrevHashes) != 0 {
+				t.Fatalf("chain = %+v", chain)
+			}
 		})
 	}
 }
@@ -129,12 +145,25 @@ func TestSendDropsTransactionWhenNodeRejectsIt(t *testing.T) {
 		errors.New("already known"),
 		errors.New("already imported"),
 		errors.New("known transaction"),
+		errors.New("EOF"),
+		errors.New("unexpected EOF"),
 	} {
 		t.Run(err.Error(), func(t *testing.T) {
 			t.Parallel()
 
+			previous := &transaction.ResentTransaction{
+				Nonce:       1,
+				CurrentHash: common.HexToHash("0x11"),
+				PrevHashes:  []common.Hash{common.HexToHash("0x10")},
+			}
 			var sent *types.Transaction
-			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, nil)
+			var store storage.StateStorer
+			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) {
+				store = s
+				if err := s.Put(transaction.ResendTxKey(1), previous); err != nil {
+					t.Fatal(err)
+				}
+			})
 
 			hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
 			if sendErr == nil {
@@ -156,53 +185,15 @@ func TestSendDropsTransactionWhenNodeRejectsIt(t *testing.T) {
 			if len(pending) != 0 {
 				t.Fatalf("pending = %v", pending)
 			}
+			var chain transaction.ResentTransaction
+			if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
+				t.Fatal(err)
+			}
+			if chain.CurrentHash != previous.CurrentHash || !slices.Equal(chain.PrevHashes, previous.PrevHashes) || len(chain.Superseded) != 0 {
+				t.Fatalf("chain = %+v", chain)
+			}
 		})
 	}
-}
-
-func TestResendReportsOnlyPoolRejection(t *testing.T) {
-	t.Parallel()
-
-	t.Run("pool rejection", func(t *testing.T) {
-		t.Parallel()
-		svc, hash := newResendService(t, errors.New("nonce too low"))
-		_, err := svc.ResendTransaction(context.Background(), hash, 0)
-		if !errors.Is(err, transaction.ErrNonceUsed) {
-			t.Fatalf("got %v", err)
-		}
-	})
-
-	t.Run("already imported", func(t *testing.T) {
-		t.Parallel()
-		svc, hash := newResendService(t, errors.New("already imported"))
-		_, err := svc.ResendTransaction(context.Background(), hash, 0)
-		if !errors.Is(err, transaction.ErrAlreadyImported) {
-			t.Fatalf("got %v", err)
-		}
-	})
-
-	t.Run("ambiguous error", func(t *testing.T) {
-		t.Parallel()
-		svc, hash := newResendService(t, context.DeadlineExceeded)
-		if _, err := svc.ResendTransaction(context.Background(), hash, 0); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := svc.StoredTransaction(hash); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	t.Run("already known", func(t *testing.T) {
-		t.Parallel()
-		svc, hash := newResendService(t, errors.New("already known"))
-		_, err := svc.ResendTransaction(context.Background(), hash, 0)
-		if !errors.Is(err, transaction.ErrAlreadyImported) {
-			t.Fatalf("got %v", err)
-		}
-		if _, err := svc.StoredTransaction(hash); err != nil {
-			t.Fatal(err)
-		}
-	})
 }
 
 func TestCancelStoresTransactionWhenItMayBeInMempool(t *testing.T) {
@@ -293,49 +284,6 @@ func newAdmissionService(t *testing.T, sendErr error, onSend func(*types.Transac
 		t.Fatal(err)
 	}
 	return newSignedService(t, key, sendErr, onSend, prepare)
-}
-
-func newResendService(t *testing.T, sendErr error) (transaction.Service, common.Hash) {
-	t.Helper()
-
-	key, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(key)
-	chainID := big.NewInt(5)
-	feeCap := big.NewInt(100)
-	tip := big.NewInt(10)
-	signed, err := signer.SignTx(types.NewTx(&types.DynamicFeeTx{
-		Nonce:     7,
-		ChainID:   chainID,
-		To:        &admissionRecipient,
-		Value:     big.NewInt(0),
-		Gas:       21_000,
-		GasTipCap: tip,
-		GasFeeCap: feeCap,
-		Data:      []byte{1, 2, 3},
-	}), chainID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	svc := newSignedService(t, key, sendErr, nil, func(store storage.StateStorer) {
-		err := store.Put(transaction.StoredTransactionKey(signed.Hash()), transaction.StoredTransaction{
-			Nonce:     signed.Nonce(),
-			To:        signed.To(),
-			Value:     signed.Value(),
-			GasLimit:  signed.Gas(),
-			GasPrice:  signed.GasPrice(),
-			GasFeeCap: feeCap,
-			GasTipCap: tip,
-			Data:      signed.Data(),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-	return svc, signed.Hash()
 }
 
 func newSignedService(t *testing.T, key *ecdsa.PrivateKey, sendErr error, onSend func(*types.Transaction), prepare func(storage.StateStorer)) transaction.Service {

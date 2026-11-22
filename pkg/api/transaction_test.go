@@ -325,6 +325,26 @@ func TestTransactionResend(t *testing.T) {
 		)
 	})
 
+	t.Run("first resend has empty previous hashes", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			TransactionOpts: []mock.Option{
+				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
+					return &transaction.ResentTransaction{Nonce: 7, CurrentHash: newHash}, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.TransactionResendResponse{
+				TransactionHash:           newHash,
+				Nonce:                     7,
+				PreviousTransactionHashes: []common.Hash{},
+			}),
+		)
+	})
+
 	t.Run("bump header", func(t *testing.T) {
 		t.Parallel()
 
@@ -367,119 +387,38 @@ func TestTransactionResend(t *testing.T) {
 		})
 	}
 
-	t.Run("unknown transaction", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		message string
+	}{
+		{"unknown transaction", transaction.ErrUnknownTransaction, http.StatusNotFound, api.ErrUnknownTransaction},
+		{"already imported", transaction.ErrAlreadyImported, http.StatusBadRequest, api.ErrAlreadyImported},
+		{"replacement underpriced", fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced), http.StatusConflict, api.ErrReplacementUnderpriced},
+		{"nonce used", transaction.ErrNonceUsed, http.StatusConflict, api.ErrNonceUsed},
+		{"not in chain", transaction.ErrNotInResendChain, http.StatusConflict, api.ErrNotInResendChain},
+		{"other error", errors.New("err"), http.StatusInternalServerError, api.ErrCantResendTransaction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, transaction.ErrUnknownTransaction
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
+						return nil, tc.err
+					}),
+				},
+			})
+
+			jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), tc.status,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Code:    tc.status,
+					Message: tc.message,
 				}),
-			},
+			)
 		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusNotFound,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusNotFound,
-				Message: api.ErrUnknownTransaction,
-			}),
-		)
-	})
-
-	t.Run("already imported", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, transaction.ErrAlreadyImported
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: api.ErrAlreadyImported,
-			}),
-		)
-	})
-
-	t.Run("replacement underpriced", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced)
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusConflict,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusConflict,
-				Message: api.ErrReplacementUnderpriced,
-			}),
-		)
-	})
-
-	t.Run("nonce used", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, transaction.ErrNonceUsed
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusConflict,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusConflict,
-				Message: api.ErrNonceUsed,
-			}),
-		)
-	})
-
-	t.Run("not in chain", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, transaction.ErrNotInResendChain
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusConflict,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusConflict,
-				Message: api.ErrNotInResendChain,
-			}),
-		)
-	})
-
-	t.Run("other error", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return nil, errors.New("err")
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusInternalServerError,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusInternalServerError,
-				Message: api.ErrCantResendTransaction,
-			}),
-		)
-	})
+	}
 }
 
 func TestTransactionCancelNotInChain(t *testing.T) {

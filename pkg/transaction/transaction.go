@@ -261,7 +261,15 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 	// The nonce now belongs to this transaction. A resend chain left for it belongs to
 	// dropped transactions, and resending one of them must not replace this one.
-	if err := t.store.Put(resendTxKey(nonce), &ResentTransaction{Nonce: nonce, CurrentHash: txHash}); err != nil {
+	// That chain is kept as superseded, because one of its hashes may still be mined.
+	owner := &ResentTransaction{Nonce: nonce, CurrentHash: txHash}
+	switch prev, err := t.getResendChain(nonce); {
+	case err == nil:
+		owner.Superseded = append(prev.Superseded, prev.chainHashes())
+	case !errors.Is(err, storage.ErrNotFound):
+		t.logger.Warning("loading nonce owner failed", "nonce", nonce, "error", err)
+	}
+	if err := t.store.Put(resendTxKey(nonce), owner); err != nil {
 		t.logger.Warning("storing nonce owner failed", "nonce", nonce, "tx", txHash, "error", err)
 	}
 
@@ -639,7 +647,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		// The nonce has no owner record.
 	case err != nil:
 		return common.Hash{}, err
-	case !chain.contains(originalTxHash):
+	case !chain.inChain(originalTxHash):
 		return common.Hash{}, ErrNotInResendChain
 	case chain.CurrentHash != originalTxHash:
 		// The fees of the cancellation must outbid the latest resend, not an old hash.

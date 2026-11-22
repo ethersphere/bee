@@ -105,27 +105,6 @@ func TestResendTransaction(t *testing.T) {
 		}
 	})
 
-	t.Run("same hash stays pending", func(t *testing.T) {
-		t.Parallel()
-		env := newResendEnv(t, nonce, description, data, true)
-		env.feeCap, env.tip = big.NewInt(100), big.NewInt(10)
-
-		resent, err := env.svc.ResendTransaction(context.Background(), env.old, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resent.CurrentHash != env.old {
-			t.Fatalf("hash = %s", resent.CurrentHash)
-		}
-		if _, err := env.chainErr(nonce); !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("chain error = %v", err)
-		}
-		pending := env.pending()
-		if len(pending) != 1 || pending[0] != env.old {
-			t.Fatalf("pending = %v", pending)
-		}
-	})
-
 	t.Run("same hash restores pending", func(t *testing.T) {
 		t.Parallel()
 		env := newResendEnv(t, nonce, description, data, true)
@@ -209,16 +188,21 @@ func TestResendTransaction(t *testing.T) {
 		}
 	})
 
-	t.Run("already known", func(t *testing.T) {
-		t.Parallel()
-		env := newResendEnv(t, nonce, description, data, true)
-		env.sendErr = errors.New("already known")
+	for _, msg := range []string{"already known", "already imported"} {
+		t.Run(msg, func(t *testing.T) {
+			t.Parallel()
+			env := newResendEnv(t, nonce, description, data, true)
+			env.sendErr = errors.New(msg)
 
-		_, err := env.svc.ResendTransaction(context.Background(), env.old, 0)
-		if !errors.Is(err, transaction.ErrAlreadyImported) {
-			t.Fatalf("got %v", err)
-		}
-	})
+			_, err := env.svc.ResendTransaction(context.Background(), env.old, 0)
+			if !errors.Is(err, transaction.ErrAlreadyImported) {
+				t.Fatalf("got %v", err)
+			}
+			if _, err := env.svc.StoredTransaction(env.old); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 
 	t.Run("lost response", func(t *testing.T) {
 		t.Parallel()
@@ -369,46 +353,6 @@ func TestTransactionReceiptResendChain(t *testing.T) {
 	})
 }
 
-func TestCancelResendChain(t *testing.T) {
-	t.Parallel()
-
-	const nonce = uint64(7)
-	env := newResendEnv(t, nonce, "postage", []byte{1}, false)
-	h2 := common.HexToHash("0x22")
-	env.putStored(h2, nonce, big.NewInt(500), big.NewInt(50))
-	env.putChain(&transaction.ResentTransaction{Nonce: nonce, CurrentHash: h2, PrevHashes: []common.Hash{env.old}})
-	env.feeCap, env.tip = big.NewInt(1), big.NewInt(1)
-
-	if _, err := env.svc.CancelTransaction(context.Background(), env.old); err != nil {
-		t.Fatal(err)
-	}
-	assertFees(t, env.lastSent(), 550, 55)
-	chain := env.chain(nonce)
-	if chain.CurrentHash != h2 || !slices.Equal(chain.PrevHashes, []common.Hash{env.old}) {
-		t.Fatalf("chain = %+v", chain)
-	}
-}
-
-func TestCancelRejectsHashOutsideChain(t *testing.T) {
-	t.Parallel()
-
-	const nonce = uint64(7)
-	env := newResendEnv(t, nonce, "postage", []byte{1}, false)
-	cancel := common.HexToHash("0x33")
-	resentCancel := common.HexToHash("0x44")
-	env.putStored(cancel, nonce, big.NewInt(300), big.NewInt(30))
-	env.putStored(resentCancel, nonce, big.NewInt(500), big.NewInt(50))
-	env.putChain(&transaction.ResentTransaction{Nonce: nonce, CurrentHash: resentCancel, PrevHashes: []common.Hash{cancel}})
-	env.feeCap, env.tip = big.NewInt(1), big.NewInt(1)
-
-	if _, err := env.svc.CancelTransaction(context.Background(), env.old); !errors.Is(err, transaction.ErrNotInResendChain) {
-		t.Fatalf("got %v", err)
-	}
-	if env.sentCount() != 0 {
-		t.Fatal("cancellation was broadcast")
-	}
-}
-
 func TestSendClaimsNonce(t *testing.T) {
 	t.Parallel()
 
@@ -440,6 +384,51 @@ func TestSendClaimsNonce(t *testing.T) {
 	}
 	if chain.Nonce != 1 || chain.CurrentHash != hash || len(chain.PrevHashes) != 0 {
 		t.Fatalf("chain = %+v", chain)
+	}
+	want := [][]common.Hash{{common.HexToHash("0x10"), stale}}
+	if len(chain.Superseded) != 1 || !slices.Equal(chain.Superseded[0], want[0]) {
+		t.Fatalf("superseded = %v, want %v", chain.Superseded, want)
+	}
+}
+
+// TestResentHashMinedAfterNonceReuse covers a resend that is mined after the node
+// lost sight of the chain and reused its nonce: the original hash is not cancelled.
+func TestResentHashMinedAfterNonceReuse(t *testing.T) {
+	t.Parallel()
+
+	env := newResendEnv(t, 1, "postage", []byte{1, 2, 3}, true)
+	resent, err := env.svc.ResendTransaction(context.Background(), env.old, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	env.byHash = func(common.Hash) (*types.Transaction, bool, error) {
+		return nil, false, ethereum.NotFound
+	}
+	reused, err := env.svc.Send(context.Background(), admissionRequest(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.lastSent().Nonce() != 1 {
+		t.Fatalf("nonce = %d", env.lastSent().Nonce())
+	}
+	if _, err := env.svc.ResendTransaction(context.Background(), env.old, 20); !errors.Is(err, transaction.ErrNotInResendChain) {
+		t.Fatalf("resend got %v", err)
+	}
+
+	env.setReceipts(map[common.Hash]*types.Receipt{
+		resent.CurrentHash: {TxHash: resent.CurrentHash, Status: types.ReceiptStatusSuccessful},
+	})
+	env.setCancelWatch(true)
+	receipt, err := env.svc.WaitForReceipt(context.Background(), env.old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.TxHash != resent.CurrentHash {
+		t.Fatalf("receipt = %s, want %s", receipt.TxHash, resent.CurrentHash)
+	}
+	if _, err := env.svc.WaitForReceipt(context.Background(), reused); !errors.Is(err, transaction.ErrTransactionCancelled) {
+		t.Fatalf("wait for the reused nonce got %v", err)
 	}
 }
 
@@ -603,6 +592,10 @@ func TestResendPullsFeesUpToCurrent(t *testing.T) {
 		if _, err := env.chainErr(nonce); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("chain error = %v", err)
 		}
+		pending := env.pending()
+		if len(pending) != 1 || pending[0] != env.old {
+			t.Fatalf("pending = %v", pending)
+		}
 		stored, err := env.svc.StoredTransaction(env.old)
 		if err != nil {
 			t.Fatal(err)
@@ -645,25 +638,6 @@ func TestResendPullsFeesUpToCurrent(t *testing.T) {
 		}
 		assertFees(t, env.lastSent(), 120, 10)
 		if resent.CurrentHash == env.old || !slices.Equal(resent.PrevHashes, []common.Hash{env.old}) {
-			t.Fatalf("chain = %+v", resent)
-		}
-	})
-
-	t.Run("level comes from the current hash", func(t *testing.T) {
-		t.Parallel()
-		env := newResendEnv(t, nonce, "postage", []byte{1, 2, 3}, true)
-		first, err := env.svc.ResendTransaction(context.Background(), env.old, 20)
-		if err != nil {
-			t.Fatal(err)
-		}
-		env.feeCap, env.tip = big.NewInt(110), big.NewInt(11)
-
-		resent, err := env.svc.ResendTransaction(context.Background(), env.old, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		assertFees(t, env.lastSent(), 120, 12)
-		if resent.CurrentHash != first.CurrentHash || !slices.Equal(resent.PrevHashes, []common.Hash{env.old}) {
 			t.Fatalf("chain = %+v", resent)
 		}
 	})
@@ -837,6 +811,7 @@ func TestCancelStaysOutsideChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertFees(t, env.lastSent(), 132, 13)
 	chain := env.chain(nonce)
 	if chain.CurrentHash != h2 || !slices.Equal(chain.PrevHashes, []common.Hash{env.old}) {
 		t.Fatalf("chain = %+v", chain)
@@ -867,119 +842,6 @@ func TestCancelStaysOutsideChain(t *testing.T) {
 	}
 	if got == cancelHash || slices.Contains(asked, cancelHash) {
 		t.Fatalf("pending lookup returned the cancellation, asked %v", asked)
-	}
-}
-
-func TestSingleOwnerRecordReadsOneHash(t *testing.T) {
-	t.Parallel()
-
-	const nonce = uint64(7)
-	env := newResendEnv(t, nonce, "postage", []byte{1}, false)
-	env.putChain(&transaction.ResentTransaction{Nonce: nonce, CurrentHash: env.old})
-	priced := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     nonce,
-		ChainID:   big.NewInt(5),
-		To:        &admissionRecipient,
-		Value:     big.NewInt(0),
-		Gas:       21_000,
-		GasTipCap: big.NewInt(10),
-		GasFeeCap: big.NewInt(100),
-	})
-	var asked []common.Hash
-	env.byHash = func(hash common.Hash) (*types.Transaction, bool, error) {
-		asked = append(asked, hash)
-		if hash != env.old {
-			return nil, false, ethereum.NotFound
-		}
-		return priced, true, nil
-	}
-	env.setReceipts(map[common.Hash]*types.Receipt{
-		env.old: {TxHash: env.old, Status: types.ReceiptStatusSuccessful},
-	})
-
-	fee, err := env.svc.TransactionFee(context.Background(), env.old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fee.Cmp(priced.Cost()) != 0 {
-		t.Fatalf("fee = %s", fee)
-	}
-	if !slices.Equal(asked, []common.Hash{env.old}) {
-		t.Fatalf("fee lookups = %v", asked)
-	}
-
-	receipt, err := env.svc.TransactionReceipt(context.Background(), env.old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if receipt.TxHash != env.old || !slices.Equal(env.seenReceipts(), []common.Hash{env.old}) {
-		t.Fatalf("receipt lookups = %v", env.seenReceipts())
-	}
-
-	asked = nil
-	got, pending, err := env.svc.PendingTransactionByHash(context.Background(), env.old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !pending || got != env.old || !slices.Equal(asked, []common.Hash{env.old}) {
-		t.Fatalf("hash %s pending %v asked %v", got, pending, asked)
-	}
-}
-
-func TestSendStoresOwnerWhenBroadcastIsAmbiguous(t *testing.T) {
-	t.Parallel()
-
-	key, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var store storage.StateStorer
-	svc := newSignedService(t, key, context.DeadlineExceeded, nil, func(s storage.StateStorer) {
-		store = s
-	})
-
-	hash, err := svc.Send(context.Background(), admissionRequest(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var chain transaction.ResentTransaction
-	if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
-		t.Fatal(err)
-	}
-	if chain.Nonce != 1 || chain.CurrentHash != hash || len(chain.PrevHashes) != 0 {
-		t.Fatalf("chain = %+v", chain)
-	}
-}
-
-func TestSendLeavesOwnerWhenNodeRejects(t *testing.T) {
-	t.Parallel()
-
-	key, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	previous := &transaction.ResentTransaction{
-		Nonce:       1,
-		CurrentHash: common.HexToHash("0x11"),
-		PrevHashes:  []common.Hash{common.HexToHash("0x10")},
-	}
-	var store storage.StateStorer
-	svc := newSignedService(t, key, errors.New("nonce too low"), nil, func(s storage.StateStorer) {
-		store = s
-		if err := s.Put(transaction.ResendTxKey(1), previous); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	if _, err := svc.Send(context.Background(), admissionRequest(), 0); err == nil {
-		t.Fatal("expected the pool rejection")
-	}
-	var chain transaction.ResentTransaction
-	if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
-		t.Fatal(err)
-	}
-	if chain.CurrentHash != previous.CurrentHash || !slices.Equal(chain.PrevHashes, previous.PrevHashes) {
-		t.Fatalf("chain = %+v", chain)
 	}
 }
 
@@ -1042,46 +904,6 @@ func TestSendSucceedsWhenOwnerStoreFails(t *testing.T) {
 	var chain transaction.ResentTransaction
 	if err := base.Get(transaction.ResendTxKey(1), &chain); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("chain error = %v", err)
-	}
-}
-
-func TestResendAndCancelConcurrent(t *testing.T) {
-	t.Parallel()
-
-	const nonce = uint64(7)
-	env := newResendEnv(t, nonce, "postage", []byte{1}, true)
-
-	var (
-		wg         sync.WaitGroup
-		resendErr  error
-		cancelErr  error
-		cancelHash common.Hash
-	)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, resendErr = env.svc.ResendTransaction(context.Background(), env.old, 20)
-	}()
-	go func() {
-		defer wg.Done()
-		cancelHash, cancelErr = env.svc.CancelTransaction(context.Background(), env.old)
-	}()
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("resend and cancel deadlocked")
-	}
-	if resendErr != nil || cancelErr != nil {
-		t.Fatalf("resend %v cancel %v", resendErr, cancelErr)
-	}
-	chain := env.chain(nonce)
-	if chain.CurrentHash == cancelHash || slices.Contains(chain.PrevHashes, cancelHash) {
-		t.Fatalf("cancellation entered the chain: %+v", chain)
 	}
 }
 

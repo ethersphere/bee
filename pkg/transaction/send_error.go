@@ -7,19 +7,18 @@ package transaction
 import (
 	"context"
 	"errors"
-	"io"
 	"strings"
 )
 
 // txMayBeInMempool reports whether the transaction may be in the mempool.
 // A nil error means the node accepted it. The transport errors below mean the
 // RPC response was lost while the request was in flight.
+// An EOF is a failed send: the transaction is not stored.
 func txMayBeInMempool(err error) bool {
 	if err == nil {
 		return true
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return true
 	}
 	msg := normalizeForMatch(err.Error())
@@ -36,7 +35,6 @@ func txMayBeInMempool(err error) bool {
 var mempoolMaybeNeedles = []string{
 	"contextdeadlineexceeded",
 	"contextcanceled",
-	"eof",
 	"connectionresetbypeer",
 	"brokenpipe",
 	"i/otimeout",

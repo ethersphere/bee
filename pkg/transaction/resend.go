@@ -31,21 +31,26 @@ type ResentTransaction struct {
 	Nonce       uint64
 	CurrentHash common.Hash   // last broadcast hash
 	PrevHashes  []common.Hash // earlier hashes, oldest first
+	// Superseded holds the chains of earlier owners of the nonce, each oldest first.
+	// They can no longer be resent, but one of them may still be mined.
+	Superseded [][]common.Hash
 }
 
 func resendTxKey(nonce uint64) string {
 	return fmt.Sprintf("%s%020d", resendTxPrefix, nonce)
 }
 
-// allHashes returns every hash of the chain, oldest first.
-func (r *ResentTransaction) allHashes() []common.Hash {
+// chainHashes returns the hashes of the current chain, oldest first.
+// Superseded chains are not included.
+func (r *ResentTransaction) chainHashes() []common.Hash {
 	out := make([]common.Hash, 0, len(r.PrevHashes)+1)
 	out = append(out, r.PrevHashes...)
 	return append(out, r.CurrentHash)
 }
 
-func (r *ResentTransaction) contains(txHash common.Hash) bool {
-	return slices.Contains(r.allHashes(), txHash)
+// inChain reports whether txHash belongs to the current chain.
+func (r *ResentTransaction) inChain(txHash common.Hash) bool {
+	return slices.Contains(r.chainHashes(), txHash)
 }
 
 // promote makes txHash the current hash of the chain. A hash that is already in
@@ -80,7 +85,7 @@ func (t *transactionService) getResendChain(nonce uint64) (*ResentTransaction, e
 }
 
 // knownHashes returns txHash and, when txHash belongs to a resend chain, every other
-// hash of that chain, newest first.
+// hash of that chain, newest first. The chain may be a superseded one.
 func (t *transactionService) knownHashes(txHash common.Hash) ([]common.Hash, error) {
 	stored, err := t.StoredTransaction(txHash)
 	if errors.Is(err, ErrUnknownTransaction) {
@@ -96,10 +101,17 @@ func (t *transactionService) knownHashes(txHash common.Hash) ([]common.Hash, err
 		}
 		return nil, err
 	}
-	if !chain.contains(txHash) {
-		return []common.Hash{txHash}, nil
+	hashes := []common.Hash{txHash}
+	if chain.inChain(txHash) {
+		hashes = chain.chainHashes()
+	} else {
+		for _, superseded := range chain.Superseded {
+			if slices.Contains(superseded, txHash) {
+				hashes = slices.Clone(superseded)
+				break
+			}
+		}
 	}
-	hashes := chain.allHashes()
 	slices.Reverse(hashes)
 	return hashes, nil
 }
@@ -196,7 +208,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		// The nonce has no owner record.
 	case err != nil:
 		return nil, err
-	case !chain.contains(txHash):
+	case !chain.inChain(txHash):
 		return nil, ErrNotInResendChain
 	case chain.CurrentHash != txHash:
 		current, err = t.StoredTransaction(chain.CurrentHash)
@@ -276,7 +288,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 			chain = &ResentTransaction{Nonce: current.Nonce, CurrentHash: txHash}
 		}
 	} else {
-		if !chain.contains(newHash) {
+		if !chain.inChain(newHash) {
 			if err := t.store.Put(storedTransactionKey(newHash), storedTx); err != nil {
 				return nil, err
 			}

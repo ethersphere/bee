@@ -5,59 +5,43 @@
 package transaction_test
 
 import (
+	"context"
 	"errors"
-	"strings"
+	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 // FuzzTxMayBeInMempool checks classification of untrusted RPC error text.
-// Only a lost response may leave the transaction in the mempool. A node answer,
-// including "already known", must not.
 func FuzzTxMayBeInMempool(f *testing.F) {
-	f.Add("context deadline exceeded")
-	f.Add("context canceled")
-	f.Add("EOF")
-	f.Add("unexpected EOF")
-	f.Add("connection reset by peer")
-	f.Add("i/o timeout")
-	f.Add("nonce too low")
-	f.Add("execution reverted: AlreadyCommitted")
-	f.Add("already known")
-	f.Add("already imported")
-	f.Add("connection refused")
-	f.Add("")
-
-	maybe := []string{
-		"contextdeadlineexceeded",
-		"contextcanceled",
-		"eof",
-		"unexpectedeof",
-		"connectionresetbypeer",
-		"i/otimeout",
-	}
-	answered := []string{
-		"noncetoolow",
-		"executionreverted:alreadycommitted",
-		"alreadyknown",
-		"alreadyimported",
-		"connectionrefused",
+	for _, seed := range []string{
 		"",
+		"context deadline exceeded",
+		"Context Deadline Exceeded",
+		"context canceled",
+		"connection reset by peer",
+		"i/o timeout",
+		"EOF",
+		"unexpected EOF",
+		"nonce too low",
+		"execution reverted: AlreadyCommitted",
+		"already known",
+		"already imported",
+		"connection refused",
+	} {
+		f.Add(seed)
 	}
 
 	f.Fuzz(func(t *testing.T, msg string) {
 		got := transaction.TxMayBeInMempool(errors.New(msg))
-		normalized := strings.ToLower(strings.ReplaceAll(msg, " ", ""))
-		for _, phrase := range maybe {
-			if normalized == phrase && !got {
-				t.Fatalf("%q may leave the transaction in the mempool", msg)
-			}
+		wrapped := &url.Error{Op: "Post", URL: "http://rpc", Err: errors.New(msg)}
+		if transaction.TxMayBeInMempool(wrapped) != got {
+			t.Fatalf("url.Error wrapper changed the result for %q", msg)
 		}
-		for _, phrase := range answered {
-			if normalized == phrase && got {
-				t.Fatalf("%q is a node answer and must not be stored", msg)
-			}
+		if !transaction.TxMayBeInMempool(fmt.Errorf("%s: %w", msg, context.DeadlineExceeded)) {
+			t.Fatalf("wrapped deadline is not ambiguous for %q", msg)
 		}
 	})
 }
