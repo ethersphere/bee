@@ -119,6 +119,9 @@ func (t *transactionService) calculateResendFees(ctx context.Context, current *S
 		}
 		return maxFee(gasFeeCap, current.GasFeeCap), maxFee(gasTipCap, current.GasTipCap), nil
 	}
+	if current.GasFeeCap == nil || current.GasTipCap == nil {
+		return nil, nil, ErrMissingFees
+	}
 	bump := func(v *big.Int) *big.Int {
 		return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(v), big.NewInt(int64(100+bumpPercent))), big.NewInt(100))
 	}
@@ -188,13 +191,14 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 
 	chain, err := t.getResendChain(stored.Nonce)
 	current := stored
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, err
-		}
-	} else if !chain.contains(txHash) {
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		// The nonce has no owner record.
+	case err != nil:
+		return nil, err
+	case !chain.contains(txHash):
 		return nil, ErrNotInResendChain
-	} else if chain.CurrentHash != txHash {
+	case chain.CurrentHash != txHash:
 		current, err = t.StoredTransaction(chain.CurrentHash)
 		if err != nil {
 			return nil, fmt.Errorf("current transaction %s: %w", chain.CurrentHash, err)
@@ -241,9 +245,23 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	}
 
 	newHash := signedTx.Hash()
+	storedTx := StoredTransaction{
+		To:          signedTx.To(),
+		Data:        signedTx.Data(),
+		GasPrice:    signedTx.GasPrice(),
+		GasLimit:    signedTx.Gas(),
+		GasTipBoost: current.GasTipBoost,
+		GasTipCap:   signedTx.GasTipCap(),
+		GasFeeCap:   signedTx.GasFeeCap(),
+		Value:       signedTx.Value(),
+		Nonce:       signedTx.Nonce(),
+		Created:     time.Now().Unix(),
+		Description: current.Description,
+		FeePriority: current.FeePriority,
+	}
 	if chain == nil {
 		if newHash != txHash {
-			if err := t.storeResend(signedTx, current); err != nil {
+			if err := t.store.Put(storedTransactionKey(newHash), storedTx); err != nil {
 				return nil, err
 			}
 			chain = &ResentTransaction{
@@ -259,7 +277,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		}
 	} else {
 		if !chain.contains(newHash) {
-			if err := t.storeResend(signedTx, current); err != nil {
+			if err := t.store.Put(storedTransactionKey(newHash), storedTx); err != nil {
 				return nil, err
 			}
 		}
@@ -275,27 +293,6 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return nil, err
 	}
 	return chain, nil
-}
-
-func (t *transactionService) storeResend(signedTx *types.Transaction, current *StoredTransaction) error {
-	err := t.store.Put(storedTransactionKey(signedTx.Hash()), StoredTransaction{
-		To:          signedTx.To(),
-		Data:        signedTx.Data(),
-		GasPrice:    signedTx.GasPrice(),
-		GasLimit:    signedTx.Gas(),
-		GasTipBoost: current.GasTipBoost,
-		GasTipCap:   signedTx.GasTipCap(),
-		GasFeeCap:   signedTx.GasFeeCap(),
-		FeePriority: current.FeePriority,
-		Value:       signedTx.Value(),
-		Nonce:       signedTx.Nonce(),
-		Created:     time.Now().Unix(),
-		Description: current.Description,
-	})
-	if err != nil {
-		return fmt.Errorf("store resent transaction: %w", err)
-	}
-	return nil
 }
 
 // PendingTransactionByHash returns the newest hash of txHash's resend chain that the
