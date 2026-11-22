@@ -97,7 +97,7 @@ type (
 	SwapCashoutStatusResult           = swapCashoutStatusResult
 	TransactionInfo                   = transactionInfo
 	TransactionPendingList            = transactionPendingList
-	TransactionHashResponse           = transactionHashResponse
+	TransactionResendResponse         = transactionResendResponse
 	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
@@ -120,18 +120,21 @@ type (
 )
 
 var (
-	ErrCantBalance           = errCantBalance
-	ErrCantBalances          = errCantBalances
-	HttpErrGetAccountingInfo = httpErrGetAccountingInfo
-	ErrNoBalance             = errNoBalance
-	ErrCantSettlementsPeer   = errCantSettlementsPeer
-	ErrCantSettlements       = errCantSettlements
-	ErrChequebookBalance     = errChequebookBalance
-	ErrInvalidAddress        = errInvalidAddress
-	ErrUnknownTransaction    = errUnknownTransaction
-	ErrCantGetTransaction    = errCantGetTransaction
-	ErrCantResendTransaction = errCantResendTransaction
-	ErrAlreadyImported       = errAlreadyImported
+	ErrCantBalance            = errCantBalance
+	ErrCantBalances           = errCantBalances
+	HttpErrGetAccountingInfo  = httpErrGetAccountingInfo
+	ErrNoBalance              = errNoBalance
+	ErrCantSettlementsPeer    = errCantSettlementsPeer
+	ErrCantSettlements        = errCantSettlements
+	ErrChequebookBalance      = errChequebookBalance
+	ErrUnknownTransaction     = errUnknownTransaction
+	ErrCantGetTransaction     = errCantGetTransaction
+	ErrCantResendTransaction  = errCantResendTransaction
+	ErrAlreadyImported        = errAlreadyImported
+	ErrReplacementUnderpriced = errReplacementUnderpriced
+	ErrNonceUsed              = errNonceUsed
+	ErrNotInResendChain       = errNotInResendChain
+	ErrInvalidFeeBump         = errInvalidFeeBump
 )
 
 type (

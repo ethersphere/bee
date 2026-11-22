@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.3.0
+  version: 8.4.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2109,7 +2109,7 @@ paths:
         default:
           description: Default response
     post:
-      summary: Rebroadcast a transaction
+      summary: Resend a transaction with new fees
       parameters:
         - in: path
           name: hash
@@ -2117,23 +2117,29 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
           required: true
           description: Hash of the transaction
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasFeeBumpPercentParameter"
       tags:
         - Transaction
       responses:
         "200":
-          description: Hash of the transaction
+          description: Hash of the resent transaction and the hashes it replaces
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/TransactionResendResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "409":
+          $ref: "SwarmCommon.yaml#/components/responses/409"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
     delete:
       summary: Cancel existing transaction
+      description: The cancellation outbids the latest resend of the transaction nonce.
       parameters:
         - in: path
           name: hash
@@ -2153,6 +2159,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "409":
+          $ref: "SwarmCommon.yaml#/components/responses/409"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:

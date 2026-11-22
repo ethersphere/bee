@@ -18,15 +18,17 @@ import (
 )
 
 type transactionServiceMock struct {
-	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
-	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
-	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
-	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
-	pendingTransactions  func() ([]common.Hash, error)
-	resendTransaction    func(ctx context.Context, txHash common.Hash) error
-	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
-	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
-	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
+	send                     func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
+	waitForReceipt           func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
+	watchSentTransaction     func(txHash common.Hash) (chan types.Receipt, chan error, error)
+	call                     func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
+	pendingTransactions      func() ([]common.Hash, error)
+	resendTransaction        func(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResentTransaction, error)
+	transactionReceipt       func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	pendingTransactionByHash func(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)
+	storedTransaction        func(txHash common.Hash) (*transaction.StoredTransaction, error)
+	cancelTransaction        func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	transactionFee           func(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -98,11 +100,25 @@ func (m *transactionServiceMock) PendingTransactions() ([]common.Hash, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) ResendTransaction(ctx context.Context, txHash common.Hash) error {
+func (m *transactionServiceMock) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResentTransaction, error) {
 	if m.resendTransaction != nil {
-		return m.resendTransaction(ctx, txHash)
+		return m.resendTransaction(ctx, txHash, bumpPercent)
 	}
-	return errors.New("not implemented")
+	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) PendingTransactionByHash(ctx context.Context, txHash common.Hash) (common.Hash, bool, error) {
+	if m.pendingTransactionByHash != nil {
+		return m.pendingTransactionByHash(ctx, txHash)
+	}
+	return common.Hash{}, false, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	if m.transactionReceipt != nil {
+		return m.transactionReceipt(ctx, txHash)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transaction.StoredTransaction, error) {
@@ -180,9 +196,21 @@ func WithPendingTransactionsFunc(f func() ([]common.Hash, error)) Option {
 	})
 }
 
-func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) error) Option {
+func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResentTransaction, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.resendTransaction = f
+	})
+}
+
+func WithPendingTransactionByHashFunc(f func(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.pendingTransactionByHash = f
+	})
+}
+
+func WithTransactionReceiptFunc(f func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.transactionReceipt = f
 	})
 }
 

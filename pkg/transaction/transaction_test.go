@@ -1204,7 +1204,7 @@ func TestTransactionResend(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, transactionService)
 
-	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
+	_, err = transactionService.ResendTransaction(context.Background(), signedTx.Hash(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1255,8 +1255,8 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		fee := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), minimumTip)
-		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), minimumTip), big.NewInt(100))
-		gasFeeCap := new(big.Int).Add(fee, gasTipCap)
+		gasTipCap := minimumTip
+		gasFeeCap := fee
 
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -1278,6 +1278,9 @@ func TestTransactionCancel(t *testing.T) {
 					return nil
 				}),
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					if boostPercent != transaction.DefaultTipBoostPercent {
+						t.Fatalf("boost = %d", boostPercent)
+					}
 					return fee, minimumTip, nil
 				}),
 			),

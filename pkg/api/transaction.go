@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,10 +21,14 @@ import (
 )
 
 const (
-	errCantGetTransaction    = "cannot get transaction"
-	errUnknownTransaction    = "unknown transaction"
-	errAlreadyImported       = "already imported"
-	errCantResendTransaction = "can't resend transaction"
+	errCantGetTransaction     = "cannot get transaction"
+	errUnknownTransaction     = "unknown transaction"
+	errAlreadyImported        = "already imported"
+	errCantResendTransaction  = "can't resend transaction"
+	errReplacementUnderpriced = "replacement transaction underpriced; resend with a higher Gas-Fee-Bump-Percent (minimum 10)"
+	errNonceUsed              = "nonce already used; the transaction or a replacement is already mined"
+	errNotInResendChain       = "another transaction uses this nonce; use its latest hash"
+	errInvalidFeeBump         = "Gas-Fee-Bump-Percent must be an integer between 10 and 100"
 )
 
 type transactionInfo struct {
@@ -134,6 +139,12 @@ type transactionHashResponse struct {
 	TransactionHash common.Hash `json:"transactionHash"`
 }
 
+type transactionResendResponse struct {
+	TransactionHash           common.Hash   `json:"transactionHash"`
+	Nonce                     uint64        `json:"nonce"`
+	PreviousTransactionHashes []common.Hash `json:"previousTransactionHashes"`
+}
+
 func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_transaction").Build()
 
@@ -145,21 +156,44 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err := s.transaction.ResendTransaction(r.Context(), paths.Hash)
+	bumpPercent := 0
+	if v := r.Header.Get(GasFeeBumpPercentHeader); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 10 || n > 100 {
+			logger.Debug("invalid fee bump header", "value", v)
+			jsonhttp.BadRequest(w, errInvalidFeeBump)
+			return
+		}
+		bumpPercent = n
+	}
+
+	resent, err := s.transaction.ResendTransaction(r.Context(), paths.Hash, bumpPercent)
 	if err != nil {
 		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash, "error", err)
-		if errors.Is(err, transaction.ErrUnknownTransaction) {
+		switch {
+		case errors.Is(err, transaction.ErrUnknownTransaction):
 			jsonhttp.NotFound(w, errUnknownTransaction)
-		} else if errors.Is(err, transaction.ErrAlreadyImported) {
+		case errors.Is(err, transaction.ErrAlreadyImported):
 			jsonhttp.BadRequest(w, errAlreadyImported)
-		} else {
+		case errors.Is(err, transaction.ErrReplacementUnderpriced):
+			jsonhttp.Conflict(w, errReplacementUnderpriced)
+		case errors.Is(err, transaction.ErrNonceUsed):
+			jsonhttp.Conflict(w, errNonceUsed)
+		case errors.Is(err, transaction.ErrNotInResendChain):
+			jsonhttp.Conflict(w, errNotInResendChain)
+		default:
 			jsonhttp.InternalServerError(w, errCantResendTransaction)
 		}
 		return
 	}
 
-	jsonhttp.OK(w, transactionHashResponse{
-		TransactionHash: paths.Hash,
+	if resent.PrevHashes == nil {
+		resent.PrevHashes = []common.Hash{}
+	}
+	jsonhttp.OK(w, transactionResendResponse{
+		TransactionHash:           resent.CurrentHash,
+		Nonce:                     resent.Nonce,
+		PreviousTransactionHashes: resent.PrevHashes,
 	})
 }
 
@@ -196,6 +230,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
 			jsonhttp.BadRequest(w, errAlreadyImported)
+		} else if errors.Is(err, transaction.ErrNotInResendChain) {
+			jsonhttp.Conflict(w, errNotInResendChain)
 		} else {
 			jsonhttp.InternalServerError(w, errCantResendTransaction)
 		}

@@ -680,7 +680,6 @@ func NewBee(
 
 		chequeStore, cashoutService = initChequeStoreCashout(
 			stateStore,
-			chainBackend,
 			chequebookFactory,
 			chainID,
 			overlayEthAddress,
