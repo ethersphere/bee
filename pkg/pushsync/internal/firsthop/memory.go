@@ -34,6 +34,11 @@ const (
 	// sweepInterval is the shortest time between two removals of idle records
 	// in all neighborhoods.
 	sweepInterval = validIdle
+	// maxKeyBits is the largest number of address bits that tell two
+	// neighborhoods apart. It limits the memory to 1<<maxKeyBits
+	// neighborhoods: at a larger radius the neighborhoods that share these
+	// bits share their records.
+	maxKeyBits = 14
 )
 
 // record is the last result of one first hop for one neighborhood.
@@ -67,7 +72,7 @@ func (r *record) idle(now time.Time) bool {
 }
 
 // neighborhood holds the records of the chunk addresses that share the first
-// radius bits.
+// radius bits, at most maxKeyBits.
 type neighborhood struct {
 	peers     map[string]*record
 	lastProbe time.Time
@@ -311,8 +316,10 @@ func (m *Memory) sweep(now time.Time) {
 	}
 }
 
-// neighborhoodKey returns the first radius bits of the chunk address.
+// neighborhoodKey returns the first radius bits of the chunk address, at most
+// maxKeyBits.
 func neighborhoodKey(radius uint8, chunk swarm.Address) string {
+	radius = min(radius, maxKeyBits)
 	b := chunk.Bytes()
 	if int(radius) >= len(b)*8 {
 		return string(b)

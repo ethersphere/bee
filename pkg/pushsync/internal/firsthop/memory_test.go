@@ -304,6 +304,11 @@ func TestNeighborhood(t *testing.T) {
 		{"radius 8, same byte", 8, addr(0x6b, 0xff), true},
 		{"radius 8, bit 8 differs", 8, addr(0x6a, 0x00), false},
 		{"radius 0", 0, addr(0xff, 0xff), true},
+		// the key has at most 14 bits
+		{"radius 14, bit 14 differs", 14, addr(0x6b, 0x04), false},
+		{"radius 16, bit 14 differs", 16, addr(0x6b, 0x04), false},
+		{"radius 16, bit 15 differs", 16, addr(0x6b, 0x02), true},
+		{"radius 16, bit 16 differs", 16, addr(0x6b, 0x01), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
