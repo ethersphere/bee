@@ -37,7 +37,9 @@ type metrics struct {
 	FirstHopNeighborhoods   prometheus.GaugeFunc
 }
 
-func newMetrics(hops *hopMemory) metrics {
+// newMetrics takes the function that returns the number of neighborhoods and
+// the number of records of the first-hop memory.
+func newMetrics(firstHopSize func() (neighborhoods, records int)) metrics {
 	subsystem := "pushsync"
 
 	return metrics{
@@ -186,7 +188,7 @@ func newMetrics(hops *hopMemory) metrics {
 			Name:      "first_hop_records",
 			Help:      "Number of records in the first-hop memory of an origin.",
 		}, func() float64 {
-			_, records := hops.size()
+			_, records := firstHopSize()
 			return float64(records)
 		}),
 		FirstHopNeighborhoods: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -195,8 +197,8 @@ func newMetrics(hops *hopMemory) metrics {
 			Name:      "first_hop_neighborhoods",
 			Help:      "Number of neighborhoods in the first-hop memory of an origin.",
 		}, func() float64 {
-			hoods, _ := hops.size()
-			return float64(hoods)
+			neighborhoods, _ := firstHopSize()
+			return float64(neighborhoods)
 		}),
 	}
 }

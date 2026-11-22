@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
+	"github.com/ethersphere/bee/v2/pkg/pushsync/internal/firsthop"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
@@ -98,7 +98,7 @@ type PushSync struct {
 	signer                  crypto.Signer
 	fullNode                bool
 	errSkip                 *skippeers.List
-	hops                    *hopMemory
+	firstHops               *firsthop.Memory // receipt results of the first hops of an origin
 	stabilizer              stabilization.Subscriber
 	overDraftRefreshLimiter *rate.Limiter
 }
@@ -129,7 +129,7 @@ func New(
 	tracer *tracing.Tracer,
 	stabilizer stabilization.Subscriber,
 ) *PushSync {
-	hops := newHopMemory(time.Now)
+	firstHops := firsthop.New(time.Now)
 	ps := &PushSync{
 		address:                 address,
 		radius:                  radius,
@@ -144,11 +144,11 @@ func New(
 		logger:                  logger.WithName(loggerName).Register(),
 		accounting:              accounting,
 		pricer:                  pricer,
-		metrics:                 newMetrics(hops),
+		metrics:                 newMetrics(firstHops.Size),
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
-		hops:                    hops,
+		firstHops:               firstHops,
 		stabilizer:              stabilizer,
 		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
@@ -376,12 +376,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		parallelForwards     = maxMultiplexForwards
 		shallowReceiptResult *pb.Receipt
 		shallowReceiptPO     uint8
-		probed               bool
-		hopSources           map[string]hopSource // first hops of an origin
+		op                   *originPush // first hops of an origin
 	)
 
 	if origin {
-		hopSources = make(map[string]hopSource)
+		op = ps.newOriginPush(ch.Address())
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
@@ -434,12 +433,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 
 			var (
-				peer   swarm.Address
-				err    error
-				source hopSource
+				peer swarm.Address
+				err  error
 			)
 			if origin {
-				peer, source, err = ps.originPeer(ch.Address(), rad, fullSkip, &probed)
+				peer, err = op.next(rad, fullSkip)
 			} else {
 				peer, err = ps.closestPeer(ch.Address(), origin, fullSkip)
 			}
@@ -524,9 +522,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				continue
 			}
 			skip.Forever(idAddress, peer)
-			if origin {
-				hopSources[peer.ByteString()] = source
-			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
@@ -557,12 +552,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				// budget; surface ErrShallowReceipt only when nothing better lands.
 				switch po, err := ps.checkReceipt(result.receipt, result.peer, rad); {
 				case err == nil:
-					ps.hops.recordValid(rad, ch.Address(), result.peer)
-					ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "valid").Inc()
+					op.record(rad, result.peer, nil)
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
-					ps.hops.recordShallow(rad, ch.Address(), result.peer)
-					ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "shallow").Inc()
 					if shallowReceiptResult == nil || po > shallowReceiptPO {
 						shallowReceiptResult = result.receipt
 						shallowReceiptPO = po
@@ -573,10 +565,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				}
 			}
 
-			// An error other than a shallow receipt removes the record.
-			if origin && !errors.Is(result.err, ErrShallowReceipt) {
-				ps.hops.forget(rad, ch.Address(), result.peer)
-				ps.metrics.FirstHop.WithLabelValues(string(hopSources[result.peer.ByteString()]), "error").Inc()
+			// A shallow receipt starts a pause of the first hop; another
+			// error removes its record.
+			if origin {
+				op.record(rad, result.peer, result.err)
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
@@ -593,97 +585,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		return shallowReceiptResult, ErrShallowReceipt
 	}
 	return nil, ErrNoPush
-}
-
-// hopSource says why an origin picked a first hop.
-type hopSource string
-
-const (
-	hopSourceProbe   hopSource = "probe"
-	hopSourceValid   hopSource = "known_valid"
-	hopSourceUnknown hopSource = "unknown"
-	hopSourcePaused  hopSource = "paused"
-)
-
-// originPeer picks the next first hop for an origin:
-//  1. a probe, at most once per call and per hopProbeInterval: a peer closer
-//     to the chunk than every peer with a valid record;
-//  2. the closest peer with a valid record;
-//  3. the closest peer that is not in a shallow pause;
-//  4. the peer whose shallow pause ends first, unless the origin can store
-//     the chunk itself.
-func (ps *PushSync) originPeer(chunkAddress swarm.Address, rad uint8, fullSkip []swarm.Address, probed *bool) (peer swarm.Address, source hopSource, err error) {
-	valid, blocked, probeDue := ps.hops.view(rad, chunkAddress)
-
-	// Remove the valid records of peers that are no longer connected.
-	if len(valid) > 0 {
-		connected := ps.connectedOf(valid)
-		for _, p := range valid {
-			if !swarm.ContainsAddress(connected, p) {
-				ps.hops.forget(rad, chunkAddress, p)
-			}
-		}
-		valid = connected
-	}
-
-	best := swarm.ZeroAddress
-	for _, p := range valid {
-		if swarm.ContainsAddress(fullSkip, p) {
-			continue
-		}
-		if best.IsZero() {
-			best = p
-			continue
-		}
-		if closer, _ := p.Closer(chunkAddress, best); closer {
-			best = p
-		}
-	}
-
-	if !best.IsZero() {
-		if probeDue && !*probed {
-			candidate, err := ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked, valid))
-			if err == nil {
-				if closer, _ := candidate.Closer(chunkAddress, best); closer && ps.hops.claimProbe(rad, chunkAddress) {
-					*probed = true
-					return candidate, hopSourceProbe, nil
-				}
-			}
-		}
-		return best, hopSourceValid, nil
-	}
-
-	peer, err = ps.closestPeer(chunkAddress, true, slices.Concat(fullSkip, blocked))
-	if !errors.Is(err, topology.ErrNotFound) || len(blocked) == 0 {
-		return peer, hopSourceUnknown, err
-	}
-	if ps.fullNode && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
-		return peer, hopSourceUnknown, err
-	}
-
-	// Every peer left is in a shallow pause. Waiting would hold a push slot
-	// of the pusher, so send through the connected peer whose pause ends first.
-	connected := ps.connectedOf(blocked)
-	for _, p := range blocked {
-		if swarm.ContainsAddress(connected, p) && !swarm.ContainsAddress(fullSkip, p) {
-			return p, hopSourcePaused, nil
-		}
-	}
-
-	return peer, hopSourceUnknown, err
-}
-
-// connectedOf returns the peers that are connected, in one pass over the
-// connected peers.
-func (ps *PushSync) connectedOf(peers []swarm.Address) []swarm.Address {
-	var connected []swarm.Address
-	_ = ps.topologyDriver.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
-		if swarm.ContainsAddress(peers, p) {
-			connected = append(connected, p)
-		}
-		return len(connected) == len(peers), false, nil
-	}, topology.Select{})
-	return connected
 }
 
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
