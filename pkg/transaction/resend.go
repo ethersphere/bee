@@ -106,9 +106,6 @@ func (t *transactionService) getResendChain(nonce uint64) (*ResentTransaction, e
 	var chain ResentTransaction
 	err := t.store.Get(resendTxKey(nonce), &chain)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, err
-		}
 		return nil, fmt.Errorf("load resend chain: %w", err)
 	}
 	chain.Nonce = nonce
@@ -117,11 +114,9 @@ func (t *transactionService) getResendChain(nonce uint64) (*ResentTransaction, e
 
 // knownHashes returns txHash and, when txHash belongs to a resend chain, every other
 // hash of that chain, newest first. The chain may be a superseded one.
+// txHash must be a transaction stored by this service.
 func (t *transactionService) knownHashes(txHash common.Hash) ([]common.Hash, error) {
 	stored, err := t.StoredTransaction(txHash)
-	if errors.Is(err, ErrUnknownTransaction) {
-		return []common.Hash{txHash}, nil
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -198,21 +193,10 @@ func raiseByPercent(v *big.Int, percent int) *big.Int {
 	return raised
 }
 
-// ensurePending marks txHash pending and watches it.
-func (t *transactionService) ensurePending(txHash common.Hash) error {
-	if err := t.store.Put(pendingTransactionKey(txHash), struct{}{}); err != nil {
-		return fmt.Errorf("store pending transaction: %w", err)
-	}
-	t.waitForPendingTx(txHash)
-	return nil
-}
-
 // ResendTransaction broadcasts a previously sent transaction again with the same nonce
 // and content and new fees. txHash may be any hash of the resend chain of its nonce.
 // A zero bumpPercent uses max(market, current fees × 1.1). A positive bumpPercent uses
 // max(market, current fees × (1 + bumpPercent/100)).
-// A node answer about the transaction is returned as an error. When the transaction
-// may be in the mempool, it is stored, watched and added to the chain.
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResendResult, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -301,14 +285,15 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return nil, fmt.Errorf("store resend chain: %w", err)
 	}
 
-	if err := t.ensurePending(newHash); err != nil {
-		return nil, err
+	if err := t.store.Put(pendingTransactionKey(newHash), struct{}{}); err != nil {
+		return nil, fmt.Errorf("store pending transaction: %w", err)
 	}
+	t.waitForPendingTx(newHash)
 	return chain.result(), nil
 }
 
 // KnownTransaction returns the newest hash of txHash's chain that the node has
-// answered for. The boolean is true when that hash is still in the mempool.
+// answered for. The boolean is true when that any of hashes of txHash's chain is still in the mempool.
 // When the node knows none of them, the newest hash is returned with ethereum.NotFound.
 func (t *transactionService) KnownTransaction(ctx context.Context, txHash common.Hash) (common.Hash, bool, error) {
 	hashes, err := t.knownHashes(txHash)
@@ -333,6 +318,7 @@ func (t *transactionService) KnownTransaction(ctx context.Context, txHash common
 // TransactionReceipt returns the receipt of the transaction. When txHash belongs to a
 // resend chain, the receipt of whichever hash of the chain was mined is returned.
 // It returns ethereum.NotFound when none of them is mined.
+// A hash this service did not store is returned as ErrUnknownTransaction.
 func (t *transactionService) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	hashes, err := t.knownHashes(txHash)
 	if err != nil {

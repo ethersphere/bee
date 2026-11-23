@@ -122,8 +122,6 @@ type Service interface {
 	// ResendTransaction broadcasts a previously sent transaction again with the same nonce and content and new fees.
 	ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResendResult, error)
 	// KnownTransaction returns the newest hash of txHash's chain that the node has answered for.
-	// The boolean is true when that hash is still in the mempool.
-	// When the node knows none of them, the newest hash is returned with ethereum.NotFound.
 	KnownTransaction(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)
 	// TransactionReceipt returns the receipt of the transaction.
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
@@ -549,8 +547,6 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	return maxNonce + 1, nil
 }
 
-// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
-// This is only valid for a transaction sent by this service.
 func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	receiptC, errC, err := t.WatchSentTransaction(txHash)
 	if err != nil {

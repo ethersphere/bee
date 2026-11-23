@@ -395,6 +395,31 @@ func TestResentHashMinedAfterNonceReuse(t *testing.T) {
 	}
 }
 
+func TestUnknownHashIsNotLookedUp(t *testing.T) {
+	t.Parallel()
+
+	env := newResendEnv(t, 7, "postage", []byte{1}, false)
+	unknown := common.HexToHash("0xabc")
+	env.receiptErr = errors.New("node was asked")
+	env.byHash = func(common.Hash) (*types.Transaction, bool, error) {
+		t.Fatal("node was asked for an unknown hash")
+		return nil, false, nil
+	}
+
+	_, _, err := env.svc.KnownTransaction(context.Background(), unknown)
+	if !errors.Is(err, transaction.ErrUnknownTransaction) {
+		t.Fatalf("known got %v", err)
+	}
+	_, err = env.svc.TransactionReceipt(context.Background(), unknown)
+	if !errors.Is(err, transaction.ErrUnknownTransaction) {
+		t.Fatalf("receipt got %v", err)
+	}
+	_, err = env.svc.TransactionFee(context.Background(), unknown)
+	if !errors.Is(err, transaction.ErrUnknownTransaction) {
+		t.Fatalf("fee got %v", err)
+	}
+}
+
 func TestKnownTransaction(t *testing.T) {
 	t.Parallel()
 
