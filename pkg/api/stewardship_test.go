@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/steward/mock"
@@ -80,6 +82,56 @@ func TestStewardship(t *testing.T) {
 			}),
 		)
 	})
+}
+
+// bucketFullSteward is a steward whose re-upload runs into a full collision
+// bucket.
+type bucketFullSteward struct {
+	mock.Steward
+}
+
+func (s *bucketFullSteward) Reupload(context.Context, swarm.Address, postage.Stamper, redundancy.Level) error {
+	return fmt.Errorf("stamp chunk: %w", postage.ErrBucketFull)
+}
+
+// savesCountingPost counts how often the issuer save function is called.
+type savesCountingPost struct {
+	postage.Service
+	saves atomic.Int32
+}
+
+func (p *savesCountingPost) GetStampIssuer(id []byte) (*postage.StampIssuer, func() error, error) {
+	issuer, _, err := p.Service.GetStampIssuer(id)
+	return issuer, func() error {
+		p.saves.Add(1)
+		return nil
+	}, err
+}
+
+func TestStewardshipBucketFull(t *testing.T) {
+	t.Parallel()
+
+	post := &savesCountingPost{Service: mockpost.New(mockpost.WithAcceptAll())}
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:  mockstorer.New(),
+		Logger:  log.Noop,
+		Steward: &bucketFullSteward{},
+		Post:    post,
+	})
+
+	jsonhttptest.Request(t, client, http.MethodPut, "/v1/stewardship/"+swarm.RandAddress(t).String(), http.StatusPaymentRequired,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "aa"),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "batch is overissued",
+			Code:    http.StatusPaymentRequired,
+		}),
+	)
+
+	// chunks stamped before the failure have used up stamp indices, so the
+	// issuer must be saved even though the re-upload failed
+	if got := post.saves.Load(); got != 1 {
+		t.Fatalf("issuer saves: want 1, got %d", got)
+	}
 }
 
 type localRetriever struct {
