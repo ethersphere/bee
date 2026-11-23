@@ -13,6 +13,7 @@
 package firsthop
 
 import (
+	"encoding/binary"
 	"slices"
 	"sync"
 	"time"
@@ -91,7 +92,7 @@ type Memory struct {
 	mtx           sync.Mutex // guards the fields below
 	radius        uint8
 	radiusSet     bool // false until the first use of the memory
-	neighborhoods map[string]*neighborhood
+	neighborhoods map[uint16]*neighborhood
 	lastSweep     time.Time
 }
 
@@ -99,7 +100,7 @@ type Memory struct {
 func New(now func() time.Time) *Memory {
 	return &Memory{
 		now:           now,
-		neighborhoods: make(map[string]*neighborhood),
+		neighborhoods: make(map[uint16]*neighborhood),
 	}
 }
 
@@ -279,7 +280,7 @@ func (m *Memory) holdsRadius(radius uint8) bool {
 // neighborhood returns the neighborhood of the key and makes it when the
 // memory does not have it.
 // Must be called with the lock held.
-func (m *Memory) neighborhood(key string) *neighborhood {
+func (m *Memory) neighborhood(key uint16) *neighborhood {
 	n := m.neighborhoods[key]
 	if n == nil {
 		n = &neighborhood{peers: make(map[string]*record)}
@@ -291,7 +292,7 @@ func (m *Memory) neighborhood(key string) *neighborhood {
 // dropEmpty removes the neighborhood when it has no records and its last
 // probe no longer limits the next one.
 // Must be called with the lock held.
-func (m *Memory) dropEmpty(key string, n *neighborhood, now time.Time) {
+func (m *Memory) dropEmpty(key uint16, n *neighborhood, now time.Time) {
 	if len(n.peers) == 0 && n.probeDue(now) {
 		delete(m.neighborhoods, key)
 	}
@@ -317,19 +318,12 @@ func (m *Memory) sweep(now time.Time) {
 }
 
 // neighborhoodKey returns the first radius bits of the chunk address, at most
-// maxKeyBits.
-func neighborhoodKey(radius uint8, chunk swarm.Address) string {
-	radius = min(radius, maxKeyBits)
+// maxKeyBits, as a number. A memory holds the records of one radius, so the
+// number tells the neighborhoods apart.
+func neighborhoodKey(radius uint8, chunk swarm.Address) uint16 {
 	b := chunk.Bytes()
-	if int(radius) >= len(b)*8 {
-		return string(b)
+	if len(b) < 2 {
+		return 0
 	}
-	n, rem := int(radius/8), radius%8
-	if rem == 0 {
-		return string(b[:n])
-	}
-	key := make([]byte, n+1)
-	copy(key, b[:n])
-	key[n] = b[n] & (0xff << (8 - rem))
-	return string(key)
+	return binary.BigEndian.Uint16(b) >> (16 - min(radius, maxKeyBits))
 }
