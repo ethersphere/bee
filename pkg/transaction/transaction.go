@@ -61,12 +61,13 @@ const (
 	// cancellationDescriptionSuffix marks a stored cancellation. CancelTransaction appends it.
 	cancellationDescriptionSuffix = " (cancellation)"
 
-	DefaultGasLimit        = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
-	DefaultTipBoostPercent = 25
-	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
-	MinGasLimit            = 21_000     // Minimum gas for any transaction
-	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
-	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
+	DefaultGasLimit           = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
+	MinReplacementBumpPercent = 15
+	DefaultTipBoostPercent    = 25
+	MaxGasLimit               = 10_000_000 // Maximum allowed gas limit to prevent excessive values
+	MinGasLimit               = 21_000     // Minimum gas for any transaction
+	GasBufferPercent          = 33         // Add 33% buffer to estimated gas
+	FallbackGasLimit          = 900_000    // Fallback when estimation fails and no minimum is set
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -668,8 +669,8 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	gasFeeCap := maxFee(marketFee, raiseByPercent(storedTransaction.GasFeeCap, 10))
-	gasTipCap := maxFee(marketTip, raiseByPercent(storedTransaction.GasTipCap, 10))
+	gasFeeCap := maxFee(marketFee, raiseByPercent(storedTransaction.GasFeeCap, MinReplacementBumpPercent))
+	gasTipCap := maxFee(marketTip, raiseByPercent(storedTransaction.GasTipCap, MinReplacementBumpPercent))
 
 	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
 		Nonce:     storedTransaction.Nonce,

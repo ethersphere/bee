@@ -138,7 +138,7 @@ func (t *transactionService) knownHashes(txHash common.Hash) ([]common.Hash, err
 }
 
 // resendFees prices a replacement the node will accept.
-// With no bump the fees are max(market, current × 1.1).
+// With no bump the fees are max(market, current raised by MinReplacementBumpPercent).
 // With a bump they are max(market, current × (1 + bump/100)).
 // A stored transaction without fees cannot be raised: a bump is an error,
 // and no bump uses the market.
@@ -160,7 +160,7 @@ func (t *transactionService) calculateResendFees(ctx context.Context, current *S
 	}
 	percent := bumpPercent
 	if percent <= 0 {
-		percent = 10
+		percent = MinReplacementBumpPercent
 	}
 	return maxFee(marketFee, raiseByPercent(current.GasFeeCap, percent)),
 		maxFee(marketTip, raiseByPercent(current.GasTipCap, percent)), nil
@@ -195,7 +195,7 @@ func raiseByPercent(v *big.Int, percent int) *big.Int {
 
 // ResendTransaction broadcasts a previously sent transaction again with the same nonce
 // and content and new fees. txHash may be any hash of the resend chain of its nonce.
-// A zero bumpPercent uses max(market, current fees × 1.1). A positive bumpPercent uses
+// A zero bumpPercent uses max(market, current fees raised by MinReplacementBumpPercent). A positive bumpPercent uses
 // max(market, current fees × (1 + bumpPercent/100)).
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResendResult, error) {
 	t.lock.Lock()

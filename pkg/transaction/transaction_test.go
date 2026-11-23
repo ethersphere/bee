@@ -1239,8 +1239,9 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		customGasPrice := big.NewInt(5)
-		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTip), big.NewInt(100))
-		gasFeeCap := new(big.Int).Add(gasFee, gasTipCap)
+		scale := int64(transaction.MinReplacementBumpPercent) + 100
+		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(scale), gasTip), big.NewInt(100))
+		gasFeeCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(scale), gasFee), big.NewInt(100))
 
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,

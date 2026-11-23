@@ -32,7 +32,7 @@ const (
 	errSuperseded             = "a newer transaction uses this nonce; this hash can no longer be resent or cancelled"
 	errCancellation           = "this hash is a cancellation; it cannot be resent or cancelled"
 	errNotInResendChain       = "this hash is not the current transaction for its nonce"
-	errInvalidFeeBump         = "Gas-Fee-Bump-Percent must be an integer between 10 and 100"
+	errInvalidFeeBump         = "Gas-Fee-Bump-Percent must be an integer between 15 and 100"
 )
 
 type transactionInfo struct {
@@ -163,7 +163,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 	bumpPercent := 0
 	if v := r.Header.Get(GasFeeBumpPercentHeader); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 10 || n > 100 {
+		if err != nil || n < 15 || n > 100 {
 			logger.Debug("invalid fee bump header", "value", v)
 			jsonhttp.BadRequest(w, errInvalidFeeBump)
 			return

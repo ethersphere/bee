@@ -106,7 +106,7 @@ func TestResendTransaction(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertFees(t, env.lastSent(), 110, 11)
+		assertFees(t, env.lastSent(), 115, 11)
 		pending := env.pending()
 		if len(pending) != 1 || pending[0] != resent.CurrentHash {
 			t.Fatalf("pending = %v", pending)
@@ -622,7 +622,7 @@ func TestResendPullsFeesUpToCurrent(t *testing.T) {
 		if _, err := env.svc.ResendTransaction(context.Background(), env.old, 0); err != nil {
 			t.Fatal(err)
 		}
-		assertFees(t, env.lastSent(), 110, 11)
+		assertFees(t, env.lastSent(), 115, 11)
 	})
 
 	t.Run("small tip rounds up", func(t *testing.T) {
@@ -675,7 +675,7 @@ func TestResendPullsFeesUpToCurrent(t *testing.T) {
 		if !errors.Is(err, transaction.ErrReplacementUnderpriced) {
 			t.Fatalf("got %v", err)
 		}
-		assertFees(t, env.lastSent(), 110, 11)
+		assertFees(t, env.lastSent(), 115, 11)
 		if _, err := env.svc.StoredTransaction(env.lastSent().Hash()); !errors.Is(err, transaction.ErrUnknownTransaction) {
 			t.Fatalf("stored error = %v", err)
 		}
@@ -761,7 +761,7 @@ func TestCancelFees(t *testing.T) {
 		if _, err := env.svc.CancelTransaction(context.Background(), env.old); err != nil {
 			t.Fatal(err)
 		}
-		assertFees(t, env.lastSent(), 221, 2)
+		assertFees(t, env.lastSent(), 231, 2)
 	})
 
 	t.Run("market above current", func(t *testing.T) {
@@ -784,7 +784,7 @@ func TestCancelFees(t *testing.T) {
 		if _, err := env.svc.CancelTransaction(context.Background(), env.old); err != nil {
 			t.Fatal(err)
 		}
-		assertFees(t, env.lastSent(), 110, 6)
+		assertFees(t, env.lastSent(), 115, 6)
 	})
 
 	t.Run("broadcast uses service context", func(t *testing.T) {
@@ -843,7 +843,7 @@ func TestCancelStaysOutsideChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFees(t, env.lastSent(), 132, 13)
+	assertFees(t, env.lastSent(), 138, 13)
 	chain := env.chain(nonce)
 	if chain.CurrentHash != h2 || !slices.Equal(chain.PrevHashes, []common.Hash{env.old}) {
 		t.Fatalf("chain = %+v", chain)

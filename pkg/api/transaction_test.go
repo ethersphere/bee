@@ -326,7 +326,7 @@ func TestTransactionResend(t *testing.T) {
 		)
 	})
 
-	for _, bump := range []int{10, 100} {
+	for _, bump := range []int{15, 100} {
 		t.Run("bump header "+strconv.Itoa(bump), func(t *testing.T) {
 			t.Parallel()
 
@@ -347,7 +347,7 @@ func TestTransactionResend(t *testing.T) {
 		})
 	}
 
-	for _, value := range []string{"9", "101", "abc", "0"} {
+	for _, value := range []string{"10", "14", "9", "101", "abc", "0"} {
 		t.Run("invalid bump "+value, func(t *testing.T) {
 			t.Parallel()
 
