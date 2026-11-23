@@ -55,6 +55,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesOperationResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
 
@@ -122,6 +124,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesOperationResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
 
@@ -1345,6 +1349,8 @@ paths:
           description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
