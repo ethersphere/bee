@@ -406,10 +406,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	retry()
 
-	rad, err := ps.radius()
-	if err != nil {
-		return nil, fmt.Errorf("pushsync: storage radius: %w", err)
-	}
+	// rad is read before each attempt and, for an origin, at each result.
+	var rad uint8
 
 	skip := skippeers.NewList(0)
 	defer skip.Close()
