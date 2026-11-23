@@ -184,7 +184,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 		return nil, fmt.Errorf("nil cumulative payout on cashout action loaded from statestore for chequebook %x: %w", chequebookAddress, ErrNoCheque)
 	}
 
-	txHash, pending, err := s.transactionService.PendingTransactionByHash(ctx, action.TxHash)
+	txHash, pending, err := s.transactionService.KnownTransaction(ctx, action.TxHash)
 	if err != nil {
 		// treat not found as pending
 		if !errors.Is(err, ethereum.NotFound) {

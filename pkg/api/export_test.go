@@ -131,9 +131,13 @@ var (
 	ErrUnknownTransaction     = errUnknownTransaction
 	ErrCantGetTransaction     = errCantGetTransaction
 	ErrCantResendTransaction  = errCantResendTransaction
+	ErrCantCancelTransaction  = errCantCancelTransaction
+	ErrCancelUnderpriced      = errCancelUnderpriced
 	ErrAlreadyImported        = errAlreadyImported
 	ErrReplacementUnderpriced = errReplacementUnderpriced
 	ErrNonceUsed              = errNonceUsed
+	ErrSuperseded             = errSuperseded
+	ErrCancellation           = errCancellation
 	ErrNotInResendChain       = errNotInResendChain
 	ErrInvalidFeeBump         = errInvalidFeeBump
 )

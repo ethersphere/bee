@@ -7,6 +7,7 @@ package transaction
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -48,6 +49,25 @@ func normalizeForMatch(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
 }
 
+// rejectedBroadcast returns the error a caller should see when the node answered
+// the broadcast. It returns nil when the transaction may be in the mempool.
+func rejectedBroadcast(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isAlreadyKnown(err):
+		return ErrAlreadyImported
+	case isReplacementUnderpriced(err):
+		return fmt.Errorf("%w: %w", ErrReplacementUnderpriced, err)
+	case isNonceTooLow(err):
+		return fmt.Errorf("%w: %w", ErrNonceUsed, err)
+	case !txMayBeInMempool(err):
+		return err
+	default:
+		return nil
+	}
+}
+
 // isAlreadyKnown reports whether the node already has this exact transaction.
 func isAlreadyKnown(err error) bool {
 	if err == nil {
@@ -56,17 +76,25 @@ func isAlreadyKnown(err error) bool {
 	msg := normalizeForMatch(err.Error())
 	return strings.Contains(msg, "alreadyknown") ||
 		strings.Contains(msg, "alreadyimported") ||
-		strings.Contains(msg, "knowntransaction")
+		(strings.Contains(msg, "knowntransaction") && !strings.Contains(msg, "unknowntransaction"))
 }
 
 func isReplacementUnderpriced(err error) bool {
-	return err != nil && strings.Contains(normalizeForMatch(err.Error()), "replacementtransactionunderpriced")
+	if err == nil {
+		return false
+	}
+	msg := normalizeForMatch(err.Error())
+	// Nethermind before 1.39 answers ReplacementNotAllowed instead of the geth phrase.
+	// Its FeeTooLowToCompete is a full pool, not a same-nonce replacement.
+	return strings.Contains(msg, "replacementtransactionunderpriced") ||
+		strings.Contains(msg, "replacementnotallowed")
 }
 
 func isNonceTooLow(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Nethermind reports OldNonce as "nonce too low", the same phrase as geth.
 	msg := normalizeForMatch(err.Error())
 	return strings.Contains(msg, "noncetoolow") || strings.Contains(msg, "nonceistoolow")
 }

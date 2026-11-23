@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 9.0.0
+  version: 9.1.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2138,6 +2138,7 @@ paths:
           required: true
           description: Hash of the transaction
         - $ref: "SwarmCommon.yaml#/components/parameters/GasFeeBumpPercentParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       tags:
         - Transaction
       responses:
@@ -2177,6 +2178,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "409":

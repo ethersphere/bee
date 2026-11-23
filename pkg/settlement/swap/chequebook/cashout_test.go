@@ -45,7 +45,10 @@ func TestCashout(t *testing.T) {
 	cashoutService := chequebook.NewCashoutService(
 		store,
 		transactionmock.New(
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return txHash, false, nil
 			}),
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
@@ -140,7 +143,10 @@ func TestCashoutBounced(t *testing.T) {
 	cashoutService := chequebook.NewCashoutService(
 		store,
 		transactionmock.New(
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return txHash, false, nil
 			}),
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
@@ -240,7 +246,10 @@ func TestCashoutStatusReverted(t *testing.T) {
 	cashoutService := chequebook.NewCashoutService(
 		store,
 		transactionmock.New(
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return txHash, false, nil
 			}),
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
@@ -309,7 +318,10 @@ func TestCashoutStatusPending(t *testing.T) {
 		store,
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return txHash, true, nil
 			}),
 		),
@@ -369,7 +381,10 @@ func TestCashoutStatusPendingReplacement(t *testing.T) {
 		store,
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return replacement, true, nil
 			}),
 			transactionmock.WithTransactionReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
@@ -417,7 +432,10 @@ func TestCashoutStatusResent(t *testing.T) {
 	cashoutService := chequebook.NewCashoutService(
 		store,
 		transactionmock.New(
-			transactionmock.WithPendingTransactionByHashFunc(func(context.Context, common.Hash) (common.Hash, bool, error) {
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
 				return minedHash, false, nil
 			}),
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),

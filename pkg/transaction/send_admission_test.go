@@ -65,6 +65,9 @@ func TestTxMayBeInMempool(t *testing.T) {
 		errors.New("already known"),
 		errors.New("already imported"),
 		errors.New("known transaction"),
+		errors.New("replacement transaction underpriced"),
+		errors.New("ReplacementNotAllowed"),
+		errors.New("FeeTooLowToCompete"),
 		errors.New("connection refused"),
 		io.EOF,
 		io.ErrUnexpectedEOF,
@@ -92,107 +95,82 @@ func TestTxMayBeInMempool(t *testing.T) {
 func TestSendStoresTransactionWhenItMayBeInMempool(t *testing.T) {
 	t.Parallel()
 
-	for _, err := range []error{
-		context.DeadlineExceeded,
-		context.Canceled,
-		errors.New("connection reset by peer"),
-		errors.New("i/o timeout"),
-	} {
-		t.Run(err.Error(), func(t *testing.T) {
-			t.Parallel()
+	err := context.DeadlineExceeded
+	var sent *types.Transaction
+	var store storage.StateStorer
+	svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) { store = s })
 
-			var sent *types.Transaction
-			var store storage.StateStorer
-			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) { store = s })
-
-			hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
-			if sendErr != nil {
-				t.Fatalf("expected the hash of a transaction that may be in the mempool, got %v", sendErr)
-			}
-			if sent == nil || hash != sent.Hash() {
-				t.Fatalf("got hash %s, sent %v", hash, sent)
-			}
-			if _, err := svc.StoredTransaction(hash); err != nil {
-				t.Fatal(err)
-			}
-			pending, err := svc.PendingTransactions()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(pending) != 1 || pending[0] != hash {
-				t.Fatalf("pending = %v, want [%s]", pending, hash)
-			}
-			var chain transaction.ResentTransaction
-			if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
-				t.Fatal(err)
-			}
-			if chain.Nonce != 1 || chain.CurrentHash != hash || len(chain.PrevHashes) != 0 {
-				t.Fatalf("chain = %+v", chain)
-			}
-		})
+	hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
+	if sendErr != nil {
+		t.Fatalf("expected the hash of a transaction that may be in the mempool, got %v", sendErr)
+	}
+	if sent == nil || hash != sent.Hash() {
+		t.Fatalf("got hash %s, sent %v", hash, sent)
+	}
+	if _, err := svc.StoredTransaction(hash); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := svc.PendingTransactions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0] != hash {
+		t.Fatalf("pending = %v, want [%s]", pending, hash)
+	}
+	var chain transaction.ResentTransaction
+	if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
+		t.Fatal(err)
+	}
+	if chain.Nonce != 1 || chain.CurrentHash != hash || len(chain.PrevHashes) != 0 {
+		t.Fatalf("chain = %+v", chain)
 	}
 }
 
 func TestSendDropsTransactionWhenNodeRejectsIt(t *testing.T) {
 	t.Parallel()
 
-	for _, err := range []error{
-		errors.New("nonce too low"),
-		errors.New("execution reverted: AlreadyCommitted"),
-		errors.New("insufficient funds for gas * price + value"),
-		errors.New("replacement transaction underpriced"),
-		errors.New("transaction underpriced"),
-		errors.New("already known"),
-		errors.New("already imported"),
-		errors.New("known transaction"),
-		errors.New("EOF"),
-		errors.New("unexpected EOF"),
-	} {
-		t.Run(err.Error(), func(t *testing.T) {
-			t.Parallel()
+	err := errors.New("nonce too low")
+	previous := &transaction.ResentTransaction{
+		Nonce:       1,
+		CurrentHash: common.HexToHash("0x11"),
+		PrevHashes:  []common.Hash{common.HexToHash("0x10")},
+		Superseded:  [][]common.Hash{{common.HexToHash("0xaa")}},
+	}
+	var sent *types.Transaction
+	var store storage.StateStorer
+	svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) {
+		store = s
+		if err := s.Put(transaction.ResendTxKey(1), previous); err != nil {
+			t.Fatal(err)
+		}
+	})
 
-			previous := &transaction.ResentTransaction{
-				Nonce:       1,
-				CurrentHash: common.HexToHash("0x11"),
-				PrevHashes:  []common.Hash{common.HexToHash("0x10")},
-			}
-			var sent *types.Transaction
-			var store storage.StateStorer
-			svc := newAdmissionService(t, err, func(tx *types.Transaction) { sent = tx }, func(s storage.StateStorer) {
-				store = s
-				if err := s.Put(transaction.ResendTxKey(1), previous); err != nil {
-					t.Fatal(err)
-				}
-			})
-
-			hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
-			if sendErr == nil {
-				t.Fatal("expected a fatal broadcast error")
-			}
-			if hash != (common.Hash{}) {
-				t.Fatalf("rejected send returned hash %s", hash)
-			}
-			if sent == nil {
-				t.Fatal("transaction was not broadcast")
-			}
-			if _, storedErr := svc.StoredTransaction(sent.Hash()); !errors.Is(storedErr, transaction.ErrUnknownTransaction) {
-				t.Fatalf("stored error = %v", storedErr)
-			}
-			pending, pendingErr := svc.PendingTransactions()
-			if pendingErr != nil {
-				t.Fatal(pendingErr)
-			}
-			if len(pending) != 0 {
-				t.Fatalf("pending = %v", pending)
-			}
-			var chain transaction.ResentTransaction
-			if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
-				t.Fatal(err)
-			}
-			if chain.CurrentHash != previous.CurrentHash || !slices.Equal(chain.PrevHashes, previous.PrevHashes) || len(chain.Superseded) != 0 {
-				t.Fatalf("chain = %+v", chain)
-			}
-		})
+	hash, sendErr := svc.Send(context.Background(), admissionRequest(), 0)
+	if sendErr == nil {
+		t.Fatal("expected a fatal broadcast error")
+	}
+	if hash != (common.Hash{}) {
+		t.Fatalf("rejected send returned hash %s", hash)
+	}
+	if sent == nil {
+		t.Fatal("transaction was not broadcast")
+	}
+	if _, storedErr := svc.StoredTransaction(sent.Hash()); !errors.Is(storedErr, transaction.ErrUnknownTransaction) {
+		t.Fatalf("stored error = %v", storedErr)
+	}
+	pending, pendingErr := svc.PendingTransactions()
+	if pendingErr != nil {
+		t.Fatal(pendingErr)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("pending = %v", pending)
+	}
+	var chain transaction.ResentTransaction
+	if err := store.Get(transaction.ResendTxKey(1), &chain); err != nil {
+		t.Fatal(err)
+	}
+	if chain.CurrentHash != previous.CurrentHash || !slices.Equal(chain.PrevHashes, previous.PrevHashes) || len(chain.Superseded) != 1 {
+		t.Fatalf("chain = %+v", chain)
 	}
 }
 
@@ -229,39 +207,6 @@ func TestCancelStoresTransactionWhenItMayBeInMempool(t *testing.T) {
 	}
 	if stored.Nonce != 3 {
 		t.Fatalf("nonce = %d", stored.Nonce)
-	}
-}
-
-func TestCancelDropsTransactionWhenNodeRejectsIt(t *testing.T) {
-	t.Parallel()
-
-	svc := newAdmissionService(t, errors.New("nonce too low"), nil, func(store storage.StateStorer) {
-		err := store.Put(transaction.StoredTransactionKey(common.HexToHash("0x22")), transaction.StoredTransaction{
-			Nonce:     4,
-			To:        &admissionRecipient,
-			Value:     big.NewInt(0),
-			GasLimit:  50_000,
-			GasFeeCap: big.NewInt(50),
-			GasTipCap: big.NewInt(5),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	hash, err := svc.CancelTransaction(context.Background(), common.HexToHash("0x22"))
-	if err == nil {
-		t.Fatal("expected the pool rejection")
-	}
-	if hash != (common.Hash{}) {
-		t.Fatalf("rejected cancel returned hash %s", hash)
-	}
-	pending, err := svc.PendingTransactions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 0 {
-		t.Fatalf("pending = %v", pending)
 	}
 }
 

@@ -25,9 +25,13 @@ const (
 	errUnknownTransaction     = "unknown transaction"
 	errAlreadyImported        = "already imported"
 	errCantResendTransaction  = "can't resend transaction"
-	errReplacementUnderpriced = "replacement transaction underpriced; resend with a higher Gas-Fee-Bump-Percent (minimum 10)"
+	errCantCancelTransaction  = "can't cancel transaction"
+	errCancelUnderpriced      = "replacement transaction underpriced"
+	errReplacementUnderpriced = "replacement transaction underpriced; a higher-priced transaction, such as a cancellation, already uses this nonce"
 	errNonceUsed              = "nonce already used; the transaction or a replacement is already mined"
-	errNotInResendChain       = "another transaction uses this nonce; use its latest hash"
+	errSuperseded             = "a newer transaction uses this nonce; this hash can no longer be resent or cancelled"
+	errCancellation           = "this hash is a cancellation; it cannot be resent or cancelled"
+	errNotInResendChain       = "this hash is not the current transaction for its nonce"
 	errInvalidFeeBump         = "Gas-Fee-Bump-Percent must be an integer between 10 and 100"
 )
 
@@ -167,7 +171,20 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 		bumpPercent = n
 	}
 
-	resent, err := s.transaction.ResendTransaction(r.Context(), paths.Hash, bumpPercent)
+	headers := struct {
+		GasPrice *big.Int `map:"Gas-Price"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+	if gasPriceOutOfRange(headers.GasPrice) {
+		logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+		jsonhttp.BadRequest(w, "gas price out of range")
+		return
+	}
+
+	resent, err := s.transaction.ResendTransaction(sctx.SetGasPrice(r.Context(), headers.GasPrice), paths.Hash, bumpPercent)
 	if err != nil {
 		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash, "error", err)
 		switch {
@@ -179,6 +196,10 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 			jsonhttp.Conflict(w, errReplacementUnderpriced)
 		case errors.Is(err, transaction.ErrNonceUsed):
 			jsonhttp.Conflict(w, errNonceUsed)
+		case errors.Is(err, transaction.ErrSuperseded):
+			jsonhttp.Conflict(w, errSuperseded)
+		case errors.Is(err, transaction.ErrCancellation):
+			jsonhttp.Conflict(w, errCancellation)
 		case errors.Is(err, transaction.ErrNotInResendChain):
 			jsonhttp.Conflict(w, errNotInResendChain)
 		default:
@@ -226,14 +247,23 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		logger.Debug("cancel transaction failed", "tx_hash", paths.Hash, "error", err, "canceled_tx_hash", txHash)
 		logger.Error(nil, "cancel transaction failed", "tx_hash", paths.Hash)
-		if errors.Is(err, transaction.ErrUnknownTransaction) {
+		switch {
+		case errors.Is(err, transaction.ErrUnknownTransaction):
 			jsonhttp.NotFound(w, errUnknownTransaction)
-		} else if errors.Is(err, transaction.ErrAlreadyImported) {
+		case errors.Is(err, transaction.ErrAlreadyImported):
 			jsonhttp.BadRequest(w, errAlreadyImported)
-		} else if errors.Is(err, transaction.ErrNotInResendChain) {
+		case errors.Is(err, transaction.ErrReplacementUnderpriced):
+			jsonhttp.Conflict(w, errCancelUnderpriced)
+		case errors.Is(err, transaction.ErrNonceUsed):
+			jsonhttp.Conflict(w, errNonceUsed)
+		case errors.Is(err, transaction.ErrSuperseded):
+			jsonhttp.Conflict(w, errSuperseded)
+		case errors.Is(err, transaction.ErrCancellation):
+			jsonhttp.Conflict(w, errCancellation)
+		case errors.Is(err, transaction.ErrNotInResendChain):
 			jsonhttp.Conflict(w, errNotInResendChain)
-		} else {
-			jsonhttp.InternalServerError(w, errCantResendTransaction)
+		default:
+			jsonhttp.InternalServerError(w, errCantCancelTransaction)
 		}
 		return
 	}

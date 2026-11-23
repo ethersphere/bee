@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -24,6 +25,22 @@ const (
 	// resendBroadcastTimeout bounds the broadcast, which runs under the service lock.
 	resendBroadcastTimeout = 30 * time.Second
 )
+
+// ResendResult is what a caller sees after a resend.
+// Superseded chains stay in the stored record.
+type ResendResult struct {
+	Nonce       uint64
+	CurrentHash common.Hash
+	PrevHashes  []common.Hash // earlier hashes, oldest first
+}
+
+func (r *ResentTransaction) result() *ResendResult {
+	return &ResendResult{
+		Nonce:       r.Nonce,
+		CurrentHash: r.CurrentHash,
+		PrevHashes:  slices.Clone(r.PrevHashes),
+	}
+}
 
 // ResentTransaction is the resend chain of one nonce. Every hash in it is the same
 // transaction with different fees. It is persisted under resendTxKey.
@@ -53,20 +70,34 @@ func (r *ResentTransaction) inChain(txHash common.Hash) bool {
 	return slices.Contains(r.chainHashes(), txHash)
 }
 
-// promote makes txHash the current hash of the chain. A hash that is already in
-// the chain is moved, not duplicated.
+// promote makes txHash the current hash and keeps the previous current hash.
 func (r *ResentTransaction) promote(txHash common.Hash) {
-	if r.CurrentHash == txHash {
-		return
-	}
-	prev := make([]common.Hash, 0, len(r.PrevHashes)+1)
-	for _, h := range r.PrevHashes {
-		if h != txHash {
-			prev = append(prev, h)
+	r.PrevHashes = append(r.PrevHashes, r.CurrentHash)
+	r.CurrentHash = txHash
+}
+
+// supersededChain returns the superseded chain that contains txHash.
+func (r *ResentTransaction) supersededChain(txHash common.Hash) []common.Hash {
+	for _, hashes := range r.Superseded {
+		if slices.Contains(hashes, txHash) {
+			return hashes
 		}
 	}
-	r.PrevHashes = append(prev, r.CurrentHash)
-	r.CurrentHash = txHash
+	return nil
+}
+
+// outsideChainError reports why txHash cannot be resent or cancelled.
+// A superseded hash lost the nonce to a newer transaction. A cancellation hash
+// is the zero-value transaction that spends the nonce. Anything else stored for
+// the nonce is not the transaction the nonce is being resent as.
+func outsideChainError(chain *ResentTransaction, stored *StoredTransaction, txHash common.Hash) error {
+	if chain.supersededChain(txHash) != nil {
+		return ErrSuperseded
+	}
+	if strings.HasSuffix(stored.Description, cancellationDescriptionSuffix) {
+		return ErrCancellation
+	}
+	return ErrNotInResendChain
 }
 
 // getResendChain loads the owner record of the nonce.
@@ -104,40 +135,40 @@ func (t *transactionService) knownHashes(txHash common.Hash) ([]common.Hash, err
 	hashes := []common.Hash{txHash}
 	if chain.inChain(txHash) {
 		hashes = chain.chainHashes()
-	} else {
-		for _, superseded := range chain.Superseded {
-			if slices.Contains(superseded, txHash) {
-				hashes = slices.Clone(superseded)
-				break
-			}
-		}
+	} else if superseded := chain.supersededChain(txHash); superseded != nil {
+		hashes = slices.Clone(superseded)
 	}
 	slices.Reverse(hashes)
 	return hashes, nil
 }
 
-// resendFees prices the resend. A zero bumpPercent uses the market price the way
-// Send does, pulled up to the current hash when the market fell below it.
-// Otherwise the fees of the current hash are raised by bumpPercent.
+// resendFees prices a replacement the node will accept.
+// With no bump the fees are max(market, current × 1.1).
+// With a bump they are max(market, current × (1 + bump/100)).
+// A stored transaction without fees cannot be raised: a bump is an error,
+// and no bump uses the market.
 func (t *transactionService) calculateResendFees(ctx context.Context, current *StoredTransaction, bumpPercent int) (gasFeeCap, gasTipCap *big.Int, err error) {
-	if bumpPercent <= 0 {
-		if current.FeePriority != 0 {
-			gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, current.FeePriority)
-		} else {
-			gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), current.GasTipBoost)
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		return maxFee(gasFeeCap, current.GasFeeCap), maxFee(gasTipCap, current.GasTipCap), nil
-	}
-	if current.GasFeeCap == nil || current.GasTipCap == nil {
+	if bumpPercent > 0 && (current.GasFeeCap == nil || current.GasTipCap == nil) {
 		return nil, nil, ErrMissingFees
 	}
-	bump := func(v *big.Int) *big.Int {
-		return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(v), big.NewInt(int64(100+bumpPercent))), big.NewInt(100))
+	var marketFee, marketTip *big.Int
+	if current.FeePriority != 0 {
+		marketFee, marketTip, err = t.backend.SuggestFeeHistory(ctx, current.FeePriority)
+	} else {
+		marketFee, marketTip, err = t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), current.GasTipBoost)
 	}
-	return bump(current.GasFeeCap), bump(current.GasTipCap), nil
+	if err != nil {
+		return nil, nil, err
+	}
+	if current.GasFeeCap == nil || current.GasTipCap == nil {
+		return maxFee(marketFee, current.GasFeeCap), maxFee(marketTip, current.GasTipCap), nil
+	}
+	percent := bumpPercent
+	if percent <= 0 {
+		percent = 10
+	}
+	return maxFee(marketFee, raiseByPercent(current.GasFeeCap, percent)),
+		maxFee(marketTip, raiseByPercent(current.GasTipCap, percent)), nil
 }
 
 // maxFee returns the larger of the two fees. A nil fee is missing and does not compete.
@@ -167,17 +198,8 @@ func raiseByPercent(v *big.Int, percent int) *big.Int {
 	return raised
 }
 
-// ensurePending marks txHash pending and watches it, unless it is pending already.
-// filterPendingTransactions drops the mark of a hash the node did not know, so a hash
-// that is broadcast again may have lost it.
+// ensurePending marks txHash pending and watches it.
 func (t *transactionService) ensurePending(txHash common.Hash) error {
-	err := t.store.Get(pendingTransactionKey(txHash), &struct{}{})
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, storage.ErrNotFound) {
-		return fmt.Errorf("load pending transaction: %w", err)
-	}
 	if err := t.store.Put(pendingTransactionKey(txHash), struct{}{}); err != nil {
 		return fmt.Errorf("store pending transaction: %w", err)
 	}
@@ -187,12 +209,11 @@ func (t *transactionService) ensurePending(txHash common.Hash) error {
 
 // ResendTransaction broadcasts a previously sent transaction again with the same nonce
 // and content and new fees. txHash may be any hash of the resend chain of its nonce.
-// A zero bumpPercent prices the transaction at the market, but not below the fees of
-// the current hash: a fallen market is pulled up to those fees. Otherwise the fees of
-// the current hash of the chain are raised by bumpPercent.
+// A zero bumpPercent uses max(market, current fees × 1.1). A positive bumpPercent uses
+// max(market, current fees × (1 + bumpPercent/100)).
 // A node answer about the transaction is returned as an error. When the transaction
 // may be in the mempool, it is stored, watched and added to the chain.
-func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResentTransaction, error) {
+func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResendResult, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
@@ -209,7 +230,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	case err != nil:
 		return nil, err
 	case !chain.inChain(txHash):
-		return nil, ErrNotInResendChain
+		return nil, outsideChainError(chain, stored, txHash)
 	case chain.CurrentHash != txHash:
 		current, err = t.StoredTransaction(chain.CurrentHash)
 		if err != nil {
@@ -239,16 +260,10 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	sendCtx, cancel := context.WithTimeout(t.ctx, resendBroadcastTimeout)
 	err = t.backend.SendTransaction(sendCtx, signedTx)
 	cancel()
-	switch {
-	case isAlreadyKnown(err):
-		return nil, ErrAlreadyImported
-	case isReplacementUnderpriced(err):
-		return nil, fmt.Errorf("%w: %w", ErrReplacementUnderpriced, err)
-	case isNonceTooLow(err):
-		return nil, fmt.Errorf("%w: %w", ErrNonceUsed, err)
-	case !txMayBeInMempool(err):
+	if err := rejectedBroadcast(err); err != nil {
 		return nil, err
-	case err != nil:
+	}
+	if err != nil {
 		t.logger.Warning("transaction broadcast returned an error; the transaction may be in the mempool",
 			"tx", signedTx.Hash(),
 			"nonce", signedTx.Nonce(),
@@ -257,7 +272,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	}
 
 	newHash := signedTx.Hash()
-	storedTx := StoredTransaction{
+	if err := t.store.Put(storedTransactionKey(newHash), StoredTransaction{
 		To:          signedTx.To(),
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
@@ -270,48 +285,32 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		Created:     time.Now().Unix(),
 		Description: current.Description,
 		FeePriority: current.FeePriority,
+	}); err != nil {
+		return nil, err
 	}
 	if chain == nil {
-		if newHash != txHash {
-			if err := t.store.Put(storedTransactionKey(newHash), storedTx); err != nil {
-				return nil, err
-			}
-			chain = &ResentTransaction{
-				Nonce:       current.Nonce,
-				CurrentHash: newHash,
-				PrevHashes:  []common.Hash{txHash},
-			}
-			if err := t.store.Put(resendTxKey(chain.Nonce), chain); err != nil {
-				return nil, fmt.Errorf("store resend chain: %w", err)
-			}
-		} else {
-			chain = &ResentTransaction{Nonce: current.Nonce, CurrentHash: txHash}
+		chain = &ResentTransaction{
+			Nonce:       current.Nonce,
+			CurrentHash: newHash,
+			PrevHashes:  []common.Hash{txHash},
 		}
 	} else {
-		if !chain.inChain(newHash) {
-			if err := t.store.Put(storedTransactionKey(newHash), storedTx); err != nil {
-				return nil, err
-			}
-		}
-		if newHash != chain.CurrentHash {
-			chain.promote(newHash)
-			if err := t.store.Put(resendTxKey(chain.Nonce), chain); err != nil {
-				return nil, fmt.Errorf("store resend chain: %w", err)
-			}
-		}
+		chain.promote(newHash)
+	}
+	if err := t.store.Put(resendTxKey(chain.Nonce), chain); err != nil {
+		return nil, fmt.Errorf("store resend chain: %w", err)
 	}
 
 	if err := t.ensurePending(newHash); err != nil {
 		return nil, err
 	}
-	return chain, nil
+	return chain.result(), nil
 }
 
-// PendingTransactionByHash returns the newest hash of txHash's resend chain that the
-// node has answered for. The boolean is true when that hash is still in the mempool.
-// When the node knows none of the hashes, the newest hash of the chain is returned
-// with ethereum.NotFound.
-func (t *transactionService) PendingTransactionByHash(ctx context.Context, txHash common.Hash) (common.Hash, bool, error) {
+// KnownTransaction returns the newest hash of txHash's chain that the node has
+// answered for. The boolean is true when that hash is still in the mempool.
+// When the node knows none of them, the newest hash is returned with ethereum.NotFound.
+func (t *transactionService) KnownTransaction(ctx context.Context, txHash common.Hash) (common.Hash, bool, error) {
 	hashes, err := t.knownHashes(txHash)
 	if err != nil {
 		return common.Hash{}, false, err

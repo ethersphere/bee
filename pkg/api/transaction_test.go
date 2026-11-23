@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -300,14 +301,14 @@ func TestTransactionResend(t *testing.T) {
 
 		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResentTransaction, error) {
+				mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResendResult, error) {
 					if got != txHash {
 						t.Fatalf("hash = %s", got)
 					}
 					if bumpPercent != 0 {
 						t.Fatalf("bump = %d", bumpPercent)
 					}
-					return &transaction.ResentTransaction{
+					return &transaction.ResendResult{
 						Nonce:       7,
 						CurrentHash: newHash,
 						PrevHashes:  []common.Hash{txHash},
@@ -325,44 +326,26 @@ func TestTransactionResend(t *testing.T) {
 		)
 	})
 
-	t.Run("first resend has empty previous hashes", func(t *testing.T) {
-		t.Parallel()
+	for _, bump := range []int{10, 100} {
+		t.Run("bump header "+strconv.Itoa(bump), func(t *testing.T) {
+			t.Parallel()
 
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
-					return &transaction.ResentTransaction{Nonce: 7, CurrentHash: newHash}, nil
-				}),
-			},
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResendResult, error) {
+						if bumpPercent != bump {
+							t.Fatalf("bump = %d", bumpPercent)
+						}
+						return &transaction.ResendResult{Nonce: 7, CurrentHash: newHash, PrevHashes: []common.Hash{txHash}}, nil
+					}),
+				},
+			})
+
+			jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
+				jsonhttptest.WithRequestHeader(api.GasFeeBumpPercentHeader, strconv.Itoa(bump)),
+			)
 		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(api.TransactionResendResponse{
-				TransactionHash:           newHash,
-				Nonce:                     7,
-				PreviousTransactionHashes: []common.Hash{},
-			}),
-		)
-	})
-
-	t.Run("bump header", func(t *testing.T) {
-		t.Parallel()
-
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResentTransaction, error) {
-					if bumpPercent != 25 {
-						t.Fatalf("bump = %d", bumpPercent)
-					}
-					return &transaction.ResentTransaction{Nonce: 7, CurrentHash: newHash, PrevHashes: []common.Hash{txHash}}, nil
-				}),
-			},
-		})
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
-			jsonhttptest.WithRequestHeader(api.GasFeeBumpPercentHeader, "25"),
-		)
-	})
+	}
 
 	for _, value := range []string{"9", "101", "abc", "0"} {
 		t.Run("invalid bump "+value, func(t *testing.T) {
@@ -370,7 +353,7 @@ func TestTransactionResend(t *testing.T) {
 
 			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 				TransactionOpts: []mock.Option{
-					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
+					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResendResult, error) {
 						t.Fatal("resend was called")
 						return nil, nil
 					}),
@@ -397,6 +380,8 @@ func TestTransactionResend(t *testing.T) {
 		{"already imported", transaction.ErrAlreadyImported, http.StatusBadRequest, api.ErrAlreadyImported},
 		{"replacement underpriced", fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced), http.StatusConflict, api.ErrReplacementUnderpriced},
 		{"nonce used", transaction.ErrNonceUsed, http.StatusConflict, api.ErrNonceUsed},
+		{"superseded", transaction.ErrSuperseded, http.StatusConflict, api.ErrSuperseded},
+		{"cancellation", transaction.ErrCancellation, http.StatusConflict, api.ErrCancellation},
 		{"not in chain", transaction.ErrNotInResendChain, http.StatusConflict, api.ErrNotInResendChain},
 		{"other error", errors.New("err"), http.StatusInternalServerError, api.ErrCantResendTransaction},
 	} {
@@ -405,7 +390,7 @@ func TestTransactionResend(t *testing.T) {
 
 			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 				TransactionOpts: []mock.Option{
-					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResentTransaction, error) {
+					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResendResult, error) {
 						return nil, tc.err
 					}),
 				},
@@ -421,22 +406,42 @@ func TestTransactionResend(t *testing.T) {
 	}
 }
 
-func TestTransactionCancelNotInChain(t *testing.T) {
+func TestTransactionCancelErrors(t *testing.T) {
 	t.Parallel()
 
 	txHash := common.HexToHash("abcd")
-	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-		TransactionOpts: []mock.Option{
-			mock.WithCancelTransactionFunc(func(context.Context, common.Hash) (common.Hash, error) {
-				return common.Hash{}, transaction.ErrNotInResendChain
-			}),
-		},
-	})
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		message string
+	}{
+		{"unknown transaction", transaction.ErrUnknownTransaction, http.StatusNotFound, api.ErrUnknownTransaction},
+		{"already imported", transaction.ErrAlreadyImported, http.StatusBadRequest, api.ErrAlreadyImported},
+		{"replacement underpriced", fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced), http.StatusConflict, api.ErrCancelUnderpriced},
+		{"nonce used", transaction.ErrNonceUsed, http.StatusConflict, api.ErrNonceUsed},
+		{"superseded", transaction.ErrSuperseded, http.StatusConflict, api.ErrSuperseded},
+		{"cancellation", transaction.ErrCancellation, http.StatusConflict, api.ErrCancellation},
+		{"not in chain", transaction.ErrNotInResendChain, http.StatusConflict, api.ErrNotInResendChain},
+		{"other error", errors.New("err"), http.StatusInternalServerError, api.ErrCantCancelTransaction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	jsonhttptest.Request(t, testServer, http.MethodDelete, "/transactions/"+txHash.String(), http.StatusConflict,
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Code:    http.StatusConflict,
-			Message: api.ErrNotInResendChain,
-		}),
-	)
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithCancelTransactionFunc(func(context.Context, common.Hash) (common.Hash, error) {
+						return common.Hash{}, tc.err
+					}),
+				},
+			})
+
+			jsonhttptest.Request(t, testServer, http.MethodDelete, "/transactions/"+txHash.String(), tc.status,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Code:    tc.status,
+					Message: tc.message,
+				}),
+			)
+		})
+	}
 }
