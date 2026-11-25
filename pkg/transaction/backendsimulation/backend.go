@@ -97,14 +97,6 @@ func (m *simulatedBackend) PendingNonceAt(ctx context.Context, account common.Ad
 	return 0, ErrNotImplemented
 }
 
-func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	return nil, nil, ErrNotImplemented
-}
-
-func (m *simulatedBackend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
-	return nil, nil, ErrNotImplemented
-}
-
 func (m *simulatedBackend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	return 0, ErrNotImplemented
 }

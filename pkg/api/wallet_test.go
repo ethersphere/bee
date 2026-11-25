@@ -250,7 +250,7 @@ func TestWalletWithdraw(t *testing.T) {
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return big.NewInt(100000000), nil
 				}),
-				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
 					if address != common.HexToAddress("0xaf") {
 						t.Fatalf("want addr 0xaf, got %s", address)
 					}
@@ -333,7 +333,7 @@ func TestWalletWithdraw(t *testing.T) {
 				}),
 			},
 			TransactionOpts: []transactionmock.Option{
-				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, i int) (common.Hash, error) {
+				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, _ ...transaction.Option) (common.Hash, error) {
 					if tx.Value.Cmp(big.NewInt(99999999)) != 0 {
 						t.Fatalf("bad value, want 99999999, got %s", tx.Value)
 					}

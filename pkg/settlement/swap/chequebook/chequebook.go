@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -52,9 +51,9 @@ var (
 // Service is the main interface for interacting with the nodes chequebook.
 type Service interface {
 	// Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
-	Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	Deposit(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)
 	// Withdraw starts withdrawing erc20 token from the chequebook. This returns once the transactions has been broadcast.
-	Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	Withdraw(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)
 	// WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
 	WaitForDeposit(ctx context.Context, txHash common.Hash) error
 	// Balance returns the token balance of the chequebook.
@@ -120,7 +119,7 @@ func (s *service) Address() common.Address {
 }
 
 // Deposit starts depositing erc20 token into the chequebook. This returns once the transactions has been broadcast.
-func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+func (s *service) Deposit(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 	balance, err := s.erc20Service.BalanceOf(ctx, s.ownerAddress)
 	if err != nil {
 		return common.Hash{}, err
@@ -131,7 +130,7 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	return s.erc20Service.Transfer(ctx, s.address, amount)
+	return s.erc20Service.Transfer(ctx, s.address, amount, opts...)
 }
 
 // Balance returns the token balance of the chequebook.
@@ -432,7 +431,7 @@ func (s *service) LastIssuedCheques() (map[common.Address]*SignedCheque, error) 
 	return result, nil
 }
 
-func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+func (s *service) Withdraw(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 	amount = new(big.Int).Set(amount)
 
 	callData, err := chequebookABI.Pack("withdraw", amount)
@@ -447,13 +446,14 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 	request := &transaction.TxRequest{
 		To:          &s.address,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		FeePriority: sctx.GetFeePriority(ctx),
 		Value:       big.NewInt(0),
 		Description: fmt.Sprintf("chequebook withdrawal of %d BZZ", amount),
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := s.transactionService.Send(ctx, request, append(opts,
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+		transaction.WithGasLimit(0),
+	)...)
 
 	s.lock.Lock()
 	s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)

@@ -9,7 +9,8 @@ package sctx
 import (
 	"context"
 	"errors"
-	"math/big"
+
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 // ErrTargetPrefix is returned when target prefix decoding fails.
@@ -18,9 +19,7 @@ var ErrTargetPrefix = errors.New("error decoding prefix string")
 type (
 	HTTPRequestIDKey struct{}
 	requestHostKey   struct{}
-	gasPriceKey      struct{}
-	gasLimitKey      struct{}
-	feePriorityKey   struct{}
+	txOptionsKey     struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -37,46 +36,11 @@ func GetHost(ctx context.Context) string {
 	return ""
 }
 
-func SetGasLimit(ctx context.Context, limit uint64) context.Context {
-	return context.WithValue(ctx, gasLimitKey{}, limit)
+func SetTxOptions(ctx context.Context, opts []transaction.Option) context.Context {
+	return context.WithValue(ctx, txOptionsKey{}, opts)
 }
 
-func GetGasLimit(ctx context.Context) uint64 {
-	v, ok := ctx.Value(gasLimitKey{}).(uint64)
-	if ok {
-		return v
-	}
-	return 0
-}
-
-func GetGasLimitWithDefault(ctx context.Context, defaultLimit uint64) uint64 {
-	limit := GetGasLimit(ctx)
-	if limit == 0 {
-		return defaultLimit
-	}
-	return limit
-}
-
-func SetGasPrice(ctx context.Context, price *big.Int) context.Context {
-	return context.WithValue(ctx, gasPriceKey{}, price)
-}
-
-func GetGasPrice(ctx context.Context) *big.Int {
-	v, ok := ctx.Value(gasPriceKey{}).(*big.Int)
-	if ok {
-		return v
-	}
-	return nil
-}
-
-func SetFeePriority(ctx context.Context, tier int) context.Context {
-	return context.WithValue(ctx, feePriorityKey{}, tier)
-}
-
-func GetFeePriority(ctx context.Context) int {
-	v, ok := ctx.Value(feePriorityKey{}).(int)
-	if ok {
-		return v
-	}
-	return 0
+func TxOptionsFrom(ctx context.Context) []transaction.Option {
+	opts, _ := ctx.Value(txOptionsKey{}).([]transaction.Option)
+	return opts
 }

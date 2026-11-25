@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
@@ -101,6 +102,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Depth,
 		*headers.Immutable,
 		r.URL.Query().Get("label"),
+		sctx.TxOptionsFrom(r.Context())...,
 	)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -573,7 +575,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
+	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount, sctx.TxOptionsFrom(r.Context())...)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
@@ -612,7 +614,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
+	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth, sctx.TxOptionsFrom(r.Context())...)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)

@@ -13,24 +13,11 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
 const maxAverageBlockTime = 30 * time.Second
-
-var _ transaction.Backend = (*wrappedBackend)(nil)
-
-// DefaultFeeHistoryBlockCount is the default eth_feeHistory block window.
-const DefaultFeeHistoryBlockCount = 100
-
-// MaxFeeHistoryBlockCount is the largest eth_feeHistory window Bee requests.
-// Geth and Nethermind reject counts above 1024, and that rejection makes every
-// fee-priority price fall back, so a higher configuration value is clamped here.
-const MaxFeeHistoryBlockCount = 1000
-
-var feeHistoryRewardPercentiles = []float64{10, 50, 90}
 
 type blockNumberAnchor struct {
 	number           uint64
@@ -41,39 +28,26 @@ type blockNumberAnchor struct {
 type wrappedBackend struct {
 	backend           backend.Geth
 	metrics           metrics
-	minimumGasTipCap  int64
 	blockTime         time.Duration
 	blockSyncInterval uint64
 	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
-	feeHistoryBlocks  uint64
 }
 
 func NewBackend(
 	backend backend.Geth,
-	minimumGasTipCap uint64,
 	blockTime time.Duration,
 	blockSyncInterval uint64,
-	feeHistoryBlockCount uint64,
-) transaction.Backend {
+) backend.Geth {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
-	}
-	// Zero means unset, the same way a zero block sync interval means the default.
-	if feeHistoryBlockCount == 0 {
-		feeHistoryBlockCount = DefaultFeeHistoryBlockCount
-	}
-	if feeHistoryBlockCount > MaxFeeHistoryBlockCount {
-		feeHistoryBlockCount = MaxFeeHistoryBlockCount
 	}
 
 	return &wrappedBackend{
 		backend:           backend,
-		minimumGasTipCap:  int64(minimumGasTipCap),
 		blockTime:         blockTime,
 		metrics:           newMetrics(),
 		blockSyncInterval: blockSyncInterval,
 		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
-		feeHistoryBlocks:  feeHistoryBlockCount,
 	}
 }
 
@@ -310,7 +284,6 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 
 func (b *wrappedBackend) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
 	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.FeeHistoryCalls.Inc()
 	fh, err := b.backend.FeeHistory(ctx, blockCount, lastBlock, rewardPercentiles)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()

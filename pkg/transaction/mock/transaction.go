@@ -18,27 +18,35 @@ import (
 )
 
 type transactionServiceMock struct {
-	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
+	send                 func(ctx context.Context, request *transaction.TxRequest, opts ...transaction.Option) (txHash common.Hash, err error)
+	suggestFees          func(ctx context.Context, opts ...transaction.Option) (*big.Int, *big.Int, error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
 	pendingTransactions  func() ([]common.Hash, error)
 	resendTransaction    func(ctx context.Context, txHash common.Hash) error
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
-	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash, gasPrice *big.Int) (common.Hash, error)
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
-func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, opts ...transaction.Option) (txHash common.Hash, err error) {
 	if m.send != nil {
-		return m.send(ctx, request, boostPercent)
+		return m.send(ctx, request, opts...)
 	}
 	return common.Hash{}, errors.New("not implemented")
 }
 
+func (m *transactionServiceMock) SuggestFees(ctx context.Context, opts ...transaction.Option) (*big.Int, *big.Int, error) {
+	if m.suggestFees != nil {
+		return m.suggestFees(ctx, opts...)
+	}
+	return nil, nil, errors.New("not implemented")
+}
+
 // SendAndWait composes the configured Send and WaitForReceipt functions.
-func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (*types.Receipt, error) {
-	txHash, err := m.Send(ctx, request, boostPercent)
+func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.Option) (*types.Receipt, error) {
+	txHash, err := m.Send(ctx, request, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +92,7 @@ func (m *transactionServiceMock) WatchSentTransaction(txHash common.Hash) (<-cha
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) Call(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+func (m *transactionServiceMock) Call(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (result []byte, err error) {
 	if m.call != nil {
 		return m.call(ctx, request)
 	}
@@ -112,9 +120,9 @@ func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transac
 	return nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+func (m *transactionServiceMock) CancelTransaction(ctx context.Context, originalTxHash common.Hash, gasPrice *big.Int) (common.Hash, error) {
 	if m.cancelTransaction != nil {
-		return m.cancelTransaction(ctx, originalTxHash)
+		return m.cancelTransaction(ctx, originalTxHash, gasPrice)
 	}
 	return common.Hash{}, errors.New("not implemented")
 }
@@ -131,7 +139,7 @@ func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash comm
 	return big.NewInt(0), nil
 }
 
-func (m *transactionServiceMock) UnwrapABIError(_ context.Context, _ *transaction.TxRequest, err error, _ map[string]abi.Error) error {
+func (m *transactionServiceMock) UnwrapABIError(_ context.Context, _ *transaction.TxRequest, err error, _ map[string]abi.Error, _ ...transaction.Option) error {
 	return err
 }
 
@@ -144,7 +152,7 @@ type optionFunc func(*transactionServiceMock)
 
 func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
 
-func WithSendFunc(f func(context.Context, *transaction.TxRequest, int) (txHash common.Hash, err error)) Option {
+func WithSendFunc(f func(context.Context, *transaction.TxRequest, ...transaction.Option) (txHash common.Hash, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.send = f
 	})
@@ -186,7 +194,13 @@ func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) e
 	})
 }
 
-func WithCancelTransactionFunc(f func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)) Option {
+func WithSuggestFeesFunc(f func(ctx context.Context, opts ...transaction.Option) (*big.Int, *big.Int, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.suggestFees = f
+	})
+}
+
+func WithCancelTransactionFunc(f func(ctx context.Context, originalTxHash common.Hash, gasPrice *big.Int) (common.Hash, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.cancelTransaction = f
 	})
@@ -262,7 +276,7 @@ func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, 
 
 func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...any) Option {
 	return optionFunc(func(s *transactionServiceMock) {
-		s.send = func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
+		s.send = func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (common.Hash, error) {
 			data, err := abi.Pack(method, params...)
 			if err != nil {
 				return common.Hash{}, err

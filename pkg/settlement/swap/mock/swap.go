@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type Service struct {
@@ -38,7 +39,7 @@ type Service struct {
 	lastReceivedChequeFunc  func(swarm.Address) (*chequebook.SignedCheque, error)
 	lastReceivedChequesFunc func() (map[string]*chequebook.SignedCheque, error)
 
-	cashChequeFunc    func(ctx context.Context, peer swarm.Address) (common.Hash, error)
+	cashChequeFunc    func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error)
 	cashoutStatusFunc func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error)
 }
 
@@ -110,7 +111,7 @@ func WithLastReceivedChequesFunc(f func() (map[string]*chequebook.SignedCheque, 
 	})
 }
 
-func WithCashChequeFunc(f func(ctx context.Context, peer swarm.Address) (common.Hash, error)) Option {
+func WithCashChequeFunc(f func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.cashChequeFunc = f
 	})
@@ -233,9 +234,9 @@ func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, er
 	return nil, nil
 }
 
-func (s *Service) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+func (s *Service) CashCheque(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
 	if s.cashChequeFunc != nil {
-		return s.cashChequeFunc(ctx, peer)
+		return s.cashChequeFunc(ctx, peer, opts...)
 	}
 	return common.Hash{}, nil
 }

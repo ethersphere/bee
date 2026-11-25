@@ -17,9 +17,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/v2/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 func TestDepositStake(t *testing.T) {
@@ -35,7 +35,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
@@ -48,7 +48,7 @@ func TestDepositStake(t *testing.T) {
 
 		minDeposit := big.NewInt(123)
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, &staking.MinDepositError{Minimum: minDeposit}
 			}),
 		)
@@ -65,7 +65,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientFunds
 			}),
 		)
@@ -78,7 +78,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -91,10 +91,10 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return txHash, nil
 			}),
-			stakingContractMock.WithUpdateHeight(func(ctx context.Context) (common.Hash, bool, error) {
+			stakingContractMock.WithUpdateHeight(func(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error) {
 				return common.Hash{}, false, fmt.Errorf("update height failed")
 			}),
 		)
@@ -107,8 +107,8 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
+				gasLimit := transaction.Apply(opts...).GasLimit
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
 				}
@@ -248,7 +248,7 @@ func TestWithdrawStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
@@ -261,7 +261,7 @@ func TestWithdrawStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
@@ -274,7 +274,7 @@ func TestWithdrawStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -287,8 +287,8 @@ func TestWithdrawStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
+				gasLimit := transaction.Apply(opts...).GasLimit
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
 				}
@@ -314,7 +314,7 @@ func TestMigrateStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithMigrateStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
@@ -327,7 +327,7 @@ func TestMigrateStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithMigrateStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
@@ -340,7 +340,7 @@ func TestMigrateStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithMigrateStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -353,8 +353,8 @@ func TestMigrateStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
+			stakingContractMock.WithMigrateStake(func(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
+				gasLimit := transaction.Apply(opts...).GasLimit
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
 				}

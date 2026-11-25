@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -24,7 +23,7 @@ var (
 
 type Service interface {
 	BalanceOf(ctx context.Context, address common.Address) (*big.Int, error)
-	Transfer(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
+	Transfer(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error)
 }
 
 type erc20Service struct {
@@ -69,7 +68,7 @@ func (c *erc20Service) BalanceOf(ctx context.Context, address common.Address) (*
 	return balance, nil
 }
 
-func (c *erc20Service) Transfer(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+func (c *erc20Service) Transfer(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
 	callData, err := erc20ABI.Pack("transfer", address, value)
 	if err != nil {
 		return common.Hash{}, err
@@ -78,13 +77,14 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 	request := &transaction.TxRequest{
 		To:          &c.address,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		FeePriority: sctx.GetFeePriority(ctx),
 		Value:       big.NewInt(0),
 		Description: "token transfer",
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := c.transactionService.Send(ctx, request, append(opts,
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+		transaction.WithGasLimit(0),
+	)...)
 	if err != nil {
 		return common.Hash{}, err
 	}

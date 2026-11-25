@@ -51,14 +51,6 @@ func (b *Backend) PendingNonceAt(context.Context, common.Address) (uint64, error
 	return 0, postagecontract.ErrChainDisabled
 }
 
-func (b *Backend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	return nil, nil, postagecontract.ErrChainDisabled
-}
-
-func (b *Backend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
-	return nil, nil, postagecontract.ErrChainDisabled
-}
-
 func (b *Backend) SuggestGasTipCap(context.Context) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }

@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/safe"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
@@ -56,11 +57,8 @@ const (
 type TxRequest struct {
 	To                   *common.Address // recipient of the transaction
 	Data                 []byte          // transaction data
-	GasPrice             *big.Int        // gas price or nil if suggested gas price should be used
-	GasLimit             uint64          // gas limit or 0 if it should be estimated
-	MinEstimatedGasLimit uint64          // minimum gas limit to use if the gas limit was estimated; it will not apply when this value is 0 or when GasLimit is not 0
+	MinEstimatedGasLimit uint64          // minimum gas limit to use if the gas limit was estimated; it will not apply when this value is 0 or when a gas limit is set
 	GasFeeCap            *big.Int        // adds a cap to maximum fee user is willing to pay
-	FeePriority          int             // fee priority; when set, it takes precedence over GasPrice
 	Value                *big.Int        // amount of wei to send
 	Description          string          // optional description
 }
@@ -84,13 +82,15 @@ type StoredTransaction struct {
 // limit and nonce management.
 type Service interface {
 	io.Closer
-	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
-	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
+	// SuggestFees returns the gas fee cap and the gas tip cap for opts.
+	SuggestFees(ctx context.Context, opts ...Option) (gasFeeCap, gasTipCap *big.Int, err error)
+	// Send creates a transaction based on the request and sends it.
+	Send(ctx context.Context, request *TxRequest, opts ...Option) (txHash common.Hash, err error)
 	// SendAndWait sends the request and waits until the transaction is mined.
 	// It returns ErrTransactionReverted when the transaction failed.
-	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (receipt *types.Receipt, err error)
+	SendAndWait(ctx context.Context, request *TxRequest, opts ...Option) (receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
-	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
+	Call(ctx context.Context, request *TxRequest, opts ...Option) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
 	// This is only valid for transaction sent by this service.
 	WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
@@ -105,13 +105,13 @@ type Service interface {
 	// ResendTransaction resends a previously sent transaction
 	// This operation can be useful if for some reason the transaction vanished from the eth networks pending pool
 	ResendTransaction(ctx context.Context, txHash common.Hash) error
-	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
-	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one.
+	CancelTransaction(ctx context.Context, originalTxHash common.Hash, gasPrice *big.Int) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
 	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
 	// The original error is wrapped together with the ABI error if it exists.
-	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
+	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error, opts ...Option) error
 }
 
 type transactionService struct {
@@ -128,10 +128,14 @@ type transactionService struct {
 	chainID          *big.Int
 	monitor          Monitor
 	fallbackGasLimit uint64
+	minimumGasTipCap int64
+	feeHistoryBlocks uint64
+	metrics          metrics
+	suggestFees      func(context.Context, ...Option) (*big.Int, *big.Int, error)
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64) (Service, error) {
+func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit, minimumGasTipCap, feeHistoryBlockCount uint64) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -154,6 +158,9 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		chainID:          chainID,
 		monitor:          monitor,
 		fallbackGasLimit: fallbackGasLimit,
+		minimumGasTipCap: int64(minimumGasTipCap),
+		feeHistoryBlocks: normalizeFeeHistoryBlocks(feeHistoryBlockCount),
+		metrics:          newMetrics(),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {
@@ -179,7 +186,7 @@ func (t *transactionService) waitForAllPendingTx() error {
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, opts ...Option) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -190,7 +197,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce, boostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -210,8 +217,9 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 	txHash = signedTx.Hash()
 
 	// A fee priority prices the transaction without the tip boost.
-	gasTipBoost := boostPercent
-	if request.FeePriority != 0 {
+	txOpts := Apply(opts...)
+	gasTipBoost := txOpts.Fee.TipBoostPercent
+	if txOpts.Fee.Priority != 0 {
 		gasTipBoost = 0
 	}
 
@@ -227,7 +235,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
 		Description: request.Description,
-		FeePriority: request.FeePriority,
+		FeePriority: txOpts.Fee.Priority,
 	})
 	if err != nil {
 		return common.Hash{}, err
@@ -247,8 +255,8 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 // A transaction that ran out of an estimated gas limit is sent once more with
 // twice that limit, capped at MaxGasLimit; there is no retry when the cap
 // would not raise the limit. A gas limit set by the caller is never changed.
-func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, error) {
-	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent)
+func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, opts ...Option) (*types.Receipt, error) {
+	receipt, txHash, err := t.sendAndWait(ctx, request, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +264,7 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 		return receipt, nil
 	}
 
-	if request.GasLimit != 0 {
+	if Apply(opts...).GasLimit != 0 {
 		return nil, ErrTransactionReverted
 	}
 	gasLimit, err := t.outOfGasLimit(txHash, receipt)
@@ -270,17 +278,16 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 	}
 
 	retry := *request
-	retry.GasLimit = retryGasLimit
 	retry.Description = request.Description + " (retry after out of gas)"
 
 	t.logger.Warning("transaction ran out of gas, sending it again with a higher gas limit",
 		"tx_hash", txHash,
 		"gas_limit", gasLimit,
-		"retry_gas_limit", retry.GasLimit,
+		"retry_gas_limit", retryGasLimit,
 		"description", request.Description,
 	)
 
-	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent)
+	receipt, _, err = t.sendAndWait(ctx, &retry, append(slices.Clip(opts), WithGasLimit(retryGasLimit))...)
 	if err != nil {
 		return nil, fmt.Errorf("retry after out of gas: %w", err)
 	}
@@ -292,8 +299,8 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 }
 
 // sendAndWait sends the request and returns the receipt whatever its status.
-func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, common.Hash, error) {
-	txHash, err := t.Send(ctx, request, boostPercent)
+func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, opts ...Option) (*types.Receipt, common.Hash, error) {
+	txHash, err := t.Send(ctx, request, opts...)
 	if err != nil {
 		return nil, common.Hash{}, err
 	}
@@ -340,13 +347,14 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 	})
 }
 
-func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]byte, error) {
+func (t *transactionService) Call(ctx context.Context, request *TxRequest, opts ...Option) ([]byte, error) {
+	txOpts := Apply(opts...)
 	msg := ethereum.CallMsg{
 		From:     t.sender,
 		To:       request.To,
 		Data:     request.Data,
-		GasPrice: request.GasPrice,
-		Gas:      request.GasLimit,
+		GasPrice: txOpts.Fee.GasPrice,
+		Gas:      txOpts.GasLimit,
 		Value:    request.Value,
 	}
 	data, err := t.backend.CallContract(ctx, msg, nil)
@@ -370,9 +378,10 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, opts ...Option) (tx *types.Transaction, err error) {
+	txOpts := Apply(opts...)
 	var gasLimit uint64
-	if request.GasLimit == 0 {
+	if txOpts.GasLimit == 0 {
 		// Estimate gas using pending state for consistency with PendingNonceAt
 		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
 			From:  t.sender,
@@ -417,7 +426,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		}
 	} else {
 		// Use provided gas limit with bounds validation
-		gasLimit = min(max(request.GasLimit, MinGasLimit), MaxGasLimit)
+		gasLimit = min(max(txOpts.GasLimit, MinGasLimit), MaxGasLimit)
 	}
 
 	if gasLimit == 0 {
@@ -436,12 +445,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
-	var gasFeeCap, gasTipCap *big.Int
-	if request.FeePriority != 0 {
-		gasFeeCap, gasTipCap, err = t.backend.SuggestFeeHistory(ctx, request.FeePriority)
-	} else {
-		gasFeeCap, gasTipCap, err = t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
-	}
+	gasFeeCap, gasTipCap, err := t.SuggestFees(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +456,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		"gas_limit", gasLimit,
 		"gas_fee_cap", gasFeeCap,
 		"gas_tip_cap", gasTipCap,
-		"fee_priority", FeePriorityName(request.FeePriority),
+		"fee_priority", FeePriorityName(txOpts.Fee.Priority),
 		"nonce", nonce,
 		"description", request.Description,
 	)
@@ -590,7 +594,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
+	gasFeeCap, gasTipCap, err := t.SuggestFees(ctx, WithTipBoost(storedTransaction.GasTipBoost))
 	if err != nil {
 		return err
 	}
@@ -624,13 +628,13 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	return nil
 }
 
-func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHash common.Hash, gasPrice *big.Int) (common.Hash, error) {
 	storedTransaction, err := t.StoredTransaction(originalTxHash)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), 0)
+	gasFeeCap, gasTipCap, err := t.SuggestFees(ctx, WithGasPrice(gasPrice))
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -708,12 +712,12 @@ func (t *transactionService) TransactionFee(ctx context.Context, txHash common.H
 	return trx.Cost(), nil
 }
 
-func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error {
+func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error, opts ...Option) error {
 	if err == nil {
 		return nil
 	}
 
-	_, cErr := t.Call(ctx, req)
+	_, cErr := t.Call(ctx, req, opts...)
 	if cErr == nil {
 		return err
 	}
@@ -772,4 +776,238 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 	}
 
 	return err
+}
+
+const (
+	percentageDivisor = 100
+	baseFeeMultiplier = 2
+)
+
+const DefaultFeeHistoryBlockCount = 100
+
+// Geth and Nethermind reject eth_feeHistory counts above 1024. That rejection
+// makes every fee-priority price fall back, so a higher configuration value is clamped.
+const MaxFeeHistoryBlockCount = 1000
+
+var feeHistoryRewardPercentiles = []float64{10, 50, 90}
+
+var ErrEIP1559NotSupported = errors.New("network does not appear to support EIP-1559 (no baseFee)")
+
+func normalizeFeeHistoryBlocks(count uint64) uint64 {
+	if count == 0 {
+		return DefaultFeeHistoryBlockCount
+	}
+	if count > MaxFeeHistoryBlockCount {
+		return MaxFeeHistoryBlockCount
+	}
+	return count
+}
+
+func (t *transactionService) SuggestFees(ctx context.Context, opts ...Option) (*big.Int, *big.Int, error) {
+	if t.suggestFees != nil {
+		return t.suggestFees(ctx, opts...)
+	}
+	o := Apply(opts...)
+	if err := o.Fee.Validate(); err != nil {
+		return nil, nil, err
+	}
+	if o.Fee.Priority != 0 {
+		return t.priorityFees(ctx, o.Fee.Priority)
+	}
+	return t.suggestedFees(ctx, o.Fee.GasPrice, o.Fee.TipBoostPercent)
+}
+
+func (t *transactionService) suggestedFees(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	if gasPrice != nil {
+		latestBlockHeader, err := t.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+		}
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+			return new(big.Int).Set(gasPrice), new(big.Int).Set(gasPrice), nil
+		}
+
+		baseFee := latestBlockHeader.BaseFee
+		if gasPrice.Cmp(baseFee) < 0 {
+			return nil, nil, fmt.Errorf("specified gas price %s is below current base fee %s", gasPrice, baseFee)
+		}
+
+		gasTipCap := new(big.Int).Sub(gasPrice, baseFee)
+		gasFeeCap := new(big.Int).Set(gasPrice)
+
+		return gasFeeCap, gasTipCap, nil
+	}
+
+	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to suggest gas tip cap: %w", err)
+	}
+	gasTipCap = new(big.Int).Set(gasTipCap)
+
+	if boostPercent != 0 {
+		if boostPercent < 0 {
+			return nil, nil, fmt.Errorf("negative boostPercent (%d) not allowed", boostPercent)
+		}
+		multiplier := new(big.Int).Add(big.NewInt(int64(percentageDivisor)), big.NewInt(int64(boostPercent)))
+		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
+	}
+
+	minimumTip := big.NewInt(t.minimumGasTipCap)
+	if gasTipCap.Cmp(minimumTip) < 0 {
+		gasTipCap.Set(minimumTip)
+	}
+
+	latestBlockHeader, err := t.backend.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+	}
+	if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+		return nil, nil, ErrEIP1559NotSupported
+	}
+
+	gasFeeCap := new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
+
+	return gasFeeCap, gasTipCap, nil
+}
+
+func (t *transactionService) priorityFees(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
+	tips, baseFee, err := t.suggestedFeeAndTipsFromHistory(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, err
+		}
+		t.metrics.FeeHistoryFallbacks.Inc()
+		gasFeeCap, gasTipCap, fallbackErr := t.suggestedFees(ctx, nil, fallbackTipBoostPercent(tier))
+		if fallbackErr != nil {
+			return nil, nil, fmt.Errorf("fee history: %w; fallback suggestion: %w", err, fallbackErr)
+		}
+		return gasFeeCap, gasTipCap, nil
+	}
+	// eth_feeHistory reports zero base fees instead of an error on networks without EIP-1559.
+	if baseFee.Sign() == 0 {
+		latestBlockHeader, err := t.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+		}
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+			return nil, nil, ErrEIP1559NotSupported
+		}
+	}
+	gasTipCap := new(big.Int).Set(tipForPriority(tier, tips))
+	gasFeeCap := new(big.Int).Mul(baseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
+	return gasFeeCap, gasTipCap, nil
+}
+
+func (t *transactionService) suggestedFeeAndTipsFromHistory(ctx context.Context) (*feeHistorySuggestedFeeAndTips, *big.Int, error) {
+	t.metrics.FeeHistoryCalls.Inc()
+	fh, err := t.backend.FeeHistory(ctx, t.feeHistoryBlocks, nil, feeHistoryRewardPercentiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh)
+	if err != nil {
+		t.metrics.FeeHistoryParseErrors.Inc()
+		return nil, nil, err
+	}
+	// eth_feeHistory appends the next block's base fee after the requested blocks.
+	baseFee := fh.BaseFee[len(fh.BaseFee)-1]
+	if baseFee == nil {
+		t.metrics.FeeHistoryParseErrors.Inc()
+		return nil, nil, errors.New("fee history: missing next base fee")
+	}
+	return &feeHistorySuggestedFeeAndTips{
+		LowTip:        clampTip(low, t.minimumGasTipCap),
+		MarketTip:     clampTip(market, t.minimumGasTipCap),
+		AggressiveTip: clampTip(aggressive, t.minimumGasTipCap),
+	}, new(big.Int).Set(baseFee), nil
+}
+
+type feeHistorySuggestedFeeAndTips struct {
+	LowTip        *big.Int
+	MarketTip     *big.Int
+	AggressiveTip *big.Int
+}
+
+func tipForPriority(tier int, fh *feeHistorySuggestedFeeAndTips) *big.Int {
+	switch tier {
+	case FeePriorityLow:
+		return fh.LowTip
+	case FeePriorityAggressive:
+		return fh.AggressiveTip
+	default:
+		return fh.MarketTip
+	}
+}
+
+// Market matches a transaction that has no fee priority.
+func fallbackTipBoostPercent(tier int) int {
+	switch tier {
+	case FeePriorityLow:
+		return 15
+	case FeePriorityAggressive:
+		return 80
+	default:
+		return DefaultTipBoostPercent
+	}
+}
+
+func clampTip(tip *big.Int, minimum int64) *big.Int {
+	floor := big.NewInt(minimum)
+	if tip.Cmp(floor) < 0 {
+		return floor
+	}
+	return tip
+}
+
+func suggestedFeesFromFeeHistoryResult(fh *ethereum.FeeHistory) (low, market, aggressive *big.Int, err error) {
+	if fh == nil {
+		return nil, nil, nil, errors.New("fee history: empty response")
+	}
+	if len(fh.BaseFee) == 0 {
+		return nil, nil, nil, errors.New("fee history: no base fees")
+	}
+	low, err = medianPriorityTipAtPercentileIndex(fh, 0)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	market, err = medianPriorityTipAtPercentileIndex(fh, 1)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	aggressive, err = medianPriorityTipAtPercentileIndex(fh, 2)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return low, market, aggressive, nil
+}
+
+// medianPriorityTipAtPercentileIndex skips empty blocks because eth_feeHistory reports zero rewards for them.
+func medianPriorityTipAtPercentileIndex(fh *ethereum.FeeHistory, idx int) (*big.Int, error) {
+	var vals []*big.Int
+	for i, row := range fh.Reward {
+		if i < len(fh.GasUsedRatio) && fh.GasUsedRatio[i] == 0 {
+			continue
+		}
+		if idx >= len(row) {
+			continue
+		}
+		if row[idx] == nil {
+			continue
+		}
+		vals = append(vals, new(big.Int).Set(row[idx]))
+	}
+	if len(vals) == 0 {
+		return nil, fmt.Errorf("fee history: no reward entries for percentile index %d", idx)
+	}
+	sort.Slice(vals, func(i, j int) bool {
+		return vals[i].Cmp(vals[j]) < 0
+	})
+	mid := len(vals) / 2
+	if len(vals)%2 == 0 {
+		sum := new(big.Int).Add(vals[mid-1], vals[mid])
+		return sum.Div(sum, big.NewInt(2)), nil
+	}
+	return vals[mid], nil
 }

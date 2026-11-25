@@ -20,8 +20,6 @@ var ErrNotImplemented = errors.New("not implemented")
 type backendMock struct {
 	callContract       func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
-	suggestedFeeAndTip func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	suggestFeeHistory  func(ctx context.Context, tier int) (*big.Int, *big.Int, error)
 	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
 	estimateGas        func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
@@ -47,20 +45,6 @@ func (m *backendMock) PendingNonceAt(ctx context.Context, account common.Address
 		return m.pendingNonceAt(ctx, account)
 	}
 	return 0, ErrNotImplemented
-}
-
-func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	if m.suggestedFeeAndTip != nil {
-		return m.suggestedFeeAndTip(ctx, gasPrice, boostPercent)
-	}
-	return nil, nil, ErrNotImplemented
-}
-
-func (m *backendMock) SuggestFeeHistory(ctx context.Context, tier int) (*big.Int, *big.Int, error) {
-	if m.suggestFeeHistory != nil {
-		return m.suggestFeeHistory(ctx, tier)
-	}
-	return nil, nil, ErrNotImplemented
 }
 
 func (m *backendMock) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
@@ -185,12 +169,6 @@ func WithPendingNonceAtFunc(f func(ctx context.Context, account common.Address) 
 	})
 }
 
-func WithSuggestedFeeAndTipFunc(f func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)) Option {
-	return optionFunc(func(s *backendMock) {
-		s.suggestedFeeAndTip = f
-	})
-}
-
 func WithSuggestGasTipCapFunc(f func(ctx context.Context) (*big.Int, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.suggestGasTipCap = f
@@ -248,11 +226,5 @@ func WithCodeAtFunc(f func(ctx context.Context, contract common.Address, blockNu
 func WithFeeHistoryFunc(f func(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.feeHistory = f
-	})
-}
-
-func WithSuggestFeeHistoryFunc(f func(ctx context.Context, tier int) (*big.Int, *big.Int, error)) Option {
-	return optionFunc(func(s *backendMock) {
-		s.suggestFeeHistory = f
 	})
 }

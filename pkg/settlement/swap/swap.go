@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -44,7 +45,7 @@ type Interface interface {
 	// LastReceivedCheques returns the list of last received cheques for all peers
 	LastReceivedCheques() (map[string]*chequebook.SignedCheque, error)
 	// CashCheque sends a cashing transaction for the last cheque of the peer
-	CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error)
+	CashCheque(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error)
 	// CashoutStatus gets the status of the latest cashout transaction for the peers chequebook
 	CashoutStatus(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error)
 }
@@ -347,7 +348,7 @@ func (s *Service) LastReceivedCheques() (map[string]*chequebook.SignedCheque, er
 }
 
 // CashCheque sends a cashing transaction for the last cheque of the peer
-func (s *Service) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+func (s *Service) CashCheque(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
 	chequebookAddress, known, err := s.addressbook.Chequebook(peer)
 	if err != nil {
 		return common.Hash{}, err
@@ -355,7 +356,7 @@ func (s *Service) CashCheque(ctx context.Context, peer swarm.Address) (common.Ha
 	if !known {
 		return common.Hash{}, chequebook.ErrNoCheque
 	}
-	return s.cashout.CashCheque(ctx, chequebookAddress, s.cashoutAddress)
+	return s.cashout.CashCheque(ctx, chequebookAddress, s.cashoutAddress, opts...)
 }
 
 // CashoutStatus gets the status of the latest cashout transaction for the peers chequebook
@@ -423,7 +424,7 @@ func (*NoOpSwap) LastReceivedCheques() (map[string]*chequebook.SignedCheque, err
 }
 
 // CashCheque sends a cashing transaction for the last cheque of the peer
-func (*NoOpSwap) CashCheque(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+func (*NoOpSwap) CashCheque(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
 	return common.Hash{}, postagecontract.ErrChainDisabled
 }
 

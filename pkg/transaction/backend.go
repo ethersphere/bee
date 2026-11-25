@@ -20,8 +20,6 @@ import (
 // Backend is the minimum of blockchain backend functions we need.
 type Backend interface {
 	backend.Geth
-	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	SuggestFeeHistory(ctx context.Context, tier int) (gasFeeCap, gasTipCap *big.Int, err error)
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This

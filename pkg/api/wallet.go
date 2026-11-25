@@ -115,7 +115,8 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		txHash, err := s.erc20Service.Transfer(r.Context(), *queries.Address, queries.Amount)
+		opts := sctx.TxOptionsFrom(r.Context())
+		txHash, err := s.erc20Service.Transfer(r.Context(), *queries.Address, queries.Amount, opts...)
 		if err != nil {
 			logger.Error(err, "unable to transfer")
 			jsonhttp.InternalServerError(w, "unable to transfer amount")
@@ -139,14 +140,14 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 	req := &transaction.TxRequest{
 		To:          queries.Address,
-		GasPrice:    sctx.GetGasPrice(r.Context()),
-		FeePriority: sctx.GetFeePriority(r.Context()),
-		GasLimit:    sctx.GetGasLimitWithDefault(r.Context(), 300_000),
 		Value:       queries.Amount,
 		Description: "native token withdraw",
 	}
 
-	txHash, err := s.transaction.Send(r.Context(), req, transaction.DefaultTipBoostPercent)
+	txHash, err := s.transaction.Send(r.Context(), req, append(slices.Clip(sctx.TxOptionsFrom(r.Context())),
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+		transaction.WithDefaultGasLimit(300_000),
+	)...)
 	if err != nil {
 		logger.Error(err, "unable to transfer")
 		jsonhttp.InternalServerError(w, "unable to transfer")

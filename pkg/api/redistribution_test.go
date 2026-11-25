@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
@@ -42,13 +43,13 @@ func TestRedistributionStatus(t *testing.T) {
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 					return big.NewInt(1000), nil
 				}),
+				mock.WithSuggestFeesFunc(func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
+				}),
 			},
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return big.NewInt(100000000), nil
-				}),
-				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
 				}),
 			},
 		})
@@ -92,13 +93,13 @@ func TestRedistributionStatus(t *testing.T) {
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 					return big.NewInt(1000), nil
 				}),
+				mock.WithSuggestFeesFunc(func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
+				}),
 			},
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return big.NewInt(100000000), nil
-				}),
-				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
 				}),
 			},
 		})
@@ -135,13 +136,13 @@ func TestRedistributionStatus(t *testing.T) {
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 					return big.NewInt(1000), nil
 				}),
+				mock.WithSuggestFeesFunc(func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
+				}),
 			},
 			BackendOpts: []backendmock.Option{
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return big.NewInt(100000000), nil
-				}),
-				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-					return big.NewInt(1), big.NewInt(2), nil
 				}),
 			},
 		})
@@ -196,13 +197,13 @@ func redistributionTestOpts(t *testing.T) testServerOptions {
 			mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 				return big.NewInt(1000), nil
 			}),
+			mock.WithSuggestFeesFunc(func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+				return big.NewInt(1), big.NewInt(2), nil
+			}),
 		},
 		BackendOpts: []backendmock.Option{
 			backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 				return big.NewInt(100000000), nil
-			}),
-			backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-				return big.NewInt(1), big.NewInt(2), nil
 			}),
 		},
 	}

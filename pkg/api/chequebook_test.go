@@ -17,10 +17,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -142,7 +142,7 @@ func TestChequebookWithdraw(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(500)) == 0 {
 				return txHash, nil
 			}
@@ -168,8 +168,8 @@ func TestChequebookWithdraw(t *testing.T) {
 	t.Run("custom gas", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
+			if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
 			}
 			if amount.Cmp(big.NewInt(500)) == 0 {
@@ -204,7 +204,7 @@ func TestChequebookDeposit(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(700)) == 0 {
 				return txHash, nil
 			}
@@ -230,8 +230,8 @@ func TestChequebookDeposit(t *testing.T) {
 	t.Run("custom gas", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
+			if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
 			}
 
@@ -477,7 +477,7 @@ func TestChequebookCashout(t *testing.T) {
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
 
-	cashChequeFunc := func(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+	cashChequeFunc := func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
 		return deployCashingHash, nil
 	}
 
@@ -505,9 +505,9 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 
 	var price *big.Int
 	var limit uint64
-	cashChequeFunc := func(ctx context.Context, peer swarm.Address) (common.Hash, error) {
-		price = sctx.GetGasPrice(ctx)
-		limit = sctx.GetGasLimit(ctx)
+	cashChequeFunc := func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
+		price = transaction.Apply(opts...).Fee.GasPrice
+		limit = transaction.Apply(opts...).GasLimit
 		return deployCashingHash, nil
 	}
 

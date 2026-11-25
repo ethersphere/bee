@@ -20,7 +20,6 @@ const (
 
 var ErrUnknownFeePriority = errors.New("unknown fee priority")
 
-// ValidateFeePriority returns ErrUnknownFeePriority for any tier other than low, market, or aggressive.
 func ValidateFeePriority(tier int) error {
 	switch tier {
 	case FeePriorityLow, FeePriorityMarket, FeePriorityAggressive:
@@ -30,7 +29,6 @@ func ValidateFeePriority(tier int) error {
 	}
 }
 
-// FeePriorityName returns the priority name. The zero value returns an empty string.
 func FeePriorityName(tier int) string {
 	switch tier {
 	case FeePriorityLow:
@@ -46,8 +44,6 @@ func FeePriorityName(tier int) string {
 	}
 }
 
-// ParseFeePriority validates a fee priority name (for API headers and config).
-// An empty name returns 0, which means the priority is unset.
 func ParseFeePriority(s string) (int, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "":

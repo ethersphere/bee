@@ -6,7 +6,6 @@ package api
 
 import (
 	"errors"
-	"math/big"
 	"net/http"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/gorilla/mux"
 )
@@ -174,21 +172,12 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	headers := struct {
-		GasPrice *big.Int `map:"Gas-Price"`
-	}{}
-	if response := s.mapStructure(r.Header, &headers); response != nil {
-		response("invalid header params", logger, w)
+	gasPrice, ok := s.gasPriceHeader(w, r, logger)
+	if !ok {
 		return
 	}
-	if gasPriceOutOfRange(headers.GasPrice) {
-		logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
-		jsonhttp.BadRequest(w, "gas price out of range")
-		return
-	}
-	ctx := sctx.SetGasPrice(r.Context(), headers.GasPrice)
 
-	txHash, err := s.transaction.CancelTransaction(ctx, paths.Hash)
+	txHash, err := s.transaction.CancelTransaction(r.Context(), paths.Hash, gasPrice)
 	if err != nil {
 		logger.Debug("cancel transaction failed", "tx_hash", paths.Hash, "error", err, "canceled_tx_hash", txHash)
 		logger.Error(nil, "cancel transaction failed", "tx_hash", paths.Hash)

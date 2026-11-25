@@ -11,11 +11,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type Service struct {
 	balanceOfFunc func(ctx context.Context, address common.Address) (*big.Int, error)
-	transferFunc  func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
+	transferFunc  func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error)
 }
 
 func WithBalanceOfFunc(f func(ctx context.Context, address common.Address) (*big.Int, error)) Option {
@@ -24,7 +25,7 @@ func WithBalanceOfFunc(f func(ctx context.Context, address common.Address) (*big
 	})
 }
 
-func WithTransferFunc(f func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)) Option {
+func WithTransferFunc(f func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.transferFunc = f
 	})
@@ -45,9 +46,9 @@ func (s *Service) BalanceOf(ctx context.Context, address common.Address) (*big.I
 	return big.NewInt(0), errors.New("Error")
 }
 
-func (s *Service) Transfer(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+func (s *Service) Transfer(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
 	if s.transferFunc != nil {
-		return s.transferFunc(ctx, address, value)
+		return s.transferFunc(ctx, address, value, opts...)
 	}
 	return common.Hash{}, errors.New("Error")
 }

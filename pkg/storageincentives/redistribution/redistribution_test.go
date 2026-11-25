@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -62,7 +61,6 @@ func TestRedistribution(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ctx = sctx.SetGasPrice(ctx, big.NewInt(100))
 	owner := common.HexToAddress("abcd")
 	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
 	redistributionContractAddress := common.HexToAddress("ffff")
@@ -203,7 +201,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -245,7 +243,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -288,7 +286,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -333,7 +331,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -430,7 +428,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.Option) (txHash common.Hash, err error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -478,9 +476,10 @@ func TestRedistributionFeePriority(t *testing.T) {
 				owner,
 				log.Noop,
 				transactionMock.New(
-					transactionMock.WithSendFunc(func(_ context.Context, request *transaction.TxRequest, tipBoost int) (common.Hash, error) {
-						got = append(got, request.FeePriority)
-						boost = tipBoost
+					transactionMock.WithSendFunc(func(_ context.Context, _ *transaction.TxRequest, opts ...transaction.Option) (common.Hash, error) {
+						txOpts := transaction.Apply(opts...)
+						got = append(got, txOpts.Fee.Priority)
+						boost = txOpts.Fee.TipBoostPercent
 						return common.HexToHash("c3a7"), nil
 					}),
 					transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
@@ -493,16 +492,13 @@ func TestRedistributionFeePriority(t *testing.T) {
 			)
 
 			ctx := context.Background()
-			if tc.in != 0 {
-				ctx = sctx.SetFeePriority(ctx, tc.in)
-			}
-			if _, err := contract.Commit(ctx, common.Hex2Bytes("hash"), 0); err != nil {
+			if _, err := contract.Commit(ctx, common.Hex2Bytes("hash"), 0, transaction.WithFeePriority(tc.in)); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := contract.Reveal(ctx, 1, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce")); err != nil {
+			if _, err := contract.Reveal(ctx, 1, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"), transaction.WithFeePriority(tc.in)); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := contract.Claim(ctx, randChunkInclusionProofs(t)); err != nil {
+			if _, err := contract.Claim(ctx, randChunkInclusionProofs(t), transaction.WithFeePriority(tc.in)); err != nil {
 				t.Fatal(err)
 			}
 			if len(got) != 3 {
