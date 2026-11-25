@@ -21,6 +21,7 @@ type mock struct {
 	depth           uint8
 	closestPeer     swarm.Address
 	closestPeerErr  error
+	closestPeerFunc func(addr swarm.Address, wantSelf bool, filter topology.Select, skipPeers ...swarm.Address) (swarm.Address, error)
 	peersErr        error
 	addPeersErr     error
 	isWithinFunc    func(c swarm.Address) bool
@@ -60,6 +61,14 @@ func WithClosestPeer(addr swarm.Address) Option {
 func WithClosestPeerErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.closestPeerErr = err
+	})
+}
+
+// WithClosestPeerFunc replaces ClosestPeer, for tests that depend on the
+// filter or the skipped peers.
+func WithClosestPeerFunc(f func(addr swarm.Address, wantSelf bool, filter topology.Select, skipPeers ...swarm.Address) (swarm.Address, error)) Option {
+	return optionFunc(func(d *mock) {
+		d.closestPeerFunc = f
 	})
 }
 
@@ -138,7 +147,11 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, filter topology.Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+	if d.closestPeerFunc != nil {
+		return d.closestPeerFunc(addr, wantSelf, filter, skipPeers...)
+	}
+
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
