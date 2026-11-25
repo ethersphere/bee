@@ -137,6 +137,15 @@ func (n *hopNet) setReceipt(hop swarm.Address, valid bool) {
 	n.handlers[hop.String()] = node.Protocol()
 }
 
+// setOutOfDepth makes the first hop a forwarder outside of the AOR of the
+// chunks that has no closer peer, so that it answers ErrOutOfDepthStoring.
+func (n *hopNet) setOutOfDepth(hop swarm.Address) {
+	n.t.Helper()
+
+	node, _ := createPushSyncNodeWithRadius(n.t, hop, defaultPrices, nil, nil, hopSigner(n.t, n.anchor, false), hopRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	n.handlers[hop.String()] = node.Protocol()
+}
+
 // setGone makes every push to the first hop return an error.
 func (n *hopNet) setGone(hop swarm.Address) {
 	delete(n.handlers, hop.String())
@@ -238,19 +247,26 @@ func TestOriginPausedPeerLast(t *testing.T) {
 		n := newHopNet(t, false, 2)
 		shallow, other := n.hops[0], n.hops[1]
 		n.setReceipt(shallow, false)
+		n.setReceipt(other, true)
 
-		// the farther first hop gives an error, so it gets no record
-		n.pushShallow()
+		n.pushValid()
 		n.wantStreams(shallow, 1)
-		n.wantFirstHop("unknown", "error", 1)
+		n.wantStreams(other, 1)
+
+		// the error removes the valid record of the farther first hop, so
+		// that it has no record; only the paused first hop is left
+		n.setGone(other)
+		n.pushShallow()
+		n.wantStreams(shallow, 2)
+		n.wantFirstHop("known_valid", "error", 1)
+		n.wantFirstHop("paused", "shallow", 1)
 
 		n.setReceipt(other, true)
 		time.Sleep(59 * time.Second)
 		n.pushValid()
-		n.wantStreams(shallow, 1)
-		n.wantStreams(other, 1)
-		n.wantFirstHop("unknown", "valid", 1)
-		n.wantFirstHop("paused", "shallow", 0)
+		n.wantStreams(shallow, 2)
+		n.wantStreams(other, 2)
+		n.wantFirstHop("unknown", "valid", 2)
 	})
 }
 
@@ -329,6 +345,113 @@ func TestOriginValidPeerError(t *testing.T) {
 		if got := hopRecords(n.origin); got != 1 {
 			t.Fatalf("got %d records, want 1", got)
 		}
+	})
+}
+
+// TestOriginErrorPause checks that a first hop without a valid record that
+// gives an error is not picked again for one minute.
+func TestOriginErrorPause(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		n := newHopNet(t, false, 2)
+		gone, valid := n.hops[0], n.hops[1]
+		n.setReceipt(valid, true)
+
+		n.pushValid()
+		n.wantFirstHop("unknown", "error", 1)
+
+		n.setReceipt(gone, true)
+		time.Sleep(59 * time.Second)
+		n.pushValid()
+		n.wantStreams(gone, 0)
+
+		time.Sleep(time.Second)
+		n.pushValid()
+		n.wantStreams(gone, 1)
+		n.wantFirstHop("probe", "valid", 1)
+	})
+}
+
+// TestOriginErrorPauseAllPeers checks that the origin sends through a first
+// hop that is paused after an error when no other first hop is left.
+func TestOriginErrorPauseAllPeers(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		n := newHopNet(t, false, 1)
+		if err := n.push(); err == nil {
+			t.Fatal("got no error")
+		}
+
+		n.setReceipt(n.hops[0], true)
+		n.pushValid()
+		n.wantFirstHop("paused", "valid", 1)
+	})
+}
+
+// TestOriginOutOfDepthFirstHop checks that a closer first hop outside of the
+// AOR that has no closer peer is not probed every probe interval: each error
+// doubles its pause.
+func TestOriginOutOfDepthFirstHop(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		n := newHopNet(t, false, 2)
+		outOfDepth, valid := n.hops[0], n.hops[1]
+		n.setOutOfDepth(outOfDepth)
+		n.setReceipt(valid, true)
+
+		// the first error is at 0s, the probes are at 60s and 180s
+		for range 30 {
+			n.pushValid()
+			time.Sleep(10 * time.Second)
+		}
+		n.wantStreams(valid, 30)
+		n.wantStreams(outOfDepth, 3)
+		n.wantFirstHop("unknown", "error", 1)
+		n.wantFirstHop("probe", "error", 2)
+	})
+}
+
+// TestOriginProbeNotStarved checks that a closer first hop that always gives
+// an error does not take every probe of the neighborhood: the next first hop
+// is probed too, and is used first when it gives a valid receipt.
+func TestOriginProbeNotStarved(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		n := newHopNet(t, false, 3)
+		outOfDepth, behind, known := n.hops[0], n.hops[1], n.hops[2]
+		n.setOutOfDepth(outOfDepth)
+		n.setReceipt(behind, false)
+		n.setReceipt(known, true)
+
+		// the two closer first hops are paused
+		n.pushValid()
+		n.wantStreams(outOfDepth, 1)
+		n.wantStreams(behind, 1)
+		n.wantStreams(known, 1)
+
+		// both pauses are over: the probe goes to the closest first hop
+		n.setReceipt(behind, true)
+		time.Sleep(time.Minute)
+		n.pushValid()
+		n.wantStreams(outOfDepth, 2)
+		n.wantStreams(behind, 1)
+		n.wantStreams(known, 2)
+
+		// the next probe goes to the first hop behind it
+		time.Sleep(30 * time.Second)
+		n.pushValid()
+		n.wantStreams(outOfDepth, 2)
+		n.wantStreams(behind, 2)
+		n.wantStreams(known, 2)
+		n.wantFirstHop("probe", "valid", 1)
+
+		n.pushValid()
+		n.wantStreams(behind, 3)
+		n.wantStreams(known, 2)
 	})
 }
 

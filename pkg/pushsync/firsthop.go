@@ -44,8 +44,8 @@ func (ps *PushSync) newOriginPush(chunk swarm.Address) *originPush {
 //     neighborhood: a peer closer to the chunk than every peer with a valid
 //     record;
 //  2. the closest peer with a valid record;
-//  3. the closest peer that is not in a shallow pause;
-//  4. the peer whose shallow pause ends first, unless the origin can store
+//  3. the closest peer that is not in a pause;
+//  4. the peer whose pause ends first, unless the origin can store
 //     the chunk itself.
 func (o *originPush) next(radius uint8, skip []swarm.Address) (swarm.Address, error) {
 	peer, source, err := o.pick(radius, skip)
@@ -82,7 +82,7 @@ func (o *originPush) pick(radius uint8, skip []swarm.Address) (swarm.Address, fi
 		return peer, firstHopSourceUnknown, err
 	}
 
-	// Every peer left is in a shallow pause. Waiting would hold a push slot
+	// Every peer left is in a pause. Waiting would hold a push slot
 	// of the pusher, so send through the connected peer whose pause ends first.
 	connected := ps.connectedOf(view.Paused)
 	for _, p := range view.Paused {
@@ -129,8 +129,11 @@ func closestOf(chunk swarm.Address, peers, skip []swarm.Address) swarm.Address {
 }
 
 // record stores the result of a push to a first hop: a valid receipt (err is
-// nil), a shallow receipt, or an error, which removes the record of the peer.
+// nil), a shallow receipt, or an error. An error starts a pause, as a shallow
+// receipt does. The error of a first hop that was picked for its valid record
+// only removes the record, because a single error can be accidental.
 func (o *originPush) record(radius uint8, peer swarm.Address, err error) {
+	source := o.sources[peer.ByteString()]
 	result := "error"
 	switch {
 	case err == nil:
@@ -138,11 +141,13 @@ func (o *originPush) record(radius uint8, peer swarm.Address, err error) {
 		o.ps.firstHops.Valid(radius, o.chunk, peer)
 	case errors.Is(err, ErrShallowReceipt):
 		result = "shallow"
-		o.ps.firstHops.Shallow(radius, o.chunk, peer)
-	default:
+		o.ps.firstHops.Pause(radius, o.chunk, peer)
+	case source == firstHopSourceValid:
 		o.ps.firstHops.Forget(radius, o.chunk, peer)
+	default:
+		o.ps.firstHops.Pause(radius, o.chunk, peer)
 	}
-	o.ps.metrics.FirstHop.WithLabelValues(string(o.sources[peer.ByteString()]), result).Inc()
+	o.ps.metrics.FirstHop.WithLabelValues(string(source), result).Inc()
 }
 
 // connectedOf returns the peers that are connected, in one pass over the

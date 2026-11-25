@@ -563,8 +563,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				}
 			}
 
-			// A shallow receipt starts a pause of the first hop; another
-			// error removes its record.
+			// A shallow receipt starts a pause of the first hop. An error
+			// does too, or only removes its valid record.
 			if origin {
 				op.record(rad, result.peer, result.err)
 			}

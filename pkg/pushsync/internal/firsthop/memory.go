@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package firsthop keeps the receipt results of the first hops of an origin.
+// Package firsthop keeps the results of the first hops of an origin.
 //
 // An origin sends a chunk to one of its peers, the first hop, and gets back a
 // receipt that is valid (the chunk was stored inside its neighborhood) or
-// shallow (it was stored outside of it). The Memory keeps the last result of
-// each first hop per neighborhood, so that the next chunk of the neighborhood
-// goes to a first hop that gave a valid receipt and not to one that gave a
-// shallow receipt.
+// shallow (it was stored outside of it), or an error. The Memory keeps the last
+// result of each first hop per neighborhood, so that the next chunk of the
+// neighborhood goes to a first hop that gave a valid receipt and not to one
+// that gave a shallow receipt or an error.
 package firsthop
 
 import (
@@ -22,16 +22,16 @@ import (
 )
 
 const (
-	// shallowPause is the pause of a first hop after a shallow receipt.
-	// It doubles with each shallow receipt in a row, up to maxShallowPause.
-	shallowPause    = time.Minute
-	maxShallowPause = 30 * time.Minute
+	// minPause is the pause of a first hop after a shallow receipt or an
+	// error. It doubles with each pause in a row, up to maxPause.
+	minPause = time.Minute
+	maxPause = 30 * time.Minute
 	// probeInterval is the shortest time between two probes of a neighborhood.
 	probeInterval = 30 * time.Second
-	// validIdle and shallowIdle are the times after which a record without a
+	// validIdle and pausedIdle are the times after which a record without a
 	// new result is removed.
-	validIdle   = 30 * time.Minute
-	shallowIdle = 2 * maxShallowPause
+	validIdle  = 30 * time.Minute
+	pausedIdle = 2 * maxPause
 	// sweepInterval is the shortest time between two removals of idle records
 	// in all neighborhoods.
 	sweepInterval = validIdle
@@ -44,22 +44,22 @@ const (
 
 // record is the last result of one first hop for one neighborhood.
 type record struct {
-	peer    swarm.Address
-	valid   bool
-	at      time.Time
-	shallow int // shallow receipts in a row
+	peer   swarm.Address
+	valid  bool
+	at     time.Time
+	pauses int // pauses in a row
 }
 
-// pausedUntil returns the end of the pause of a shallow record.
+// pausedUntil returns the end of the pause of a record that is not valid.
 func (r *record) pausedUntil() time.Time {
-	pause := shallowPause
-	for i := 1; i < r.shallow && pause < maxShallowPause; i++ {
+	pause := minPause
+	for i := 1; i < r.pauses && pause < maxPause; i++ {
 		pause *= 2
 	}
-	return r.at.Add(min(pause, maxShallowPause))
+	return r.at.Add(min(pause, maxPause))
 }
 
-// paused reports whether the record is shallow and its pause still runs.
+// paused reports whether the record is not valid and its pause still runs.
 func (r *record) paused(now time.Time) bool {
 	return !r.valid && now.Before(r.pausedUntil())
 }
@@ -69,7 +69,7 @@ func (r *record) idle(now time.Time) bool {
 	if r.valid {
 		return now.Sub(r.at) >= validIdle
 	}
-	return now.Sub(r.at) >= shallowIdle
+	return now.Sub(r.at) >= pausedIdle
 }
 
 // neighborhood holds the records of the chunk addresses that share the first
@@ -84,7 +84,7 @@ func (n *neighborhood) probeDue(now time.Time) bool {
 	return n.lastProbe.IsZero() || now.Sub(n.lastProbe) >= probeInterval
 }
 
-// Memory keeps the last receipt result of each first hop per neighborhood.
+// Memory keeps the last result of each first hop per neighborhood.
 // It holds the records of one radius at a time. It is safe for concurrent use.
 type Memory struct {
 	now func() time.Time
@@ -108,7 +108,7 @@ func New(now func() time.Time) *Memory {
 type View struct {
 	// Valid are the peers whose last receipt was valid.
 	Valid []swarm.Address
-	// Paused are the peers in a shallow pause; the pause that ends first
+	// Paused are the peers in a pause; the pause that ends first
 	// comes first.
 	Paused []swarm.Address
 	// ProbeDue is true when the neighborhood had no probe for the probe interval.
@@ -174,9 +174,9 @@ func (m *Memory) Valid(radius uint8, chunk, peer swarm.Address) {
 	n.peers[peer.ByteString()] = &record{peer: peer, valid: true, at: m.now()}
 }
 
-// Shallow stores a shallow receipt of the peer. A receipt that comes during
-// the pause of the peer does not make the pause longer.
-func (m *Memory) Shallow(radius uint8, chunk, peer swarm.Address) {
+// Pause starts a pause of the peer after a shallow receipt or an error. A
+// result that comes during the pause does not make the pause longer.
+func (m *Memory) Pause(radius uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -195,15 +195,14 @@ func (m *Memory) Shallow(radius uint8, chunk, peer swarm.Address) {
 	}
 	// idle record that View did not remove yet
 	if !r.valid && r.idle(now) {
-		r.shallow = 0
+		r.pauses = 0
 	}
 	r.valid = false
-	r.shallow++
+	r.pauses++
 	r.at = now
 }
 
-// Forget removes the record of the peer, except a shallow record whose pause
-// still runs.
+// Forget removes the record of the peer, except a record whose pause still runs.
 func (m *Memory) Forget(radius uint8, chunk, peer swarm.Address) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

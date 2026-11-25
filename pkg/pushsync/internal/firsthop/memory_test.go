@@ -70,7 +70,7 @@ func TestRecord(t *testing.T) {
 		t.Fatalf("after a valid receipt: valid %v paused %v", v.Valid, v.Paused)
 	}
 
-	m.Shallow(radius, chunk, peer)
+	m.Pause(radius, chunk, peer)
 	if v := m.View(radius, chunk); len(v.Valid) != 0 || !has(v.Paused, peer) {
 		t.Fatalf("after a shallow receipt: valid %v paused %v", v.Valid, v.Paused)
 	}
@@ -93,8 +93,8 @@ func TestRecord(t *testing.T) {
 	}
 }
 
-// TestShallowPause checks the length of the pause that follows a shallow receipt.
-func TestShallowPause(t *testing.T) {
+// TestPause checks the length of the pause.
+func TestPause(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -147,7 +147,7 @@ func TestShallowPause(t *testing.T) {
 			// results of pushes that ran in parallel
 			name: "receipt during a pause does not make it longer",
 			before: func(m *firsthop.Memory, clock *testClock) {
-				m.Shallow(radius, chunk, peer)
+				m.Pause(radius, chunk, peer)
 				clock.Add(30 * time.Second)
 			},
 			pauses: []time.Duration{30 * time.Second},
@@ -157,10 +157,10 @@ func TestShallowPause(t *testing.T) {
 			t.Parallel()
 
 			m, clock := newMemory()
-			m.Shallow(radius, chunk, peer)
+			m.Pause(radius, chunk, peer)
 			tc.before(m, clock)
 			for _, pause := range tc.pauses {
-				m.Shallow(radius, chunk, peer)
+				m.Pause(radius, chunk, peer)
 				wantPause(t, m, clock, pause)
 			}
 		})
@@ -168,7 +168,7 @@ func TestShallowPause(t *testing.T) {
 }
 
 // TestIdle checks that a record without a new result is removed: a valid
-// record after 30 minutes, a shallow record after one hour.
+// record after 30 minutes, a paused record after one hour.
 func TestIdle(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +183,7 @@ func TestIdle(t *testing.T) {
 		idle   time.Duration
 	}{
 		{"valid", func(m *firsthop.Memory) { m.Valid(radius, chunk, peer) }, 30 * time.Minute},
-		{"shallow", func(m *firsthop.Memory) { m.Shallow(radius, chunk, peer) }, time.Hour},
+		{"paused", func(m *firsthop.Memory) { m.Pause(radius, chunk, peer) }, time.Hour},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -221,12 +221,12 @@ func TestSweep(t *testing.T) {
 
 	m.View(radius, chunk) // the first sweep
 	m.Valid(radius, chunk, addr(0x10))
-	m.Shallow(radius, chunk, addr(0x20))
+	m.Pause(radius, chunk, addr(0x20))
 
 	clock.Add(30 * time.Minute)
 	m.View(radius, other)
 	if got := records(m); got != 1 {
-		t.Fatalf("got %d records after 30 minutes, want 1 (the shallow record)", got)
+		t.Fatalf("got %d records after 30 minutes, want 1 (the paused record)", got)
 	}
 
 	clock.Add(30 * time.Minute)
@@ -337,7 +337,7 @@ func TestRadiusChange(t *testing.T) {
 	)
 
 	m.Valid(9, chunk, peer)
-	m.Shallow(9, chunk, late)
+	m.Pause(9, chunk, late)
 
 	if v := m.View(10, chunk); len(v.Valid) != 0 || len(v.Paused) != 0 {
 		t.Fatalf("records of radius 9 are used at radius 10: valid %v paused %v", v.Valid, v.Paused)
@@ -347,7 +347,7 @@ func TestRadiusChange(t *testing.T) {
 		t.Helper()
 
 		m.Valid(9, chunk, late)
-		m.Shallow(9, chunk, late)
+		m.Pause(9, chunk, late)
 		m.Forget(9, chunk, peer)
 		if m.ClaimProbe(9, chunk) {
 			t.Fatal("probe was given for another radius")
@@ -380,14 +380,14 @@ func TestPausedOrder(t *testing.T) {
 	)
 
 	// two shallow receipts in a row: the pause of this peer ends at 3m
-	m.Shallow(radius, chunk, long)
+	m.Pause(radius, chunk, long)
 	clock.Add(time.Minute)
-	m.Shallow(radius, chunk, long)
+	m.Pause(radius, chunk, long)
 	// these pauses end at 2m10s and 2m20s
 	clock.Add(10 * time.Second)
-	m.Shallow(radius, chunk, first)
+	m.Pause(radius, chunk, first)
 	clock.Add(10 * time.Second)
-	m.Shallow(radius, chunk, last)
+	m.Pause(radius, chunk, last)
 
 	paused := m.View(radius, chunk).Paused
 	want := []swarm.Address{first, last, long}
@@ -420,7 +420,7 @@ func TestConcurrent(t *testing.T) {
 				case 0:
 					m.Valid(radius, chunk, peer)
 				case 1:
-					m.Shallow(radius, chunk, peer)
+					m.Pause(radius, chunk, peer)
 				case 2:
 					m.Forget(radius, chunk, peer)
 				case 3:
