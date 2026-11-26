@@ -136,7 +136,9 @@ func (s singleStream) NewStream(context.Context, swarm.Address, p2p.Headers, str
 
 // TestSessionEnd: a session ends its stream once — closed after a Close or an
 // EOS, reset when the broker goes away — however many Closes are asked for,
-// from however many goroutines, before or after, and only then closes Done.
+// from however many goroutines, before or after, and only then closes Done. It
+// never reads the stream twice at once, and leaves no read behind: a Close
+// cancels a read that is still in progress.
 func TestSessionEnd(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -182,6 +184,8 @@ func TestSessionEnd(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// the session is reading when the stream is asked to end
+			eventuallyTrue(t, func() bool { n, _ := st.reads(); return n == 1 })
 			tc.end(t, sess, broker)
 			waitClosed(t, sess.Done(), "Done was not closed")
 			_ = sess.Close() // asked after the end, it changes nothing
@@ -189,6 +193,11 @@ func TestSessionEnd(t *testing.T) {
 			resets, closes := st.ended()
 			if resets+closes != 1 || (closes == 1) != tc.closed {
 				t.Fatalf("resets %d, closes %d; want one, closed %t", resets, closes, tc.closed)
+			}
+			// no read was begun beside another, and none is left behind
+			eventuallyTrue(t, func() bool { n, _ := st.reads(); return n == 0 })
+			if _, overlapping := st.reads(); overlapping != 0 {
+				t.Fatalf("%d reads begun while another was in progress", overlapping)
 			}
 			if tc.err != nil && !errors.Is(sess.Err(), tc.err) {
 				t.Fatalf("Err: got %v, want %v", sess.Err(), tc.err)

@@ -352,9 +352,18 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
 	defer close(s.done)
 	defer func() {
-		if s.err != nil && !errors.Is(s.err, ErrEndOfStream) && s.ctx.Err() == nil {
+		switch {
+		case s.ctx.Err() != nil:
+			// a Close: the read it cancelled may still be in progress, and a
+			// second read on the stream, as FullClose's, would strand one of
+			// them, since a stream wakes a single reader. Close starts none: it
+			// wakes the read in progress and half-closes, so what the session
+			// wrote still reaches the broker
+			_ = stream.Close()
+		case s.err != nil && !errors.Is(s.err, ErrEndOfStream):
 			_ = stream.Reset()
-		} else {
+		default:
+			// an EOS: no read is in progress, FullClose's is the only one
 			_ = stream.FullClose()
 		}
 		s.cancel()

@@ -30,7 +30,9 @@ var errFlushStreamReset = errors.New("flush stream reset")
 // are written into a pipe this end reads, and this end's writes land in a
 // buffer — or, once stalled, block as on a transport whose far end has stopped
 // reading, until the stream is reset or closed. It counts every Reset and
-// Close, so that a test can tell the stream ended once.
+// Close, so that a test can tell the stream ended once, and every read begun
+// while another is in progress: a yamux stream wakes one waiting reader, so the
+// other would never return.
 type flushStream struct {
 	r  *io.PipeReader
 	pw *io.PipeWriter
@@ -41,6 +43,8 @@ type flushStream struct {
 	blocked        int           // writes that blocked
 	stalled        chan struct{} // closed when the first write blocks
 	resets, closes int
+	reading        int           // reads in progress
+	overlapping    int           // reads begun while another was in progress
 	reset, closed  chan struct{} // closed at the first Reset, the first Close
 	unblock        chan struct{} // closed when the stream first ends, either way
 }
@@ -56,7 +60,34 @@ func newFlushStream() *flushStream {
 	}
 }
 
-func (s *flushStream) Read(p []byte) (int, error) { return s.r.Read(p) }
+func (s *flushStream) Read(p []byte) (int, error) {
+	s.beginRead()
+	defer s.endRead()
+	return s.r.Read(p)
+}
+
+func (s *flushStream) beginRead() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reading > 0 {
+		s.overlapping++
+	}
+	s.reading++
+}
+
+func (s *flushStream) endRead() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reading--
+}
+
+// reads reports how many reads are in progress, and how many began while
+// another was.
+func (s *flushStream) reads() (inProgress, overlapping int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reading, s.overlapping
+}
 
 func (s *flushStream) Write(p []byte) (int, error) {
 	s.mu.Lock()
@@ -111,7 +142,14 @@ func (s *flushStream) ended() (resets, closes int) {
 	return s.resets, s.closes
 }
 
-func (s *flushStream) FullClose() error                  { return s.Close() }
+// FullClose reads for the far end's EOF before it closes, as a libp2p stream's
+// does; the read is only counted, not waited for.
+func (s *flushStream) FullClose() error {
+	s.beginRead()
+	s.endRead()
+	return s.Close()
+}
+
 func (s *flushStream) Headers() p2p.Headers              { return nil }
 func (s *flushStream) ResponseHeaders() p2p.Headers      { return nil }
 func (s *flushStream) Version() (*semver.Version, error) { return nil, nil }
