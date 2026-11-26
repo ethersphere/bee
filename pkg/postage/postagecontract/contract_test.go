@@ -165,6 +165,91 @@ func TestCreateBatch(t *testing.T) {
 		}
 	})
 
+	newCreateBatchContract := func(send func(context.Context, *transaction.TxRequest, int) (common.Hash, error), wait func(context.Context, common.Hash) (*types.Receipt, error)) postagecontract.Interface {
+		t.Helper()
+		expiredCall, err := postageStampContractABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lastPriceCall, err := postageStampContractABI.Pack("lastPrice")
+		if err != nil {
+			t.Fatal(err)
+		}
+		minValidityCall, err := postageStampContractABI.Pack("minimumValidityBlocks")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return postagecontract.New(
+			owner,
+			postageStampAddress,
+			postageStampContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(send),
+				transactionMock.WithWaitForReceiptFunc(wait),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+					if *request.To == bzzTokenAddress {
+						return big.NewInt(102400).FillBytes(make([]byte, 32)), nil
+					}
+					switch {
+					case bytes.Equal(request.Data, expiredCall), bytes.Equal(request.Data, lastPriceCall), bytes.Equal(request.Data, minValidityCall):
+						return big.NewInt(0).FillBytes(make([]byte, 32)), nil
+					default:
+						return nil, errors.New("unexpected call")
+					}
+				}),
+			),
+			postageMock.New(),
+			postagestoreMock.New(),
+			true,
+			0,
+		)
+	}
+
+	t.Run("approval timeout omits the hash", func(t *testing.T) {
+		contract := newCreateBatchContract(
+			func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
+				if *request.To != bzzTokenAddress {
+					return common.Hash{}, errors.New("sent a transaction after the approval")
+				}
+				return common.HexToHash("abb0"), nil
+			},
+			func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+				return nil, context.DeadlineExceeded
+			},
+		)
+
+		_, _, err := contract.CreateBatch(ctx, initialBalance, 10, false, label)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if !errors.As(err, &timeoutErr) || !errors.Is(err, transaction.ErrApprovalTimeout) || timeoutErr.Hash != (common.Hash{}) {
+			t.Fatalf("got %v, want approval timeout without a hash", err)
+		}
+	})
+
+	t.Run("operation timeout returns its hash", func(t *testing.T) {
+		txHashCreate := common.HexToHash("c3a7")
+		contract := newCreateBatchContract(
+			func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
+				if *request.To == bzzTokenAddress {
+					return common.HexToHash("abb0"), nil
+				}
+				return txHashCreate, nil
+			},
+			func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+				if txHash == common.HexToHash("abb0") {
+					return &types.Receipt{Status: 1}, nil
+				}
+				return nil, context.DeadlineExceeded
+			},
+		)
+
+		_, _, err := contract.CreateBatch(ctx, initialBalance, 10, false, label)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if !errors.As(err, &timeoutErr) || timeoutErr.Hash != txHashCreate {
+			t.Fatalf("got %v, want create hash %s", err, txHashCreate)
+		}
+	})
+
 	t.Run("invalid depth", func(t *testing.T) {
 		depth := uint8(9)
 

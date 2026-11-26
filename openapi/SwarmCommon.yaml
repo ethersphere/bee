@@ -732,6 +732,17 @@ components:
         minimumDeposit:
           $ref: "#/components/schemas/BigInt"
 
+    ReceiptTimeoutResponse:
+      type: object
+      description: The transaction was broadcast, but no receipt arrived before the wait timed out. It may still be mined. txHash is omitted when the timed-out transaction was only the token approval, because resending that approval does not complete the operation.
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
+
     GetWithdrawableResponse:
       type: object
       properties:
@@ -1550,3 +1561,9 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+    "504":
+      description: The transaction was broadcast, but no receipt arrived before the wait timed out. It may still be mined.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReceiptTimeoutResponse"

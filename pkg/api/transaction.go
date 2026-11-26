@@ -35,6 +35,29 @@ const (
 	errInvalidFeeBump         = "Gas-Fee-Bump-Percent must be an integer between 15 and 100"
 )
 
+// txReceiptTimeoutResponse is returned when a transaction was broadcast but
+// not mined before the receipt wait timed out.
+type txReceiptTimeoutResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	TxHash  string `json:"txHash,omitempty"`
+}
+
+// writeReceiptTimeout writes the pending-transaction response when err is a
+// receipt wait timeout. It reports whether it handled err.
+func writeReceiptTimeout(w http.ResponseWriter, err error) bool {
+	var timeoutErr *transaction.ReceiptTimeoutError
+	if !errors.As(err, &timeoutErr) {
+		return false
+	}
+	jsonhttp.GatewayTimeout(w, txReceiptTimeoutResponse{
+		Code:    http.StatusGatewayTimeout,
+		Message: timeoutErr.Message(),
+		TxHash:  timeoutErr.TxHash(),
+	})
+	return true
+}
+
 type transactionInfo struct {
 	TransactionHash common.Hash     `json:"transactionHash"`
 	To              *common.Address `json:"to"`

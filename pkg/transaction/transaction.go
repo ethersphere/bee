@@ -55,7 +55,63 @@ var (
 	ErrNotInResendChain = errors.New("transaction is not the current transaction for its nonce")
 	// ErrMissingFees denotes that a stored transaction has no fees to bump.
 	ErrMissingFees = errors.New("stored transaction has no fees to bump")
+	// ErrReceiptTimeout means the transaction was broadcast, but no receipt
+	// arrived before the wait timed out. The transaction may still be mined.
+	ErrReceiptTimeout = errors.New("transaction was not mined before the wait timed out; it may still be pending")
+	// ErrApprovalTimeout means the token approval before an operation was not
+	// mined in time. The approval hash is omitted: resending it does not
+	// complete the operation and only spends gas.
+	ErrApprovalTimeout = errors.New("approval was not mined before the wait timed out")
 )
+
+// ReceiptTimeoutError is returned by SendAndWait when the receipt wait times out.
+// Hash is the transaction the client can resend. It is zero when resending would not complete the operation.
+type ReceiptTimeoutError struct {
+	Hash common.Hash
+	err  error
+}
+
+// NewReceiptTimeout reports that hash was broadcast but not mined in time.
+func NewReceiptTimeout(hash common.Hash) *ReceiptTimeoutError {
+	return &ReceiptTimeoutError{Hash: hash, err: ErrReceiptTimeout}
+}
+
+// NewApprovalTimeout reports that the token approval was not mined in time.
+// The approval hash is omitted.
+func NewApprovalTimeout() *ReceiptTimeoutError {
+	return &ReceiptTimeoutError{err: ErrApprovalTimeout}
+}
+
+func (e *ReceiptTimeoutError) Error() string {
+	if e.Hash == (common.Hash{}) {
+		return e.cause().Error()
+	}
+	return fmt.Sprintf("%s: %s", e.cause(), e.Hash.Hex())
+}
+
+func (e *ReceiptTimeoutError) Unwrap() error {
+	return e.cause()
+}
+
+// Message is the client-facing text, without the transaction hash.
+func (e *ReceiptTimeoutError) Message() string {
+	return e.cause().Error()
+}
+
+// TxHash is the hex hash to show the client, or empty when there is nothing to resend.
+func (e *ReceiptTimeoutError) TxHash() string {
+	if e.Hash == (common.Hash{}) {
+		return ""
+	}
+	return e.Hash.String()
+}
+
+func (e *ReceiptTimeoutError) cause() error {
+	if e.err != nil {
+		return e.err
+	}
+	return ErrReceiptTimeout
+}
 
 const (
 	// cancellationDescriptionSuffix marks a stored cancellation. CancelTransaction appends it.
@@ -106,7 +162,10 @@ type Service interface {
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendAndWait sends the request and waits until the transaction is mined.
 	// It returns ErrTransactionReverted when the transaction failed.
-	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (receipt *types.Receipt, err error)
+	// timeout limits the wait for the receipt. Zero waits until the transaction
+	// is mined or ctx is cancelled. A deadline returns *ReceiptTimeoutError with
+	// the broadcast hash. Broadcasting the transaction is not limited by timeout.
+	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int, timeout time.Duration) (receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -291,8 +350,12 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 // A transaction that ran out of an estimated gas limit is sent once more with
 // twice that limit, capped at MaxGasLimit; there is no retry when the cap
 // would not raise the limit. A gas limit set by the caller is never changed.
-func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, error) {
-	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent)
+// timeout limits each wait for a receipt. Zero waits until the receipt arrives
+// or ctx is cancelled. A deadline returns *ReceiptTimeoutError with the
+// broadcast hash. Each attempt, including the out-of-gas retry, gets the
+// full timeout. Broadcasting is not limited by timeout.
+func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, error) {
+	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +387,7 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 		"description", request.Description,
 	)
 
-	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent)
+	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("retry after out of gas: %w", err)
 	}
@@ -336,14 +399,24 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 }
 
 // sendAndWait sends the request and returns the receipt whatever its status.
-func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, common.Hash, error) {
+// A positive timeout limits only the wait for the receipt.
+func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, common.Hash, error) {
 	txHash, err := t.Send(ctx, request, boostPercent)
 	if err != nil {
 		return nil, common.Hash{}, err
 	}
 
-	receipt, err := t.WaitForReceipt(ctx, txHash)
+	waitCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	receipt, err := t.WaitForReceipt(waitCtx, txHash)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, txHash, NewReceiptTimeout(txHash)
+		}
 		return nil, common.Hash{}, err
 	}
 

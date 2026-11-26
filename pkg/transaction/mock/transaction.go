@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -39,14 +40,25 @@ func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.
 }
 
 // SendAndWait composes the configured Send and WaitForReceipt functions.
-func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (*types.Receipt, error) {
+// A positive timeout limits only the wait for the receipt. Zero waits
+// until the receipt arrives or ctx is cancelled.
+func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, error) {
 	txHash, err := m.Send(ctx, request, boostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := m.WaitForReceipt(ctx, txHash)
+	waitCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	receipt, err := m.WaitForReceipt(waitCtx, txHash)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, transaction.NewReceiptTimeout(txHash)
+		}
 		return nil, err
 	}
 

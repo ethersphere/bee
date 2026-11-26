@@ -2343,6 +2343,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 
@@ -2384,6 +2386,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/402"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 
@@ -2423,6 +2427,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/429"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 
@@ -2662,6 +2668,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 
@@ -2696,6 +2704,8 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositErrorResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 
@@ -2736,6 +2746,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        "504":
+          $ref: "SwarmCommon.yaml#/components/responses/504"
         default:
           description: Default response
 

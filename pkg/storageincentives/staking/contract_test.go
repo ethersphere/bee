@@ -363,6 +363,49 @@ func TestDepositStake(t *testing.T) {
 		}
 	})
 
+	t.Run("approval timeout omits the hash", func(t *testing.T) {
+		t.Parallel()
+
+		totalAmount := big.NewInt(100000000000000000)
+		prevStake := big.NewInt(0)
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
+					if *request.To != bzzTokenAddress {
+						return common.Hash{}, errors.New("sent a transaction after the approval")
+					}
+					return txHashApprove, nil
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+					return nil, context.DeadlineExceeded
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
+					if *request.To == bzzTokenAddress {
+						return totalAmount.FillBytes(make([]byte, 32)), nil
+					}
+					if *request.To == stakingContractAddress {
+						return getPotentialStakeResponse(t, prevStake), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			0,
+			stakingHeight,
+		)
+
+		_, err := contract.DepositStake(ctx, stakedAmount)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if !errors.As(err, &timeoutErr) || !errors.Is(err, transaction.ErrApprovalTimeout) || timeoutErr.Hash != (common.Hash{}) {
+			t.Fatalf("got %v, want approval timeout without a hash", err)
+		}
+	})
+
 	t.Run("ok with addon stake", func(t *testing.T) {
 		t.Parallel()
 

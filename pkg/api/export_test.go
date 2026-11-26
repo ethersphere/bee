@@ -114,6 +114,7 @@ type (
 	StakeDepositErrorResponse         = stakeDepositErrorResponse
 	GetWithdrawableResponse           = getWithdrawableResponse
 	StakeTransactionReponse           = stakeTransactionReponse
+	TxReceiptTimeoutResponse          = txReceiptTimeoutResponse
 	StatusSnapshotResponse            = statusSnapshotResponse
 	StatusResponse                    = statusResponse
 	RedistributionStatusResponse      = redistributionStatusResponse

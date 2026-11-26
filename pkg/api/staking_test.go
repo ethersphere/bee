@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/v2/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 func TestDepositStake(t *testing.T) {
@@ -58,6 +59,23 @@ func TestDepositStake(t *testing.T) {
 				Code:           http.StatusBadRequest,
 				Message:        "insufficient stake amount",
 				MinimumDeposit: bigint.Wrap(minDeposit),
+			}))
+	})
+
+	t.Run("receipt timeout returns the broadcast hash", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+				return common.Hash{}, fmt.Errorf("deposit stake: %w", &transaction.ReceiptTimeoutError{Hash: txHash})
+			}),
+		)
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusGatewayTimeout,
+			jsonhttptest.WithExpectedJSONResponse(&api.TxReceiptTimeoutResponse{
+				Code:    http.StatusGatewayTimeout,
+				Message: transaction.ErrReceiptTimeout.Error(),
+				TxHash:  txHash.String(),
 			}))
 	})
 
