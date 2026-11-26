@@ -64,7 +64,7 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("list sessions", func(t *testing.T) {
-		have, err := mockStorer.ListSessions(0, 1)
+		have, err := mockStorer.ListSessions(context.Background(), 0, 0, 1)
 		if err != nil {
 			t.Fatalf("ListSessions(): unexpected error: %v", err)
 		}
@@ -320,4 +320,109 @@ func TestDelayedStoreGetInto(t *testing.T) {
 	if _, err := store.GetInto(ctx, ch.Address(), buf); !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetInto with pending delay: got %v, want %v", err, context.Canceled)
 	}
+}
+
+func TestMockListSessionsPaging(t *testing.T) {
+	t.Parallel()
+
+	mockStorer := mockstorer.New()
+	for range 12 {
+		if _, err := mockStorer.NewSession(); err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+	}
+
+	// Same lexicographic order of the decimal IDs as the real store.
+	have, err := mockStorer.ListSessions(context.Background(), 0, 0, 6)
+	if err != nil {
+		t.Fatalf("ListSessions(): unexpected error: %v", err)
+	}
+	ids := make([]uint64, 0, len(have))
+	for _, s := range have {
+		ids = append(ids, s.TagID)
+	}
+	if diff := cmp.Diff([]uint64{1, 10, 11, 12, 2, 3}, ids); diff != "" {
+		t.Fatalf("unexpected order (-want +have):\n%s", diff)
+	}
+
+	// Same cursor semantics as the real store: start after the key of tag 12,
+	// and after the position tag 25 would have if it existed.
+	for _, after := range []uint64{12, 25} {
+		have, err = mockStorer.ListSessions(context.Background(), after, 0, 3)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		ids = ids[:0]
+		for _, s := range have {
+			ids = append(ids, s.TagID)
+		}
+		want := []uint64{2, 3, 4}
+		if after == 25 {
+			want = []uint64{3, 4, 5}
+		}
+		if diff := cmp.Diff(want, ids); diff != "" {
+			t.Fatalf("unexpected sessions after %d (-want +have):\n%s", after, diff)
+		}
+	}
+
+	have, err = mockStorer.ListSessions(context.Background(), 0, 12, 5)
+	if err != nil {
+		t.Fatalf("ListSessions(): unexpected error: %v", err)
+	}
+	if len(have) != 0 {
+		t.Fatalf("expected no sessions at the end, have %d", len(have))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := mockStorer.ListSessions(ctx, 0, 0, 5); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListSessions(): want context.Canceled, have %v", err)
+	}
+}
+
+func TestMockListSessionsLimits(t *testing.T) {
+	t.Parallel()
+
+	mockStorer := mockstorer.New()
+	for range 1005 {
+		if _, err := mockStorer.NewSession(); err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+	}
+
+	t.Run("limit is capped at 1000", func(t *testing.T) {
+		t.Parallel()
+
+		have, err := mockStorer.ListSessions(context.Background(), 0, 0, 5000)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		if len(have) != 1000 {
+			t.Fatalf("unexpected page size: want 1000 have %d", len(have))
+		}
+	})
+
+	t.Run("zero limit returns no sessions", func(t *testing.T) {
+		t.Parallel()
+
+		have, err := mockStorer.ListSessions(context.Background(), 0, 0, 0)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		if len(have) != 0 {
+			t.Fatalf("expected no sessions for zero limit, have %d", len(have))
+		}
+	})
+
+	t.Run("negative offset starts at the first session", func(t *testing.T) {
+		t.Parallel()
+
+		have, err := mockStorer.ListSessions(context.Background(), 0, -3, 2)
+		if err != nil {
+			t.Fatalf("ListSessions(): unexpected error: %v", err)
+		}
+		if len(have) != 2 || have[0].TagID != 1 || have[1].TagID != 10 {
+			t.Fatalf("unexpected sessions for negative offset: %+v", have)
+		}
+	})
 }
