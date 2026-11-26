@@ -451,3 +451,71 @@ func TestRedistribution(t *testing.T) {
 		}
 	})
 }
+
+func TestRedistributionFeePriority(t *testing.T) {
+	t.Parallel()
+
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+
+	for _, tc := range []struct {
+		name string
+		in   int
+	}{
+		{name: "unset"},
+		{name: "configured", in: transaction.FeePriorityLow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				got   []int
+				boost int
+			)
+			contract := redistribution.New(
+				overlay,
+				owner,
+				log.Noop,
+				transactionMock.New(
+					transactionMock.WithSendFunc(func(_ context.Context, request *transaction.TxRequest, tipBoost int) (common.Hash, error) {
+						got = append(got, request.FeePriority)
+						boost = tipBoost
+						return common.HexToHash("c3a7"), nil
+					}),
+					transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
+						return &types.Receipt{Status: 1}, nil
+					}),
+				),
+				redistributionContractAddress,
+				redistributionContractABI,
+				0,
+			)
+
+			ctx := context.Background()
+			if tc.in != 0 {
+				ctx = sctx.SetFeePriority(ctx, tc.in)
+			}
+			if _, err := contract.Commit(ctx, common.Hex2Bytes("hash"), 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := contract.Reveal(ctx, 1, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := contract.Claim(ctx, randChunkInclusionProofs(t)); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 3 {
+				t.Fatalf("got %d transactions, want commit, reveal, and claim", len(got))
+			}
+			for i, call := range []string{"commit", "reveal", "claim"} {
+				if got[i] != tc.in {
+					t.Fatalf("%s fee priority %d, want %d", call, got[i], tc.in)
+				}
+			}
+			if boost != redistribution.BoostTipPercent {
+				t.Fatalf("tip boost %d, want %d", boost, redistribution.BoostTipPercent)
+			}
+		})
+	}
+}
