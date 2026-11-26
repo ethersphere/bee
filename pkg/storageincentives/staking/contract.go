@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -312,10 +313,10 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int, 
 		return nil, err
 	}
 
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
@@ -337,10 +338,10 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int, 
 }
 
 func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string, opts ...transaction.Option) (receipt *types.Receipt, err error) {
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:          &c.stakingContractAddress,
 		Data:        callData,

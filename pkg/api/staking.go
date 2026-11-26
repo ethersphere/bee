@@ -13,7 +13,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 )
 
@@ -60,7 +59,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	opts := sctx.TxOptionsFrom(r.Context())
+	opts := s.txOptions(r)
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount, opts...)
 	if err != nil {
 		if minErr, ok := errors.AsType[*staking.MinDepositError](err); ok {
@@ -156,7 +155,7 @@ func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Req
 func (s *Service) withdrawStakeHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("withdraw_stake").Build()
 
-	txHash, err := s.stakingContract.WithdrawStake(r.Context(), sctx.TxOptionsFrom(r.Context())...)
+	txHash, err := s.stakingContract.WithdrawStake(r.Context(), s.txOptions(r)...)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
@@ -176,7 +175,7 @@ func (s *Service) withdrawStakeHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) migrateStakeHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("migrate_stake").Build()
 
-	txHash, err := s.stakingContract.MigrateStake(r.Context(), sctx.TxOptionsFrom(r.Context())...)
+	txHash, err := s.stakingContract.MigrateStake(r.Context(), s.txOptions(r)...)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)

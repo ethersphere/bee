@@ -87,7 +87,7 @@ func FuzzUnwrapABIError(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return nil, nil, errors.New("fees not used")
 		})
 		defer testutil.CleanupCloser(t, transactionService)

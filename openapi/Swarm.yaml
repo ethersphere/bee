@@ -2039,6 +2039,7 @@ paths:
   "/chequebook/deposit":
     post:
       summary: Deposit tokens into the chequebook
+      description: The gas-limit header is not supported for this transaction.
       parameters:
         - in: query
           name: amount
@@ -2067,6 +2068,7 @@ paths:
   "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook
+      description: The gas-limit header is not supported for this transaction.
       parameters:
         - in: query
           name: amount
@@ -2579,6 +2581,7 @@ paths:
   "/wallet/withdraw/{coin}":
     post:
       summary: Withdraw BZZ or xDAI to a whitelisted address
+      description: The gas-limit header is not supported for a BZZ withdrawal. A native token withdrawal uses it when set, and 300000 otherwise.
       tags:
         - Wallet
       parameters:

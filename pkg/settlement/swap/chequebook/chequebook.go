@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -450,10 +451,9 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int, opts ...transac
 		Description: fmt.Sprintf("chequebook withdrawal of %d BZZ", amount),
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, append(opts,
+	txHash, err := s.transactionService.Send(ctx, request, slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimit(0),
-	)...)
+	})...)
 
 	s.lock.Lock()
 	s.withdrawalsReserved.Sub(s.withdrawalsReserved, amount)

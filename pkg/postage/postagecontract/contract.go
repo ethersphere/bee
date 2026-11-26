@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -161,10 +162,10 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		return nil, err
 	}
 
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
@@ -189,10 +190,10 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 	// The gas cost of postage stamp contract calls changes with the block
 	// number (batch expiry, batch tree insertion), so an estimate can be
 	// short by 200k or more one block later. The floor covers that.
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.postageStampContractAddress,
 		Data:                 callData,

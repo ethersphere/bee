@@ -179,7 +179,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -262,7 +262,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -351,7 +351,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCapWithBoost, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -432,7 +432,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -500,7 +500,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 
@@ -568,7 +568,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return customGasFeeCap, customGasFeeCap, nil
 		})
 
@@ -639,7 +639,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -710,7 +710,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -784,7 +784,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -859,7 +859,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -935,7 +935,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -1005,7 +1005,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -1075,7 +1075,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFeeCap, suggestedGasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -1152,7 +1152,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+	transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 		return nil, nil, errors.New("fees not used")
 	})
 	testutil.CleanupCloser(t, transactionService)
@@ -1228,7 +1228,7 @@ func TestTransactionResend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+	transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 		return gasFeeCap, gasTip, nil
 	})
 	testutil.CleanupCloser(t, transactionService)
@@ -1318,7 +1318,7 @@ func TestTransactionCancel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return fee, minimumTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -1371,7 +1371,7 @@ func TestTransactionCancel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return gasFee, gasTip, nil
 		})
 		testutil.CleanupCloser(t, transactionService)
@@ -1461,7 +1461,7 @@ func TestTransactionService_UnwrapABIError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+	transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 		return nil, nil, errors.New("fees not used")
 	})
 	testutil.CleanupCloser(t, transactionService)
@@ -1536,7 +1536,7 @@ func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			transaction.SetSuggestFees(transactionService, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+			transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 				return nil, nil, errors.New("fees not used")
 			})
 			testutil.CleanupCloser(t, transactionService)
@@ -1610,7 +1610,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		transaction.SetSuggestFees(service, func(context.Context, ...transaction.Option) (*big.Int, *big.Int, error) {
+		transaction.SetSuggestFees(service, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
 			return baseFee, minimumTip, nil
 		})
 		testutil.CleanupCloser(t, service)
@@ -1748,7 +1748,6 @@ func TestSendUsesFeeHistoryForTier(t *testing.T) {
 	chainID := big.NewInt(5)
 	historyTip := big.NewInt(55)
 	historyFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), historyTip)
-	gasPrice := big.NewInt(9000)
 
 	signedTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   chainID,
@@ -1791,9 +1790,9 @@ func TestSendUsesFeeHistoryForTier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.SetSuggestFees(svc, func(_ context.Context, opts ...transaction.Option) (*big.Int, *big.Int, error) {
-		if transaction.Apply(opts...).Fee.Priority != transaction.FeePriorityLow {
-			t.Fatalf("got priority %d, want low", transaction.Apply(opts...).Fee.Priority)
+	transaction.SetSuggestFees(svc, func(_ context.Context, txOpts transaction.TxOptions) (*big.Int, *big.Int, error) {
+		if txOpts.Fee.Priority != transaction.FeePriorityLow {
+			t.Fatalf("got priority %d, want low", txOpts.Fee.Priority)
 		}
 		historyCalled = true
 		return historyFeeCap, historyTip, nil
@@ -1804,7 +1803,7 @@ func TestSendUsesFeeHistoryForTier(t *testing.T) {
 		To:    &recipient,
 		Data:  txData,
 		Value: value,
-	}, transaction.WithGasPrice(gasPrice), transaction.WithFeePriority(transaction.FeePriorityLow), transaction.WithTipBoost(transaction.DefaultTipBoostPercent))
+	}, transaction.WithFeePriority(transaction.FeePriorityLow), transaction.WithTipBoost(transaction.DefaultTipBoostPercent))
 	if err != nil {
 		t.Fatal(err)
 	}

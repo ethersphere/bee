@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -144,7 +145,9 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		Description: "cheque cashout",
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, append(opts, transaction.WithTipBoost(transaction.DefaultTipBoostPercent))...)
+	txHash, err := s.transactionService.Send(ctx, request, slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+	})...)
 	if err != nil {
 		return common.Hash{}, err
 	}

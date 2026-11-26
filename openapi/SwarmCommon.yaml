@@ -1207,7 +1207,9 @@ components:
       schema:
         $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
       required: false
-      description: "Gas price for transaction"
+      description: >
+        Gas price for the transaction.
+        Cannot be combined with the fee-priority header: a request that sets both is rejected.
 
     FeePriorityParameter:
       in: header
@@ -1217,9 +1219,9 @@ components:
       required: false
       description: >
         Fee priority for this transaction: low, market, or aggressive.
+        Cannot be combined with the gas-price header: a request that sets both is rejected.
         A priority outside the node's transaction-fee-priority-min and
         transaction-fee-priority-max is rejected.
-        It cannot be combined with the gas-price header.
         When omitted, the node keeps its default gas price suggestion.
 
     GasLimitParameter:

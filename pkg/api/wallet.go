@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/gorilla/mux"
 )
@@ -115,7 +114,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		opts := sctx.TxOptionsFrom(r.Context())
+		opts := s.txOptions(r)
 		txHash, err := s.erc20Service.Transfer(r.Context(), *queries.Address, queries.Amount, opts...)
 		if err != nil {
 			logger.Error(err, "unable to transfer")
@@ -138,16 +137,25 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	gasLimit, ok := s.gasLimitHeader(w, r, logger)
+	if !ok {
+		return
+	}
+
 	req := &transaction.TxRequest{
 		To:          queries.Address,
 		Value:       queries.Amount,
 		Description: "native token withdraw",
 	}
 
-	txHash, err := s.transaction.Send(r.Context(), req, append(slices.Clip(sctx.TxOptionsFrom(r.Context())),
+	opts := s.txOptions(r)
+	if gasLimit != 0 {
+		opts = slices.Concat(opts, []transaction.Option{transaction.WithGasLimit(gasLimit)})
+	}
+	txHash, err := s.transaction.Send(r.Context(), req, slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
 		transaction.WithDefaultGasLimit(300_000),
-	)...)
+	})...)
 	if err != nil {
 		logger.Error(err, "unable to transfer")
 		jsonhttp.InternalServerError(w, "unable to transfer")

@@ -11,6 +11,6 @@ import (
 
 var StoredTransactionKey = storedTransactionKey
 
-func SetSuggestFees(s Service, f func(context.Context, ...Option) (*big.Int, *big.Int, error)) {
+func SetSuggestFees(s Service, f func(context.Context, TxOptions) (*big.Int, *big.Int, error)) {
 	s.(*transactionService).suggestFees = f
 }

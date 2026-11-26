@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -81,10 +82,9 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 		Description: "token transfer",
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, append(opts,
+	txHash, err := c.transactionService.Send(ctx, request, slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
-		transaction.WithGasLimit(0),
-	)...)
+	})...)
 	if err != nil {
 		return common.Hash{}, err
 	}

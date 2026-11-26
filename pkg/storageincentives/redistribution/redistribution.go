@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -105,10 +106,10 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 	if err != nil {
 		return common.Hash{}, err
 	}
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(BoostTipPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
@@ -130,10 +131,10 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64, o
 	if err != nil {
 		return common.Hash{}, err
 	}
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(BoostTipPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
@@ -155,10 +156,10 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	if err != nil {
 		return common.Hash{}, err
 	}
-	opts = append(opts,
+	opts = slices.Concat(opts, []transaction.Option{
 		transaction.WithTipBoost(BoostTipPercent),
-		transaction.WithGasLimitAtLeast(c.gasLimit),
-	)
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
