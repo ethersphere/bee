@@ -469,6 +469,44 @@ func TestDroppedFrames(t *testing.T) {
 	}
 }
 
+// TestJoinHandshakeTimeout checks that Join gives up on a broker that never
+// sends its Ack.
+func TestJoinHandshakeTimeout(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	broker := p2p.ProtocolSpec{
+		Name:    bps.ProtocolName,
+		Version: bps.ProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{{
+			Name: bps.StreamName,
+			Handler: func(ctx context.Context, _ p2p.Peer, stream p2p.Stream) error {
+				r := protobuf.NewReader(stream)
+				if err := r.ReadMsgWithContext(ctx, &pb.Join{}); err != nil {
+					return err
+				}
+				// silent: no Ack; returns when the client resets the stream
+				_ = r.ReadMsgWithContext(ctx, &pb.Broadcast{})
+				return nil
+			},
+		}},
+	}
+	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
+	c := bps.New(rec, nil, false, log.Noop, bps.Options{HandshakeTimeout: 50 * time.Millisecond})
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Join(context.Background(), bps.JoinRequest{Broker: e.brokerAddr, Spec: bps.CohortSpec{Topic: e.topic, Principal: e.principal}})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("got %v, want %v", err, context.DeadlineExceeded)
+		}
+	case <-time.After(waitFor):
+		t.Fatal("Join still waiting for the Ack")
+	}
+}
+
 // TestUnrosteredDeliveryDropped checks that a validly signed update by an
 // owner the subscriber's roster does not name is dropped, not taken for a
 // forgery: rosters differ between brokers while a revocation travels, so an

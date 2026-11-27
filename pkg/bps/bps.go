@@ -81,9 +81,10 @@ type Options struct {
 	MaxPublisherStreams     int // publisher streams per address per cohort
 	QueueCap                int // outbound frames per receiving stream
 	//
-	InactiveTimeout time.Duration // reclaims a cohort with no accepted frame
-	AuthWaitTimeout time.Duration // disconnects a pending stream that has not authenticated
-	FlushTimeout    time.Duration // bounds writing the queue of a stream being closed
+	InactiveTimeout  time.Duration // reclaims a cohort with no accepted frame
+	AuthWaitTimeout  time.Duration // disconnects a pending stream that has not authenticated
+	FlushTimeout     time.Duration // bounds writing the queue of a stream being closed
+	HandshakeTimeout time.Duration // bounds a client's Join until the broker's Ack
 	//
 	ProtoBreachBlocklistDuration time.Duration // blocklist duration for a protocol violation
 	InvalidAuthBlocklistDuration time.Duration // blocklist duration for an auth timeout
@@ -99,6 +100,7 @@ var DefaultOptions = Options{
 	InactiveTimeout:              10 * time.Minute,
 	AuthWaitTimeout:              30 * time.Second,
 	FlushTimeout:                 5 * time.Second,
+	HandshakeTimeout:             10 * time.Second,
 	QueueCap:                     64,
 	ProtoBreachBlocklistDuration: 10 * time.Minute,
 	InvalidAuthBlocklistDuration: time.Minute,
@@ -129,6 +131,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.FlushTimeout > 0 {
 		d.FlushTimeout = o.FlushTimeout
+	}
+	if o.HandshakeTimeout > 0 {
+		d.HandshakeTimeout = o.HandshakeTimeout
 	}
 	if o.QueueCap > 0 {
 		d.QueueCap = o.QueueCap
@@ -314,6 +319,10 @@ func (s *Service) Join(ctx context.Context, req JoinRequest) (Session, error) {
 	if req.Position.Ended {
 		return nil, errChannelEnded
 	}
+	// a broker that never answers must not hold the caller: the handshake is
+	// bounded; the session that follows has a context of its own
+	ctx, cancel := context.WithTimeout(ctx, s.opts.HandshakeTimeout)
+	defer cancel()
 	stream, err := s.streamer.NewStream(ctx, req.Broker, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
