@@ -1093,8 +1093,9 @@ paths:
            principal or by an address on its latest roster; 4 (ROSTER): the principal's publisher set,
            payload a `Roster` protobuf of 20-byte addresses; or 3 (EOS): the principal ended the
            channel, after which the socket closes with 4004. `sessionTopic` is as in step 1, under
-           the publishing stream's `challenge`. Deliveries that do not verify, by an owner the
-           roster does not admit, or below the stream's cursor are dropped. A publisher does not
+           the publishing stream's `challenge`. Deliveries by an owner the roster does not admit,
+           or below the stream's cursor, are dropped. A delivery that does not verify closes the
+           socket with 4003, and the node avoids that broker for 10 days. A publisher does not
            get its own updates back; the principal does get its own rosters and EOS back.
         3. Once a roster naming a seat has reached its stream, the server sends the text frame
            `granted`. The seat may then send its AUTH, which upgrades the stream in place. A listener
