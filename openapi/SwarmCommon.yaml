@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 5.1.0
+  version: 5.2.0
   title: Common Data Types
   description: Common data structures and types used throughout the Bee API
 
@@ -732,6 +732,17 @@ components:
         minimumDeposit:
           $ref: "#/components/schemas/BigInt"
 
+    ReceiptTimeoutResponse:
+      type: object
+      description: The transaction was broadcast, but no receipt arrived before the wait timed out. It may still be mined. txHash is omitted when the timed-out transaction was only the token approval, because resending that approval does not complete the operation.
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
+
     GetWithdrawableResponse:
       type: object
       properties:
@@ -813,6 +824,18 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+
+    TransactionResendResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
+        nonce:
+          type: integer
+        previousTransactionHashes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionHash"
 
     TransactionInfo:
       type: object
@@ -1209,6 +1232,16 @@ components:
       required: false
       description: "Gas price for transaction"
 
+    GasFeeBumpPercentParameter:
+      in: header
+      name: gas-fee-bump-percent
+      schema:
+        type: integer
+        minimum: 15
+        maximum: 100
+      required: false
+      description: "Raise the fees of the current transaction by this percent, but not below the market price. Without it the fees are the higher of the market price and 15% above the current fees."
+
     FeePriorityParameter:
       in: header
       name: fee-priority
@@ -1504,6 +1537,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+    "409":
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
     "429":
       description: Too many requests
       content:
@@ -1522,3 +1561,9 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+    "504":
+      description: The transaction was broadcast, but no receipt arrived before the wait timed out. It may still be mined.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReceiptTimeoutResponse"

@@ -61,6 +61,11 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("deposit stake: receipt timed out", "error", err)
+			logger.Error(nil, "deposit stake: receipt timed out")
+			return
+		}
 		if minErr, ok := errors.AsType[*staking.MinDepositError](err); ok {
 			logger.Debug("insufficient stake amount", "minimum_deposit", minErr.Minimum, "error", err)
 			logger.Error(nil, "insufficient stake amount")
@@ -156,6 +161,11 @@ func (s *Service) withdrawStakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.stakingContract.WithdrawStake(r.Context())
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("withdraw stake: receipt timed out", "error", err)
+			logger.Error(nil, "withdraw stake: receipt timed out")
+			return
+		}
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
 			logger.Error(nil, "insufficient stake")
@@ -176,6 +186,11 @@ func (s *Service) migrateStakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.stakingContract.MigrateStake(r.Context())
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("migrate stake: receipt timed out", "error", err)
+			logger.Error(nil, "migrate stake: receipt timed out")
+			return
+		}
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
 			logger.Error(nil, "insufficient stake")

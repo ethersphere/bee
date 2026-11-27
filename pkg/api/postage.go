@@ -103,6 +103,11 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("label"),
 	)
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("create batch: receipt timed out", "error", err)
+			logger.Error(nil, "create batch: receipt timed out")
+			return
+		}
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
 			logger.Debug("create batch: no chain backend", "error", err)
 			logger.Error(nil, "create batch: no chain backend")
@@ -575,6 +580,11 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("topup batch: receipt timed out", "batch_id", hexBatchID, "error", err)
+			logger.Error(nil, "topup batch: receipt timed out")
+			return
+		}
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
 			logger.Error(nil, "topup batch: out of funds")
@@ -614,6 +624,11 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
 	if err != nil {
+		if writeReceiptTimeout(w, err) {
+			logger.Debug("dilute batch: receipt timed out", "batch_id", hexBatchID, "error", err)
+			logger.Error(nil, "dilute batch: receipt timed out")
+			return
+		}
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)
 			logger.Error(nil, "dilute batch: invalid depth")

@@ -98,7 +98,7 @@ type (
 	SwapCashoutStatusResult           = swapCashoutStatusResult
 	TransactionInfo                   = transactionInfo
 	TransactionPendingList            = transactionPendingList
-	TransactionHashResponse           = transactionHashResponse
+	TransactionResendResponse         = transactionResendResponse
 	TagResponse                       = tagResponse
 	ReserveStateResponse              = reserveStateResponse
 	ChainStateResponse                = chainStateResponse
@@ -114,6 +114,7 @@ type (
 	StakeDepositErrorResponse         = stakeDepositErrorResponse
 	GetWithdrawableResponse           = getWithdrawableResponse
 	StakeTransactionReponse           = stakeTransactionReponse
+	TxReceiptTimeoutResponse          = txReceiptTimeoutResponse
 	StatusSnapshotResponse            = statusSnapshotResponse
 	StatusResponse                    = statusResponse
 	RedistributionStatusResponse      = redistributionStatusResponse
@@ -121,18 +122,25 @@ type (
 )
 
 var (
-	ErrCantBalance           = errCantBalance
-	ErrCantBalances          = errCantBalances
-	HttpErrGetAccountingInfo = httpErrGetAccountingInfo
-	ErrNoBalance             = errNoBalance
-	ErrCantSettlementsPeer   = errCantSettlementsPeer
-	ErrCantSettlements       = errCantSettlements
-	ErrChequebookBalance     = errChequebookBalance
-	ErrInvalidAddress        = errInvalidAddress
-	ErrUnknownTransaction    = errUnknownTransaction
-	ErrCantGetTransaction    = errCantGetTransaction
-	ErrCantResendTransaction = errCantResendTransaction
-	ErrAlreadyImported       = errAlreadyImported
+	ErrCantBalance            = errCantBalance
+	ErrCantBalances           = errCantBalances
+	HttpErrGetAccountingInfo  = httpErrGetAccountingInfo
+	ErrNoBalance              = errNoBalance
+	ErrCantSettlementsPeer    = errCantSettlementsPeer
+	ErrCantSettlements        = errCantSettlements
+	ErrChequebookBalance      = errChequebookBalance
+	ErrUnknownTransaction     = errUnknownTransaction
+	ErrCantGetTransaction     = errCantGetTransaction
+	ErrCantResendTransaction  = errCantResendTransaction
+	ErrCantCancelTransaction  = errCantCancelTransaction
+	ErrCancelUnderpriced      = errCancelUnderpriced
+	ErrAlreadyImported        = errAlreadyImported
+	ErrReplacementUnderpriced = errReplacementUnderpriced
+	ErrNonceUsed              = errNonceUsed
+	ErrSuperseded             = errSuperseded
+	ErrCancellation           = errCancellation
+	ErrNotInResendChain       = errNotInResendChain
+	ErrInvalidFeeBump         = errInvalidFeeBump
 )
 
 type (

@@ -7,8 +7,10 @@ package api_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -293,78 +295,153 @@ func TestTransactionResend(t *testing.T) {
 	t.Parallel()
 
 	txHash := common.HexToHash("abcd")
+	newHash := common.HexToHash("1234")
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
 		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
-					return nil
+				mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResendResult, error) {
+					if got != txHash {
+						t.Fatalf("hash = %s", got)
+					}
+					if bumpPercent != 0 {
+						t.Fatalf("bump = %d", bumpPercent)
+					}
+					return &transaction.ResendResult{
+						Nonce:       7,
+						CurrentHash: newHash,
+						PrevHashes:  []common.Hash{txHash},
+					}, nil
 				}),
 			},
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(api.TransactionHashResponse{
-				TransactionHash: txHash,
+			jsonhttptest.WithExpectedJSONResponse(api.TransactionResendResponse{
+				TransactionHash:           newHash,
+				Nonce:                     7,
+				PreviousTransactionHashes: []common.Hash{txHash},
 			}),
 		)
 	})
 
-	t.Run("unknown transaction", func(t *testing.T) {
-		t.Parallel()
+	for _, bump := range []int{15, 100} {
+		t.Run("bump header "+strconv.Itoa(bump), func(t *testing.T) {
+			t.Parallel()
 
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
-					return transaction.ErrUnknownTransaction
-				}),
-			},
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithResendTransactionFunc(func(ctx context.Context, got common.Hash, bumpPercent int) (*transaction.ResendResult, error) {
+						if bumpPercent != bump {
+							t.Fatalf("bump = %d", bumpPercent)
+						}
+						return &transaction.ResendResult{Nonce: 7, CurrentHash: newHash, PrevHashes: []common.Hash{txHash}}, nil
+					}),
+				},
+			})
+
+			jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusOK,
+				jsonhttptest.WithRequestHeader(api.GasFeeBumpPercentHeader, strconv.Itoa(bump)),
+			)
 		})
+	}
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusNotFound,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusNotFound,
-				Message: api.ErrUnknownTransaction,
-			}),
-		)
-	})
+	for _, value := range []string{"10", "14", "9", "101", "abc", "0"} {
+		t.Run("invalid bump "+value, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("already imported", func(t *testing.T) {
-		t.Parallel()
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResendResult, error) {
+						t.Fatal("resend was called")
+						return nil, nil
+					}),
+				},
+			})
 
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
-					return transaction.ErrAlreadyImported
+			jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusBadRequest,
+				jsonhttptest.WithRequestHeader(api.GasFeeBumpPercentHeader, value),
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Code:    http.StatusBadRequest,
+					Message: api.ErrInvalidFeeBump,
 				}),
-			},
+			)
 		})
+	}
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: api.ErrAlreadyImported,
-			}),
-		)
-	})
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		message string
+	}{
+		{"unknown transaction", transaction.ErrUnknownTransaction, http.StatusNotFound, api.ErrUnknownTransaction},
+		{"already imported", transaction.ErrAlreadyImported, http.StatusBadRequest, api.ErrAlreadyImported},
+		{"replacement underpriced", fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced), http.StatusConflict, api.ErrReplacementUnderpriced},
+		{"nonce used", transaction.ErrNonceUsed, http.StatusConflict, api.ErrNonceUsed},
+		{"superseded", transaction.ErrSuperseded, http.StatusConflict, api.ErrSuperseded},
+		{"cancellation", transaction.ErrCancellation, http.StatusConflict, api.ErrCancellation},
+		{"not in chain", transaction.ErrNotInResendChain, http.StatusConflict, api.ErrNotInResendChain},
+		{"other error", errors.New("err"), http.StatusInternalServerError, api.ErrCantResendTransaction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("other error", func(t *testing.T) {
-		t.Parallel()
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithResendTransactionFunc(func(context.Context, common.Hash, int) (*transaction.ResendResult, error) {
+						return nil, tc.err
+					}),
+				},
+			})
 
-		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
-			TransactionOpts: []mock.Option{
-				mock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
-					return errors.New("err")
+			jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), tc.status,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Code:    tc.status,
+					Message: tc.message,
 				}),
-			},
+			)
 		})
+	}
+}
 
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/transactions/"+txHash.String(), http.StatusInternalServerError,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusInternalServerError,
-				Message: api.ErrCantResendTransaction,
-			}),
-		)
-	})
+func TestTransactionCancelErrors(t *testing.T) {
+	t.Parallel()
+
+	txHash := common.HexToHash("abcd")
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		message string
+	}{
+		{"unknown transaction", transaction.ErrUnknownTransaction, http.StatusNotFound, api.ErrUnknownTransaction},
+		{"already imported", transaction.ErrAlreadyImported, http.StatusBadRequest, api.ErrAlreadyImported},
+		{"replacement underpriced", fmt.Errorf("%w: x", transaction.ErrReplacementUnderpriced), http.StatusConflict, api.ErrCancelUnderpriced},
+		{"nonce used", transaction.ErrNonceUsed, http.StatusConflict, api.ErrNonceUsed},
+		{"superseded", transaction.ErrSuperseded, http.StatusConflict, api.ErrSuperseded},
+		{"cancellation", transaction.ErrCancellation, http.StatusConflict, api.ErrCancellation},
+		{"not in chain", transaction.ErrNotInResendChain, http.StatusConflict, api.ErrNotInResendChain},
+		{"other error", errors.New("err"), http.StatusInternalServerError, api.ErrCantCancelTransaction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+				TransactionOpts: []mock.Option{
+					mock.WithCancelTransactionFunc(func(context.Context, common.Hash) (common.Hash, error) {
+						return common.Hash{}, tc.err
+					}),
+				},
+			})
+
+			jsonhttptest.Request(t, testServer, http.MethodDelete, "/transactions/"+txHash.String(), tc.status,
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+					Code:    tc.status,
+					Message: tc.message,
+				}),
+			)
+		})
+	}
 }

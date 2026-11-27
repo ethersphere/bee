@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +21,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
+
+// receiptWaitTimeout bounds each wait for a mined postage transaction.
+const receiptWaitTimeout = 120 * time.Second
 
 var (
 	BucketDepth = uint8(16)
@@ -179,9 +183,13 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 			err,
 			c.postageStampContractABI.Errors,
 		)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if errors.As(err, &timeoutErr) {
+			err = transaction.NewApprovalTimeout()
+		}
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent, receiptWaitTimeout)
 }
 
 func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
@@ -208,7 +216,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		)
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent, receiptWaitTimeout)
 }
 
 func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash, immutable bool) (*types.Receipt, error) {

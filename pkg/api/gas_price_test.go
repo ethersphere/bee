@@ -19,6 +19,7 @@ import (
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
 
 func TestFeePriorityHeader(t *testing.T) {
@@ -220,8 +221,79 @@ func TestGasPriceHeaderIsBounded(t *testing.T) {
 	}
 }
 
-// TestGasPriceHeaderIsBoundedOnCancel covers the second place the header is
-// parsed, the transaction cancel handler.
+// TestGasPriceHeaderOnResend checks that POST /transactions/{hash} prices the
+// resend from the Gas-Price header and rejects a price outside the accepted range.
+func TestGasPriceHeaderOnResend(t *testing.T) {
+	t.Parallel()
+
+	txHash := common.HexToHash("abcd")
+	price := big.NewInt(50)
+
+	t.Run("reaches resend", func(t *testing.T) {
+		t.Parallel()
+
+		var got *big.Int
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
+			TransactionOpts: []mock.Option{
+				mock.WithResendTransactionFunc(func(ctx context.Context, _ common.Hash, _ int) (*transaction.ResendResult, error) {
+					got = sctx.GetGasPrice(ctx)
+					return &transaction.ResendResult{Nonce: 1, CurrentHash: txHash}, nil
+				}),
+			},
+		})
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/transactions/"+txHash.String(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set(api.GasPriceHeader, price.String())
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusOK)
+		}
+		if got == nil || got.Cmp(price) != 0 {
+			t.Fatalf("resend saw gas price %v, want %s", got, price)
+		}
+	})
+
+	t.Run("out of range", func(t *testing.T) {
+		t.Parallel()
+
+		called := false
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
+			TransactionOpts: []mock.Option{
+				mock.WithResendTransactionFunc(func(_ context.Context, _ common.Hash, _ int) (*transaction.ResendResult, error) {
+					called = true
+					return nil, nil
+				}),
+			},
+		})
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/transactions/"+txHash.String(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set(api.GasPriceHeader, new(big.Int).Lsh(big.NewInt(1), 200).String())
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("got status %d, want %d", res.StatusCode, http.StatusBadRequest)
+		}
+		if called {
+			t.Fatal("rejected gas price still reached resend")
+		}
+	})
+}
+
+// TestGasPriceHeaderIsBoundedOnCancel checks that the cancel handler rejects a
+// Gas-Price outside the accepted range.
 func TestGasPriceHeaderIsBoundedOnCancel(t *testing.T) {
 	t.Parallel()
 

@@ -12,12 +12,9 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
-	"github.com/ethersphere/bee/v2/pkg/transaction"
-	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
 
@@ -32,16 +29,6 @@ func newNilPayoutChequeStore(store *rawStore, beneficiary common.Address) cheque
 		beneficiary,
 		transactionmock.New(),
 		func(*chequebook.SignedCheque, int64) (common.Address, error) { return common.Address{}, nil },
-	)
-}
-
-// pendingBackend reports every transaction as pending, so CashoutStatus takes
-// the branch that subtracts the cashout action payout from the last cheque.
-func pendingBackend() transaction.Backend {
-	return backendmock.New(
-		backendmock.WithTransactionByHashFunc(func(context.Context, common.Hash) (*types.Transaction, bool, error) {
-			return nil, true, nil
-		}),
 	)
 }
 
@@ -78,7 +65,6 @@ func TestCashoutStatusNilCumulativePayoutLastReceivedCheque(t *testing.T) {
 
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		pendingBackend(),
 		transactionmock.New(),
 		newNilPayoutChequeStore(store, beneficiary),
 	)
@@ -122,7 +108,6 @@ func TestCashoutStatusNilCumulativePayoutAction(t *testing.T) {
 
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		pendingBackend(),
 		transactionmock.New(),
 		newNilPayoutChequeStore(store, beneficiary),
 	)
@@ -147,7 +132,6 @@ func TestCashChequeNilCumulativePayout(t *testing.T) {
 
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		backendmock.New(),
 		transactionmock.New(),
 		newNilPayoutChequeStore(store, beneficiary),
 	)

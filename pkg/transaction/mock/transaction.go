@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,7 +24,9 @@ type transactionServiceMock struct {
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
 	pendingTransactions  func() ([]common.Hash, error)
-	resendTransaction    func(ctx context.Context, txHash common.Hash) error
+	resendTransaction    func(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResendResult, error)
+	transactionReceipt   func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	knownTransaction     func(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
@@ -37,14 +40,25 @@ func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.
 }
 
 // SendAndWait composes the configured Send and WaitForReceipt functions.
-func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (*types.Receipt, error) {
+// A positive timeout limits only the wait for the receipt. Zero waits
+// until the receipt arrives or ctx is cancelled.
+func (m *transactionServiceMock) SendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, error) {
 	txHash, err := m.Send(ctx, request, boostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := m.WaitForReceipt(ctx, txHash)
+	waitCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	receipt, err := m.WaitForReceipt(waitCtx, txHash)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, transaction.NewReceiptTimeout(txHash)
+		}
 		return nil, err
 	}
 
@@ -98,11 +112,25 @@ func (m *transactionServiceMock) PendingTransactions() ([]common.Hash, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *transactionServiceMock) ResendTransaction(ctx context.Context, txHash common.Hash) error {
+func (m *transactionServiceMock) ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResendResult, error) {
 	if m.resendTransaction != nil {
-		return m.resendTransaction(ctx, txHash)
+		return m.resendTransaction(ctx, txHash, bumpPercent)
 	}
-	return errors.New("not implemented")
+	return nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) KnownTransaction(ctx context.Context, txHash common.Hash) (common.Hash, bool, error) {
+	if m.knownTransaction != nil {
+		return m.knownTransaction(ctx, txHash)
+	}
+	return common.Hash{}, false, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	if m.transactionReceipt != nil {
+		return m.transactionReceipt(ctx, txHash)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) StoredTransaction(txHash common.Hash) (*transaction.StoredTransaction, error) {
@@ -180,9 +208,21 @@ func WithPendingTransactionsFunc(f func() ([]common.Hash, error)) Option {
 	})
 }
 
-func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) error) Option {
+func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash, bumpPercent int) (*transaction.ResendResult, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.resendTransaction = f
+	})
+}
+
+func WithKnownTransactionFunc(f func(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.knownTransaction = f
+	})
+}
+
+func WithTransactionReceiptFunc(f func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.transactionReceipt = f
 	})
 }
 

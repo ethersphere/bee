@@ -4,4 +4,9 @@
 
 package transaction
 
-var StoredTransactionKey = storedTransactionKey
+var (
+	StoredTransactionKey  = storedTransactionKey
+	PendingTransactionKey = pendingTransactionKey
+	ResendTxKey           = resendTxKey
+	TxMayBeInMempool      = txMayBeInMempool
+)

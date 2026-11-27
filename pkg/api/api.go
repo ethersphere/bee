@@ -108,7 +108,8 @@ const (
 	GasLimitHeader  = "Gas-Limit"
 	ETagHeader      = "ETag"
 
-	FeePriorityHeader = "Fee-Priority"
+	FeePriorityHeader       = "Fee-Priority"
+	GasFeeBumpPercentHeader = "Gas-Fee-Bump-Percent"
 
 	AuthorizationHeader        = "Authorization"
 	AcceptEncodingHeader       = "Accept-Encoding"
@@ -737,7 +738,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader,
 		SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader,
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
-		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, FeePriorityHeader, ImmutableHeader,
+		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, FeePriorityHeader, GasFeeBumpPercentHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
 		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader, SwarmCacheHeader,
 	}

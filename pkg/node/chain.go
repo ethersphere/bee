@@ -196,7 +196,6 @@ func InitChequebookService(
 
 func initChequeStoreCashout(
 	stateStore storage.StateStorer,
-	swapBackend transaction.Backend,
 	chequebookFactory chequebook.Factory,
 	chainID int64,
 	overlayEthAddress common.Address,
@@ -213,7 +212,6 @@ func initChequeStoreCashout(
 
 	cashout := chequebook.NewCashoutService(
 		stateStore,
-		swapBackend,
 		transactionService,
 		chequeStore,
 	)

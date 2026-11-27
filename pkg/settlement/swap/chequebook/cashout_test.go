@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	chequestoremock "github.com/ethersphere/bee/v2/pkg/settlement/swap/chequestore/mock"
 	storemock "github.com/ethersphere/bee/v2/pkg/statestore/mock"
-	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -45,14 +44,15 @@ func TestCashout(t *testing.T) {
 	store := storemock.NewStateStore()
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		backendmock.New(
-			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
+		transactionmock.New(
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
 				if hash != txHash {
-					t.Fatalf("fetching wrong transaction. wanted %v, got %v", txHash, hash)
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
 				}
-				return nil, false, nil
+				return txHash, false, nil
 			}),
-			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
+			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
 				if hash != txHash {
 					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", txHash, hash)
 				}
@@ -63,6 +63,7 @@ func TestCashout(t *testing.T) {
 				}
 
 				return &types.Receipt{
+					TxHash: txHash,
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
 						{
@@ -78,9 +79,6 @@ func TestCashout(t *testing.T) {
 					},
 				}, nil
 			}),
-		),
-		transactionmock.New(
-			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
@@ -144,14 +142,15 @@ func TestCashoutBounced(t *testing.T) {
 	store := storemock.NewStateStore()
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		backendmock.New(
-			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
+		transactionmock.New(
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
 				if hash != txHash {
-					t.Fatalf("fetching wrong transaction. wanted %v, got %v", txHash, hash)
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
 				}
-				return nil, false, nil
+				return txHash, false, nil
 			}),
-			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
+			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
 				if hash != txHash {
 					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", txHash, hash)
 				}
@@ -162,6 +161,7 @@ func TestCashoutBounced(t *testing.T) {
 				}
 
 				return &types.Receipt{
+					TxHash: txHash,
 					Status: types.ReceiptStatusSuccessful,
 					Logs: []*types.Log{
 						{
@@ -181,9 +181,6 @@ func TestCashoutBounced(t *testing.T) {
 					},
 				}, nil
 			}),
-		),
-		transactionmock.New(
-			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
@@ -248,25 +245,24 @@ func TestCashoutStatusReverted(t *testing.T) {
 	store := storemock.NewStateStore()
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		backendmock.New(
-			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
+		transactionmock.New(
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
 				if hash != txHash {
-					t.Fatalf("fetching wrong transaction. wanted %v, got %v", txHash, hash)
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
 				}
-				return nil, false, nil
+				return txHash, false, nil
 			}),
-			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
+			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithABICall(&chequebookABI, chequebookAddress, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
+			transactionmock.WithTransactionReceiptFunc(func(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
 				if hash != txHash {
 					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", txHash, hash)
 				}
 				return &types.Receipt{
+					TxHash: txHash,
 					Status: types.ReceiptStatusFailed,
 				}, nil
 			}),
-		),
-		transactionmock.New(
-			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
-			transactionmock.WithABICall(&chequebookABI, chequebookAddress, onChainPaidOut.FillBytes(make([]byte, 32)), "paidOut", beneficiary),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
@@ -320,16 +316,14 @@ func TestCashoutStatusPending(t *testing.T) {
 	store := storemock.NewStateStore()
 	cashoutService := chequebook.NewCashoutService(
 		store,
-		backendmock.New(
-			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
-				if hash != txHash {
-					t.Fatalf("fetching wrong transaction. wanted %v, got %v", txHash, hash)
-				}
-				return nil, true, nil
-			}),
-		),
 		transactionmock.New(
 			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
+				return txHash, true, nil
+			}),
 		),
 		chequestoremock.NewChequeStore(
 			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
@@ -364,6 +358,132 @@ func TestCashoutStatusPending(t *testing.T) {
 		},
 		UncashedAmount: big.NewInt(0),
 	})
+}
+
+func TestCashoutStatusPendingReplacement(t *testing.T) {
+	t.Parallel()
+
+	chequebookAddress := common.HexToAddress("abcd")
+	recipientAddress := common.HexToAddress("efff")
+	txHash := common.HexToHash("dddd")
+	replacement := common.HexToHash("eeee")
+	cumulativePayout := big.NewInt(500)
+
+	cheque := &chequebook.SignedCheque{
+		Beneficiary:      common.HexToAddress("aaaa"),
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
+	}
+
+	store := storemock.NewStateStore()
+	cashoutService := chequebook.NewCashoutService(
+		store,
+		transactionmock.New(
+			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
+				return replacement, true, nil
+			}),
+			transactionmock.WithTransactionReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
+				t.Fatal("receipt requested for a pending cashout")
+				return nil, nil
+			}),
+		),
+		chequestoremock.NewChequeStore(
+			chequestoremock.WithLastReceivedChequeFunc(func(common.Address) (*chequebook.SignedCheque, error) {
+				return cheque, nil
+			}),
+		),
+	)
+
+	if _, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress); err != nil {
+		t.Fatal(err)
+	}
+	status, err := cashoutService.CashoutStatus(context.Background(), chequebookAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Last == nil || status.Last.TxHash != replacement || status.Last.Result != nil {
+		t.Fatalf("status = %+v", status.Last)
+	}
+}
+
+func TestCashoutStatusResent(t *testing.T) {
+	t.Parallel()
+
+	chequebookAddress := common.HexToAddress("abcd")
+	recipientAddress := common.HexToAddress("efff")
+	txHash := common.HexToHash("dddd")
+	minedHash := common.HexToHash("eeee")
+	totalPayout := big.NewInt(100)
+	cumulativePayout := big.NewInt(500)
+
+	cheque := &chequebook.SignedCheque{
+		Beneficiary:      common.HexToAddress("aaaa"),
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
+	}
+
+	store := storemock.NewStateStore()
+	cashoutService := chequebook.NewCashoutService(
+		store,
+		transactionmock.New(
+			transactionmock.WithKnownTransactionFunc(func(_ context.Context, hash common.Hash) (common.Hash, bool, error) {
+				if hash != txHash {
+					t.Fatalf("known transaction for %v, want %v", hash, txHash)
+				}
+				return minedHash, false, nil
+			}),
+			transactionmock.WithABISend(&chequebookABI, txHash, chequebookAddress, big.NewInt(0), "cashChequeBeneficiary", recipientAddress, cheque.CumulativePayout, cheque.Signature),
+			transactionmock.WithTransactionReceiptFunc(func(_ context.Context, hash common.Hash) (*types.Receipt, error) {
+				if hash != minedHash {
+					t.Fatalf("fetching receipt for transaction. wanted %v, got %v", minedHash, hash)
+				}
+				logData, err := chequeCashedEventType.Inputs.NonIndexed().Pack(totalPayout, cumulativePayout, big.NewInt(0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return &types.Receipt{
+					TxHash: minedHash,
+					Status: types.ReceiptStatusSuccessful,
+					Logs: []*types.Log{{
+						Address: chequebookAddress,
+						Topics: []common.Hash{
+							chequeCashedEventType.ID,
+							common.BytesToHash(cheque.Beneficiary.Bytes()),
+							common.BytesToHash(recipientAddress.Bytes()),
+							common.BytesToHash(cheque.Beneficiary.Bytes()),
+						},
+						Data: logData,
+					}},
+				}, nil
+			}),
+		),
+		chequestoremock.NewChequeStore(
+			chequestoremock.WithLastReceivedChequeFunc(func(c common.Address) (*chequebook.SignedCheque, error) {
+				return cheque, nil
+			}),
+		),
+	)
+
+	if _, err := cashoutService.CashCheque(context.Background(), chequebookAddress, recipientAddress); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := cashoutService.CashoutStatus(context.Background(), chequebookAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Last == nil || status.Last.TxHash != minedHash {
+		t.Fatalf("tx hash = %v", status.Last)
+	}
+	if status.Last.Result == nil || status.Last.Result.CumulativePayout.Cmp(cumulativePayout) != 0 {
+		t.Fatalf("result = %v", status.Last.Result)
+	}
 }
 
 func verifyStatus(t *testing.T, status *chequebook.CashoutStatus, expected chequebook.CashoutStatus) {

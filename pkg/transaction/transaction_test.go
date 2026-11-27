@@ -1140,76 +1140,6 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	}
 }
 
-func TestTransactionResend(t *testing.T) {
-	t.Parallel()
-
-	logger := log.Noop
-	sender := common.HexToAddress("0xddff")
-	recipient := common.HexToAddress("0xbbbddd")
-	chainID := big.NewInt(5)
-	nonce := uint64(10)
-	data := []byte{1, 2, 3, 4}
-	gasTip := big.NewInt(100)
-	gasFee := big.NewInt(1100)
-	gasLimit := uint64(100000)
-	value := big.NewInt(0)
-	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), minimumTip)
-
-	store := storemock.NewStateStore()
-	testutil.CleanupCloser(t, store)
-
-	signedTx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   chainID,
-		Nonce:     nonce,
-		To:        &recipient,
-		Value:     value,
-		Gas:       gasLimit,
-		GasTipCap: gasTip,
-		GasFeeCap: gasFeeCap,
-		Data:      data,
-	})
-
-	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
-		Nonce:    nonce,
-		To:       &recipient,
-		Data:     data,
-		GasPrice: gasFee,
-		GasLimit: gasLimit,
-		Value:    value,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	transactionService, err := transaction.NewService(logger, sender,
-		backendmock.New(
-			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				if tx != signedTx {
-					t.Fatal("not sending signed transaction")
-				}
-				return nil
-			}),
-			backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-				return gasFeeCap, gasTip, nil
-			}),
-		),
-		signerMockForTransaction(t, signedTx, recipient, chainID),
-		store,
-		chainID,
-		monitormock.New(),
-		0,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, transactionService)
-
-	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestTransactionCancel(t *testing.T) {
 	t.Parallel()
 
@@ -1255,8 +1185,8 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		fee := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), minimumTip)
-		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), minimumTip), big.NewInt(100))
-		gasFeeCap := new(big.Int).Add(fee, gasTipCap)
+		gasTipCap := minimumTip
+		gasFeeCap := fee
 
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -1278,6 +1208,9 @@ func TestTransactionCancel(t *testing.T) {
 					return nil
 				}),
 				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					if boostPercent != transaction.DefaultTipBoostPercent {
+						t.Fatalf("boost = %d", boostPercent)
+					}
 					return fee, minimumTip, nil
 				}),
 			),
@@ -1306,8 +1239,9 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		customGasPrice := big.NewInt(5)
-		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTip), big.NewInt(100))
-		gasFeeCap := new(big.Int).Add(gasFee, gasTipCap)
+		scale := int64(transaction.MinReplacementBumpPercent) + 100
+		gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(scale), gasTip), big.NewInt(100))
+		gasFeeCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(scale), gasFee), big.NewInt(100))
 
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -1586,7 +1520,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 			{Status: types.ReceiptStatusSuccessful},
 		})
 
-		receipt, err := service.SendAndWait(context.Background(), request(), 0)
+		receipt, err := service.SendAndWait(context.Background(), request(), 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1604,7 +1538,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 			{Status: types.ReceiptStatusFailed, GasUsed: bufferedGas - 1},
 		})
 
-		_, err := service.SendAndWait(context.Background(), request(), 0)
+		_, err := service.SendAndWait(context.Background(), request(), 0, 0)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
 		}
@@ -1620,7 +1554,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 			{Status: types.ReceiptStatusFailed, GasUsed: 2 * bufferedGas},
 		})
 
-		_, err := service.SendAndWait(context.Background(), request(), 0)
+		_, err := service.SendAndWait(context.Background(), request(), 0, 0)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
 		}
@@ -1637,7 +1571,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 
 		req := request()
 		req.GasLimit = bufferedGas
-		_, err := service.SendAndWait(context.Background(), req, 0)
+		_, err := service.SendAndWait(context.Background(), req, 0, 0)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("got %v, want %v", err, transaction.ErrTransactionReverted)
 		}
@@ -1655,7 +1589,7 @@ func TestTransactionSendAndWait(t *testing.T) {
 			{Status: types.ReceiptStatusSuccessful},
 		})
 
-		if _, err := service.SendAndWait(context.Background(), request(), 0); err != nil {
+		if _, err := service.SendAndWait(context.Background(), request(), 0, 0); err != nil {
 			t.Fatal(err)
 		}
 		if want := []uint64{bigBuffered, transaction.MaxGasLimit}; !equalGas(*sentGas, want) {
@@ -1670,12 +1604,77 @@ func TestTransactionSendAndWait(t *testing.T) {
 			{Status: types.ReceiptStatusSuccessful},
 		})
 
-		_, err := service.SendAndWait(context.Background(), request(), 0)
+		_, err := service.SendAndWait(context.Background(), request(), 0, 0)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("got error %v, want %v", err, transaction.ErrTransactionReverted)
 		}
 		if want := []uint64{transaction.MaxGasLimit}; !equalGas(*sentGas, want) {
 			t.Fatalf("sent gas limits: got %v, want %v", *sentGas, want)
+		}
+	})
+
+	t.Run("timeout stops the receipt wait", func(t *testing.T) {
+		t.Parallel()
+		var sent int
+		var broadcast common.Hash
+		store := storemock.NewStateStore()
+		testutil.CleanupCloser(t, store)
+
+		service, err := transaction.NewService(log.Noop, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if ctx.Err() != nil {
+						t.Errorf("broadcast context: %v", ctx.Err())
+					}
+					broadcast = tx.Hash()
+					sent++
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
+					return estimatedGas, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return 0, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return baseFee, minimumTip, nil
+				}),
+			),
+			signermock.New(
+				signermock.WithSignTxFunc(func(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+					return tx, nil
+				}),
+				signermock.WithEthereumAddressFunc(func() (common.Address, error) {
+					return sender, nil
+				}),
+			),
+			store,
+			chainID,
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return make(chan types.Receipt), make(chan error), nil
+				}),
+			),
+			0,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, service)
+
+		_, err = service.SendAndWait(context.Background(), request(), 0, 20*time.Millisecond)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if !errors.As(err, &timeoutErr) {
+			t.Fatalf("got %v, want receipt timeout", err)
+		}
+		if !errors.Is(err, transaction.ErrReceiptTimeout) {
+			t.Fatalf("got %v, want %v", err, transaction.ErrReceiptTimeout)
+		}
+		if timeoutErr.Hash != broadcast {
+			t.Fatalf("timeout hash %s, broadcast %s", timeoutErr.Hash, broadcast)
+		}
+		if sent != 1 {
+			t.Fatalf("broadcasts %d, want 1", sent)
 		}
 	})
 }

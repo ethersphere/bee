@@ -41,15 +41,89 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
+	// ErrReplacementUnderpriced denotes that the node kept the previous
+	// transaction with the same nonce because the new fees are too low.
+	ErrReplacementUnderpriced = errors.New("replacement transaction underpriced")
+	// ErrNonceUsed denotes that the nonce of the transaction is already used on chain.
+	ErrNonceUsed = errors.New("nonce already used")
+	// ErrSuperseded denotes that a newer transaction has taken the nonce.
+	// One hash of the old chain may still be mined, but the old chain can no longer be resent or cancelled.
+	ErrSuperseded = errors.New("a newer transaction uses this nonce")
+	// ErrCancellation denotes that the hash is a cancellation of its nonce.
+	ErrCancellation = errors.New("transaction is a cancellation")
+	// ErrNotInResendChain denotes that the hash is not the transaction this nonce is being resent as.
+	ErrNotInResendChain = errors.New("transaction is not the current transaction for its nonce")
+	// ErrMissingFees denotes that a stored transaction has no fees to bump.
+	ErrMissingFees = errors.New("stored transaction has no fees to bump")
+	// ErrReceiptTimeout means the transaction was broadcast, but no receipt
+	// arrived before the wait timed out. The transaction may still be mined.
+	ErrReceiptTimeout = errors.New("transaction was not mined before the wait timed out; it may still be pending")
+	// ErrApprovalTimeout means the token approval before an operation was not
+	// mined in time. The approval hash is omitted: resending it does not
+	// complete the operation and only spends gas.
+	ErrApprovalTimeout = errors.New("approval was not mined before the wait timed out")
 )
 
+// ReceiptTimeoutError is returned by SendAndWait when the receipt wait times out.
+// Hash is the transaction the client can resend. It is zero when resending would not complete the operation.
+type ReceiptTimeoutError struct {
+	Hash common.Hash
+	err  error
+}
+
+// NewReceiptTimeout reports that hash was broadcast but not mined in time.
+func NewReceiptTimeout(hash common.Hash) *ReceiptTimeoutError {
+	return &ReceiptTimeoutError{Hash: hash, err: ErrReceiptTimeout}
+}
+
+// NewApprovalTimeout reports that the token approval was not mined in time.
+// The approval hash is omitted.
+func NewApprovalTimeout() *ReceiptTimeoutError {
+	return &ReceiptTimeoutError{err: ErrApprovalTimeout}
+}
+
+func (e *ReceiptTimeoutError) Error() string {
+	if e.Hash == (common.Hash{}) {
+		return e.cause().Error()
+	}
+	return fmt.Sprintf("%s: %s", e.cause(), e.Hash.Hex())
+}
+
+func (e *ReceiptTimeoutError) Unwrap() error {
+	return e.cause()
+}
+
+// Message is the client-facing text, without the transaction hash.
+func (e *ReceiptTimeoutError) Message() string {
+	return e.cause().Error()
+}
+
+// TxHash is the hex hash to show the client, or empty when there is nothing to resend.
+func (e *ReceiptTimeoutError) TxHash() string {
+	if e.Hash == (common.Hash{}) {
+		return ""
+	}
+	return e.Hash.String()
+}
+
+func (e *ReceiptTimeoutError) cause() error {
+	if e.err != nil {
+		return e.err
+	}
+	return ErrReceiptTimeout
+}
+
 const (
-	DefaultGasLimit        = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
-	DefaultTipBoostPercent = 25
-	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
-	MinGasLimit            = 21_000     // Minimum gas for any transaction
-	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
-	FallbackGasLimit       = 900_000    // Fallback when estimation fails and no minimum is set
+	// cancellationDescriptionSuffix marks a stored cancellation. CancelTransaction appends it.
+	cancellationDescriptionSuffix = " (cancellation)"
+
+	DefaultGasLimit           = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
+	MinReplacementBumpPercent = 15
+	DefaultTipBoostPercent    = 25
+	MaxGasLimit               = 10_000_000 // Maximum allowed gas limit to prevent excessive values
+	MinGasLimit               = 21_000     // Minimum gas for any transaction
+	GasBufferPercent          = 33         // Add 33% buffer to estimated gas
+	FallbackGasLimit          = 900_000    // Fallback when estimation fails and no minimum is set
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -88,7 +162,10 @@ type Service interface {
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendAndWait sends the request and waits until the transaction is mined.
 	// It returns ErrTransactionReverted when the transaction failed.
-	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (receipt *types.Receipt, err error)
+	// timeout limits the wait for the receipt. Zero waits until the transaction
+	// is mined or ctx is cancelled. A deadline returns *ReceiptTimeoutError with
+	// the broadcast hash. Broadcasting the transaction is not limited by timeout.
+	SendAndWait(ctx context.Context, request *TxRequest, tipCapBoostPercent int, timeout time.Duration) (receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -102,10 +179,13 @@ type Service interface {
 	StoredTransaction(txHash common.Hash) (*StoredTransaction, error)
 	// PendingTransactions retrieves the list of all pending transaction hashes
 	PendingTransactions() ([]common.Hash, error)
-	// ResendTransaction resends a previously sent transaction
-	// This operation can be useful if for some reason the transaction vanished from the eth networks pending pool
-	ResendTransaction(ctx context.Context, txHash common.Hash) error
-	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
+	// ResendTransaction broadcasts a previously sent transaction again with the same nonce and content and new fees.
+	ResendTransaction(ctx context.Context, txHash common.Hash, bumpPercent int) (*ResendResult, error)
+	// KnownTransaction returns the newest hash of txHash's chain that the node has answered for.
+	KnownTransaction(ctx context.Context, txHash common.Hash) (common.Hash, bool, error)
+	// TransactionReceipt returns the receipt of the transaction.
+	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one.
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
@@ -178,7 +258,9 @@ func (t *transactionService) waitForAllPendingTx() error {
 	return nil
 }
 
-// Send creates and signs a transaction based on the request and sends it.
+// Send creates a transaction based on the request (with gasprice increased by the provided percentage) and sends it.
+// A fatal broadcast error is returned and nothing is stored.
+// Any other broadcast error is stored and returned as success: the transaction may already be in the mempool.
 func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
@@ -203,8 +285,15 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 	loggerV1.Debug("sending transaction", "tx", signedTx.Hash(), "nonce", nonce)
 
 	err = t.backend.SendTransaction(ctx, signedTx)
-	if err != nil {
+	if !txMayBeInMempool(err) {
 		return common.Hash{}, err
+	}
+	if err != nil {
+		t.logger.Warning("transaction broadcast returned an error; the transaction may be in the mempool",
+			"tx", signedTx.Hash(),
+			"nonce", signedTx.Nonce(),
+			"error", err,
+		)
 	}
 
 	txHash = signedTx.Hash()
@@ -238,6 +327,20 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
+	// The nonce now belongs to this transaction. A resend chain left for it belongs to
+	// dropped transactions, and resending one of them must not replace this one.
+	// That chain is kept as superseded, because one of its hashes may still be mined.
+	owner := &ResentTransaction{Nonce: nonce, CurrentHash: txHash}
+	switch prev, err := t.getResendChain(nonce); {
+	case err == nil:
+		owner.Superseded = append(prev.Superseded, prev.chainHashes())
+	case !errors.Is(err, storage.ErrNotFound):
+		t.logger.Warning("loading nonce owner failed", "nonce", nonce, "error", err)
+	}
+	if err := t.store.Put(resendTxKey(nonce), owner); err != nil {
+		t.logger.Warning("storing nonce owner failed", "nonce", nonce, "tx", txHash, "error", err)
+	}
+
 	t.waitForPendingTx(txHash)
 
 	return signedTx.Hash(), nil
@@ -247,8 +350,12 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 // A transaction that ran out of an estimated gas limit is sent once more with
 // twice that limit, capped at MaxGasLimit; there is no retry when the cap
 // would not raise the limit. A gas limit set by the caller is never changed.
-func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, error) {
-	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent)
+// timeout limits each wait for a receipt. Zero waits until the receipt arrives
+// or ctx is cancelled. A deadline returns *ReceiptTimeoutError with the
+// broadcast hash. Each attempt, including the out-of-gas retry, gets the
+// full timeout. Broadcasting is not limited by timeout.
+func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, error) {
+	receipt, txHash, err := t.sendAndWait(ctx, request, boostPercent, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +387,7 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 		"description", request.Description,
 	)
 
-	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent)
+	receipt, _, err = t.sendAndWait(ctx, &retry, boostPercent, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("retry after out of gas: %w", err)
 	}
@@ -292,14 +399,24 @@ func (t *transactionService) SendAndWait(ctx context.Context, request *TxRequest
 }
 
 // sendAndWait sends the request and returns the receipt whatever its status.
-func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int) (*types.Receipt, common.Hash, error) {
+// A positive timeout limits only the wait for the receipt.
+func (t *transactionService) sendAndWait(ctx context.Context, request *TxRequest, boostPercent int, timeout time.Duration) (*types.Receipt, common.Hash, error) {
 	txHash, err := t.Send(ctx, request, boostPercent)
 	if err != nil {
 		return nil, common.Hash{}, err
 	}
 
-	receipt, err := t.WaitForReceipt(ctx, txHash)
+	waitCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	receipt, err := t.WaitForReceipt(waitCtx, txHash)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, txHash, NewReceiptTimeout(txHash)
+		}
 		return nil, common.Hash{}, err
 	}
 
@@ -504,8 +621,6 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	return maxNonce + 1, nil
 }
 
-// WaitForReceipt waits until either the transaction with the given hash has
-// been mined or the context is cancelled.
 func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 	receiptC, errC, err := t.WatchSentTransaction(txHash)
 	if err != nil {
@@ -515,6 +630,15 @@ func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.H
 	case receipt := <-receiptC:
 		return &receipt, nil
 	case err := <-errC:
+		if errors.Is(err, ErrTransactionCancelled) {
+			receipt, rerr := t.TransactionReceipt(ctx, txHash)
+			if rerr == nil {
+				return receipt, nil
+			}
+			if !errors.Is(rerr, ethereum.NotFound) {
+				return nil, fmt.Errorf("%w: %w", err, rerr)
+			}
+		}
 		return nil, err
 	// don't wait longer than the context that was passed in
 	case <-ctx.Done():
@@ -522,6 +646,9 @@ func (t *transactionService) WaitForReceipt(ctx context.Context, txHash common.H
 	}
 }
 
+// WatchSentTransaction starts watching the given transaction.
+// This wraps the monitor's watch function by loading the correct nonce from the store.
+// This is only valid for a transaction sent by this service.
 func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan types.Receipt, <-chan error, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -582,70 +709,41 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 	return result
 }
 
-// ResendTransaction does not honor fee priority. It is effectively broken in its
-// current form and needs to be fixed.
-func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
-	storedTransaction, err := t.StoredTransaction(txHash)
-	if err != nil {
-		return err
-	}
-
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
-	if err != nil {
-		return err
-	}
-
-	tx := types.NewTx(&types.DynamicFeeTx{
-		Nonce:     storedTransaction.Nonce,
-		ChainID:   t.chainID,
-		To:        storedTransaction.To,
-		Value:     storedTransaction.Value,
-		Gas:       storedTransaction.GasLimit,
-		GasTipCap: gasTipCap,
-		GasFeeCap: gasFeeCap,
-		Data:      storedTransaction.Data,
-	})
-
-	signedTx, err := t.signer.SignTx(tx, t.chainID)
-	if err != nil {
-		return err
-	}
-
-	if signedTx.Hash() != txHash {
-		return errors.New("transaction hash changed")
-	}
-
-	err = t.backend.SendTransaction(t.ctx, signedTx)
-	if err != nil {
-		if strings.Contains(err.Error(), "already imported") {
-			return ErrAlreadyImported
-		}
-	}
-	return nil
-}
-
+// CancelTransaction cancels a previously sent transaction by double-spending its nonce with a zero-value transfer.
+// When the nonce has a resend chain, the cancellation outbids the current hash of that chain.
+// The cancellation itself is not added to the chain.
 func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	storedTransaction, err := t.StoredTransaction(originalTxHash)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), 0)
+	chain, err := t.getResendChain(storedTransaction.Nonce)
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		// The nonce has no owner record.
+	case err != nil:
+		return common.Hash{}, err
+	case !chain.inChain(originalTxHash):
+		return common.Hash{}, outsideChainError(chain, storedTransaction, originalTxHash)
+	case chain.CurrentHash != originalTxHash:
+		// The fees of the cancellation must outbid the latest resend, not an old hash.
+		storedTransaction, err = t.StoredTransaction(chain.CurrentHash)
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("current transaction %s: %w", chain.CurrentHash, err)
+		}
+	}
+
+	marketFee, marketTip, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), DefaultTipBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	if gasFeeCap.Cmp(storedTransaction.GasFeeCap) <= 0 {
-		gasFeeCap = storedTransaction.GasFeeCap
-	}
-
-	if gasTipCap.Cmp(storedTransaction.GasTipCap) <= 0 {
-		gasTipCap = storedTransaction.GasTipCap
-	}
-
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTipCap), big.NewInt(100))
-
-	gasFeeCap.Add(gasFeeCap, gasTipCap)
+	gasFeeCap := maxFee(marketFee, raiseByPercent(storedTransaction.GasFeeCap, MinReplacementBumpPercent))
+	gasTipCap := maxFee(marketTip, raiseByPercent(storedTransaction.GasTipCap, MinReplacementBumpPercent))
 
 	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
 		Nonce:     storedTransaction.Nonce,
@@ -661,9 +759,18 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	err = t.backend.SendTransaction(t.ctx, signedTx)
+	sendCtx, cancel := context.WithTimeout(t.ctx, resendBroadcastTimeout)
+	err = t.backend.SendTransaction(sendCtx, signedTx)
+	cancel()
+	if rerr := rejectedBroadcast(err); rerr != nil {
+		return common.Hash{}, rerr
+	}
 	if err != nil {
-		return common.Hash{}, err
+		t.logger.Warning("transaction broadcast returned an error; the transaction may be in the mempool",
+			"tx", signedTx.Hash(),
+			"nonce", signedTx.Nonce(),
+			"error", err,
+		)
 	}
 
 	txHash := signedTx.Hash()
@@ -678,7 +785,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
-		Description: fmt.Sprintf("%s (cancellation)", storedTransaction.Description),
+		Description: storedTransaction.Description + cancellationDescriptionSuffix,
 	})
 	if err != nil {
 		return common.Hash{}, err
@@ -701,6 +808,16 @@ func (t *transactionService) Close() error {
 }
 
 func (t *transactionService) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+	hashes, err := t.knownHashes(txHash)
+	if err != nil {
+		return nil, err
+	}
+	if len(hashes) > 1 {
+		txHash, _, err = t.KnownTransaction(ctx, txHash)
+		if err != nil {
+			return nil, err
+		}
+	}
 	trx, _, err := t.backend.TransactionByHash(ctx, txHash)
 	if err != nil {
 		return nil, err

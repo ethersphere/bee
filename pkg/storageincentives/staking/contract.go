@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +21,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
+
+// receiptWaitTimeout bounds each wait for a mined staking transaction.
+const receiptWaitTimeout = 120 * time.Second
 
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
@@ -330,9 +334,13 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 			err,
 			c.stakingContractABI.Errors,
 		)
+		var timeoutErr *transaction.ReceiptTimeoutError
+		if errors.As(err, &timeoutErr) {
+			err = transaction.NewApprovalTimeout()
+		}
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent, receiptWaitTimeout)
 }
 
 func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
@@ -355,7 +363,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		)
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent, receiptWaitTimeout)
 }
 
 func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {

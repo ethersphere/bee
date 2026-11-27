@@ -32,7 +32,6 @@ type CashoutService interface {
 
 type cashoutService struct {
 	store              storage.StateStorer
-	backend            transaction.Backend
 	transactionService transaction.Service
 	chequeStore        ChequeStore
 }
@@ -79,13 +78,11 @@ type chequeCashedEvent struct {
 // NewCashoutService creates a new CashoutService
 func NewCashoutService(
 	store storage.StateStorer,
-	backend transaction.Backend,
 	transactionService transaction.Service,
 	chequeStore ChequeStore,
 ) CashoutService {
 	return &cashoutService{
 		store:              store,
-		backend:            backend,
 		transactionService: transactionService,
 		chequeStore:        chequeStore,
 	}
@@ -187,7 +184,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 		return nil, fmt.Errorf("nil cumulative payout on cashout action loaded from statestore for chequebook %x: %w", chequebookAddress, ErrNoCheque)
 	}
 
-	_, pending, err := s.backend.TransactionByHash(ctx, action.TxHash)
+	txHash, pending, err := s.transactionService.KnownTransaction(ctx, action.TxHash)
 	if err != nil {
 		// treat not found as pending
 		if !errors.Is(err, ethereum.NotFound) {
@@ -199,7 +196,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 	if pending {
 		return &CashoutStatus{
 			Last: &LastCashout{
-				TxHash:   action.TxHash,
+				TxHash:   txHash,
 				Cheque:   action.Cheque,
 				Result:   nil,
 				Reverted: false,
@@ -209,7 +206,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 		}, nil
 	}
 
-	receipt, err := s.backend.TransactionReceipt(ctx, action.TxHash)
+	receipt, err := s.transactionService.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +221,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 
 		return &CashoutStatus{
 			Last: &LastCashout{
-				TxHash:   action.TxHash,
+				TxHash:   receipt.TxHash,
 				Cheque:   action.Cheque,
 				Result:   nil,
 				Reverted: true,
@@ -240,7 +237,7 @@ func (s *cashoutService) CashoutStatus(ctx context.Context, chequebookAddress co
 
 	return &CashoutStatus{
 		Last: &LastCashout{
-			TxHash:   action.TxHash,
+			TxHash:   receipt.TxHash,
 			Cheque:   action.Cheque,
 			Result:   result,
 			Reverted: false,

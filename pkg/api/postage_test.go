@@ -30,6 +30,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
@@ -78,6 +79,47 @@ func TestPostageCreateStamp(t *testing.T) {
 		if !immutable {
 			t.Fatalf("default batch should be immutable")
 		}
+	})
+
+	t.Run("approval timeout has no hash", func(t *testing.T) {
+		t.Parallel()
+
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+				return common.Hash{}, nil, transaction.NewApprovalTimeout()
+			}),
+		)
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusGatewayTimeout,
+			jsonhttptest.WithExpectedJSONResponse(&api.TxReceiptTimeoutResponse{
+				Code:    http.StatusGatewayTimeout,
+				Message: transaction.ErrApprovalTimeout.Error(),
+			}),
+		)
+	})
+
+	t.Run("receipt timeout returns the broadcast hash", func(t *testing.T) {
+		t.Parallel()
+
+		contract := contractMock.New(
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+				return common.Hash{}, nil, fmt.Errorf("create batch: %w", &transaction.ReceiptTimeoutError{Hash: txHash})
+			}),
+		)
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusGatewayTimeout,
+			jsonhttptest.WithExpectedJSONResponse(&api.TxReceiptTimeoutResponse{
+				Code:    http.StatusGatewayTimeout,
+				Message: transaction.ErrReceiptTimeout.Error(),
+				TxHash:  txHash.String(),
+			}),
+		)
 	})
 
 	t.Run("with-error", func(t *testing.T) {
