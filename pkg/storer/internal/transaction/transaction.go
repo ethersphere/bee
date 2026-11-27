@@ -53,6 +53,7 @@ type ReadOnlyStore interface {
 type Storage interface {
 	ReadOnlyStore
 	NewTransaction(context.Context) (Transaction, func())
+	NewSamplingView(ctx context.Context, anchor []byte, depth uint8) (*SamplingView, error)
 	Run(context.Context, func(Store) error) error
 	Close() error
 }
