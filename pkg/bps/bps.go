@@ -208,10 +208,7 @@ func (s *Service) Close() error {
 	close(s.quit)
 	for _, co := range s.cohorts {
 		co.mtx.Lock()
-		s.removeCohort(co)
-		for _, m := range co.members() {
-			m.requestReset()
-		}
+		s.closeCohort(co)
 		co.mtx.Unlock()
 	}
 	return nil
@@ -1147,6 +1144,15 @@ func (s *Service) removeCohort(co *cohort) {
 	s.metrics.Cohorts.Set(float64(len(s.cohorts)))
 }
 
+// closeCohort forgets the cohort and asks every stream in it to reset. Must be
+// called with s.mtx and co.mtx held.
+func (s *Service) closeCohort(co *cohort) {
+	s.removeCohort(co)
+	for _, m := range co.members() {
+		m.requestReset()
+	}
+}
+
 // forget forgets a cohort on which no frame was accepted for the inactivity
 // deadline, and asks every stream in it to reset.
 func (s *Service) forget(co *cohort) {
@@ -1162,10 +1168,7 @@ func (s *Service) forget(co *cohort) {
 		co.inactivity.Reset(s.opts.InactiveTimeout - idle)
 		return
 	}
-	s.removeCohort(co)
-	for _, m := range co.members() {
-		m.requestReset()
-	}
+	s.closeCohort(co)
 	s.logger.Debug("cohort forgotten", "error", errCohortForgotten)
 }
 
