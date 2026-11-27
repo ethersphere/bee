@@ -650,21 +650,15 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 // An absent fee priority is left unset. A priority outside the configured minimum and maximum
 // is rejected, and so is a request that sets both a fee priority and a gas price.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
-	return s.gasOptionsMiddleware(handlerName, true)
+	return s.gasOptionsMiddleware(handlerName)
 }
 
-// gasPricePriorityMiddleware reads the gas price and fee priority headers.
-// It does not read Gas-Limit. Chequebook deposit and withdraw and a BZZ withdrawal do not use that header.
-func (s *Service) gasPricePriorityMiddleware(handlerName string) func(h http.Handler) http.Handler {
-	return s.gasOptionsMiddleware(handlerName, false)
-}
-
-func (s *Service) gasOptionsMiddleware(handlerName string, readGasLimit bool) func(h http.Handler) http.Handler {
+func (s *Service) gasOptionsMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := s.logger.WithName(handlerName).Build()
 
-			headers, ok := s.gasHeaders(w, r, logger, readGasLimit)
+			headers, ok := s.gasHeaders(w, r, logger)
 			if !ok {
 				return
 			}
@@ -758,27 +752,10 @@ type gasHeaders struct {
 }
 
 // gasHeaders reads the transaction headers. The bool is false when a response was already written.
-// Gas-Limit is read only when readGasLimit is set.
-func (s *Service) gasHeaders(w http.ResponseWriter, r *http.Request, logger log.Logger, readGasLimit bool) (gasHeaders, bool) {
-	if readGasLimit {
-		headers := struct {
-			GasPrice    *big.Int `map:"Gas-Price"`
-			GasLimit    uint64   `map:"Gas-Limit"`
-			FeePriority string   `map:"Fee-Priority"`
-		}{}
-		if response := s.mapStructure(r.Header, &headers); response != nil {
-			response(invalidHeaderParams, logger, w)
-			return gasHeaders{}, false
-		}
-		return gasHeaders{
-			GasPrice:    headers.GasPrice,
-			GasLimit:    headers.GasLimit,
-			FeePriority: headers.FeePriority,
-		}, true
-	}
-
+func (s *Service) gasHeaders(w http.ResponseWriter, r *http.Request, logger log.Logger) (gasHeaders, bool) {
 	headers := struct {
 		GasPrice    *big.Int `map:"Gas-Price"`
+		GasLimit    uint64   `map:"Gas-Limit"`
 		FeePriority string   `map:"Fee-Priority"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -787,6 +764,7 @@ func (s *Service) gasHeaders(w http.ResponseWriter, r *http.Request, logger log.
 	}
 	return gasHeaders{
 		GasPrice:    headers.GasPrice,
+		GasLimit:    headers.GasLimit,
 		FeePriority: headers.FeePriority,
 	}, true
 }
@@ -806,18 +784,6 @@ func (s *Service) gasPriceHeader(w http.ResponseWriter, r *http.Request, logger 
 		return nil, false
 	}
 	return headers.GasPrice, true
-}
-
-// gasLimitHeader reads an optional Gas-Limit header. The bool is false when a response was already written.
-func (s *Service) gasLimitHeader(w http.ResponseWriter, r *http.Request, logger log.Logger) (uint64, bool) {
-	headers := struct {
-		GasLimit uint64 `map:"Gas-Limit"`
-	}{}
-	if response := s.mapStructure(r.Header, &headers); response != nil {
-		response(invalidHeaderParams, logger, w)
-		return 0, false
-	}
-	return headers.GasLimit, true
 }
 
 // corsHandler sets CORS headers to HTTP response if allowed origins are configured.

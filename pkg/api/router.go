@@ -562,7 +562,7 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			http.MethodPost: web.ChainHandlers(
-				s.gasPricePriorityMiddleware("chequebook deposit"),
+				s.gasConfigMiddleware("chequebook deposit"),
 				web.FinalHandlerFunc(s.chequebookDepositHandler),
 			),
 		}),
@@ -572,7 +572,7 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			http.MethodPost: web.ChainHandlers(
-				s.gasPricePriorityMiddleware("chequebook withdraw"),
+				s.gasConfigMiddleware("chequebook withdraw"),
 				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
 			),
 		}),
@@ -589,7 +589,7 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChainAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			http.MethodPost: web.ChainHandlers(
-				s.gasPricePriorityMiddleware("wallet withdraw"),
+				s.gasConfigMiddleware("wallet withdraw"),
 				web.FinalHandlerFunc(s.walletWithdrawHandler),
 			),
 		}),

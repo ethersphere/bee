@@ -169,8 +169,12 @@ func TestChequebookWithdraw(t *testing.T) {
 		t.Parallel()
 
 		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
-			if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
+			applied := transaction.Apply(opts...)
+			if applied.Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
+			}
+			if applied.GasLimit != 12221 {
+				return common.Hash{}, errors.New("wrong gas limit")
 			}
 			if amount.Cmp(big.NewInt(500)) == 0 {
 				return txHash, nil
@@ -187,12 +191,36 @@ func TestChequebookWithdraw(t *testing.T) {
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "12221"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
 		if !reflect.DeepEqual(got, expected) {
 			t.Errorf("got address: %+v, expected: %+v", got, expected)
 		}
+	})
+
+	t.Run("invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(func(context.Context, *big.Int, ...transaction.Option) (common.Hash, error) {
+				t.Fatal("invalid gas limit reached the withdrawal")
+				return common.Hash{}, nil
+			})},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
+			}),
+		)
 	})
 }
 
@@ -231,8 +259,12 @@ func TestChequebookDeposit(t *testing.T) {
 		t.Parallel()
 
 		chequebookDepositFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
-			if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
+			applied := transaction.Apply(opts...)
+			if applied.Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
+			}
+			if applied.GasLimit != 12221 {
+				return common.Hash{}, errors.New("wrong gas limit")
 			}
 
 			if amount.Cmp(big.NewInt(700)) == 0 {
@@ -250,12 +282,36 @@ func TestChequebookDeposit(t *testing.T) {
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "12221"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
 		if !reflect.DeepEqual(got, expected) {
 			t.Errorf("got address: %+v, expected: %+v", got, expected)
 		}
+	})
+
+	t.Run("invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(func(context.Context, *big.Int, ...transaction.Option) (common.Hash, error) {
+				t.Fatal("invalid gas limit reached the deposit")
+				return common.Hash{}, nil
+			})},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
+			}),
+		)
 	})
 }
 

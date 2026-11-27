@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 9.0.1
+  version: 9.1.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2039,7 +2039,7 @@ paths:
   "/chequebook/deposit":
     post:
       summary: Deposit tokens into the chequebook
-      description: The gas-limit header is not supported for this transaction.
+      description: A gas-limit header sets the gas limit of the deposit. When it is omitted, gas is estimated.
       parameters:
         - in: query
           name: amount
@@ -2049,6 +2049,7 @@ paths:
           description: Amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
       responses:
@@ -2068,7 +2069,7 @@ paths:
   "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook
-      description: The gas-limit header is not supported for this transaction.
+      description: A gas-limit header sets the gas limit of the withdrawal. When it is omitted, gas is estimated.
       parameters:
         - in: query
           name: amount
@@ -2078,6 +2079,7 @@ paths:
           description: Amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
       responses:
@@ -2581,7 +2583,7 @@ paths:
   "/wallet/withdraw/{coin}":
     post:
       summary: Withdraw BZZ or xDAI to a whitelisted address
-      description: The gas-limit header is not supported for a BZZ withdrawal. A native token withdrawal uses it when set, and 300000 otherwise.
+      description: A gas-limit header sets the gas limit of the withdrawal. A BZZ withdrawal estimates gas when the header is omitted. A native token withdrawal uses 300000 when the header is omitted.
       tags:
         - Wallet
       parameters:
@@ -2602,6 +2604,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
           content:

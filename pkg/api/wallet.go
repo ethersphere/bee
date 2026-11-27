@@ -137,22 +137,13 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	gasLimit, ok := s.gasLimitHeader(w, r, logger)
-	if !ok {
-		return
-	}
-
 	req := &transaction.TxRequest{
 		To:          queries.Address,
 		Value:       queries.Amount,
 		Description: "native token withdraw",
 	}
 
-	opts := s.txOptions(r)
-	if gasLimit != 0 {
-		opts = slices.Concat(opts, []transaction.Option{transaction.WithGasLimit(gasLimit)})
-	}
-	txHash, err := s.transaction.Send(r.Context(), req, slices.Concat(opts, []transaction.Option{
+	txHash, err := s.transaction.Send(r.Context(), req, slices.Concat(s.txOptions(r), []transaction.Option{
 		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
 		transaction.WithDefaultGasLimit(300_000),
 	})...)
