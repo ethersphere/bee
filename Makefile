@@ -113,7 +113,7 @@ nilaway-bin:
 
 .PHONY: linter
 linter:
-	test -f $(GOLANGCI_LINT) || curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT) version --short 2>/dev/null | grep -qx '$(GOLANGCI_LINT_VERSION:v%=%)' || GOBIN=$(GOBIN) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: check-whitespace
 check-whitespace:
