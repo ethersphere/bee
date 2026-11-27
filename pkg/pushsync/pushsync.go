@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
+	"github.com/ethersphere/bee/v2/pkg/pushsync/internal/firsthop"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
@@ -97,6 +98,7 @@ type PushSync struct {
 	signer                  crypto.Signer
 	fullNode                bool
 	errSkip                 *skippeers.List
+	firstHops               *firsthop.Memory // receipt results of the first hops of an origin
 	stabilizer              stabilization.Subscriber
 	overDraftRefreshLimiter *rate.Limiter
 }
@@ -127,6 +129,7 @@ func New(
 	tracer *tracing.Tracer,
 	stabilizer stabilization.Subscriber,
 ) *PushSync {
+	firstHops := firsthop.New(time.Now)
 	ps := &PushSync{
 		address:                 address,
 		radius:                  radius,
@@ -141,10 +144,11 @@ func New(
 		logger:                  logger.WithName(loggerName).Register(),
 		accounting:              accounting,
 		pricer:                  pricer,
-		metrics:                 newMetrics(),
+		metrics:                 newMetrics(firstHops.Size),
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
+		firstHops:               firstHops,
 		stabilizer:              stabilizer,
 		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
@@ -372,9 +376,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		parallelForwards     = maxMultiplexForwards
 		shallowReceiptResult *pb.Receipt
 		shallowReceiptPO     uint8
+		op                   *originPush // first hops of an origin
 	)
 
 	if origin {
+		op = ps.newOriginPush(ch.Address())
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
@@ -400,10 +406,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	retry()
 
-	rad, err := ps.radius()
-	if err != nil {
-		return nil, fmt.Errorf("pushsync: storage radius: %w", err)
-	}
+	// rad is read before each attempt and, for an origin, at each result.
+	var rad uint8
 
 	skip := skippeers.NewList(0)
 	defer skip.Close()
@@ -415,13 +419,26 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-preemptiveTicker:
 			retry()
 		case <-retryC:
+			// The radius can change between two attempts of one push.
+			if rad, err = ps.radius(); err != nil {
+				return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+			}
 
 			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
-			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
+
+			var (
+				peer swarm.Address
+				err  error
+			)
+			if origin {
+				peer, err = op.next(rad, fullSkip)
+			} else {
+				peer, err = ps.closestPeer(ch.Address(), origin, fullSkip)
+			}
 
 			// ErrWantSelf on a forwarder can mean closer peers exist but are
 			// overdraft-skipped; wait for refresh before falling back to self.
@@ -516,6 +533,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err)
 
+			// The receipt is checked and recorded at the same radius.
+			if origin {
+				if rad, err = ps.radius(); err != nil {
+					return nil, fmt.Errorf("pushsync: storage radius: %w", err)
+				}
+			}
+
 			if result.err == nil {
 
 				if !origin { // forwarder nodes do not need to check the receipt
@@ -524,8 +548,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				// Cache the best (highest-PO) shallow receipt and exhaust the
 				// budget; surface ErrShallowReceipt only when nothing better lands.
-				switch po, err := ps.checkReceipt(result.receipt); {
+				switch po, err := ps.checkReceipt(result.receipt, result.peer, rad); {
 				case err == nil:
+					op.record(rad, result.peer, nil)
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
 					if shallowReceiptResult == nil || po > shallowReceiptPO {
@@ -536,6 +561,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				default:
 					result.err = err
 				}
+			}
+
+			// A shallow receipt starts a pause of the first hop. An error
+			// does too, or only removes its valid record.
+			if origin {
+				op.record(rad, result.peer, result.err)
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
@@ -622,8 +653,8 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 // checkReceipt validates the receipt and returns the storer-to-chunk PO so
 // callers can rank shallow receipts; PO is zero on signature errors. Strict
-// po >= rad: a chunk is not synced until it lands within the AOR.
-func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
+// po >= r: a chunk is not synced until it lands within the AOR.
+func (ps *PushSync) checkReceipt(receipt *pb.Receipt, firstHop swarm.Address, r uint8) (uint8, error) {
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
@@ -638,20 +669,15 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
-	r, err := ps.radius()
-	if err != nil {
-		return po, fmt.Errorf("pushsync: storage radius: %w", err)
-	}
-
 	if po < r || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
-		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
+		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r, "first_hop", firstHop)
 		return po, ErrShallowReceipt
 	}
 
 	ps.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
+	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "first_hop", firstHop)
 
 	return po, nil
 }
