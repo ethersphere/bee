@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -189,8 +190,9 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_tags").Build()
 
 	queries := struct {
-		Offset int `map:"offset"`
-		Limit  int `map:"limit"`
+		After  uint64 `map:"after"`
+		Offset int    `map:"offset" validate:"min=0"`
+		Limit  int    `map:"limit" validate:"min=0"`
 	}{
 		Limit: 100, // Default limit.
 	}
@@ -199,11 +201,22 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.storer.ListSessions(queries.Offset, queries.Limit)
+	tagList, err := s.storer.ListSessions(r.Context(), queries.After, queries.Offset, queries.Limit)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			// The client went away; this is not a server fault.
+			logger.Debug("listing canceled", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+			jsonhttp.RequestTimeout(w, "listing canceled")
+			return
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			logger.Debug("listing timed out", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+			jsonhttp.ServiceUnavailable(w, "listing timed out")
+			return
+		}
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")
-		jsonhttp.InternalServerError(w, err)
+		jsonhttp.InternalServerError(w, "listing failed")
 		return
 	}
 

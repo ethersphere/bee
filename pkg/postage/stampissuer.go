@@ -184,13 +184,10 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	bIdx := toBucket(si.BucketDepth(), addr)
 	bCnt := si.data.Buckets[bIdx]
 
-	if bCnt == si.BucketUpperBound() {
-		if si.ImmutableFlag() {
-			return nil, nil, ErrBucketFull
-		}
-
-		bCnt = 0
-		si.data.Buckets[bIdx] = 0
+	// A full bucket is never rolled over: reusing an index would silently
+	// displace the chunk previously stamped with it.
+	if bCnt >= si.BucketUpperBound() {
+		return nil, nil, ErrBucketFull
 	}
 
 	si.data.Buckets[bIdx]++

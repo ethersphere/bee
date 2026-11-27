@@ -128,13 +128,15 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Error(nil, "access control upload failed")
 			switch {
 			case errors.Is(err, accesscontrol.ErrNotFound):
-				jsonhttp.NotFound(w, "act or history entry not found")
+				jsonhttp.NotFound(ow, "act or history entry not found")
 			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
-				jsonhttp.BadRequest(w, "invalid public key")
+				jsonhttp.BadRequest(ow, "invalid public key")
 			case errors.Is(err, accesscontrol.ErrUnexpectedType):
-				jsonhttp.BadRequest(w, "failed to create history")
+				jsonhttp.BadRequest(ow, "failed to create history")
+			case errors.Is(err, postage.ErrBucketFull):
+				jsonhttp.PaymentRequired(ow, "batch is overissued")
 			default:
-				jsonhttp.InternalServerError(w, errActUpload)
+				jsonhttp.InternalServerError(ow, errActUpload)
 			}
 			return
 		}

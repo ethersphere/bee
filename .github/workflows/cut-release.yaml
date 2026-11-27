@@ -4,7 +4,7 @@
 # reviewer approves an exact SHA (shown in the run summary). The tag push then
 # triggers release.yaml (goreleaser).
 name: Cut release
-run-name: Cut ${{ inputs.tag }} from ${{ inputs.ref }} (by ${{ github.actor }})
+run-name: Cut ${{ inputs.tag }} (by ${{ github.actor }})
 
 on:
   workflow_dispatch:
@@ -51,6 +51,9 @@ jobs:
               if (e.status !== 404) throw e
             }
             const { data: c } = await github.rest.repos.getCommit({ owner, repo, ref: REF })
+            if (!/^[0-9a-f]{40}$/.test(c.sha ?? '')) {
+              return core.setFailed('ref did not resolve to a commit')
+            }
             // getCommit also resolves commits that are on no branch, e.g. fork PR heads
             // (refs/pull/*). Only tag commits on the default branch or a release/* branch.
             const def = context.payload.repository.default_branch
@@ -67,12 +70,13 @@ jobs:
               return core.setFailed(`${c.sha} is not on ${def} or a release/* branch, refusing to tag it`)
             }
             core.setOutput('sha', c.sha)
-            // Escape everything user-controlled: the summary is what the release approver reviews.
-            const esc = s => s.replace(/[&<>"'`\[\]]/g, ch => `&#${ch.charCodeAt(0)};`)
-            const subject = c.commit.message.split('\n')[0]
+            // Only the SHA, a link built from it and fixed text: nothing an outsider controls is rendered.
+            // <code> stops GitHub shortening the SHA into a 7-char commit reference.
+            const url = `https://github.com/${owner}/${repo}/commit/${c.sha}`
             core.summary
-              .addHeading(`${TAG} will tag ${c.sha}`)
-              .addRaw(`<a href="${c.html_url}">${esc(subject)}</a> (${esc(REF)}, on ${esc(onBranch)})`, true)
+              .addHeading(`${TAG} will tag <code>${c.sha}</code>`)
+              .addRaw(`<p>${onBranch === def ? 'On the default branch.' : 'NOT on the default branch (on a release branch).'}</p>`, true)
+              .addLink(url, url)
             await core.summary.write()
 
   tag:

@@ -78,6 +78,9 @@ type Service struct {
 	tracer        *tracing.Tracer
 	caching       bool
 	errSkip       *skippeers.List
+	// notFoundSkip holds the peers in errSkip that answered that they could
+	// not deliver the chunk, as opposed to peers that could not be reached.
+	notFoundSkip *skippeers.List
 }
 
 func New(
@@ -105,6 +108,7 @@ func New(
 		tracer:        tracer,
 		caching:       forwarderCaching,
 		errSkip:       skippeers.NewList(time.Minute),
+		notFoundSkip:  skippeers.NewList(time.Minute),
 	}
 }
 
@@ -212,7 +216,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if errors.Is(err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
-							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "error", err)
+							// a peer that answered it cannot deliver the chunk, in this or in an
+							// earlier request still skipped, means the chunk was not found.
+							peerAnswered := len(s.notFoundSkip.ChunkPeers(chunkAddr)) > 0
+							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "peer_answered", peerAnswered, "error", err)
+							if peerAnswered {
+								return nil, storage.ErrNotFound
+							}
 							return nil, err
 						}
 						continue // there is still an inflight request, wait for it's result
@@ -280,6 +290,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				errorsLeft--
 				s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
+				if _, ok := errors.AsType[*p2p.ChunkDeliveryError](res.err); ok {
+					s.notFoundSkip.Add(chunkAddr, res.peer, skiplistDur)
+				}
 				retry()
 			}
 		}
@@ -508,5 +521,5 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 }
 
 func (s *Service) Close() error {
-	return s.errSkip.Close()
+	return errors.Join(s.errSkip.Close(), s.notFoundSkip.Close())
 }

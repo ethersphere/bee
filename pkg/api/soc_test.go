@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"net/http"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
@@ -121,6 +123,35 @@ func TestSOC(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
 			)
 		})
+	})
+
+	t.Run("bucket full", func(t *testing.T) {
+		// A mutable batch with a single one-slot bucket: the second chunk
+		// must not silently overwrite the first.
+		issuer := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 0, 0, 1000, false)
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockstorer.New(),
+			Post:         mockpost.New(mockpost.WithIssuer(issuer)),
+			DirectUpload: true,
+		})
+
+		upload := func(s *testingsoc.MockSOC, status int, opts ...jsonhttptest.Option) {
+			t.Helper()
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), status,
+				append([]jsonhttptest.Option{
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+					jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+				}, opts...)...,
+			)
+		}
+
+		upload(testingsoc.GenerateMockSOC(t, []byte("first")), http.StatusCreated)
+		upload(testingsoc.GenerateMockSOC(t, []byte("second")), http.StatusPaymentRequired,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "batch is overissued",
+				Code:    http.StatusPaymentRequired,
+			}),
+		)
 	})
 
 	t.Run("postage", func(t *testing.T) {

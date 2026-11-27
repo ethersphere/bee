@@ -381,3 +381,81 @@ func TestHasPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestAddAfterReadIsSaved(t *testing.T) {
+	t.Parallel()
+
+	entry := func(b byte) []byte { return bytes.Repeat([]byte{b}, 32) }
+
+	reads := []struct {
+		name string
+		read func(ctx context.Context, n *mantaray.Node, ls mantaray.LoadSaver) error
+	}{
+		{
+			name: "lookup node",
+			read: func(ctx context.Context, n *mantaray.Node, ls mantaray.LoadSaver) error {
+				_, err := n.LookupNode(ctx, []byte("aa"), ls)
+				return err
+			},
+		},
+		{
+			name: "has prefix",
+			read: func(ctx context.Context, n *mantaray.Node, ls mantaray.LoadSaver) error {
+				_, err := n.HasPrefix(ctx, []byte("aa"), ls)
+				return err
+			},
+		},
+		{
+			name: "walk",
+			read: func(ctx context.Context, n *mantaray.Node, ls mantaray.LoadSaver) error {
+				return n.WalkNode(ctx, []byte{}, ls, func(_ []byte, _ *mantaray.Node, err error) error {
+					return err
+				})
+			},
+		},
+	}
+
+	for _, r := range reads {
+		for _, add := range []string{"ac", "b"} {
+			t.Run(r.name+"/"+add, func(t *testing.T) {
+				t.Parallel()
+
+				ctx := context.Background()
+				ls := newMockLoadSaver()
+
+				n := mantaray.New()
+				for i, p := range []string{"aa", "ab"} {
+					if err := n.Add(ctx, []byte(p), entry(byte(i+1)), nil, ls); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := n.Save(ctx, ls); err != nil {
+					t.Fatal(err)
+				}
+				ref := n.Reference()
+
+				m := mantaray.NewNodeRef(ref)
+				if err := r.read(ctx, m, ls); err != nil {
+					t.Fatal(err)
+				}
+				if err := m.Add(ctx, []byte(add), entry(3), nil, ls); err != nil {
+					t.Fatal(err)
+				}
+				if err := m.Save(ctx, ls); err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Equal(m.Reference(), ref) {
+					t.Fatal("root reference unchanged after add")
+				}
+
+				got, err := mantaray.NewNodeRef(m.Reference()).LookupNode(ctx, []byte(add), ls)
+				if err != nil {
+					t.Fatalf("lookup %q after reload: %v", add, err)
+				}
+				if !bytes.Equal(got.Entry(), entry(3)) {
+					t.Fatalf("entry %q: got %x, want %x", add, got.Entry(), entry(3))
+				}
+			})
+		}
+	}
+}

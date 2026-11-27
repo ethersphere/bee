@@ -264,7 +264,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		}
 		err = h.replicaPutter.Put(h.ctx, swarm.NewChunk(swarm.NewAddress(rootHash[:swarm.HashSize]), rootData))
 		if err != nil {
-			return nil, fmt.Errorf("hashtrie: cannot put dispersed replica %s", err.Error())
+			return nil, fmt.Errorf("hashtrie: cannot put dispersed replica: %w", err)
 		}
 	}
 	return rootHash, nil

@@ -6,7 +6,6 @@ package postage_test
 
 import (
 	crand "crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -203,55 +202,28 @@ func Test_StampIssuer_inc(t *testing.T) {
 
 	addr := swarm.NewAddress([]byte{1, 2, 3, 4})
 
-	t.Run("mutable", func(t *testing.T) {
-		t.Parallel()
+	for _, immutable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("immutable=%t", immutable), func(t *testing.T) {
+			t.Parallel()
 
-		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 16, 8, 0, false)
-		count := sti.BucketUpperBound()
+			sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 16, 8, 0, immutable)
+			count := sti.BucketUpperBound()
 
-		// Increment to upper bound (fill bucket to max cap)
-		for range count {
-			_, _, err := sti.Increment(addr)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		// Incrementing stamp issuer above upper bound should return index starting from 0
-		for i := range count {
-			idxb, _, err := sti.Increment(addr)
-			if err != nil {
-				t.Fatal(err)
+			// Increment to upper bound (fill bucket to max cap)
+			for range count {
+				_, _, err := sti.Increment(addr)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 
-			if _, idx := bytesToIndex(idxb); idx != i {
-				t.Fatalf("bucket should be full %v", idx)
-			}
-		}
-	})
-
-	t.Run("immutable", func(t *testing.T) {
-		t.Parallel()
-
-		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 16, 8, 0, true)
-		count := sti.BucketUpperBound()
-
-		// Increment to upper bound (fill bucket to max cap)
-		for range count {
-			_, _, err := sti.Increment(addr)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		// Incrementing stamp issuer above upper bound should return error
-		for range count {
+			// A full bucket must not roll over, regardless of the immutable flag
 			_, _, err := sti.Increment(addr)
 			if !errors.Is(err, postage.ErrBucketFull) {
-				t.Fatal("bucket should be full")
+				t.Fatalf("want %v, got %v", postage.ErrBucketFull, err)
 			}
-		}
-	})
+		})
+	}
 }
 
 func TestUtilization(t *testing.T) {
@@ -327,11 +299,4 @@ func TestUtilizationRatioInvalidDepth(t *testing.T) {
 	if got := sti.UtilizationRatio(); got != 0 {
 		t.Fatalf("invalid depth: want 0, got %v", got)
 	}
-}
-
-func bytesToIndex(buf []byte) (bucket, index uint32) {
-	index64 := binary.BigEndian.Uint64(buf)
-	bucket = uint32(index64 >> 32)
-	index = uint32(index64)
-	return bucket, index
 }
