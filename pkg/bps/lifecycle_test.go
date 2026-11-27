@@ -60,13 +60,13 @@ func TestRequestsEndAStreamOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			co.mtx.Lock()
+			defer co.mtx.Unlock()
 			if i%2 == 0 {
 				m.requestClose()
 				return
 			}
-			co.mtx.Lock()
 			m.requestReset()
-			co.mtx.Unlock()
 		}()
 	}
 	wg.Wait()
@@ -75,8 +75,8 @@ func TestRequestsEndAStreamOnce(t *testing.T) {
 		t.Fatalf("the stream was ended %d times (resets %d, closes %d)", resets+closes, resets, closes)
 	}
 	// asking a stream that has ended changes nothing either
-	m.requestClose()
 	co.mtx.Lock()
+	m.requestClose()
 	m.requestReset()
 	co.mtx.Unlock()
 	notClosed(t, admin.st.reset, "the admin's stream reset")

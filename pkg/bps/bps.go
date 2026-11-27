@@ -59,6 +59,9 @@ var (
 	errFull            = errors.New("bps: capacity bound")
 	errInvalidDelivery = errors.New("bps: invalid delivery")
 	errChannelEnded    = errors.New("bps: channel ended")
+	errResetRequested  = errors.New("bps: stream reset")
+	errFlushTimeout    = errors.New("bps: queue not written out in time")
+	errAuthTimeout     = errors.New("bps: no auth in time")
 
 	// ErrEndOfStream is a session's Err after the admin's EOS ended the channel.
 	ErrEndOfStream = errors.New("bps: end of stream")
@@ -68,8 +71,7 @@ var (
 )
 
 // ForgingBrokerBlocklistDuration is how long a subscriber avoids a broker that
-// forwarded a delivery it should have refused — one that does not validate, or
-// whose owner the roster does not admit — which no honest broker sends.
+// forwarded a delivery that does not validate, which no honest broker sends.
 const ForgingBrokerBlocklistDuration = 10 * 24 * time.Hour
 
 // Options are the broker's resource bounds. Zero values take the defaults.
@@ -703,43 +705,26 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 }
 
 // serve runs the two halves of an attached stream — the reader, handling the
-// peer's frames, and the writer, delivering the stream's queue — and is the
-// one place where the stream ends: it alone closes or resets it, on its own
-// deadlines and on the requests anyone else makes of the member. It returns
-// once both halves have stopped.
-func (s *Service) serve(ctx context.Context, peer swarm.Address, stream p2p.Stream, w protobuf.Writer, r protobuf.Reader, co *cohort, m *member) error {
+// peer's frames, and the writer, delivering the stream's queue — until one of
+// them stops or the stream is asked to end, and returns why. Ending the stream
+// is its deferred last step, and the only place it happens: a nil error means
+// the queue was written out after a close request, and the stream is closed so
+// that what was written arrives; any other error resets it.
+func (s *Service) serve(ctx context.Context, peer swarm.Address, stream p2p.Stream, w protobuf.Writer, r protobuf.Reader, co *cohort, m *member) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// each half closes its done channel when it stops, the reason left in its
-	// err; flush is closed here, once: write what is queued, then stop
-	flush := make(chan struct{})
 	readDone, writeDone := make(chan struct{}), make(chan struct{})
 	var readErr, writeErr error
 	go func() { defer close(readDone); readErr = s.read(ctx, r, co, m) }()
-	go func() { defer close(writeDone); writeErr = write(ctx, w, m.queue, flush) }()
-	readC := readDone // nil once seen, so that the closed channel is not seen again
+	go func() { defer close(writeDone); writeErr = write(ctx, w, m.queue) }()
 
-	// the auth deadline of a stream admitted pending
-	var authC <-chan time.Time
+	var authC, flushC <-chan time.Time
 	if m.authDeadline {
 		t := time.NewTimer(s.opts.AuthWaitTimeout)
 		defer t.Stop()
 		authC = t.C
 	}
-	// the flush deadline, from the moment the stream is asked to close
-	var flushTimer *time.Timer
-	var flushC <-chan time.Time
 	defer func() {
-		if flushTimer != nil {
-			flushTimer.Stop()
-		}
-	}()
-
-	// end closes or resets the stream and waits for both halves to stop
-	end := func(graceful bool) {
-		if graceful {
-			// closing, not resetting, lets the frames already written arrive
+		if err == nil {
 			_ = stream.Close()
 		} else {
 			_ = stream.Reset()
@@ -747,71 +732,56 @@ func (s *Service) serve(ctx context.Context, peer swarm.Address, stream p2p.Stre
 		cancel()
 		<-readDone
 		<-writeDone
-	}
+	}()
 
+	readC, closeC := readDone, m.closeReq
 	for {
-		// a reset asked for takes precedence over everything else
+		// a reset asked for wins over anything else ready at the same time
 		select {
 		case <-m.resetReq:
-			end(false)
-			return nil
+			return errResetRequested
 		default:
 		}
 		select {
 		case <-m.resetReq:
-			end(false)
-			return nil
+			return errResetRequested
 
-		case <-m.closeReq:
-			// an EOS or a revocation: write the queue — the EOS or the reduced
-			// roster last — then close, within the flush deadline
-			if flushC == nil {
-				close(flush)
-				flushTimer = time.NewTimer(s.opts.FlushTimeout)
-				flushC = flushTimer.C
-			}
+		case <-closeC:
+			// the queue is closed with its last frame in: the writer writes it
+			// out and returns; give it the flush deadline
+			closeC = nil
+			t := time.NewTimer(s.opts.FlushTimeout)
+			defer t.Stop()
+			flushC = t.C
 
 		case <-flushC:
-			// the peer did not take its queue in time, the write in progress
-			// included: the timer is not the writer's, so a stuck write cannot
-			// hold it off
-			end(false)
-			return nil
+			return errFlushTimeout
 
 		case <-writeDone:
-			// the queue written after a close, or the writer failed
-			end(flushC != nil && writeErr == nil)
-			return nil
+			// nil once the closed queue is written out
+			return writeErr
 
 		case <-readC:
 			readC = nil
-			if flushC != nil {
-				// closing: nothing more is read anyway, the flush decides
+			if closeC == nil {
+				// closing: the writer decides when the stream ends
 				continue
 			}
-			violation := errors.Is(readErr, errViolation)
-			if violation && s.blocklister != nil {
+			if errors.Is(readErr, errViolation) && s.blocklister != nil {
 				if berr := s.blocklister.Blocklist(peer, s.opts.ProtoBreachBlocklistDuration, readErr.Error()); berr != nil {
-					s.logger.Debug("blocklist failed", "peer_address", peer, "error", berr)
+					s.logger.Error(berr, "blocklist failed", "peer_address", peer)
 				}
 			}
-			// a violation, or the peer went away
-			end(false)
-			if violation {
-				return readErr
-			}
-			return nil
+			return fmt.Errorf("read: %w", readErr)
 
 		case <-authC:
 			authC = nil
 			if s.authExpired(peer, co, m) {
-				end(false)
-				return nil
+				return errAuthTimeout
 			}
 
 		case <-ctx.Done():
-			end(false)
-			return nil
+			return ctx.Err()
 		}
 	}
 }
@@ -830,25 +800,17 @@ func (s *Service) read(ctx context.Context, r protobuf.Reader, co *cohort, m *me
 	}
 }
 
-// write delivers the stream's queue until ctx ends; once flush is closed, it
-// writes what is still queued and returns nil.
-func write(ctx context.Context, w protobuf.Writer, queue <-chan *pb.Broadcast, flush <-chan struct{}) error {
+// write delivers the stream's queue until ctx ends, and returns nil once the
+// queue is closed and written out.
+func write(ctx context.Context, w protobuf.Writer, queue <-chan *pb.Broadcast) error {
 	for {
 		select {
-		case f := <-queue:
-			if err := w.WriteMsgWithContext(ctx, f); err != nil {
-				return err
+		case f, ok := <-queue:
+			if !ok {
+				return nil
 			}
-		case <-flush:
-			for {
-				select {
-				case f := <-queue:
-					if err := w.WriteMsgWithContext(ctx, f); err != nil {
-						return err
-					}
-				default:
-					return nil
-				}
+			if err := w.WriteMsgWithContext(ctx, f); err != nil {
+				return fmt.Errorf("write: %w", err)
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -1441,16 +1403,17 @@ func (co *cohort) applyRoster(f *pb.Broadcast, roster [][]byte, sender *member) 
 type member struct {
 	owner        []byte // nil for a stream that can only listen
 	challenge    []byte
-	authDeadline bool // admitted pending: the auth deadline applies
-	queue        chan *pb.Broadcast
-	closeReq     chan struct{} // one slot: write the queue, then close
-	resetReq     chan struct{} // one slot: reset at once; takes precedence
+	authDeadline bool               // admitted pending: the auth deadline applies
+	queue        chan *pb.Broadcast // closed by requestClose, after its last frame
+	closeReq     chan struct{}      // one slot: the queue is closed; write it out, then close
+	resetReq     chan struct{}      // one slot: reset at once; takes precedence
 
 	role      role
 	authSeq   uint64
 	cued      bool          // a roster naming the owner was enqueued on this spectator stream
 	given     *pb.Broadcast // the roster last enqueued on a rostered pending stream
 	resetting bool          // a reset was asked for: nothing more is enqueued
+	closing   bool          // the queue is closed: nothing more is enqueued
 }
 
 // newMember returns the member of a stream joining in the role, with its
@@ -1467,10 +1430,18 @@ func newMember(r role, owner, challenge []byte, queueCap int) *member {
 	}
 }
 
-// requestClose asks the stream's handler to write what is queued, then close
-// the stream, within the flush deadline. It never blocks, and asking again
-// changes nothing.
-func (m *member) requestClose() { request(m.closeReq) }
+// requestClose closes the stream's queue, so that what is in it is the last
+// the stream gets, and asks the stream's handler to write it out and close the
+// stream, within the flush deadline. It never blocks, and asking again changes
+// nothing. Must be called with cohort.mtx held.
+func (m *member) requestClose() {
+	if m.closing {
+		return
+	}
+	m.closing = true
+	close(m.queue)
+	request(m.closeReq)
+}
 
 // requestReset asks the stream's handler to reset the stream at once, and
 // keeps anything more from being enqueued on it. It never blocks; it reports
@@ -1494,8 +1465,12 @@ func request(c chan struct{}) {
 }
 
 // enqueue adds a frame to the stream's outbound queue, and reports false if
-// the queue is full.
+// the queue is full. A closing stream takes nothing more, which is not a full
+// queue. Must be called with cohort.mtx held.
 func (m *member) enqueue(f *pb.Broadcast) bool {
+	if m.closing {
+		return true
+	}
 	select {
 	case m.queue <- f:
 		return true
