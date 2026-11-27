@@ -505,7 +505,8 @@ func newSession(svc *Service, req JoinRequest, w protobuf.Writer, challenge []by
 		rx:        make(chan Message),
 		done:      make(chan struct{}),
 	}
-	// the principal needs no roster to authenticate
+	// The principal may send its AUTH without waiting for a roster. This grants
+	// nothing: the broker still checks the AUTH against the principal.
 	if bytes.Equal(req.Owner, req.Spec.Principal) {
 		s.grant()
 	}
