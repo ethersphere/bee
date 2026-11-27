@@ -8,18 +8,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // txMayBeInMempool reports whether the transaction may be in the mempool.
 // A nil error means the node accepted it. The transport errors below mean the
-// RPC response was lost while the request was in flight.
-// An EOF is a failed send: the transaction is not stored.
+// RPC response was lost while the request was in flight. An EOF or an HTTP
+// 502, 503, or 504 from a proxy is the same kind of loss: the node may already
+// have the transaction.
 func txMayBeInMempool(err error) bool {
 	if err == nil {
 		return true
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		isProxyHTTPError(err) {
 		return true
 	}
 	msg := normalizeForMatch(err.Error())
@@ -47,6 +56,22 @@ var mempoolMaybeNeedles = []string{
 
 func normalizeForMatch(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
+}
+
+// isProxyHTTPError reports an HTTP status that a proxy can return after it has
+// already forwarded the transaction. A JSON-RPC error from the node is not one
+// of these.
+func isProxyHTTPError(err error) bool {
+	var httpErr rpc.HTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	switch httpErr.StatusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
 }
 
 // rejectedBroadcast returns the error a caller should see when the node answered

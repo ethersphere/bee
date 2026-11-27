@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net/http"
 	"net/url"
 	"slices"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	storemock "github.com/ethersphere/bee/v2/pkg/statestore/mock"
@@ -43,6 +45,14 @@ func TestTxMayBeInMempool(t *testing.T) {
 		errors.New("Post \"http://rpc\": context deadline exceeded"),
 		&url.Error{Op: "Post", URL: "http://rpc", Err: context.DeadlineExceeded},
 		fmt.Errorf("send: %w", context.Canceled),
+		io.EOF,
+		io.ErrUnexpectedEOF,
+		&url.Error{Op: "Post", URL: "http://rpc", Err: io.EOF},
+		fmt.Errorf("read body: %w", io.ErrUnexpectedEOF),
+		rpc.HTTPError{StatusCode: http.StatusBadGateway, Status: "502 Bad Gateway"},
+		rpc.HTTPError{StatusCode: http.StatusServiceUnavailable, Status: "503 Service Unavailable"},
+		rpc.HTTPError{StatusCode: http.StatusGatewayTimeout, Status: "504 Gateway Timeout"},
+		fmt.Errorf("proxy: %w", rpc.HTTPError{StatusCode: http.StatusBadGateway, Status: "502 Bad Gateway"}),
 	}
 	for _, err := range maybe {
 		name := "<nil>"
@@ -69,11 +79,11 @@ func TestTxMayBeInMempool(t *testing.T) {
 		errors.New("ReplacementNotAllowed"),
 		errors.New("FeeTooLowToCompete"),
 		errors.New("connection refused"),
-		io.EOF,
-		io.ErrUnexpectedEOF,
+		errors.New("invalid value of field"),
 		errors.New("EOF"),
 		errors.New("unexpected EOF"),
-		&url.Error{Op: "Post", URL: "http://rpc", Err: io.EOF},
+		rpc.HTTPError{StatusCode: http.StatusInternalServerError, Status: "500 Internal Server Error"},
+		rpc.HTTPError{StatusCode: http.StatusBadRequest, Status: "400 Bad Request"},
 	}
 	for _, err := range fatal {
 		name := "<nil>"
