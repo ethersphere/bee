@@ -382,15 +382,14 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
 		if s.err = r.ReadMsgWithContext(s.ctx, &f); s.err != nil {
 			return
 		}
-		msg, ok, err := s.accept(&f)
+		msg, err := s.decode(&f)
 		if err != nil {
-			// a chunk that does not validate is one an honest broker never
-			// forwards: end the stream and avoid the broker
+			// end the stream and avoid the broker
 			s.err = fmt.Errorf("%w: %w", errInvalidDelivery, err)
 			s.forged(s.err)
 			return
 		}
-		if !ok {
+		if !s.accept(msg) {
 			continue
 		}
 		select {
@@ -405,67 +404,81 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
 	}
 }
 
-// accept re-verifies a delivery end to end. It returns false for a frame the
-// subscriber drops: an AUTH, a kind it does not know, one below its cursor, an
-// update by an owner its roster does not name, a roster that does not decode. The challenge is not compared: it is the
-// publisher stream's, which the subscriber never sees.
-func (s *session) accept(f *pb.Broadcast) (Message, bool, error) {
+// decode verifies a delivery end to end and returns it as a Message: a DATA
+// update with the owner its signature recovers, a ROSTER with its publisher
+// set, an EOS. The owner of a ROSTER or an EOS is forced to the principal. The
+// challenge is not compared: it is the publisher stream's, which the
+// subscriber never sees. A frame the subscriber drops unread — an AUTH, a kind
+// it does not know, a roster that does not decode — comes back with
+// KindUnspecified. An error is a chunk that does not validate, which an
+// honest broker never forwards.
+func (s *session) decode(f *pb.Broadcast) (Message, error) {
 	msg := Message{SOC: f.Soc, Challenge: f.Challenge, Index: f.Index}
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 	switch f.Kind {
 	case pb.Kind_DATA:
 		c, err := parseFrame(f, s.spec.Topic)
 		if err != nil {
-			return msg, false, err
+			return msg, err
 		}
-		owner := c.OwnerAddress()
-		// An owner missing from this subscriber's roster is not proof of a
-		// forging broker: rosters differ between brokers while a revocation
-		// travels, and the subscriber's may be newer. Drop it.
-		if !s.admits(owner) {
-			s.svc.metrics.SubscriberDropped.WithLabelValues("not_rostered").Inc()
-			return msg, false, nil
-		}
-		k := string(owner)
-		if f.Index < s.pos.Cursors[k] {
-			return msg, false, nil
-		}
-		s.pos.Cursors[k] = f.Index + 1
-		msg.Kind, msg.Owner = KindData, owner
-		return msg, true, nil
-
+		msg.Kind, msg.Owner = KindData, c.OwnerAddress()
 	case pb.Kind_ROSTER:
-		// the owner of a service chunk is forced to the principal
 		c, err := verify(f, s.spec.Topic, s.spec.Principal)
 		if err != nil {
-			return msg, false, err
+			return msg, err
 		}
 		roster, ok := decodeRosterMsg(payload(c))
 		if !ok {
-			return msg, false, nil
+			s.svc.metrics.SubscriberDropped.WithLabelValues("invalid_roster").Inc()
+			return msg, nil
 		}
-		if f.Index >= s.pos.RosterCursor {
-			s.pos.RosterCursor = f.Index + 1
-			s.pos.Roster = roster
-			msg.Kind, msg.Owner, msg.Roster = KindRoster, s.spec.Principal, roster
-		}
-		// a roster naming the owner, delivered on this stream,
-		// while the latest roster still names it — the broker holds it too
-		if contains(roster, s.owner) && s.admits(s.owner) {
-			s.grant()
-		}
-		return msg, msg.Kind == KindRoster, nil
-
+		msg.Kind, msg.Owner, msg.Roster = KindRoster, s.spec.Principal, roster
 	case pb.Kind_EOS:
 		if _, err := verify(f, s.spec.Topic, s.spec.Principal); err != nil {
-			return msg, false, err
+			return msg, err
 		}
-		s.pos.Ended = true
 		msg.Kind, msg.Owner = KindEOS, s.spec.Principal
-		return msg, true, nil
 	}
-	return msg, false, nil
+	return msg, nil
+}
+
+// accept applies a decoded delivery to the subscriber's position, and reports
+// whether to forward it: not a DATA update below its owner's cursor or by an
+// owner the roster does not name, not a roster older than the latest.
+func (s *session) accept(msg Message) (forward bool) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	switch msg.Kind {
+	case KindData:
+		// An owner missing from this subscriber's roster is not proof of a
+		// forging broker: rosters differ between brokers while a revocation
+		// travels, and the subscriber's may be newer.
+		if !s.admits(msg.Owner) {
+			s.svc.metrics.SubscriberDropped.WithLabelValues("not_rostered").Inc()
+			return false
+		}
+		k := string(msg.Owner)
+		if msg.Index < s.pos.Cursors[k] {
+			return false
+		}
+		s.pos.Cursors[k] = msg.Index + 1
+		return true
+	case KindRoster:
+		forward = msg.Index >= s.pos.RosterCursor
+		if forward {
+			s.pos.RosterCursor = msg.Index + 1
+			s.pos.Roster = msg.Roster
+		}
+		// a roster naming the owner, delivered on this stream, while the
+		// latest one still names it: the broker holds it too
+		if contains(msg.Roster, s.owner) && s.admits(s.owner) {
+			s.grant()
+		}
+		return forward
+	case KindEOS:
+		s.pos.Ended = true
+		return true
+	}
+	return false
 }
 
 // admits reports whether owner may publish: the principal, or an address on the
@@ -475,12 +488,7 @@ func (s *session) admits(owner []byte) bool {
 }
 
 func contains(set [][]byte, a []byte) bool {
-	for _, b := range set {
-		if bytes.Equal(a, b) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(set, func(b []byte) bool { return bytes.Equal(a, b) })
 }
 
 // session is the concrete Session implementation. Its read loop owns its end
@@ -499,6 +507,7 @@ type session struct {
 	pos       Position
 	authed    bool          // the AUTH was written: anything else may follow
 	granted   chan struct{} // closed when the stream may send its AUTH: at once for the principal, else by the read loop on a roster naming the owner
+	isGranted bool          // granted is closed; read and written by the read loop alone (and newSession)
 	rx        chan Message  // unbuffered: a delivery is handed over before Done can close
 	done      chan struct{} // closed by the read loop as it returns
 	err       error         // set by the read loop before done is closed
@@ -522,8 +531,9 @@ func newSession(svc *Service, req JoinRequest, w protobuf.Writer, challenge []by
 		rx:        make(chan Message),
 		done:      make(chan struct{}),
 	}
+	// the principal's AUTH needs no roster: the broker still checks it
 	if bytes.Equal(req.Owner, req.Spec.Principal) {
-		close(s.granted)
+		s.grant()
 	}
 	return s
 }
@@ -547,12 +557,11 @@ func (s *session) Position() Position {
 	return s.pos.clone()
 }
 
-// grant closes granted, which tells the owner to authenticate, unless it is closed already.
-// Only the read loop calls it, so that the check and the close cannot race.
+// grant closes granted, which tells the owner to authenticate, once. Only
+// newSession and then the read loop call it.
 func (s *session) grant() {
-	select {
-	case <-s.granted:
-	default:
+	if !s.isGranted {
+		s.isGranted = true
 		close(s.granted)
 	}
 }
