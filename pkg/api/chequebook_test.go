@@ -17,10 +17,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
 	swapmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -142,7 +142,7 @@ func TestChequebookWithdraw(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(500)) == 0 {
 				return txHash, nil
 			}
@@ -168,9 +168,13 @@ func TestChequebookWithdraw(t *testing.T) {
 	t.Run("custom gas", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+		chequebookWithdrawFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
+			applied := transaction.Apply(opts...)
+			if applied.Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
+			}
+			if applied.GasLimit != 12221 {
+				return common.Hash{}, errors.New("wrong gas limit")
 			}
 			if amount.Cmp(big.NewInt(500)) == 0 {
 				return txHash, nil
@@ -187,12 +191,36 @@ func TestChequebookWithdraw(t *testing.T) {
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "12221"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
 		if !reflect.DeepEqual(got, expected) {
 			t.Errorf("got address: %+v, expected: %+v", got, expected)
 		}
+	})
+
+	t.Run("invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(func(context.Context, *big.Int, ...transaction.Option) (common.Hash, error) {
+				t.Fatal("invalid gas limit reached the withdrawal")
+				return common.Hash{}, nil
+			})},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
+			}),
+		)
 	})
 }
 
@@ -204,7 +232,7 @@ func TestChequebookDeposit(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 			if amount.Cmp(big.NewInt(700)) == 0 {
 				return txHash, nil
 			}
@@ -230,9 +258,13 @@ func TestChequebookDeposit(t *testing.T) {
 	t.Run("custom gas", func(t *testing.T) {
 		t.Parallel()
 
-		chequebookDepositFunc := func(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-			if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10)) != 0 {
+		chequebookDepositFunc := func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
+			applied := transaction.Apply(opts...)
+			if applied.Fee.GasPrice.Cmp(big.NewInt(10)) != 0 {
 				return common.Hash{}, errors.New("wrong gas price")
+			}
+			if applied.GasLimit != 12221 {
+				return common.Hash{}, errors.New("wrong gas limit")
 			}
 
 			if amount.Cmp(big.NewInt(700)) == 0 {
@@ -250,12 +282,36 @@ func TestChequebookDeposit(t *testing.T) {
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "12221"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
 		if !reflect.DeepEqual(got, expected) {
 			t.Errorf("got address: %+v, expected: %+v", got, expected)
 		}
+	})
+
+	t.Run("invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(func(context.Context, *big.Int, ...transaction.Option) (common.Hash, error) {
+				t.Fatal("invalid gas limit reached the deposit")
+				return common.Hash{}, nil
+			})},
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
+			}),
+		)
 	})
 }
 
@@ -477,7 +533,7 @@ func TestChequebookCashout(t *testing.T) {
 	addr := swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
 	deployCashingHash := common.HexToHash("0xffff")
 
-	cashChequeFunc := func(ctx context.Context, peer swarm.Address) (common.Hash, error) {
+	cashChequeFunc := func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
 		return deployCashingHash, nil
 	}
 
@@ -505,9 +561,9 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 
 	var price *big.Int
 	var limit uint64
-	cashChequeFunc := func(ctx context.Context, peer swarm.Address) (common.Hash, error) {
-		price = sctx.GetGasPrice(ctx)
-		limit = sctx.GetGasLimit(ctx)
+	cashChequeFunc := func(ctx context.Context, peer swarm.Address, opts ...transaction.Option) (common.Hash, error) {
+		price = transaction.Apply(opts...).Fee.GasPrice
+		limit = transaction.Apply(opts...).GasLimit
 		return deployCashingHash, nil
 	}
 

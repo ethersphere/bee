@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol"
 	mockstore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type swapProtocolMock struct {
@@ -149,12 +150,12 @@ func (m *addressbookMock) GetDeductionBy(peer swarm.Address) (bool, error) {
 }
 
 type cashoutMock struct {
-	cashCheque    func(ctx context.Context, chequebook common.Address, recipient common.Address) (common.Hash, error)
+	cashCheque    func(ctx context.Context, chequebook common.Address, recipient common.Address, opts ...transaction.Option) (common.Hash, error)
 	cashoutStatus func(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error)
 }
 
-func (m *cashoutMock) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
-	return m.cashCheque(ctx, chequebook, recipient)
+func (m *cashoutMock) CashCheque(ctx context.Context, chequebook, recipient common.Address, opts ...transaction.Option) (common.Hash, error) {
+	return m.cashCheque(ctx, chequebook, recipient, opts...)
 }
 
 func (m *cashoutMock) CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*chequebook.CashoutStatus, error) {
@@ -717,7 +718,7 @@ func TestCashout(t *testing.T) {
 		addressbook,
 		uint64(1),
 		&cashoutMock{
-			cashCheque: func(ctx context.Context, c common.Address, r common.Address) (common.Hash, error) {
+			cashCheque: func(ctx context.Context, c common.Address, r common.Address, opts ...transaction.Option) (common.Hash, error) {
 				if c != theirChequebookAddress {
 					t.Fatalf("not cashing with the right chequebook. wanted %v, got %v", theirChequebookAddress, c)
 				}

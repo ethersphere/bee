@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -16,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
@@ -56,14 +56,14 @@ func (e *MinDepositError) Unwrap() error {
 }
 
 type Contract interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
-	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
+	DepositStake(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error)
+	ChangeStakeOverlay(ctx context.Context, nonce common.Hash, opts ...transaction.Option) (common.Hash, error)
 	GetPotentialStake(ctx context.Context) (*big.Int, error)
 	GetMinDeposit(ctx context.Context) (*big.Int, error)
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
-	WithdrawStake(ctx context.Context) (common.Hash, error)
-	MigrateStake(ctx context.Context) (common.Hash, error)
-	UpdateHeight(ctx context.Context) (common.Hash, bool, error)
+	WithdrawStake(ctx context.Context, opts ...transaction.Option) (common.Hash, error)
+	MigrateStake(ctx context.Context, opts ...transaction.Option) (common.Hash, error)
+	UpdateHeight(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error)
 	RedistributionStatuser
 }
 
@@ -106,7 +106,7 @@ func New(
 	}
 }
 
-func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
 	minDeposit, err := c.GetMinDeposit(ctx)
 	if err != nil {
 		return common.Hash{}, err
@@ -125,12 +125,12 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	_, err = c.sendApproveTransaction(ctx, stakedAmount)
+	_, err = c.sendApproveTransaction(ctx, stakedAmount, opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	receipt, err := c.sendManageStakeTransaction(ctx, stakedAmount)
+	receipt, err := c.sendManageStakeTransaction(ctx, stakedAmount, opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -139,9 +139,9 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 }
 
 // ChangeStakeOverlay only changes the overlay address used in the redistribution game.
-func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
+func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash, opts ...transaction.Option) (common.Hash, error) {
 	c.overlayNonce = nonce
-	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int))
+	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int), opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -150,7 +150,7 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 }
 
 // UpdateHeight submits the reserve doubling height to the contract only if the height is a new value.
-func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
+func (c *contract) UpdateHeight(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error) {
 	h, err := c.getHeight(ctx)
 	if err != nil {
 		return common.Hash{}, false, fmt.Errorf("staking contract: failed to read previous height: %w", err)
@@ -160,7 +160,7 @@ func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) 
 		return common.Hash{}, false, nil
 	}
 
-	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int))
+	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int), opts...)
 	if err != nil {
 		return common.Hash{}, false, fmt.Errorf("staking contract: failed to write new height: %w", err)
 	}
@@ -240,7 +240,7 @@ func (c *contract) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
 	return withdrawableStake, nil
 }
 
-func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err error) {
+func (c *contract) WithdrawStake(ctx context.Context, opts ...transaction.Option) (txHash common.Hash, err error) {
 	withdrawableStake, err := c.getWithdrawableStake(ctx)
 	if err != nil {
 		return
@@ -250,7 +250,7 @@ func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err e
 		return common.Hash{}, ErrInsufficientStake
 	}
 
-	receipt, err := c.withdrawFromStake(ctx)
+	receipt, err := c.withdrawFromStake(ctx, opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -260,7 +260,7 @@ func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err e
 	return txHash, nil
 }
 
-func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err error) {
+func (c *contract) MigrateStake(ctx context.Context, opts ...transaction.Option) (txHash common.Hash, err error) {
 	isPaused, err := c.paused(ctx)
 	if err != nil {
 		return
@@ -269,7 +269,7 @@ func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err er
 		return common.Hash{}, ErrNotPaused
 	}
 
-	receipt, err := c.migrateStake(ctx)
+	receipt, err := c.migrateStake(ctx, opts...)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -307,18 +307,19 @@ func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, err
 	return lastUpdate.Uint64() >= block, nil
 }
 
-func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (receipt *types.Receipt, err error) {
+func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int, opts ...transaction.Option) (receipt *types.Receipt, err error) {
 	callData, err := erc20ABI.Pack("approve", c.stakingContractAddress, amount)
 	if err != nil {
 		return nil, err
 	}
 
+	opts = slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		FeePriority: sctx.GetFeePriority(ctx),
-		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: approveDescription,
 	}
@@ -329,19 +330,21 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 			request,
 			err,
 			c.stakingContractABI.Errors,
+			opts...,
 		)
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, opts...)
 }
 
-func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
+func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string, opts ...transaction.Option) (receipt *types.Receipt, err error) {
+	opts = slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:          &c.stakingContractAddress,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		FeePriority: sctx.GetFeePriority(ctx),
-		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
@@ -352,19 +355,20 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 			request,
 			err,
 			c.stakingContractABI.Errors,
+			opts...,
 		)
 	}()
 
-	return c.transactionService.SendAndWait(ctx, request, transaction.DefaultTipBoostPercent)
+	return c.transactionService.SendAndWait(ctx, request, opts...)
 }
 
-func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
+func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (*types.Receipt, error) {
 	callData, err := c.stakingContractABI.Pack("manageStake", c.overlayNonce, stakedAmount, c.height)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.sendTransaction(ctx, callData, depositStakeDescription)
+	receipt, err := c.sendTransaction(ctx, callData, depositStakeDescription, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", stakedAmount, err)
 	}
@@ -533,13 +537,13 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) migrateStake(ctx context.Context) (*types.Receipt, error) {
+func (c *contract) migrateStake(ctx context.Context, opts ...transaction.Option) (*types.Receipt, error) {
 	callData, err := c.stakingContractABI.Pack("migrateStake")
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.sendTransaction(ctx, callData, migrateStakeDescription)
+	receipt, err := c.sendTransaction(ctx, callData, migrateStakeDescription, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("migrate stake: %w", err)
 	}
@@ -547,13 +551,13 @@ func (c *contract) migrateStake(ctx context.Context) (*types.Receipt, error) {
 	return receipt, nil
 }
 
-func (c *contract) withdrawFromStake(ctx context.Context) (*types.Receipt, error) {
+func (c *contract) withdrawFromStake(ctx context.Context, opts ...transaction.Option) (*types.Receipt, error) {
 	callData, err := c.stakingContractABI.Pack("withdrawFromStake")
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.sendTransaction(ctx, callData, withdrawStakeDescription)
+	receipt, err := c.sendTransaction(ctx, callData, withdrawStakeDescription, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("withdraw stake: %w", err)
 	}

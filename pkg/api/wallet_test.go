@@ -250,12 +250,15 @@ func TestWalletWithdraw(t *testing.T) {
 				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 					return big.NewInt(100000000), nil
 				}),
-				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
 					if address != common.HexToAddress("0xaf") {
 						t.Fatalf("want addr 0xaf, got %s", address)
 					}
 					if value.Cmp(big.NewInt(99999999)) != 0 {
 						t.Fatalf("want value 99999999, got %s", value)
+					}
+					if transaction.Apply(opts...).GasLimit != 0 {
+						t.Fatalf("omitted gas limit want 0, got %d", transaction.Apply(opts...).GasLimit)
 					}
 					return txHash, nil
 				}),
@@ -265,6 +268,58 @@ func TestWalletWithdraw(t *testing.T) {
 		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/BZZ?address=0xaf&amount=99999999", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.WalletTxResponse{
 				TransactionHash: txHash,
+			}))
+	})
+
+	t.Run("BZZ gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		txHash := common.HexToHash("0x00f")
+
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
+			WhitelistedAddr: "0xaf",
+			Erc20Opts: []erc20mock.Option{
+				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+					return big.NewInt(100000000), nil
+				}),
+				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
+					if transaction.Apply(opts...).GasLimit != 400000 {
+						t.Fatalf("want gas limit 400000, got %d", transaction.Apply(opts...).GasLimit)
+					}
+					return txHash, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/BZZ?address=0xaf&amount=99999999", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "400000"),
+			jsonhttptest.WithExpectedJSONResponse(api.WalletTxResponse{
+				TransactionHash: txHash,
+			}))
+	})
+
+	t.Run("BZZ invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
+			WhitelistedAddr: "0xaf",
+			Erc20Opts: []erc20mock.Option{
+				erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int, opts ...transaction.Option) (common.Hash, error) {
+					t.Fatal("invalid gas limit reached the transfer")
+					return common.Hash{}, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/BZZ?address=0xaf&amount=99999999", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
 			}))
 	})
 
@@ -333,12 +388,15 @@ func TestWalletWithdraw(t *testing.T) {
 				}),
 			},
 			TransactionOpts: []transactionmock.Option{
-				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, i int) (common.Hash, error) {
+				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, opts ...transaction.Option) (common.Hash, error) {
 					if tx.Value.Cmp(big.NewInt(99999999)) != 0 {
 						t.Fatalf("bad value, want 99999999, got %s", tx.Value)
 					}
 					if tx.To.Cmp(common.HexToAddress("0xaf")) != 0 {
 						t.Fatalf("bad address, want 0xaf, got %s", tx.To)
+					}
+					if transaction.Apply(opts...).GasLimit != 300000 {
+						t.Fatalf("omitted gas limit want 300000, got %d", transaction.Apply(opts...).GasLimit)
 					}
 					return txHash, nil
 				}),
@@ -348,6 +406,60 @@ func TestWalletWithdraw(t *testing.T) {
 		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/NativeToken?address=0xaf&amount=99999999", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.WalletTxResponse{
 				TransactionHash: txHash,
+			}))
+	})
+
+	t.Run("native gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		txHash := common.HexToHash("0x00f")
+
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
+			WhitelistedAddr: "0xaf",
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(100000000), nil
+				}),
+			},
+			TransactionOpts: []transactionmock.Option{
+				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, opts ...transaction.Option) (common.Hash, error) {
+					if transaction.Apply(opts...).GasLimit != 400000 {
+						t.Fatalf("want gas limit 400000, got %d", transaction.Apply(opts...).GasLimit)
+					}
+					return txHash, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/NativeToken?address=0xaf&amount=99999999", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "400000"),
+			jsonhttptest.WithExpectedJSONResponse(api.WalletTxResponse{
+				TransactionHash: txHash,
+			}))
+	})
+
+	t.Run("native invalid gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
+			WhitelistedAddr: "0xaf",
+			TransactionOpts: []transactionmock.Option{
+				transactionmock.WithSendFunc(func(ctx context.Context, tx *transaction.TxRequest, opts ...transaction.Option) (common.Hash, error) {
+					t.Fatal("invalid gas limit reached the transfer")
+					return common.Hash{}, nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodPost, "/wallet/withdraw/NativeToken?address=0xaf&amount=99999999", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "nope"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{{
+					Field: api.GasLimitHeader,
+					Error: "invalid syntax",
+				}},
 			}))
 	})
 }

@@ -81,10 +81,15 @@ func FuzzUnwrapABIError(f *testing.F) {
 			chainID,
 			monitormock.New(),
 			0,
+			0,
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
+		transaction.SetSuggestFees(transactionService, func(context.Context, transaction.TxOptions) (*big.Int, *big.Int, error) {
+			return nil, nil, errors.New("fees not used")
+		})
 		defer testutil.CleanupCloser(t, transactionService)
 
 		originErr := errors.New("origin error")

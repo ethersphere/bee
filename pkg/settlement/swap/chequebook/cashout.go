@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -25,7 +25,7 @@ var ErrNoCashout = errors.New("no prior cashout")
 // CashoutService is the service responsible for managing cashout actions
 type CashoutService interface {
 	// CashCheque sends a cashing transaction for the last cheque of the chequebook
-	CashCheque(ctx context.Context, chequebook common.Address, recipient common.Address) (common.Hash, error)
+	CashCheque(ctx context.Context, chequebook common.Address, recipient common.Address, opts ...transaction.Option) (common.Hash, error)
 	// CashoutStatus gets the status of the latest cashout transaction for the chequebook
 	CashoutStatus(ctx context.Context, chequebookAddress common.Address) (*CashoutStatus, error)
 }
@@ -128,7 +128,7 @@ func (s *cashoutService) paidOut(ctx context.Context, chequebook, beneficiary co
 }
 
 // CashCheque sends a cashout transaction for the last cheque of the chequebook
-func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient common.Address) (common.Hash, error) {
+func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient common.Address, opts ...transaction.Option) (common.Hash, error) {
 	cheque, err := s.chequeStore.LastReceivedCheque(chequebook)
 	if err != nil {
 		return common.Hash{}, err
@@ -141,14 +141,13 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 	request := &transaction.TxRequest{
 		To:          &chequebook,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		FeePriority: sctx.GetFeePriority(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := s.transactionService.Send(ctx, request, slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(transaction.DefaultTipBoostPercent),
+	})...)
 	if err != nil {
 		return common.Hash{}, err
 	}

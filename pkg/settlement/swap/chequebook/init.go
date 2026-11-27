@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -39,6 +38,7 @@ func checkBalance(
 	logger log.Logger,
 	swapInitialDeposit *big.Int,
 	swapBackend transaction.Backend,
+	txService transaction.Service,
 	chainId int64,
 	overlayEthAddress common.Address,
 	erc20Token erc20.Service,
@@ -56,17 +56,11 @@ func checkBalance(
 			return err
 		}
 
-		gasPrice := sctx.GetGasPrice(ctx)
-		minimumEth := big.NewInt(0)
-
-		if gasPrice == nil {
-			gasPrice, _, err = swapBackend.SuggestedFeeAndTip(timeoutCtx, gasPrice, 0)
-			if err != nil {
-				return err
-			}
-
-			minimumEth = new(big.Int).Mul(gasPrice, big.NewInt(250000))
+		gasPrice, _, err := txService.SuggestFees(timeoutCtx)
+		if err != nil {
+			return err
 		}
+		minimumEth := new(big.Int).Mul(gasPrice, big.NewInt(250000))
 
 		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0
 		insufficientETH := ethBalance.Cmp(minimumEth) < 0
@@ -155,7 +149,7 @@ func Init(
 		}
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Info("no chequebook found, deploying new one.")
-			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, chainId, overlayEthAddress, erc20Service)
+			err = checkBalance(ctx, logger, swapInitialDeposit, swapBackend, transactionService, chainId, overlayEthAddress, erc20Service)
 			if err != nil {
 				return nil, err
 			}

@@ -2052,6 +2052,7 @@ paths:
   "/chequebook/deposit":
     post:
       summary: Deposit tokens into the chequebook
+      description: A gas-limit header sets the gas limit of the deposit. When it is omitted, gas is estimated.
       parameters:
         - in: query
           name: amount
@@ -2061,6 +2062,7 @@ paths:
           description: Amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
       responses:
@@ -2080,6 +2082,7 @@ paths:
   "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook
+      description: A gas-limit header sets the gas limit of the withdrawal. When it is omitted, gas is estimated.
       parameters:
         - in: query
           name: amount
@@ -2089,6 +2092,7 @@ paths:
           description: Amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       tags:
         - Chequebook
       responses:
@@ -2592,6 +2596,7 @@ paths:
   "/wallet/withdraw/{coin}":
     post:
       summary: Withdraw BZZ or xDAI to a whitelisted address
+      description: A gas-limit header sets the gas limit of the withdrawal. A BZZ withdrawal estimates gas when the header is omitted. A native token withdrawal uses 300000 when the header is omitted.
       tags:
         - Wallet
       parameters:
@@ -2612,6 +2617,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
         - $ref: "SwarmCommon.yaml#/components/parameters/FeePriorityParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
           content:

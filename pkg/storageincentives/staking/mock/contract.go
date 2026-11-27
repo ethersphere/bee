@@ -11,29 +11,30 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type stakingContractMock struct {
-	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
+	depositStake     func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error)
 	getStake         func(ctx context.Context) (*big.Int, error)
 	getMinDeposit    func(ctx context.Context) (*big.Int, error)
-	withdrawAllStake func(ctx context.Context) (common.Hash, error)
-	migrateStake     func(ctx context.Context) (common.Hash, error)
+	withdrawAllStake func(ctx context.Context, opts ...transaction.Option) (common.Hash, error)
+	migrateStake     func(ctx context.Context, opts ...transaction.Option) (common.Hash, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
-	updateHeight     func(ctx context.Context) (common.Hash, bool, error)
+	updateHeight     func(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error)
 }
 
-func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-	return s.depositStake(ctx, stakedAmount)
+func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error) {
+	return s.depositStake(ctx, stakedAmount, opts...)
 }
 
-func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Hash) (common.Hash, error) {
+func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Hash, opts ...transaction.Option) (common.Hash, error) {
 	return h, nil
 }
 
-func (s *stakingContractMock) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
+func (s *stakingContractMock) UpdateHeight(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error) {
 	if s.updateHeight != nil {
-		return s.updateHeight(ctx)
+		return s.updateHeight(ctx, opts...)
 	}
 	return common.Hash{}, false, nil
 }
@@ -53,12 +54,12 @@ func (s *stakingContractMock) GetWithdrawableStake(ctx context.Context) (*big.In
 	return s.getStake(ctx)
 }
 
-func (s *stakingContractMock) WithdrawStake(ctx context.Context) (common.Hash, error) {
-	return s.withdrawAllStake(ctx)
+func (s *stakingContractMock) WithdrawStake(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
+	return s.withdrawAllStake(ctx, opts...)
 }
 
-func (s *stakingContractMock) MigrateStake(ctx context.Context) (common.Hash, error) {
-	return s.migrateStake(ctx)
+func (s *stakingContractMock) MigrateStake(ctx context.Context, opts ...transaction.Option) (common.Hash, error) {
+	return s.migrateStake(ctx, opts...)
 }
 
 func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
@@ -79,7 +80,7 @@ func New(opts ...Option) staking.Contract {
 	return bs
 }
 
-func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)) Option {
+func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int, opts ...transaction.Option) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.depositStake = f
 	}
@@ -97,13 +98,13 @@ func WithGetMinDeposit(f func(ctx context.Context) (*big.Int, error)) Option {
 	}
 }
 
-func WithWithdrawStake(f func(ctx context.Context) (common.Hash, error)) Option {
+func WithWithdrawStake(f func(ctx context.Context, opts ...transaction.Option) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.withdrawAllStake = f
 	}
 }
 
-func WithMigrateStake(f func(ctx context.Context) (common.Hash, error)) Option {
+func WithMigrateStake(f func(ctx context.Context, opts ...transaction.Option) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.migrateStake = f
 	}
@@ -115,7 +116,7 @@ func WithIsFrozen(f func(ctx context.Context, block uint64) (bool, error)) Optio
 	}
 }
 
-func WithUpdateHeight(f func(ctx context.Context) (common.Hash, bool, error)) Option {
+func WithUpdateHeight(f func(ctx context.Context, opts ...transaction.Option) (common.Hash, bool, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.updateHeight = f
 	}

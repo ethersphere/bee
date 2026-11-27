@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
@@ -596,7 +595,23 @@ func createService(
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
-	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+	tx := transactionmock.New(transactionmock.WithSuggestFeesFunc(func(_ context.Context, opts ...transaction.Option) (*big.Int, *big.Int, error) {
+		applied := transaction.Apply(opts...)
+		if probe, ok := backend.(*feeProbeBackend); ok {
+			probe.mu.Lock()
+			defer probe.mu.Unlock()
+			if applied.Fee.Priority != 0 {
+				probe.history++
+				probe.tier = applied.Fee.Priority
+				return big.NewInt(4), big.NewInt(5), nil
+			}
+			probe.suggested++
+			probe.boost = applied.Fee.TipBoostPercent
+			probe.gasPrice = applied.Fee.GasPrice
+		}
+		return big.NewInt(4), big.NewInt(5), nil
+	}))
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context, ...transaction.Option) error {
 		return nil
 	}),
 	)
@@ -629,7 +644,7 @@ func createService(
 		statestore.NewStateStore(),
 		&postage.NoOpBatchStore{},
 		erc20mock.New(),
-		transactionmock.New(),
+		tx,
 		&mockHealth{},
 		log.Noop,
 		feePriority,
@@ -673,14 +688,6 @@ func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address
 	return m.balance, nil
 }
 
-func (m *mockchainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	return big.NewInt(4), big.NewInt(5), nil
-}
-
-func (m *mockchainBackend) SuggestFeeHistory(context.Context, int) (*big.Int, *big.Int, error) {
-	return big.NewInt(4), big.NewInt(5), nil
-}
-
 // feeProbeBackend records which pricing method HasEnoughFundsToPlay uses.
 type feeProbeBackend struct {
 	mockchainBackend
@@ -690,23 +697,6 @@ type feeProbeBackend struct {
 	boost     int
 	tier      int
 	gasPrice  *big.Int
-}
-
-func (b *feeProbeBackend) SuggestedFeeAndTip(_ context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.suggested++
-	b.boost = boostPercent
-	b.gasPrice = gasPrice
-	return big.NewInt(4), big.NewInt(5), nil
-}
-
-func (b *feeProbeBackend) SuggestFeeHistory(_ context.Context, tier int) (*big.Int, *big.Int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.history++
-	b.tier = tier
-	return big.NewInt(4), big.NewInt(5), nil
 }
 
 type contractCall int
@@ -804,25 +794,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs, ...transaction.Option) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(ctx context.Context, _ []byte, _ uint64) (common.Hash, error) {
+func (m *mockContract) Commit(_ context.Context, _ []byte, _ uint64, opts ...transaction.Option) (common.Hash, error) {
 	if m.beforeCommit != nil {
 		m.beforeCommit()
 	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
+	m.priorities = append(m.priorities, transaction.Apply(opts...).Fee.Priority)
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(ctx context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
+func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte, opts ...transaction.Option) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -831,7 +821,7 @@ func (m *mockContract) Reveal(ctx context.Context, r uint8, _ []byte, _ []byte) 
 	}
 
 	m.callsList = append(m.callsList, revealCall)
-	m.priorities = append(m.priorities, sctx.GetFeePriority(ctx))
+	m.priorities = append(m.priorities, transaction.Apply(opts...).Fee.Priority)
 	return common.Hash{}, nil
 }
 

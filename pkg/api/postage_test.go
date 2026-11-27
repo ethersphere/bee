@@ -28,8 +28,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
@@ -50,7 +50,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		var immutable bool
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string, opts ...transaction.Option) (common.Hash, []byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return common.Hash{}, nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
@@ -84,7 +84,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string, opts ...transaction.Option) (common.Hash, []byte, error) {
 				return common.Hash{}, nil, errors.New("err")
 			}),
 		)
@@ -104,7 +104,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string, opts ...transaction.Option) (common.Hash, []byte, error) {
 				return common.Hash{}, nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
@@ -124,7 +124,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string, opts ...transaction.Option) (common.Hash, []byte, error) {
 				return common.Hash{}, nil, postagecontract.ErrInvalidDepth
 			}),
 		)
@@ -151,7 +151,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		var immutable bool
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) (common.Hash, []byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string, opts ...transaction.Option) (common.Hash, []byte, error) {
 				immutable = i
 				return txHash, batchID, nil
 			}),
@@ -537,7 +537,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				if !bytes.Equal(id, batchOk) {
 					return common.Hash{}, errors.New("incorrect batch ID in call")
 				}
@@ -563,15 +563,15 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				if !bytes.Equal(id, batchOk) {
 					return common.Hash{}, errors.New("incorrect batch ID in call")
 				}
 				if ib.Cmp(big.NewInt(topupAmount)) != 0 {
 					return common.Hash{}, fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
 				}
-				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+				if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10000)) != 0 {
+					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, transaction.Apply(opts...).Fee.GasPrice)
 				}
 				return txHash, nil
 			}),
@@ -593,7 +593,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, errors.New("err")
 			}),
 		)
@@ -613,7 +613,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, postagecontract.ErrInsufficientFunds
 			}),
 		)
@@ -633,9 +633,9 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
-				if sctx.GetGasLimit(ctx) != 10000 {
-					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
+				if transaction.Apply(opts...).GasLimit != 10000 {
+					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, transaction.Apply(opts...).GasLimit)
 				}
 				return txHash, nil
 			}),
@@ -667,7 +667,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error) {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8, opts ...transaction.Option) (common.Hash, error) {
 				if !bytes.Equal(id, batchOk) {
 					return common.Hash{}, errors.New("incorrect batch ID in call")
 				}
@@ -693,15 +693,15 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error) {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8, opts ...transaction.Option) (common.Hash, error) {
 				if !bytes.Equal(id, batchOk) {
 					return common.Hash{}, errors.New("incorrect batch ID in call")
 				}
 				if newDepth != newBatchDepth {
 					return common.Hash{}, fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
 				}
-				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+				if transaction.Apply(opts...).Fee.GasPrice.Cmp(big.NewInt(10000)) != 0 {
+					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, transaction.Apply(opts...).Fee.GasPrice)
 				}
 				return txHash, nil
 			}),
@@ -723,7 +723,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error) {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, errors.New("err")
 			}),
 		)
@@ -743,7 +743,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error) {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8, opts ...transaction.Option) (common.Hash, error) {
 				return common.Hash{}, postagecontract.ErrInvalidDepth
 			}),
 		)
@@ -763,9 +763,9 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, _ []byte, _ uint8) (common.Hash, error) {
-				if sctx.GetGasLimit(ctx) != 10000 {
-					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, _ []byte, _ uint8, opts ...transaction.Option) (common.Hash, error) {
+				if transaction.Apply(opts...).GasLimit != 10000 {
+					return common.Hash{}, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, transaction.Apply(opts...).GasLimit)
 				}
 				return txHash, nil
 			}),
@@ -872,15 +872,15 @@ func TestPostageAccessHandler(t *testing.T) {
 
 				wait, done := make(chan struct{}), make(chan struct{})
 				contract := contractMock.New(
-					contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
+					contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string, opts ...transaction.Option) (common.Hash, []byte, error) {
 						<-wait
 						return txHash, batchOk, nil
 					}),
-					contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (common.Hash, error) {
+					contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int, opts ...transaction.Option) (common.Hash, error) {
 						<-wait
 						return txHash, nil
 					}),
-					contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error) {
+					contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8, opts ...transaction.Option) (common.Hash, error) {
 						<-wait
 						return txHash, nil
 					}),

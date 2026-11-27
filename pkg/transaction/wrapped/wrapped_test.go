@@ -22,7 +22,6 @@ import (
 const (
 	testBlockTime         = 5 * time.Second
 	testBlockSyncInterval = uint64(20)
-	testMinimumGasTipCap  = 0
 )
 
 func Test_BlockNumberCache_MissLoadsFromRPC(t *testing.T) {
@@ -437,10 +436,8 @@ func newTestWrappedBackendWithConfig(
 
 	backend, ok := NewBackend(
 		backendmock.New(opts...),
-		testMinimumGasTipCap,
 		blockTime,
 		blockSyncInterval,
-		DefaultFeeHistoryBlockCount,
 	).(*wrappedBackend)
 	assert.True(t, ok)
 

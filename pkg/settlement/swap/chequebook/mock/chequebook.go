@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 // Service is the mock chequebook service.
@@ -19,8 +20,8 @@ type Service struct {
 	chequebookAvailableBalanceFunc func(context.Context) (*big.Int, error)
 	chequebookAddressFunc          func() common.Address
 	chequebookIssueFunc            func(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc chequebook.SendChequeFunc) (*big.Int, error)
-	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
-	chequebookDepositFunc          func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)
+	chequebookWithdrawFunc         func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)
+	chequebookDepositFunc          func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)
 	lastIssuedChequeFunc           func(common.Address) (*chequebook.SignedCheque, error)
 	lastIssuedChequesFunc          func() (map[common.Address]*chequebook.SignedCheque, error)
 }
@@ -44,7 +45,7 @@ func WithChequebookAddressFunc(f func() common.Address) Option {
 	})
 }
 
-func WithChequebookDepositFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+func WithChequebookDepositFunc(f func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookDepositFunc = f
 	})
@@ -56,7 +57,7 @@ func WithChequebookIssueFunc(f func(ctx context.Context, beneficiary common.Addr
 	})
 }
 
-func WithChequebookWithdrawFunc(f func(ctx context.Context, amount *big.Int) (hash common.Hash, err error)) Option {
+func WithChequebookWithdrawFunc(f func(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error)) Option {
 	return optionFunc(func(s *Service) {
 		s.chequebookWithdrawFunc = f
 	})
@@ -99,9 +100,9 @@ func (s *Service) AvailableBalance(ctx context.Context) (bal *big.Int, err error
 }
 
 // Deposit mocks the chequebook .Deposit function
-func (s *Service) Deposit(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
+func (s *Service) Deposit(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
 	if s.chequebookDepositFunc != nil {
-		return s.chequebookDepositFunc(ctx, amount)
+		return s.chequebookDepositFunc(ctx, amount, opts...)
 	}
 	return common.Hash{}, errors.New("Error")
 }
@@ -140,8 +141,8 @@ func (s *Service) LastIssuedCheques() (map[common.Address]*chequebook.SignedCheq
 	return nil, errors.New("Error")
 }
 
-func (s *Service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Hash, err error) {
-	return s.chequebookWithdrawFunc(ctx, amount)
+func (s *Service) Withdraw(ctx context.Context, amount *big.Int, opts ...transaction.Option) (hash common.Hash, err error) {
+	return s.chequebookWithdrawFunc(ctx, amount, opts...)
 }
 
 // Option is the option passed to the mock Chequebook service

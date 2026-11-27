@@ -101,6 +101,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Depth,
 		*headers.Immutable,
 		r.URL.Query().Get("label"),
+		s.txOptions(r)...,
 	)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
@@ -573,7 +574,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
+	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount, s.txOptions(r)...)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
@@ -612,7 +613,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
+	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth, s.txOptions(r)...)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)

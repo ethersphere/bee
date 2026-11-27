@@ -240,7 +240,7 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.cashOutChequeSem.Release(1)
 
-	txHash, err := s.swap.CashCheque(r.Context(), paths.Peer)
+	txHash, err := s.swap.CashCheque(r.Context(), paths.Peer, s.txOptions(r)...)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		logger.Debug("cash cheque failed", "peer_address", paths.Peer, "error", err)
 		logger.Error(nil, "cash cheque failed", "peer_address", paths.Peer)
@@ -351,7 +351,7 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	txHash, err := s.chequebook.Withdraw(r.Context(), queries.Amount)
+	txHash, err := s.chequebook.Withdraw(r.Context(), queries.Amount, s.txOptions(r)...)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		logger.Debug("withdraw failed", "error", err)
 		logger.Error(nil, "withdraw failed")
@@ -379,7 +379,7 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	txHash, err := s.chequebook.Deposit(r.Context(), queries.Amount)
+	txHash, err := s.chequebook.Deposit(r.Context(), queries.Amount, s.txOptions(r)...)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
 		logger.Debug("chequebook deposit: deposit failed", "error", err)
 		logger.Error(nil, "chequebook deposit: deposit failed")

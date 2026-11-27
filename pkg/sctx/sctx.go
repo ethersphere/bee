@@ -9,7 +9,6 @@ package sctx
 import (
 	"context"
 	"errors"
-	"math/big"
 )
 
 // ErrTargetPrefix is returned when target prefix decoding fails.
@@ -18,9 +17,6 @@ var ErrTargetPrefix = errors.New("error decoding prefix string")
 type (
 	HTTPRequestIDKey struct{}
 	requestHostKey   struct{}
-	gasPriceKey      struct{}
-	gasLimitKey      struct{}
-	feePriorityKey   struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -35,48 +31,4 @@ func GetHost(ctx context.Context) string {
 		return v
 	}
 	return ""
-}
-
-func SetGasLimit(ctx context.Context, limit uint64) context.Context {
-	return context.WithValue(ctx, gasLimitKey{}, limit)
-}
-
-func GetGasLimit(ctx context.Context) uint64 {
-	v, ok := ctx.Value(gasLimitKey{}).(uint64)
-	if ok {
-		return v
-	}
-	return 0
-}
-
-func GetGasLimitWithDefault(ctx context.Context, defaultLimit uint64) uint64 {
-	limit := GetGasLimit(ctx)
-	if limit == 0 {
-		return defaultLimit
-	}
-	return limit
-}
-
-func SetGasPrice(ctx context.Context, price *big.Int) context.Context {
-	return context.WithValue(ctx, gasPriceKey{}, price)
-}
-
-func GetGasPrice(ctx context.Context) *big.Int {
-	v, ok := ctx.Value(gasPriceKey{}).(*big.Int)
-	if ok {
-		return v
-	}
-	return nil
-}
-
-func SetFeePriority(ctx context.Context, tier int) context.Context {
-	return context.WithValue(ctx, feePriorityKey{}, tier)
-}
-
-func GetFeePriority(ctx context.Context) int {
-	v, ok := ctx.Value(feePriorityKey{}).(int)
-	if ok {
-		return v
-	}
-	return 0
 }

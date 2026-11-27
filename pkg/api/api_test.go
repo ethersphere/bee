@@ -706,7 +706,7 @@ func createRedistributionAgentService(
 
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
-	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context, ...transaction.Option) error {
 		return nil
 	}),
 	)
@@ -784,21 +784,21 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs, ...transaction.Option) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {
+func (m *mockContract) Commit(context.Context, []byte, uint64, ...transaction.Option) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte, ...transaction.Option) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)

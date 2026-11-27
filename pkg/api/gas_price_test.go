@@ -17,7 +17,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/api"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
@@ -50,10 +49,10 @@ func TestFeePriorityHeader(t *testing.T) {
 				got    int
 			)
 			contract := contractMock.New(
-				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
+				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string, opts ...transaction.Option) (common.Hash, []byte, error) {
 					mu.Lock()
 					defer mu.Unlock()
-					called, got = true, sctx.GetFeePriority(ctx)
+					called, got = true, transaction.Apply(opts...).Fee.Priority
 					return common.HexToHash("0xabcd"), []byte{0xab}, nil
 				}),
 			)
@@ -115,7 +114,7 @@ func TestFeePriorityRejectsGasPrice(t *testing.T) {
 		called bool
 	)
 	contract := contractMock.New(
-		contractMock.WithCreateBatchFunc(func(context.Context, *big.Int, uint8, bool, string) (common.Hash, []byte, error) {
+		contractMock.WithCreateBatchFunc(func(context.Context, *big.Int, uint8, bool, string, ...transaction.Option) (common.Hash, []byte, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			called = true
@@ -179,10 +178,10 @@ func TestGasPriceHeaderIsBounded(t *testing.T) {
 				observed *big.Int
 			)
 			contract := contractMock.New(
-				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
+				contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string, opts ...transaction.Option) (common.Hash, []byte, error) {
 					mu.Lock()
 					defer mu.Unlock()
-					called, observed = true, sctx.GetGasPrice(ctx)
+					called, observed = true, transaction.Apply(opts...).Fee.GasPrice
 					return common.HexToHash("0xabcd"), []byte{0xab}, nil
 				}),
 			)

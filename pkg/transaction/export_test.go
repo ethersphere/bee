@@ -4,4 +4,13 @@
 
 package transaction
 
+import (
+	"context"
+	"math/big"
+)
+
 var StoredTransactionKey = storedTransactionKey
+
+func SetSuggestFees(s Service, f func(context.Context, TxOptions) (*big.Int, *big.Int, error)) {
+	s.(*transactionService).suggestFees = f
+}

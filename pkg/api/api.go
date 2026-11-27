@@ -46,7 +46,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
@@ -651,20 +650,18 @@ func gasPriceOutOfRange(gasPrice *big.Int) bool {
 // An absent fee priority is left unset. A priority outside the configured minimum and maximum
 // is rejected, and so is a request that sets both a fee priority and a gas price.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
+	return s.gasOptionsMiddleware(handlerName)
+}
+
+func (s *Service) gasOptionsMiddleware(handlerName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := s.logger.WithName(handlerName).Build()
 
-			headers := struct {
-				GasPrice    *big.Int `map:"Gas-Price"`
-				GasLimit    uint64   `map:"Gas-Limit"`
-				FeePriority string   `map:"Fee-Priority"`
-			}{}
-			if response := s.mapStructure(r.Header, &headers); response != nil {
-				response(invalidHeaderParams, logger, w)
+			headers, ok := s.gasHeaders(w, r, logger)
+			if !ok {
 				return
 			}
-			ctx := r.Context()
 			tier, err := transaction.ParseFeePriority(headers.FeePriority)
 			if err != nil {
 				logger.Debug("invalid fee priority header", "error", err)
@@ -678,19 +675,34 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 				})
 				return
 			}
+			var opts []transaction.Option
+			if headers.GasPrice != nil {
+				opts = append(opts, transaction.WithGasPrice(headers.GasPrice))
+			}
 			if tier != 0 {
-				if headers.GasPrice != nil {
-					logger.Debug("fee priority and gas price set together", "fee_priority", transaction.FeePriorityName(tier), "gas_price", headers.GasPrice)
-					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-						Message: invalidHeaderParams,
-						Code:    http.StatusBadRequest,
-						Reasons: []jsonhttp.Reason{{
-							Field: FeePriorityHeader,
-							Error: fmt.Sprintf("%s cannot be combined with %s", FeePriorityHeader, GasPriceHeader),
-						}},
-					})
-					return
+				opts = append(opts, transaction.WithFeePriority(tier))
+			}
+			if headers.GasLimit != 0 {
+				opts = append(opts, transaction.WithGasLimit(headers.GasLimit))
+			}
+			resolved := transaction.Apply(opts...)
+			if err := resolved.Fee.Validate(); err != nil {
+				logger.Debug("invalid fee options", "fee_priority", transaction.FeePriorityName(tier), "gas_price", headers.GasPrice, "error", err)
+				reason := err.Error()
+				if errors.Is(err, transaction.ErrFeePriorityWithGasPrice) {
+					reason = fmt.Sprintf("%s cannot be combined with %s", FeePriorityHeader, GasPriceHeader)
 				}
+				jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+					Message: invalidHeaderParams,
+					Code:    http.StatusBadRequest,
+					Reasons: []jsonhttp.Reason{{
+						Field: FeePriorityHeader,
+						Error: reason,
+					}},
+				})
+				return
+			}
+			if tier != 0 {
 				if tier < s.minFeePriority {
 					logger.Debug("fee priority below configured minimum", "fee_priority", transaction.FeePriorityName(tier), "minimum", transaction.FeePriorityName(s.minFeePriority))
 					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
@@ -715,18 +727,63 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 					})
 					return
 				}
-				ctx = sctx.SetFeePriority(ctx, tier)
 			} else if gasPriceOutOfRange(headers.GasPrice) {
 				logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
 				jsonhttp.BadRequest(w, "gas price out of range")
 				return
 			}
-			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
-			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
 
-			h.ServeHTTP(w, r.WithContext(ctx))
+			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), txOptionsKey{}, opts)))
 		})
 	}
+}
+
+type txOptionsKey struct{}
+
+func (s *Service) txOptions(r *http.Request) []transaction.Option {
+	opts, _ := r.Context().Value(txOptionsKey{}).([]transaction.Option)
+	return opts
+}
+
+type gasHeaders struct {
+	GasPrice    *big.Int
+	GasLimit    uint64
+	FeePriority string
+}
+
+// gasHeaders reads the transaction headers. The bool is false when a response was already written.
+func (s *Service) gasHeaders(w http.ResponseWriter, r *http.Request, logger log.Logger) (gasHeaders, bool) {
+	headers := struct {
+		GasPrice    *big.Int `map:"Gas-Price"`
+		GasLimit    uint64   `map:"Gas-Limit"`
+		FeePriority string   `map:"Fee-Priority"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response(invalidHeaderParams, logger, w)
+		return gasHeaders{}, false
+	}
+	return gasHeaders{
+		GasPrice:    headers.GasPrice,
+		GasLimit:    headers.GasLimit,
+		FeePriority: headers.FeePriority,
+	}, true
+}
+
+// gasPriceHeader reads an optional Gas-Price header. The bool is false when a response was already written.
+func (s *Service) gasPriceHeader(w http.ResponseWriter, r *http.Request, logger log.Logger) (*big.Int, bool) {
+	headers := struct {
+		GasPrice *big.Int `map:"Gas-Price"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return nil, false
+	}
+	if gasPriceOutOfRange(headers.GasPrice) {
+		logger.Debug("gas price out of range", "gas_price", headers.GasPrice)
+		jsonhttp.BadRequest(w, "gas price out of range")
+		return nil, false
+	}
+	return headers.GasPrice, true
 }
 
 // corsHandler sets CORS headers to HTTP response if allowed origins are configured.

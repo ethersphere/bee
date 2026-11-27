@@ -8,11 +8,11 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -26,9 +26,9 @@ type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
-	Commit(context.Context, []byte, uint64) (common.Hash, error)
-	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
+	Claim(context.Context, ChunkInclusionProofs, ...transaction.Option) (common.Hash, error)
+	Commit(context.Context, []byte, uint64, ...transaction.Option) (common.Hash, error)
+	Reveal(context.Context, uint8, []byte, []byte, ...transaction.Option) (common.Hash, error)
 }
 
 type contract struct {
@@ -101,22 +101,23 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
+func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts ...transaction.Option) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
 		return common.Hash{}, err
 	}
+	opts = slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(BoostTipPercent),
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, opts...)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
@@ -125,22 +126,23 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (common.Hash, error) {
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64, opts ...transaction.Option) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), round)
 	if err != nil {
 		return common.Hash{}, err
 	}
+	opts = slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(BoostTipPercent),
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, opts...)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
@@ -149,22 +151,23 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 }
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
-func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
+func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte, opts ...transaction.Option) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("reveal", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return common.Hash{}, err
 	}
+	opts = slices.Concat(opts, []transaction.Option{
+		transaction.WithTipBoost(BoostTipPercent),
+		transaction.WithFixedGasLimitAtLeast(c.gasLimit),
+	})
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		FeePriority:          sctx.GetFeePriority(ctx),
 		MinEstimatedGasLimit: 800_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, opts...)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -192,17 +195,18 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.Option) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
 			request,
 			err,
 			c.incentivesContractABI.Errors,
+			opts...,
 		)
 	}()
 
-	txHash, err = c.txService.Send(ctx, request, boostPercent)
+	txHash, err = c.txService.Send(ctx, request, opts...)
 	if err != nil {
 		return txHash, err
 	}
