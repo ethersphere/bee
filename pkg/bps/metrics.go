@@ -68,8 +68,8 @@ func newMetrics() metrics {
 		Outcomes: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "dropped_frames",
-			Help:      "Frames dropped or streams reset by the broker, by outcome.",
+			Name:      "broker_outcomes",
+			Help:      "Frames the broker dropped and streams it ended, by outcome.",
 		}, []string{"outcome"}),
 		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

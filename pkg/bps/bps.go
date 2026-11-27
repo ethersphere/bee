@@ -573,7 +573,7 @@ func (s *session) forged(err error) {
 		return
 	}
 	if berr := s.svc.blocklister.Blocklist(s.broker, ForgingBrokerBlocklistDuration, err.Error()); berr != nil {
-		s.svc.logger.Debug("blocklist broker failed", "broker", s.broker, "error", berr)
+		s.svc.logger.Error(berr, "blocklist broker failed", "broker", s.broker)
 	}
 }
 
@@ -631,7 +631,7 @@ func (s *session) check(f *pb.Broadcast) error {
 	// a service kind has passed only from the principal, so the stream's owner is the chunk's
 	c, err := verify(f, s.spec.Topic, s.owner)
 	if err != nil {
-		return err
+		return fmt.Errorf("check %s: %w", f.Kind, err)
 	}
 	if f.Kind == pb.Kind_ROSTER {
 		return checkRoster(payload(c), s.spec.Principal)
@@ -778,7 +778,7 @@ func (s *Service) serve(ctx context.Context, peer swarm.Address, stream p2p.Stre
 					s.logger.Error(berr, "blocklist failed", "peer_address", peer)
 				}
 			}
-			return fmt.Errorf("read: %w", readErr)
+			return readErr
 
 		case <-authC:
 			authC = nil
@@ -798,10 +798,10 @@ func (s *Service) read(ctx context.Context, r protobuf.Reader, co *cohort, m *me
 	for {
 		var f pb.Broadcast
 		if err := r.ReadMsgWithContext(ctx, &f); err != nil {
-			return err
+			return fmt.Errorf("read frame: %w", err)
 		}
 		if err := s.handleFrame(co, m, &f); err != nil {
-			return err
+			return fmt.Errorf("%s frame: %w", f.Kind, err)
 		}
 	}
 }

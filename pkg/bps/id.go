@@ -76,27 +76,19 @@ func (k Kind) proto() pb.Kind {
 // keccak256(prefix | topic | challenge), with the prefix empty for DATA and
 // "bps-service:v1" | kind for any other kind.
 func SessionTopic(kind Kind, topic, challenge []byte) ([]byte, error) {
-	return sessionTopic(kind.proto(), topic, challenge)
+	var prefix []byte
+	if kind != KindData {
+		prefix = append(append([]byte{}, servicePrefix...), byte(kind.proto()))
+	}
+	return crypto.LegacyKeccak256(append(append(prefix, topic...), challenge...))
 }
 
 // ID returns the single-owner chunk id of the session feed update at index:
 // keccak256(SessionTopic(kind, topic, challenge) | index), index big-endian.
 func ID(kind Kind, topic, challenge []byte, index uint64) ([]byte, error) {
-	return id(kind.proto(), topic, challenge, index)
-}
-
-func sessionTopic(kind pb.Kind, topic, challenge []byte) ([]byte, error) {
-	var prefix []byte
-	if kind != pb.Kind_DATA {
-		prefix = append(append([]byte{}, servicePrefix...), byte(kind))
-	}
-	return crypto.LegacyKeccak256(append(append(prefix, topic...), challenge...))
-}
-
-func id(kind pb.Kind, topic, challenge []byte, index uint64) ([]byte, error) {
-	topicS, err := sessionTopic(kind, topic, challenge)
+	topicS, err := SessionTopic(kind, topic, challenge)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("session topic: %w", err)
 	}
 	return crypto.LegacyKeccak256(binary.BigEndian.AppendUint64(topicS, index))
 }
@@ -127,9 +119,10 @@ func parseFrame(f *pb.Broadcast, topic []byte) (*soc.SOC, error) {
 	if isEmptyKind(f.Kind) && f.Index != 0 {
 		return nil, fmt.Errorf("%s chunk at index %d: %w", f.Kind, f.Index, ErrInvalidSOC)
 	}
-	want, err := id(f.Kind, topic, f.Challenge, f.Index)
+	// the Go kinds have the protobuf values
+	want, err := ID(Kind(f.Kind), topic, f.Challenge, f.Index)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("id: %w", err)
 	}
 	c, err := soc.FromChunk(swarm.NewChunk(swarm.ZeroAddress, f.Soc))
 	if err != nil {

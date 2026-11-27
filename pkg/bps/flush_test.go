@@ -264,7 +264,7 @@ func (e *flushEnv) join(signer crypto.Signer, owner []byte) *peer {
 
 // send signs a chunk of kind at index under the stream's challenge and writes it.
 func (p *peer) send(kind pb.Kind, index uint64, payload []byte) error {
-	chunkID, err := id(kind, p.e.spec.Topic, p.challenge, index)
+	chunkID, err := ID(Kind(kind), p.e.spec.Topic, p.challenge, index)
 	if err != nil {
 		return err
 	}
