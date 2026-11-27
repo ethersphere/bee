@@ -15,5 +15,6 @@ var (
 // CheckReceipt exposes the unexported receipt verification (signature recovery,
 // overlay derivation, proximity and shallow-receipt logic) for fuzzing.
 func (ps *PushSync) CheckReceipt(receipt *pb.Receipt) error {
-	return ps.checkReceipt(receipt)
+	_, err := ps.checkReceipt(receipt)
+	return err
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -217,6 +218,43 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 
 			if count != 0 {
 				t.Fatalf("unexpected no of pusher ops want 0 have %d", count)
+			}
+		})
+
+		t.Run("could not sync", func(t *testing.T) {
+			t.Parallel()
+
+			chunk := chunktesting.GenerateTestRandomChunk()
+
+			lstore, err := newStorer(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// the pusher gives up after a few shallow receipts; the upload
+			// must end with an error instead of retrying forever
+			shallow := 3
+			go func() {
+				for op := range lstore.PusherFeed() {
+					if shallow > 0 {
+						shallow--
+						op.Err <- pushsync.ErrShallowReceipt
+					} else {
+						op.Err <- pusher.ErrCouldNotSync
+					}
+				}
+			}()
+
+			session := lstore.DirectUpload()
+
+			err = session.Put(context.Background(), chunk)
+			if err != nil {
+				t.Fatalf("session.Put(...): unexpected error: %v", err)
+			}
+
+			err = session.Done(chunk.Address())
+			if !errors.Is(err, pusher.ErrCouldNotSync) {
+				t.Fatalf("session.Done(): got %v, want %v", err, pusher.ErrCouldNotSync)
 			}
 		})
 
