@@ -11,19 +11,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Counters are the per-cohort counters of the silent outcomes SWIP-74 makes a
-// broker expose.
+// Counters count, per cohort, the frames the broker dropped and the streams
+// it ended.
 type Counters struct {
-	WrongStream    uint64 // a frame its stream may not send
-	UnknownKind    uint64 // a frame of a kind the broker does not define
-	WrongChallenge uint64 // a frame whose challenge is not its stream's
-	InvalidSOC     uint64 // a chunk that does not validate at the derived id
-	AuthTimeout    uint64 // a pending stream disconnected at the auth timeout
-	Retransmit     uint64 // a DATA frame below the cursor
-	QueueReset     uint64 // a receiving stream reset for a full queue
-	InvalidRoster  uint64 // a valid ROSTER chunk whose payload does not decode
-	Revoked        uint64 // a frame from a revoked stream, dropped unread
-	Ended          uint64 // a frame from a stream of a cohort an EOS ended, dropped unread
+	WrongStream    uint64 // kind not allowed for the stream's role
+	UnknownKind    uint64 // unknown kind
+	WrongChallenge uint64 // challenge does not match the stream
+	InvalidSOC     uint64 // chunk failed verification
+	AuthTimeout    uint64 // pending stream timed out before AUTH
+	Retransmit     uint64 // index below the cursor
+	QueueReset     uint64 // stream reset for a full queue
+	InvalidRoster  uint64 // roster payload does not decode
+	Revoked        uint64 // frame from a revoked stream
+	Ended          uint64 // frame from a stream of an ended cohort
 }
 
 type counters struct {
@@ -97,7 +97,7 @@ func (s *Service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
-// count increments the per-cohort counter c and its prometheus outcome.
+// count increments c and the prometheus counter for outcome.
 func (s *Service) count(c *atomic.Uint64, outcome string) {
 	c.Add(1)
 	s.metrics.Outcomes.WithLabelValues(outcome).Inc()

@@ -17,43 +17,39 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// ChallengeSize is the length of the per-stream challenge issued in Ack.
+// ChallengeSize is the length of the challenge the broker sends in its Ack.
 const ChallengeSize = 32
 
-// MaxRosterSize is the most addresses a ROSTER chunk can name. On the wire an
-// address takes its 20 bytes, a field tag and a length: 22 bytes, of the 4096 a
-// chunk's payload holds.
+// MaxRosterSize is the most addresses a ROSTER chunk can hold. Each address
+// takes 22 bytes on the wire: a tag, a length and 20 bytes.
 const MaxRosterSize = swarm.ChunkSize / (1 + 1 + crypto.AddressSize)
 
-// servicePrefix domain-separates the session feeds of every kind but DATA.
+// servicePrefix keeps the topics of non-DATA kinds apart from DATA topics.
 var servicePrefix = []byte("bps-service:v1")
 
 var (
-	// ErrInvalidMessage is a frame whose fields no chunk can make right.
+	// ErrInvalidMessage means the frame fields are malformed.
 	ErrInvalidMessage = errors.New("bps: invalid message")
-	// ErrInvalidSOC is a chunk that does not have the id derived from its frame,
-	// or does not validate as its owner's single-owner chunk.
+	// ErrInvalidSOC means the chunk's id does not match the frame, or the
+	// chunk is not a valid single-owner chunk of the expected owner.
 	ErrInvalidSOC = errors.New("bps: invalid soc")
-	// ErrInvalidRoster is a ROSTER chunk whose payload this node will not send:
-	// one that does not decode as a Roster of 20-byte addresses, or that names
-	// the admin, or an address twice.
+	// ErrInvalidRoster means the roster payload does not decode, names the
+	// admin, or names an address twice.
 	ErrInvalidRoster = errors.New("bps: invalid roster")
 )
 
-// Kind is what a chunk on the wire is.
+// Kind is the type of a chunk on the wire.
 type Kind int
 
 const (
 	KindUnspecified Kind = iota
-	KindData             // an update of the stream's session feed
-	// KindAuth is the empty chunk at index 0 of the session's AUTH feed: it authenticates
-	// a pending stream, or upgrades in place a spectator stream on which a roster naming
-	// its owner was delivered; it is a heartbeat on a publisher stream, and is never
-	// delivered.
+	KindData             // a publisher's content
+	// KindAuth is an empty chunk at index 0. It makes a stream a publisher.
+	// On a publisher stream it is a heartbeat. It is never delivered.
 	KindAuth
-	// KindEOS is the empty chunk at index 0 of the admin's EOS feed: the channel is ended.
+	// KindEOS is an empty chunk at index 0 from the admin. It ends the channel.
 	KindEOS
-	// KindRoster is the admin's publisher set as of its index; its payload is a Roster.
+	// KindRoster is the admin's list of publishers. Its payload is a Roster.
 	KindRoster
 )
 
@@ -72,9 +68,9 @@ func (k Kind) proto() pb.Kind {
 	}
 }
 
-// SessionTopic returns the topic of the session feed of the given kind:
-// keccak256(prefix | topic | challenge), with the prefix empty for DATA and
-// "bps-service:v1" | kind for any other kind.
+// SessionTopic returns keccak256(prefix | topic | challenge), the feed topic
+// for chunks of the given kind. The prefix is empty for DATA, and
+// "bps-service:v1" followed by the kind byte otherwise.
 func SessionTopic(kind Kind, topic, challenge []byte) ([]byte, error) {
 	var prefix []byte
 	if kind != KindData {
@@ -83,7 +79,7 @@ func SessionTopic(kind Kind, topic, challenge []byte) ([]byte, error) {
 	return crypto.LegacyKeccak256(append(append(prefix, topic...), challenge...))
 }
 
-// ID returns the single-owner chunk id of the session feed update at index:
+// ID returns the single-owner chunk id for the given index:
 // keccak256(SessionTopic(kind, topic, challenge) | index), index big-endian.
 func ID(kind Kind, topic, challenge []byte, index uint64) ([]byte, error) {
 	topicS, err := SessionTopic(kind, topic, challenge)
@@ -93,33 +89,31 @@ func ID(kind Kind, topic, challenge []byte, index uint64) ([]byte, error) {
 	return crypto.LegacyKeccak256(binary.BigEndian.AppendUint64(topicS, index))
 }
 
-// isServiceKind reports whether the kind is one of the admin's service kinds,
-// whose owner is forced to the principal.
+// isServiceKind reports whether only the principal may sign the kind.
 func isServiceKind(kind pb.Kind) bool {
 	return kind == pb.Kind_EOS || kind == pb.Kind_ROSTER
 }
 
-// isEmptyKind reports whether the kind is an empty chunk at index 0 of its feed.
+// isEmptyKind reports whether the kind must be an empty chunk at index 0.
 func isEmptyKind(kind pb.Kind) bool {
 	return kind == pb.Kind_AUTH || kind == pb.Kind_EOS
 }
 
-// parseFrame runs the checks that need no owner — the challenge length, the
-// index, the id the frame fields derive, that an AUTH or EOS is empty — and
-// returns the frame's chunk, parsed as a single-owner chunk.
+// parseFrame parses the frame's chunk and runs the checks that do not need
+// the owner. It checks the challenge length, the index, the chunk id, and that
+// AUTH and EOS are empty.
 func parseFrame(f *pb.Broadcast, topic []byte) (*soc.SOC, error) {
 	if len(f.Challenge) != ChallengeSize {
 		return nil, fmt.Errorf("challenge length %d: %w", len(f.Challenge), ErrInvalidMessage)
 	}
-	// the last index is one no feed has: the cursor, set to index+1, would overflow
+	// the cursor is set to index+1, which would overflow
 	if f.Index == math.MaxUint64 {
 		return nil, fmt.Errorf("index %d would overflow the feed's cursor: %w", f.Index, ErrInvalidMessage)
 	}
-	// a session has one AUTH chunk, and a channel one EOS, at index 0 of its feed
 	if isEmptyKind(f.Kind) && f.Index != 0 {
 		return nil, fmt.Errorf("%s chunk at index %d: %w", f.Kind, f.Index, ErrInvalidSOC)
 	}
-	// the Go kinds have the protobuf values
+	// Kind and pb.Kind share values
 	want, err := ID(Kind(f.Kind), topic, f.Challenge, f.Index)
 	if err != nil {
 		return nil, fmt.Errorf("id: %w", err)
@@ -140,8 +134,7 @@ func parseFrame(f *pb.Broadcast, topic []byte) (*soc.SOC, error) {
 	return c, nil
 }
 
-// verify checks the frame as parseFrame does, and that its chunk is owner's:
-// the chunk is then valid at keccak256(id | owner).
+// verify runs parseFrame and checks that owner signed the chunk.
 func verify(f *pb.Broadcast, topic, owner []byte) (*soc.SOC, error) {
 	c, err := parseFrame(f, topic)
 	if err != nil {
@@ -153,14 +146,13 @@ func verify(f *pb.Broadcast, topic, owner []byte) (*soc.SOC, error) {
 	return c, nil
 }
 
-// payload returns what a single-owner chunk carries, without the span.
+// payload returns the chunk's data without the span.
 func payload(c *soc.SOC) []byte {
 	return c.WrappedChunk().Data()[swarm.SpanSize:]
 }
 
-// decodeRosterMsg returns the publisher set in a ROSTER chunk's payload, and
-// false if it does not decode as a Roster of 20-byte addresses: the admin's
-// mistake, which a receiver drops.
+// decodeRosterMsg returns the addresses in a ROSTER payload. It returns false
+// if the payload is not a Roster of 20-byte addresses.
 func decodeRosterMsg(b []byte) ([][]byte, bool) {
 	var r pb.Roster
 	if err := r.Unmarshal(b); err != nil {
