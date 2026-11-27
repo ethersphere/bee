@@ -1,0 +1,7 @@
+* @gacevicljubisa @martinconic @acud
+
+# Workflows, release configuration and packaging
+/.github/        @ethersphere/release-reviewers
+/.goreleaser.yml @ethersphere/release-reviewers
+/Dockerfile*     @ethersphere/release-reviewers
+/packaging/      @ethersphere/release-reviewers

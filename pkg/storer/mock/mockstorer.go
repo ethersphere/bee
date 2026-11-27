@@ -5,7 +5,11 @@
 package mockstorer
 
 import (
+	"cmp"
 	"context"
+	"fmt"
+	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -128,15 +132,38 @@ func (m *mockStorer) DeleteSession(tagID uint64) error {
 	return nil
 }
 
-func (m *mockStorer) ListSessions(offset, limit int) ([]storer.SessionInfo, error) {
+func (m *mockStorer) ListSessions(ctx context.Context, after uint64, offset, limit int) ([]storer.SessionInfo, error) {
+	const maxPageSize = 1000
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Match the store: lexicographic order of the decimal tag IDs, starting
+	// after the cursor key.
+	afterKey := strconv.FormatUint(after, 10)
 	sessions := make([]storer.SessionInfo, 0, len(m.activeSessions))
 	for _, v := range m.activeSessions {
+		if after != 0 && strconv.FormatUint(v.TagID, 10) <= afterKey {
+			continue
+		}
 		sessions = append(sessions, *v)
 	}
-	return sessions, nil
+	slices.SortFunc(sessions, func(a, b storer.SessionInfo) int {
+		return cmp.Compare(strconv.FormatUint(a.TagID, 10), strconv.FormatUint(b.TagID, 10))
+	})
+
+	limit = min(limit, maxPageSize)
+	if limit <= 0 || offset >= len(sessions) {
+		return nil, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return sessions[offset:min(offset+limit, len(sessions))], nil
 }
 
 func (m *mockStorer) DeletePin(_ context.Context, address swarm.Address) error {

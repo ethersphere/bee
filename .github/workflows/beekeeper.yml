@@ -175,6 +175,9 @@ jobs:
       - name: Test gsoc
         id: gsoc
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
+      - name: Test chunk stream
+        id: chunk-stream
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-chunk-stream
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
@@ -236,9 +239,6 @@ jobs:
             --request-timeout 30
       - name: Collect debug artifacts
         if: failure()
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns
           export FAILED='no-test'
@@ -248,6 +248,7 @@ jobs:
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
           if ${{ steps.gsoc.outcome=='failure' }}; then FAILED=gsoc; fi
+          if ${{ steps.chunk-stream.outcome=='failure' }}; then FAILED=chunk-stream; fi
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
@@ -260,19 +261,7 @@ jobs:
           if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
           if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
           if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
-      - name: Create tunshell session for debug
-        if: failure() && contains(needs.init.outputs.msg, '[debug]')
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
-          echo "Connect to github actions node using"
-          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:

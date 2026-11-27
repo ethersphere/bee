@@ -15,8 +15,13 @@
 #### Motivation and Context (Optional)
 <!--Please include relevant motivation and context.-->
 
-### Related Issue (Optional)
-<!-- List any dependencies that are required for this change.-->
+### Related Issue
+<!--
+Keep "Closes" in front of the issue number: GitHub then closes the issue when this PR is merged.
+A bare "#123" or an issue URL only links the issue and leaves it open.
+Use "Part of #123" instead if this PR does not fully resolve the issue.
+-->
+Closes #
 
 ### Screenshots (if appropriate):
 

@@ -167,6 +167,21 @@ func TestChunkGetHandlerNoPeers(t *testing.T) {
 	)
 }
 
+func TestChunkGetHandlerNotFound(t *testing.T) {
+	t.Parallel()
+
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
+
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chunks/"+swarm.MustParseHexAddress("aabbcc0000000000000000000000000000000000000000000000000000000000").String(), http.StatusNotFound,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "chunk not found",
+			Code:    http.StatusNotFound,
+		}),
+	)
+}
+
 func TestChunkHandlersInvalidAddress(t *testing.T) {
 	t.Parallel()
 

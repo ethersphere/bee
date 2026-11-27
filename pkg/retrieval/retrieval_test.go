@@ -228,6 +228,80 @@ func TestWaitForInflight(t *testing.T) {
 	}
 }
 
+// TestRetrieveChunkPeersExhausted checks that running out of peers is reported
+// as not found when at least one peer answered, and as no usable peer otherwise.
+// The request is repeated on the same client so that the second one runs while
+// the peers from the first one are still skipped.
+func TestRetrieveChunkPeersExhausted(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk        = testingc.FixtureChunk("0033")
+		clientAddr   = swarm.MustParseHexAddress(strings.Repeat("ff", swarm.HashSize))
+		peer1        = swarm.MustParseHexAddress("1000000000000000000000000000000000000000000000000000000000000000")
+		peer2        = swarm.MustParseHexAddress("2000000000000000000000000000000000000000000000000000000000000000")
+		pricer       = pricermock.NewMockService(defaultPrice, defaultPrice)
+		streamFailed = errors.New("stream failed")
+	)
+
+	// server does not have the chunk and has no peers to forward the request to,
+	// so it answers every request with a delivery error.
+	server := createRetrieval(t, peer1, &testStorer{ChunkStore: inmemchunkstore.New()}, nil,
+		topologymock.NewTopologyDriver(), log.Noop, accountingmock.NewAccounting(), pricer, nil, false)
+
+	for _, tc := range []struct {
+		name     string
+		peers    []swarm.Address
+		streamer p2p.Streamer
+		want     error
+		notWant  error
+	}{
+		{
+			name:     "peers answered",
+			peers:    []swarm.Address{peer1, peer2},
+			streamer: streamtest.New(streamtest.WithProtocols(server.Protocol())),
+			want:     storage.ErrNotFound,
+			notWant:  topology.ErrNotFound,
+		},
+		{
+			name:     "no peers",
+			streamer: streamtest.New(streamtest.WithProtocols(server.Protocol())),
+			want:     topology.ErrNotFound,
+			notWant:  storage.ErrNotFound,
+		},
+		{
+			name:  "no peer answered",
+			peers: []swarm.Address{peer1, peer2},
+			streamer: streamtest.New(streamtest.WithStreamError(func(swarm.Address, string, string, string) error {
+				return streamFailed
+			})),
+			want:    topology.ErrNotFound,
+			notWant: storage.ErrNotFound,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := createRetrieval(t, clientAddr, nil, tc.streamer,
+				topologymock.NewTopologyDriver(topologymock.WithPeers(tc.peers...)), log.Noop,
+				accountingmock.NewAccounting(), pricer, nil, false)
+
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+			defer cancel()
+
+			for i := range 2 {
+				_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("request %d: got error %v, want %v", i, err, tc.want)
+				}
+				if errors.Is(err, tc.notWant) {
+					t.Fatalf("request %d: got error %v, must not match %v", i, err, tc.notWant)
+				}
+			}
+		})
+	}
+}
+
 func TestRetrieveChunk(t *testing.T) {
 	t.Parallel()
 
@@ -393,11 +467,13 @@ func TestRetrieveChunk(t *testing.T) {
 		)
 
 		_, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
-		if err == nil {
-			t.Fatal("should have received an error")
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 		}
 
-		want := p2p.NewChunkDeliveryError("retrieve chunk: no peer found")
+		// the server has no peers and answers the forwarder with a delivery error,
+		// so the forwarder reports to the client that the chunk was not found.
+		want := p2p.NewChunkDeliveryError("retrieve chunk: " + storage.ErrNotFound.Error())
 		if got := buf.String(); !strings.Contains(got, want.Error()) {
 			t.Fatalf("got log %s, want %s", got, want)
 		}
@@ -718,4 +794,85 @@ func createRetrieval(
 	ret := retrieval.New(addr, radiusF, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
 	t.Cleanup(func() { ret.Close() })
 	return ret
+}
+
+// TestClosestPeerIgnoresHealth checks that the origin and a forwarder ask the
+// closest reachable peer, also when it is not healthy.
+func TestClosestPeerIgnoresHealth(t *testing.T) {
+	t.Parallel()
+
+	var (
+		base      = swarm.MustParseHexAddress("ff00000000000000000000000000000000000000000000000000000000000000")
+		nearBase  = swarm.MustParseHexAddress("0180000000000000000000000000000000000000000000000000000000000000") // PO 8
+		chunk     = swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
+		closer    = swarm.MustParseHexAddress("0300000000000000000000000000000000000000000000000000000000000000") // PO 6, not healthy
+		samePO    = swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000") // PO 6, healthy, farther than closer
+		far       = swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000") // PO 0, healthy
+		private   = swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000001") // PO 255, not reachable
+		unhealthy = map[string]bool{closer.ByteString(): true}
+	)
+
+	driver := func(peers ...swarm.Address) topology.ClosestPeerer {
+		return topologymock.NewTopologyDriver(topologymock.WithClosestPeerFunc(
+			func(addr swarm.Address, _ bool, filter topology.Select, skip ...swarm.Address) (swarm.Address, error) {
+				best := swarm.ZeroAddress
+				for _, p := range peers {
+					if (filter.Healthy && unhealthy[p.ByteString()]) || (filter.Reachable && p.Equal(private)) || swarm.ContainsAddress(skip, p) {
+						continue
+					}
+					if best.IsZero() {
+						best = p
+						continue
+					}
+					if ok, _ := p.Closer(addr, best); ok {
+						best = p
+					}
+				}
+				if best.IsZero() {
+					return swarm.ZeroAddress, topology.ErrNotFound
+				}
+				return best, nil
+			}))
+	}
+
+	for _, tc := range []struct {
+		name   string
+		base   swarm.Address
+		peers  []swarm.Address
+		origin bool
+		want   swarm.Address // zero when no peer is expected
+	}{
+		{name: "origin, closer peer is not healthy", peers: []swarm.Address{far, closer}, origin: true, want: closer},
+		{name: "origin, same proximity order", peers: []swarm.Address{samePO, closer}, origin: true, want: closer},
+		{name: "forwarder, closer peer is not healthy", peers: []swarm.Address{far, closer}, origin: false, want: closer},
+		{name: "forwarder, same proximity order", peers: []swarm.Address{samePO, closer}, origin: false, want: closer},
+		{name: "forwarder, closer to the chunk than every peer", base: nearBase, peers: []swarm.Address{far, closer}, origin: false},
+		{name: "origin, closer to the chunk than every peer", base: nearBase, peers: []swarm.Address{far, closer}, origin: true, want: closer},
+		{name: "origin, a reachable peer comes before a closer peer that is not reachable", peers: []swarm.Address{far, private}, origin: true, want: far},
+		{name: "origin, no reachable peer", peers: []swarm.Address{private}, origin: true, want: private},
+		{name: "forwarder, no reachable peer", peers: []swarm.Address{private}, origin: false, want: private},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tc.base.IsZero() {
+				tc.base = base
+			}
+			ret := createRetrieval(t, tc.base, nil, nil, driver(tc.peers...), log.Noop, nil, nil, nil, false)
+
+			got, err := ret.ClosestPeer(chunk, nil, tc.origin)
+			if tc.want.IsZero() {
+				if !errors.Is(err, topology.ErrNotFound) {
+					t.Fatalf("want %v, got peer %s, error %v", topology.ErrNotFound, got, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Equal(tc.want) {
+				t.Fatalf("want %s, got %s", tc.want, got)
+			}
+		})
+	}
 }

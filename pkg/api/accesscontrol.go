@@ -376,6 +376,12 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 
 	granteeref := paths.GranteesAddress
 	publisher := &s.publicKey
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
+
 	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
 	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, granteeref, historyAddress, publisher, grantees.Addlist, grantees.Revokelist)
@@ -384,13 +390,15 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 		logger.Error(nil, "failed to update grantee list")
 		switch {
 		case errors.Is(err, accesscontrol.ErrNotFound):
-			jsonhttp.NotFound(w, "act or history entry not found")
+			jsonhttp.NotFound(ow, "act or history entry not found")
 		case errors.Is(err, accesscontrol.ErrNoGranteeFound):
-			jsonhttp.BadRequest(w, "remove from empty grantee list")
+			jsonhttp.BadRequest(ow, "remove from empty grantee list")
 		case errors.Is(err, accesscontrol.ErrUnexpectedType):
-			jsonhttp.BadRequest(w, "failed to create history")
+			jsonhttp.BadRequest(ow, "failed to create history")
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, errActGranteeList)
+			jsonhttp.InternalServerError(ow, errActGranteeList)
 		}
 		return
 	}
@@ -399,7 +407,7 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Debug("done split act failed", "error", err)
 		logger.Error(nil, "done split act failed")
-		jsonhttp.InternalServerError(w, "done split act failed")
+		jsonhttp.InternalServerError(ow, "done split act failed")
 		return
 	}
 
@@ -407,7 +415,7 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Debug("done split history failed", "error", err)
 		logger.Error(nil, "done split history failed")
-		jsonhttp.InternalServerError(w, "done split history failed")
+		jsonhttp.InternalServerError(ow, "done split history failed")
 		return
 	}
 
@@ -415,7 +423,7 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Debug("done split grantees failed", "error", err)
 		logger.Error(nil, "done split grantees failed")
-		jsonhttp.InternalServerError(w, "done split grantees failed")
+		jsonhttp.InternalServerError(ow, "done split grantees failed")
 		return
 	}
 
@@ -534,6 +542,12 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	publisher := &s.publicKey
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
+
 	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
 	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, historyAddress, publisher, list, nil)
@@ -542,11 +556,13 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 		logger.Error(nil, "failed to create grantee list")
 		switch {
 		case errors.Is(err, accesscontrol.ErrNotFound):
-			jsonhttp.NotFound(w, "act or history entry not found")
+			jsonhttp.NotFound(ow, "act or history entry not found")
 		case errors.Is(err, accesscontrol.ErrUnexpectedType):
-			jsonhttp.BadRequest(w, "failed to create history")
+			jsonhttp.BadRequest(ow, "failed to create history")
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, errActGranteeList)
+			jsonhttp.InternalServerError(ow, errActGranteeList)
 		}
 		return
 	}
@@ -555,7 +571,7 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		logger.Debug("done split act failed", "error", err)
 		logger.Error(nil, "done split act failed")
-		jsonhttp.InternalServerError(w, "done split act failed")
+		jsonhttp.InternalServerError(ow, "done split act failed")
 		return
 	}
 
@@ -563,7 +579,7 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		logger.Debug("done split history failed", "error", err)
 		logger.Error(nil, "done split history failed")
-		jsonhttp.InternalServerError(w, "done split history failed")
+		jsonhttp.InternalServerError(ow, "done split history failed")
 		return
 	}
 
@@ -571,7 +587,7 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		logger.Debug("done split grantees failed", "error", err)
 		logger.Error(nil, "done split grantees failed")
-		jsonhttp.InternalServerError(w, "done split grantees failed")
+		jsonhttp.InternalServerError(ow, "done split grantees failed")
 		return
 	}
 

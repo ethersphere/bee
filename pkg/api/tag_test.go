@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -22,6 +24,138 @@ import (
 )
 
 func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
+
+// failingListStorer makes ListSessions return err, as a canceled or timed out
+// listing would.
+type failingListStorer struct {
+	api.Storer
+	err error
+}
+
+func (s failingListStorer) ListSessions(context.Context, uint64, int, int) ([]storer.SessionInfo, error) {
+	return nil, s.err
+}
+
+func TestListTagsContextErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "canceled", err: fmt.Errorf("list sessions: %w", context.Canceled), wantStatus: http.StatusRequestTimeout},
+		{name: "deadline exceeded", err: fmt.Errorf("list sessions: %w", context.DeadlineExceeded), wantStatus: http.StatusServiceUnavailable},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
+				Storer: failingListStorer{Storer: mockstorer.New(), err: tc.err},
+			})
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/tags", tc.wantStatus)
+		})
+	}
+}
+
+func TestListTagsPaging(t *testing.T) {
+	t.Parallel()
+
+	var (
+		tagsResource       = "/tags"
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: mockstorer.New(),
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+	)
+
+	for range 12 {
+		jsonhttptest.Request(t, client, http.MethodPost, tagsResource, http.StatusCreated,
+			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
+		)
+	}
+
+	// The listing is in lexicographic order of the decimal tag IDs: 1, 10, 11, 12, 2, ...
+	want := []uint64{1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	uids := func(tags []api.TagResponse) []uint64 {
+		out := make([]uint64, 0, len(tags))
+		for _, tag := range tags {
+			out = append(out, tag.Uid)
+		}
+		return out
+	}
+
+	t.Run("default page", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource, http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want, uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("offset and limit", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?offset=1&limit=3", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want[1:4], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("after", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=12&limit=3", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want[4:7], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("after and offset", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=12&offset=1&limit=2", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want[5:7], uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("invalid after", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?after=a", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid query params",
+				Reasons: []jsonhttp.Reason{{Field: "after", Error: strconv.ErrSyntax.Error()}},
+			}),
+		)
+	})
+
+	t.Run("zero limit", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=0", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ListTagsResponse{
+				Tags: []api.TagResponse{},
+			}),
+		)
+	})
+
+	t.Run("limit above the cap", func(t *testing.T) {
+		var resp api.ListTagsResponse
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=5000", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		if diff := cmp.Diff(want, uids(resp.Tags)); diff != "" {
+			t.Fatalf("unexpected tags (-want +have):\n%s", diff)
+		}
+	})
+}
 
 // nolint:paralleltest
 func TestTags(t *testing.T) {
@@ -41,6 +175,14 @@ func TestTags(t *testing.T) {
 				Tags: []api.TagResponse{},
 			}),
 		)
+	})
+
+	t.Run("list tags negative offset", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?offset=-1", http.StatusBadRequest)
+	})
+
+	t.Run("list tags negative limit", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"?limit=-1", http.StatusBadRequest)
 	})
 
 	t.Run("create tag", func(t *testing.T) {

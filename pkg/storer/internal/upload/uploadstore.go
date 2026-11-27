@@ -697,14 +697,47 @@ func TagInfo(st storage.Reader, tagID uint64) (TagItem, error) {
 	return ti, nil
 }
 
-// ListAllTags returns all the TagItems in the store.
-func ListAllTags(st storage.Reader) ([]TagItem, error) {
-	var tags []TagItem
-	err := st.Iterate(storage.Query{
+// ListTagsPage returns up to limit TagItems after skipping offset items, in
+// index key order (lexicographic order of the decimal tag IDs). If after is not
+// 0, the scan seeks to the key of tag after and starts with the first tag whose
+// key sorts after it, whether or not tag after still exists. Tag IDs start at
+// 1, so an after of 0 starts at the beginning. A limit <= 0 returns no items.
+// The scan stops as soon as the page is full. If ctx is canceled before or
+// during the scan, it returns nil and the wrapped context error, never a
+// partial page.
+func ListTagsPage(ctx context.Context, st storage.Reader, after uint64, offset, limit int) ([]TagItem, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("uploadstore: failed to iterate tags: %w", err)
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	var (
+		tags    = make([]TagItem, 0, limit)
+		skipped int
+	)
+	q := storage.Query{
 		Factory: func() storage.Item { return new(TagItem) },
-	}, func(r storage.Result) (bool, error) {
+	}
+	if after != 0 {
+		q.Prefix = TagItem{TagID: after}.ID()
+		q.PrefixAtStart = true
+	}
+	err := st.Iterate(q, func(r storage.Result) (bool, error) {
+		if err := ctx.Err(); err != nil {
+			return true, err
+		}
+		// The seek lands on the cursor key itself when that tag exists.
+		if after != 0 && r.Entry.(*TagItem).TagID == after {
+			return false, nil
+		}
+		if skipped < offset {
+			skipped++
+			return false, nil
+		}
 		tags = append(tags, *r.Entry.(*TagItem))
-		return false, nil
+		return len(tags) == limit, nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("uploadstore: failed to iterate tags: %w", err)

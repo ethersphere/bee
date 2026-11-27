@@ -17,12 +17,18 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
+	"golang.org/x/sync/errgroup"
 )
+
+// isRetrievableConcurrency is the maximum number of chunks IsRetrievable
+// retrieves from the network at the same time.
+const isRetrievableConcurrency = 32
 
 type Interface interface {
 	// Reupload root hash and all of its underlying
@@ -127,12 +133,40 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 }
 
 // IsRetrievable implements Interface.IsRetrievable method.
+//
+// Chunks are retrieved concurrently, up to isRetrievableConcurrency at a time,
+// while the traversal keeps walking the trie. The first failed retrieval
+// cancels the remaining ones and stops the traversal, and a failed traversal
+// cancels the retrievals still in flight.
 func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address, rLevel redundancy.Level) (bool, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(isRetrievableConcurrency)
+
 	fn := func(a swarm.Address) error {
-		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress)
-		return err
+		if err := egCtx.Err(); err != nil {
+			return err
+		}
+		// Go blocks while all slots are busy and a failed retrieval may
+		// cancel egCtx meanwhile, so check it again on both sides.
+		eg.Go(safe.RunFunc(nil, "steward-is-retrievable", func() error {
+			if err := egCtx.Err(); err != nil {
+				return err
+			}
+			_, err := s.netGetter.RetrieveChunk(egCtx, a, swarm.ZeroAddress)
+			return err
+		}))
+		return egCtx.Err()
 	}
-	switch err := s.netTraverser.Traverse(ctx, root, fn, rLevel); {
+	traverseErr := s.netTraverser.Traverse(egCtx, root, fn, rLevel)
+	if traverseErr != nil {
+		cancel()
+	}
+	// A retrieval error cancels egCtx, so traverseErr may only be the
+	// resulting context error; join both to keep the cause visible.
+	switch err := errors.Join(traverseErr, eg.Wait()); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
 	case errors.Is(err, topology.ErrNotFound):
