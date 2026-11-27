@@ -31,7 +31,12 @@ func AfterInitSteps(
 		5: legacyNoopStep,
 		6: legacyNoopStep,
 		7: legacyNoopStep,
-		8: removeRogueChunks(st, logger),
+		// 8 was removeRogueChunks (v2.8.3). Nodes that have not run it yet start
+		// from a ChunkBinItem serialization that predates the Sum field, which
+		// the current decoder rejects, and step 9 re-verifies every reserve
+		// entry against the chunkstore anyway, so it subsumes that step.
+		8: legacyNoopStep,
+		9: step_09(st, logger),
 	}
 }
 
