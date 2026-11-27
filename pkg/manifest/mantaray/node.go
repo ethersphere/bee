@@ -199,8 +199,8 @@ func (n *Node) Add(ctx context.Context, path, entry []byte, metadata map[string]
 		if err := n.load(ctx, ls); err != nil {
 			return err
 		}
-		n.ref = nil
 	}
+	n.ref = nil
 	f := n.forks[path[0]]
 	if f == nil {
 		nn := New()
