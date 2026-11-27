@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
 
-var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
+var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingVersions[0].ABI)
 
 const stakingHeight = uint8(0)
 

@@ -37,7 +37,7 @@ func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
 	// batch-archive bump only surfaces at runtime as a stalled postage sync.
 	require.NotEmpty(t, getter.GetBatchSnapshot(), "embedded batch snapshot is empty")
 
-	filterer, info, err := snapshot.Parse(log.Noop, snapshot.Embedded(getter), chaincfg.Mainnet.PostageStampAddress)
+	filterer, info, err := snapshot.Parse(log.Noop, snapshot.Embedded(getter), chaincfg.Mainnet.PostageStampVersions[0].Address)
 	if err != nil {
 		t.Fatalf("embedded batch snapshot failed to parse: %v", err)
 	}
@@ -75,14 +75,14 @@ func BenchmarkParse(b *testing.B) {
 	src := snapshot.Embedded(archive.Getter{})
 
 	for b.Loop() {
-		if _, _, err := snapshot.Parse(log.Noop, src, chaincfg.Mainnet.PostageStampAddress); err != nil {
+		if _, _, err := snapshot.Parse(log.Noop, src, chaincfg.Mainnet.PostageStampVersions[0].Address); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
 func BenchmarkSnapshotLogFilterer(b *testing.B) {
-	filterer, _, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), chaincfg.Mainnet.PostageStampAddress)
+	filterer, _, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), chaincfg.Mainnet.PostageStampVersions[0].Address)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -114,8 +114,8 @@ func TestLoadFile_RealSnapshot(t *testing.T) {
 	}
 
 	snap, info, err := snapshot.Load(log.Noop, snapshot.File(path), snapshot.Config{
-		Contract:        chaincfg.Mainnet.PostageStampAddress,
-		ABI:             abiutil.MustParseABI(chaincfg.Mainnet.PostageStampABI),
+		Contract:        chaincfg.Mainnet.PostageStampVersions[0].Address,
+		ABI:             abiutil.MustParseABI(chaincfg.Mainnet.PostageStampVersions[0].ABI),
 		StartBlock:      chaincfg.Mainnet.PostageStampStartBlock,
 		BlockTime:       time.Second,
 		StallingTimeout: time.Minute,
@@ -126,7 +126,7 @@ func TestLoadFile_RealSnapshot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = snap.Listener.Close() })
 
-	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), chaincfg.Mainnet.PostageStampAddress)
+	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), chaincfg.Mainnet.PostageStampVersions[0].Address)
 	require.NoError(t, err)
 	assert.Equal(t, embeddedInfo.LogCount, info.LogCount)
 	assert.Equal(t, embeddedInfo.MaxBlock, info.MaxBlock)

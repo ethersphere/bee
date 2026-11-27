@@ -21,10 +21,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
@@ -32,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/config"
+	"github.com/ethersphere/bee/v2/pkg/contractversion"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
@@ -77,7 +80,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
-	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
@@ -834,12 +836,12 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
+	postageSyncStart := chainCfg.PostageStampStartBlock
+	postageVersions, err := applyAddressOverride(chainCfg.PostageStampVersions, o.PostageContractAddress, "postage stamp")
+	if err != nil {
+		return nil, err
+	}
 	if o.PostageContractAddress != "" {
-		if !common.IsHexAddress(o.PostageContractAddress) {
-			return nil, errors.New("malformed postage stamp address")
-		}
-		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
 		if o.PostageContractStartBlock == 0 {
 			return nil, errors.New("postage contract start block option not provided")
 		}
@@ -847,8 +849,16 @@ func NewBee(
 	} else if !knownChain {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
+	if err := config.ValidateContractVersions(postageVersions); err != nil {
+		return nil, fmt.Errorf("postage stamp contract versions: %w", err)
+	}
 
-	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
+	// The snapshot loader and other single-contract consumers use the first version.
+	postageStampContractAddress := postageVersions[0].Address
+	postageStampContractABI, err := abi.JSON(strings.NewReader(postageVersions[0].ABI))
+	if err != nil {
+		return nil, fmt.Errorf("postage contract version 0 abi: %w", err)
+	}
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
@@ -857,19 +867,50 @@ func NewBee(
 		contractGasLimit = transaction.DefaultGasLimit
 	}
 
-	postageStampContractService = postagecontract.New(
-		overlayEthAddress,
-		postageStampContractAddress,
-		postageStampContractABI,
-		bzzTokenAddress,
-		transactionService,
-		post,
-		batchStore,
-		chainEnabled,
-		contractGasLimit,
-	)
+	postageImpls := make([]contractversion.Version[postagecontract.Interface], 0, len(postageVersions))
+	postageSegments := make([]listener.Segment, 0, len(postageVersions))
+	for i, v := range postageVersions {
+		vABI := postageStampContractABI
+		if i > 0 {
+			vABI, err = abi.JSON(strings.NewReader(v.ABI))
+			if err != nil {
+				return nil, fmt.Errorf("postage contract version %d abi: %w", i, err)
+			}
+		}
+		postageImpls = append(postageImpls, contractversion.Version[postagecontract.Interface]{
+			FromBlock: fromBlock(v.FromRound),
+			Impl: postagecontract.New(
+				overlayEthAddress,
+				v.Address,
+				vABI,
+				bzzTokenAddress,
+				transactionService,
+				post,
+				batchStore,
+				chainEnabled,
+				contractGasLimit,
+			),
+		})
+		postageSegments = append(postageSegments, listener.Segment{
+			Address:   v.Address,
+			ABI:       vABI,
+			FromBlock: fromBlock(v.FromRound),
+		})
+	}
+	if len(postageImpls) == 1 {
+		postageStampContractService = postageImpls[0].Impl
+	} else {
+		postageSwitch, err := contractversion.New(logger, "postage stamp", chainBackend, postageImpls)
+		if err != nil {
+			return nil, fmt.Errorf("postage stamp contract versions: %w", err)
+		}
+		postageStampContractService = postagecontract.NewVersioned(postageSwitch)
+	}
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, o.PostageSyncBlockRange)
+	eventListener, err = listener.NewSegmented(b.syncingStopped, logger, chainBackend, postageSegments, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, o.PostageSyncBlockRange)
+	if err != nil {
+		return nil, fmt.Errorf("postage listener: %w", err)
+	}
 	b.listenerCloser = eventListener
 
 	// Construct protocols.
@@ -1306,15 +1347,34 @@ func NewBee(
 		}
 	}()
 
-	stakingContractAddress := chainCfg.StakingAddress
-	if o.StakingContractAddress != "" {
-		if !common.IsHexAddress(o.StakingContractAddress) {
-			return nil, errors.New("malformed staking contract address")
-		}
-		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
+	stakingVersions, err := applyAddressOverride(chainCfg.StakingVersions, o.StakingContractAddress, "staking contract")
+	if err != nil {
+		return nil, err
 	}
-
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
+	if err := config.ValidateContractVersions(stakingVersions); err != nil {
+		return nil, fmt.Errorf("staking contract versions: %w", err)
+	}
+	stakingImpls := make([]contractversion.Version[staking.Contract], 0, len(stakingVersions))
+	for i, v := range stakingVersions {
+		vABI, err := abi.JSON(strings.NewReader(v.ABI))
+		if err != nil {
+			return nil, fmt.Errorf("staking contract version %d abi: %w", i, err)
+		}
+		stakingImpls = append(stakingImpls, contractversion.Version[staking.Contract]{
+			FromBlock: fromBlock(v.FromRound),
+			Impl:      staking.New(overlayEthAddress, v.Address, vABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling)),
+		})
+	}
+	var stakingContract staking.Contract
+	if len(stakingImpls) == 1 {
+		stakingContract = stakingImpls[0].Impl
+	} else {
+		stakingSwitch, err := contractversion.New(logger, "staking", chainBackend, stakingImpls)
+		if err != nil {
+			return nil, fmt.Errorf("staking contract versions: %w", err)
+		}
+		stakingContract = staking.NewVersioned(stakingSwitch)
+	}
 
 	if chainEnabled {
 
@@ -1398,15 +1458,34 @@ func NewBee(
 
 		if o.EnableStorageIncentives {
 
-			redistributionContractAddress := chainCfg.RedistributionAddress
-			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
-				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			redistributionVersions, err := applyAddressOverride(chainCfg.RedistributionVersions, o.RedistributionContractAddress, "redistribution contract")
+			if err != nil {
+				return nil, err
 			}
-
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
+			if err := config.ValidateContractVersions(redistributionVersions); err != nil {
+				return nil, fmt.Errorf("redistribution contract versions: %w", err)
+			}
+			redistributionImpls := make([]contractversion.Version[redistribution.Contract], 0, len(redistributionVersions))
+			for i, v := range redistributionVersions {
+				vABI, err := abi.JSON(strings.NewReader(v.ABI))
+				if err != nil {
+					return nil, fmt.Errorf("redistribution contract version %d abi: %w", i, err)
+				}
+				redistributionImpls = append(redistributionImpls, contractversion.Version[redistribution.Contract]{
+					FromBlock: fromBlock(v.FromRound),
+					Impl:      redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, v.Address, vABI, contractGasLimit),
+				})
+			}
+			var redistributionContract redistribution.Contract
+			if len(redistributionImpls) == 1 {
+				redistributionContract = redistributionImpls[0].Impl
+			} else {
+				redistributionSwitch, err := contractversion.New(logger, "redistribution", chainBackend, redistributionImpls)
+				if err != nil {
+					return nil, fmt.Errorf("redistribution contract versions: %w", err)
+				}
+				redistributionContract = redistribution.NewVersioned(redistributionSwitch)
+			}
 
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10

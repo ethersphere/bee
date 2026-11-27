@@ -7,6 +7,7 @@ package config_test
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"os"
 	"testing"
 
@@ -112,4 +113,60 @@ func TestDeriveChequebookBytecodeHash(t *testing.T) {
 	hash := crypto.Keccak256Hash(code)
 	t.Logf("add to AcceptedChequebookBytecodeHashes in pkg/config/chain.go:")
 	t.Logf("\tmustHash(%q)", hex.EncodeToString(hash[:]))
+}
+
+func TestValidateContractVersions(t *testing.T) {
+	t.Parallel()
+
+	a1 := common.HexToAddress("0x01")
+	a2 := common.HexToAddress("0x02")
+
+	tests := []struct {
+		name    string
+		vs      []config.ContractVersion
+		wantErr bool
+	}{
+		{name: "nil", vs: nil, wantErr: true},
+		{name: "first not at round zero", vs: []config.ContractVersion{{FromRound: 1}}, wantErr: true},
+		{name: "duplicate rounds", vs: []config.ContractVersion{{}, {FromRound: 5, Address: a1}, {FromRound: 5, Address: a2}}, wantErr: true},
+		{name: "non-first zero address", vs: []config.ContractVersion{{}, {FromRound: 5}}, wantErr: true},
+		{name: "valid two versions", vs: []config.ContractVersion{{Address: a1}, {FromRound: 5, Address: a2}}},
+		{name: "first zero address allowed", vs: []config.ContractVersion{{}}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := config.ValidateContractVersions(tc.vs)
+			if tc.wantErr {
+				if !errors.Is(err, config.ErrInvalidContractVersions) {
+					t.Fatalf("got error %v, want ErrInvalidContractVersions", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestKnownChainContractVersionsValid(t *testing.T) {
+	t.Parallel()
+
+	for name, cfg := range map[string]config.ChainConfig{"mainnet": config.Mainnet, "testnet": config.Testnet} {
+		for list, vs := range map[string][]config.ContractVersion{
+			"staking":        cfg.StakingVersions,
+			"postage":        cfg.PostageStampVersions,
+			"redistribution": cfg.RedistributionVersions,
+		} {
+			if err := config.ValidateContractVersions(vs); err != nil {
+				t.Fatalf("%s %s: %v", name, list, err)
+			}
+			if vs[0].Address == (common.Address{}) {
+				t.Fatalf("%s %s: zero first address", name, list)
+			}
+		}
+	}
 }
