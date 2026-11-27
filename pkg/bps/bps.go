@@ -376,8 +376,8 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
 		}
 		msg, ok, err := s.accept(&f)
 		if err != nil {
-			// a broker that forwards a chunk not valid for the spec, or by an
-			// owner the roster does not admit, is misbehaving: the stream is ended
+			// a chunk that does not validate is one an honest broker never
+			// forwards: end the stream and avoid the broker
 			s.err = fmt.Errorf("%w: %w", errInvalidDelivery, err)
 			s.forged(s.err)
 			return
@@ -398,8 +398,8 @@ func (s *session) readLoop(stream p2p.Stream, r protobuf.Reader) {
 }
 
 // accept re-verifies a delivery end to end. It returns false for a frame the
-// subscriber drops: an AUTH, a kind it does not know, one below its cursor, a
-// roster that does not decode. The challenge is not compared: it is the
+// subscriber drops: an AUTH, a kind it does not know, one below its cursor, an
+// update by an owner its roster does not name, a roster that does not decode. The challenge is not compared: it is the
 // publisher stream's, which the subscriber never sees.
 func (s *session) accept(f *pb.Broadcast) (Message, bool, error) {
 	msg := Message{SOC: f.Soc, Challenge: f.Challenge, Index: f.Index}
@@ -412,8 +412,12 @@ func (s *session) accept(f *pb.Broadcast) (Message, bool, error) {
 			return msg, false, err
 		}
 		owner := c.OwnerAddress()
+		// An owner missing from this subscriber's roster is not proof of a
+		// forging broker: rosters differ between brokers while a revocation
+		// travels, and the subscriber's may be newer. Drop it.
 		if !s.admits(owner) {
-			return msg, false, fmt.Errorf("owner %x not rostered", owner)
+			s.svc.metrics.SubscriberDropped.WithLabelValues("not_rostered").Inc()
+			return msg, false, nil
 		}
 		k := string(owner)
 		if f.Index < s.pos.Cursors[k] {

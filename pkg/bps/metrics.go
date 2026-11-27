@@ -55,9 +55,10 @@ func (c *counters) snapshot() Counters {
 }
 
 type metrics struct {
-	Outcomes  *prometheus.CounterVec
-	Delivered prometheus.Counter
-	Cohorts   prometheus.Gauge
+	Outcomes          *prometheus.CounterVec
+	Delivered         prometheus.Counter
+	Cohorts           prometheus.Gauge
+	SubscriberDropped *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -82,6 +83,12 @@ func newMetrics() metrics {
 			Name:      "cohorts",
 			Help:      "Live cohorts on the broker.",
 		}),
+		SubscriberDropped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "subscriber_dropped_deliveries",
+			Help:      "Valid deliveries a subscriber dropped, by reason.",
+		}, []string{"reason"}),
 	}
 }
 

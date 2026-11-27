@@ -469,9 +469,12 @@ func TestDroppedFrames(t *testing.T) {
 	}
 }
 
-// TestInvalidDelivery checks that a subscriber ends the session when the
-// broker forwards a chunk that does not verify against the cohort spec.
-func TestInvalidDelivery(t *testing.T) {
+// TestUnrosteredDeliveryDropped checks that a validly signed update by an
+// owner the subscriber's roster does not name is dropped, not taken for a
+// forgery: rosters differ between brokers while a revocation travels, so an
+// honest broker can forward it. The stream stays up and the broker is not
+// blocklisted.
+func TestUnrosteredDeliveryDropped(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, bps.Options{})
 	other, err := crypto.GenerateSecp256k1Key()
@@ -479,7 +482,9 @@ func TestInvalidDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	challenge := make([]byte, bps.ChallengeSize)
-	bad := e.chunk(crypto.NewDefaultSigner(other), bps.KindData, challenge, 0, []byte("x"))
+	unrostered := e.chunk(crypto.NewDefaultSigner(other), bps.KindData, challenge, 0, []byte("revoked elsewhere"))
+	genuine := e.chunk(e.signer, bps.KindData, challenge, 0, []byte("from the admin"))
+	eos := e.chunk(e.signer, bps.KindEOS, challenge, 0, nil)
 	broker := p2p.ProtocolSpec{
 		Name:    bps.ProtocolName,
 		Version: bps.ProtocolVersion,
@@ -493,7 +498,58 @@ func TestInvalidDelivery(t *testing.T) {
 				if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: challenge}); err != nil {
 					return err
 				}
-				if err := w.WriteMsgWithContext(ctx, &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: challenge, Soc: bad}); err != nil {
+				for _, f := range []*pb.Broadcast{
+					{Kind: pb.Kind_DATA, Challenge: challenge, Soc: unrostered},
+					{Kind: pb.Kind_DATA, Challenge: challenge, Soc: genuine},
+					{Kind: pb.Kind_EOS, Challenge: challenge, Soc: eos},
+				} {
+					if err := w.WriteMsgWithContext(ctx, f); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		}},
+	}
+	rec := streamtest.New(streamtest.WithProtocols(broker), streamtest.WithBaseAddr(swarm.RandAddress(t)))
+	bl := &blocklister{peers: make(map[string]string)}
+	c := bps.New(rec, bl, false, log.Noop, bps.Options{})
+	sub := e.join(c, swarm.RandAddress(t).Bytes()[:20])
+	expectMessage(t, sub, 0, genuine)
+	// the session lived on to the end of the channel
+	expectMessage(t, sub, 0, eos)
+	expectDone(t, sub)
+	if err := sub.Err(); !errors.Is(err, bps.ErrEndOfStream) {
+		t.Fatalf("got %v, want %v", err, bps.ErrEndOfStream)
+	}
+	if bl.blocklisted(e.brokerAddr) {
+		t.Fatal("broker blocklisted for an unrostered update")
+	}
+}
+
+// TestInvalidDelivery checks that a subscriber ends the session, and avoids
+// the broker, when the broker forwards a chunk whose id is not the one the
+// frame derives.
+func TestInvalidDelivery(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, bps.Options{})
+	challenge := make([]byte, bps.ChallengeSize)
+	// signed for index 0, framed as index 1
+	bad := e.chunk(e.signer, bps.KindData, challenge, 0, []byte("x"))
+	broker := p2p.ProtocolSpec{
+		Name:    bps.ProtocolName,
+		Version: bps.ProtocolVersion,
+		StreamSpecs: []p2p.StreamSpec{{
+			Name: bps.StreamName,
+			Handler: func(ctx context.Context, _ p2p.Peer, stream p2p.Stream) error {
+				w, r := protobuf.NewWriterAndReader(stream)
+				if err := r.ReadMsgWithContext(ctx, &pb.Join{}); err != nil {
+					return err
+				}
+				if err := w.WriteMsgWithContext(ctx, &pb.Ack{Status: pb.Status_OK, Challenge: challenge}); err != nil {
+					return err
+				}
+				if err := w.WriteMsgWithContext(ctx, &pb.Broadcast{Kind: pb.Kind_DATA, Challenge: challenge, Index: 1, Soc: bad}); err != nil {
 					return err
 				}
 				// hold the stream until the subscriber ends it
