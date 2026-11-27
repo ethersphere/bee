@@ -404,7 +404,7 @@ func (s *Service) bpsHandleInbox(ctx context.Context, conn *websocket.Conn, sess
 	ticker := time.NewTicker(s.WsPingPeriod)
 	defer ticker.Stop()
 
-	// the principal needs no cue; any other stream is told of its
+	// the principal may authenticate at once; any other stream is told of its
 	var granted <-chan struct{}
 	if !isPrincipal {
 		granted = sess.Granted()
